@@ -1,0 +1,1563 @@
+{% extends "layouts/employee_base.html" %}
+{% set active_page = "tasks" %}
+
+{% block title %}Task & Evidence Management - KPI Portal{% endblock %}
+
+{% block content %}
+<style>
+    @keyframes fadeSlideUp { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+    .animate-fade-slide { animation: fadeSlideUp 0.4s ease-out forwards; }
+    
+    .tab-btn { position: relative; padding-bottom: 0.75rem; font-size: 0.875rem; font-weight: 700; transition: all 0.3s ease; color: #64748b; border-bottom: 2px solid transparent; cursor: pointer; }
+    .tab-btn:hover { color: #1e293b; }
+    .tab-btn.active { color: #1d4ed8; border-bottom-color: #1d4ed8; }
+    
+    .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    
+    .file-preview-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 10px; margin-top: 15px; }
+    .file-preview-item { position: relative; width: 100%; height: 80px; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0; background: #f8fafc; display: flex; align-items: center; justify-content: center; }
+    .file-preview-item img { width: 100%; height: 100%; object-fit: cover; }
+    .file-remove-btn { position: absolute; top: -5px; right: -5px; background: #ef4444; color: white; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.2); z-index: 10; transition: transform 0.2s; }
+    .file-remove-btn:hover { transform: scale(1.1); }
+</style>
+
+<div class="min-h-screen bg-slate-50/50 text-slate-800 font-sans flex flex-col p-4 sm:p-6 md:p-8 overflow-x-hidden">
+    
+    <!-- HEADER -->
+    <header class="mb-6 sm:mb-8 animate-fade-slide flex flex-col md:flex-row justify-between items-start md:items-center gap-4 sm:gap-5">
+        <div class="flex items-center gap-3 sm:gap-4">
+            <div class="bg-white p-2.5 sm:p-3.5 rounded-2xl shadow-sm ring-1 ring-slate-900/5 text-blue-600 shrink-0">
+                <svg class="w-6 h-6 sm:w-7 sm:h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg>
+            </div>
+            <div>
+                <h2 class="text-xl sm:text-2xl md:text-3xl font-black text-slate-900 tracking-tight">Task & Evidence Management</h2>
+                <p class="text-xs sm:text-sm text-slate-500 mt-1 font-medium">Create tasks, manage proof of work files, and track approvals.</p>
+            </div>
+        </div>
+        <div class="flex items-center gap-3 w-full md:w-auto mt-2 md:mt-0">
+            <button onclick="openCreateTaskModal()" class="w-full md:w-auto justify-center bg-blue-700 hover:bg-blue-800 text-white px-5 sm:px-6 py-2.5 sm:py-3 rounded-xl text-sm font-bold shadow-md transition-all active:scale-95 flex items-center gap-2">
+                <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                Log New Task
+            </button>
+        </div>
+    </header>
+
+    <!-- TABS NAVIGATION -->
+    <div class="flex space-x-4 sm:space-x-6 border-b border-slate-200 mb-6 px-1 sm:px-2 overflow-x-auto custom-scrollbar animate-fade-slide pb-1" style="animation-delay: 0.1s;">
+        <button onclick="switchTab('drafts-tab')" id="btn-drafts-tab" class="tab-btn active shrink-0 whitespace-nowrap text-xs sm:text-sm">1. Draft Tasks</button>
+        <button onclick="switchTab('rejected-tab')" id="btn-rejected-tab" class="tab-btn shrink-0 flex items-center gap-1.5 whitespace-nowrap text-xs sm:text-sm">2. Rejected History <span id="rejectBadge" class="hidden bg-red-100 text-red-700 px-1.5 sm:px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-black">0</span></button>
+        <button onclick="switchTab('resign-tab')" id="btn-resign-tab" class="tab-btn shrink-0 flex items-center gap-1.5 text-purple-700 whitespace-nowrap text-xs sm:text-sm">3. Resign Tasks <span id="resignBadge" class="hidden bg-purple-100 text-purple-700 px-1.5 sm:px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-black">0</span></button>
+        <button onclick="switchTab('review-tab')" id="btn-review-tab" class="tab-btn shrink-0 whitespace-nowrap text-xs sm:text-sm">4. In-Review (Submitted)</button>
+        <button onclick="switchTab('completed-tab')" id="btn-completed-tab" class="tab-btn shrink-0 whitespace-nowrap text-xs sm:text-sm">5. Completed</button>
+        
+        {% if user_level in ['L1', 'L0', 'Level 1', 'Level 0'] %}
+        <div class="w-px bg-slate-300 mx-1 sm:mx-2 my-1 shrink-0"></div>
+        <button onclick="switchTab('approvals-tab')" id="btn-approvals-tab" class="tab-btn shrink-0 flex items-center gap-1.5 text-amber-600 hover:text-amber-700 whitespace-nowrap text-xs sm:text-sm">
+            Pending Approvals <span id="queueBadge" class="bg-amber-100 text-amber-700 px-1.5 sm:px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-black">0</span>
+        </button>
+        {% endif %}
+    </div>
+
+    <!-- MAIN CONTENT AREA -->
+    <div class="w-full relative flex-1 bg-white rounded-2xl sm:rounded-3xl shadow-sm ring-1 ring-slate-900/5 flex flex-col overflow-hidden animate-fade-slide" style="animation-delay: 0.2s;">
+        
+        <!-- SECTION 1: DRAFTS TAB -->
+        <div id="drafts-tab" class="tab-content flex flex-col h-full">
+            <div class="p-4 sm:p-6 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white shrink-0 gap-3 sm:gap-4">
+                <div>
+                    <h3 class="font-extrabold text-slate-900 text-base sm:text-lg">My Drafts</h3>
+                    <p class="text-[11px] sm:text-xs text-slate-500 font-medium mt-1">Manage files freely before submission. Select tasks to batch submit.</p>
+                </div>
+                <button id="batchSubmitBtn" disabled onclick="submitBatch()" class="w-full sm:w-auto justify-center bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white px-4 sm:px-5 py-2 sm:py-2.5 rounded-xl text-[11px] sm:text-xs font-bold shadow-sm transition-all active:scale-95 flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                    Submit Selected (<span id="selectedCount">0</span>)
+                </button>
+            </div>
+            <div class="overflow-y-auto overflow-x-auto custom-scrollbar flex-1 w-full">
+                <table class="w-full text-left text-xs sm:text-sm border-collapse min-w-[600px]">
+                    <thead class="bg-slate-50/80 backdrop-blur-sm text-[9px] sm:text-[10px] uppercase text-slate-500 font-black tracking-widest sticky top-0 z-10 shadow-sm">
+                        <tr>
+                            <th class="p-3 sm:p-5 w-10 sm:w-12 text-center border-b border-slate-200/60"><input type="checkbox" id="selectAllCb" class="accent-blue-600 w-3 h-3 sm:w-4 sm:h-4 rounded cursor-pointer" onchange="toggleSelectAll(this)"></th>
+                            <th class="p-3 sm:p-5 border-b border-slate-200/60">Task Title & Category</th>
+                            <th class="p-3 sm:p-5 border-b border-slate-200/60 text-center">Status</th>
+                            <th class="p-3 sm:p-5 border-b border-slate-200/60 text-center">Evidence</th>
+                            <th class="p-3 sm:p-5 text-right border-b border-slate-200/60">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="draftsTableBody" class="divide-y divide-slate-100/60 bg-white">
+                        <tr><td colspan="5" class="p-10 sm:p-16 text-center text-slate-400 font-medium">Syncing drafts...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- SECTION 2: REJECTED TAB -->
+        <div id="rejected-tab" class="tab-content hidden flex flex-col h-full">
+            <div class="p-4 sm:p-6 border-b border-slate-100 bg-red-50/50 shrink-0">
+                <h3 class="font-extrabold text-red-900 text-base sm:text-lg flex items-center gap-2">
+                    <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    Rejected History
+                </h3>
+                <p class="text-[10px] sm:text-xs text-red-700 font-medium mt-1">Review manager remarks and provide corrected evidence to create a Version 2 resubmission.</p>
+            </div>
+            <div class="overflow-y-auto custom-scrollbar flex-1 bg-slate-50 p-4 sm:p-6">
+                <div id="rejectedList" class="space-y-4"></div>
+            </div>
+        </div>
+
+        <!-- SECTION 3: RESIGN TAB -->
+        <div id="resign-tab" class="tab-content hidden flex flex-col h-full">
+            <div class="p-4 sm:p-6 border-b border-slate-100 bg-purple-50/50 shrink-0">
+                <h3 class="font-extrabold text-purple-900 text-base sm:text-lg flex items-center gap-2">
+                    <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+                    Resign Tasks
+                </h3>
+                <p class="text-[10px] sm:text-xs text-purple-700 font-medium mt-1">Tasks rejected by Top Management (L0) requiring L1 action or L2 resubmission.</p>
+            </div>
+            <div class="overflow-y-auto custom-scrollbar flex-1 bg-slate-50 p-4 sm:p-6">
+                <div id="resignList" class="space-y-4"></div>
+            </div>
+        </div>
+
+        <!-- SECTION 4: IN-REVIEW TAB -->
+        <div id="review-tab" class="tab-content hidden flex flex-col h-full">
+            <div class="p-4 sm:p-6 border-b border-slate-100 bg-blue-50/30 shrink-0">
+                <h3 class="font-extrabold text-blue-900 text-base sm:text-lg">In-Review / Submitted</h3>
+                <p class="text-[10px] sm:text-xs text-blue-700 font-medium mt-1">Tasks currently pending approval from L1 Supervisors or L0 Heads.</p>
+            </div>
+            <div class="overflow-y-auto overflow-x-auto custom-scrollbar flex-1 w-full">
+                <table class="w-full text-left text-xs sm:text-sm border-collapse min-w-[500px]">
+                    <thead class="bg-slate-50/80 backdrop-blur-sm text-[9px] sm:text-[10px] uppercase text-slate-500 font-black tracking-widest sticky top-0 z-10 shadow-sm">
+                        <tr>
+                            <th class="p-3 sm:p-5 border-b border-slate-200/60">Task Details</th>
+                            <th class="p-3 sm:p-5 border-b border-slate-200/60 text-center">Submission Date</th>
+                            <th class="p-3 sm:p-5 border-b border-slate-200/60 text-right">Current Stage</th>
+                        </tr>
+                    </thead>
+                    <tbody id="inReviewTableBody" class="divide-y divide-slate-100/60 bg-white">
+                        <tr><td colspan="3" class="p-10 sm:p-16 text-center text-slate-400 font-medium">Syncing submitted tasks...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- SECTION 5: COMPLETED TAB -->
+        <div id="completed-tab" class="tab-content hidden flex flex-col h-full">
+            <div class="p-4 sm:p-6 border-b border-slate-100 bg-emerald-50/30 shrink-0">
+                <h3 class="font-extrabold text-emerald-900 text-base sm:text-lg">Completed Tasks</h3>
+                <p class="text-[10px] sm:text-xs text-emerald-700 font-medium mt-1">Successfully approved tasks counting towards KPIs.</p>
+            </div>
+            <div class="overflow-y-auto overflow-x-auto custom-scrollbar flex-1 w-full">
+                <table class="w-full text-left text-xs sm:text-sm border-collapse min-w-[500px]">
+                    <thead class="bg-slate-50/80 backdrop-blur-sm text-[9px] sm:text-[10px] uppercase text-slate-500 font-black tracking-widest sticky top-0 z-10 shadow-sm">
+                        <tr>
+                            <th class="p-3 sm:p-5 border-b border-slate-200/60">Task Details</th>
+                            <th class="p-3 sm:p-5 border-b border-slate-200/60 text-center">Completion Date</th>
+                            <th class="p-3 sm:p-5 border-b border-slate-200/60 text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="completedTableBody" class="divide-y divide-slate-100/60 bg-white">
+                        <tr><td colspan="3" class="p-10 sm:p-16 text-center text-slate-400 font-medium">Syncing completed tasks...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- APPROVALS TAB -->
+        {% if user_level in ['L1', 'L0', 'Level 1', 'Level 0'] %}
+        <div id="approvals-tab" class="tab-content hidden flex flex-col h-full">
+            <div class="p-4 sm:p-6 border-b border-slate-100 bg-amber-50/30 shrink-0">
+                <h3 class="font-extrabold text-amber-900 text-base sm:text-lg">Approval Queue</h3>
+                <p class="text-[10px] sm:text-xs text-amber-700 font-medium mt-1">Batches of tasks submitted by your team waiting for your review.</p>
+            </div>
+            <div class="p-4 sm:p-6 overflow-y-auto custom-scrollbar flex-1">
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6" id="queueCardsContainer">
+                    <div class="col-span-full p-10 sm:p-16 text-center text-slate-400 text-sm">Loading queue...</div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+    </div>
+</div>
+
+<!-- ========================================================== -->
+<!-- 🌟 ALL MODALS -->
+<!-- ========================================================== -->
+
+<!-- CREATE TASK MODAL -->
+<div id="createTaskModal" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm transition-opacity opacity-0 p-4" style="transition: opacity 0.3s ease;">
+    <div class="bg-white rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden transform scale-95 transition-transform duration-300 flex flex-col max-h-[95vh] sm:max-h-[90vh]" id="createTaskContent">
+        <div class="px-5 sm:px-8 py-4 sm:py-5 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
+            <h3 class="text-lg sm:text-xl font-black text-slate-900">Log New Task</h3>
+            <button onclick="closeModals()" class="text-slate-400 hover:text-red-500 hover:bg-red-50 p-1.5 sm:p-2 rounded-full transition-colors focus:outline-none"><svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+        </div>
+        <div class="p-5 sm:p-8 overflow-y-auto custom-scrollbar bg-slate-50/50 flex-1 pr-1 sm:pr-8">
+            <div class="bg-white border border-slate-200 shadow-sm rounded-2xl p-3 sm:p-4 mb-4 sm:mb-6">
+                <div class="grid grid-cols-2 gap-2 sm:gap-3 text-[10px] sm:text-xs">
+                    <div><span class="text-slate-500 font-semibold uppercase tracking-wider text-[8px] sm:text-[9px]">Department:</span> <p class="font-black text-blue-950 mt-0.5" id="modalContextDept">Loading...</p></div>
+                    <div><span class="text-slate-500 font-semibold uppercase tracking-wider text-[8px] sm:text-[9px]">Position:</span> <p class="font-black text-blue-950 mt-0.5" id="modalContextPos">Loading...</p></div>
+                </div>
+            </div>
+            <div class="flex items-center justify-center mb-4 sm:mb-6 bg-slate-200/50 p-1 sm:p-1.5 rounded-xl w-full sm:w-max mx-auto">
+                <button type="button" id="modeSingleBtn" onclick="setTaskMode('single')" class="flex-1 sm:flex-none px-3 sm:px-5 py-1.5 sm:py-2 text-xs sm:text-sm font-bold rounded-lg bg-white shadow-sm text-blue-700 transition-all focus:outline-none">Single Task</button>
+                <button type="button" id="modeMultipleBtn" onclick="setTaskMode('multiple')" class="flex-1 sm:flex-none px-3 sm:px-5 py-1.5 sm:py-2 text-xs sm:text-sm font-bold rounded-lg text-slate-500 hover:text-slate-800 transition-all focus:outline-none">Multiple Tasks</button>
+            </div>
+            <form id="taskForm">
+                <div class="mb-4 sm:mb-5">
+                    <label class="block text-[10px] sm:text-xs font-black text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-widest">KPI Category <span class="text-red-500">*</span></label>
+                    <select id="tCategory" required class="w-full bg-white border border-slate-300 p-2.5 sm:p-3.5 rounded-xl text-xs sm:text-sm font-bold text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none shadow-sm cursor-pointer appearance-none"></select>
+                </div>
+                <div id="singleTaskContainer" class="space-y-4 sm:space-y-5 transition-all">
+                    <div>
+                        <label class="block text-[10px] sm:text-xs font-black text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-widest">Task Title <span class="text-red-500">*</span></label>
+                        <input type="text" id="tTitle" placeholder="Brief description of what was done..." class="w-full bg-white border border-slate-300 p-2.5 sm:p-3.5 rounded-xl text-xs sm:text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none shadow-sm">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] sm:text-xs font-black text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-widest">Detailed Description</label>
+                        <textarea id="tDesc" rows="3" placeholder="Additional notes or links..." class="w-full bg-white border border-slate-300 p-2.5 sm:p-3.5 rounded-xl text-xs sm:text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none shadow-sm"></textarea>
+                    </div>
+                </div>
+                <div id="multipleTaskContainer" class="hidden space-y-3 sm:space-y-4">
+                    <p class="text-[10px] sm:text-xs text-blue-600 font-bold bg-blue-50 p-2 sm:p-3 rounded-xl border border-blue-100">Tasks added here will be saved as drafts under the selected category.</p>
+                    <div id="taskList" class="space-y-2 sm:space-y-3"></div>
+                    <button type="button" onclick="addMultipleTaskRow()" class="text-[10px] sm:text-xs font-bold text-blue-700 hover:text-blue-900 bg-white border border-slate-200 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl shadow-sm flex items-center justify-center sm:justify-start w-full sm:w-auto gap-1.5 transition-colors focus:outline-none">
+                        <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg> Add Another Row
+                    </button>
+                </div>
+            </form>
+        </div>
+        <div class="px-5 sm:px-8 py-4 sm:py-5 border-t border-slate-100 flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 bg-white shrink-0">
+            <button onclick="closeModals()" class="w-full sm:w-auto px-5 sm:px-6 py-2.5 text-xs sm:text-sm font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl transition-colors shadow-sm focus:outline-none">Cancel</button>
+            <button onclick="saveTaskData()" id="saveTaskBtn" class="w-full sm:w-auto px-6 sm:px-8 py-2.5 bg-blue-700 hover:bg-blue-800 disabled:opacity-50 text-white rounded-xl text-xs sm:text-sm font-bold shadow-md transition-all active:scale-95 flex items-center justify-center gap-2 focus:outline-none">Save as Draft</button>
+        </div>
+    </div>
+</div>
+
+<!-- UPLOAD DRAFT MODAL -->
+<div id="uploadModal" class="hidden fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/70 backdrop-blur-sm transition-opacity opacity-0 p-4">
+    <div class="bg-white rounded-3xl w-full max-w-xl shadow-2xl p-5 sm:p-8 transform transition-transform duration-300 scale-95 flex flex-col max-h-[95vh] sm:max-h-[90vh]" id="uploadContent">
+        <div class="flex justify-between items-start mb-4 sm:mb-6 shrink-0 border-b border-slate-100 pb-3 sm:pb-4">
+            <div>
+                <h3 class="text-lg sm:text-2xl font-black text-slate-900">Manage Evidence</h3>
+                <p class="text-[10px] sm:text-xs text-slate-500 font-medium mt-1">Review currently attached files or upload new files.</p>
+            </div>
+            <button onclick="closeModals()" class="text-slate-400 hover:text-red-500 bg-slate-50 hover:bg-red-50 p-1.5 sm:p-2.5 rounded-full transition-colors focus:outline-none shrink-0"><svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+        </div>
+        <input type="hidden" id="uploadTaskId">
+        <div class="overflow-y-auto custom-scrollbar pr-1 flex-1 space-y-4 sm:space-y-6">
+            <div id="existingEvidenceContainer"></div>
+            <div class="bg-blue-50/30 p-3 sm:p-5 rounded-2xl border border-blue-100 shadow-inner">
+                <h4 class="text-[9px] sm:text-[10px] font-black text-blue-800 uppercase tracking-widest mb-2 sm:mb-3 flex items-center gap-1.5"><svg class="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg> Add New Files</h4>
+                <div class="border-2 border-dashed border-blue-300 bg-white hover:bg-blue-50 rounded-xl p-5 sm:p-8 text-center cursor-pointer transition-all shadow-sm" onclick="document.getElementById('evidenceFiles').click()">
+                    <div class="bg-blue-50 w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center mx-auto mb-2 sm:mb-3 border border-blue-100 ring-4 ring-white">
+                        <svg class="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                    </div>
+                    <p class="text-xs sm:text-sm font-bold text-blue-900">Click or drag new files here</p>
+                    <input type="file" id="evidenceFiles" multiple class="hidden" onchange="handleEvidenceSelection(this)">
+                </div>
+                <div id="filePreviewContainer" class="file-preview-grid"></div>
+            </div>
+        </div>
+        <div class="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 pt-4 sm:pt-5 mt-3 sm:mt-4 border-t border-slate-100 shrink-0">
+            <button onclick="closeModals()" class="w-full sm:w-auto px-5 sm:px-6 py-2.5 sm:py-3 text-xs sm:text-sm font-bold text-slate-600 bg-white border border-slate-200 rounded-xl transition-colors shadow-sm focus:outline-none">Close</button>
+            <button onclick="submitEvidence()" id="btnUpload" class="w-full sm:w-auto justify-center px-6 sm:px-8 py-2.5 sm:py-3 bg-blue-700 hover:bg-blue-800 disabled:opacity-50 text-white rounded-xl text-xs sm:text-sm font-bold shadow-md transition-all active:scale-95 flex items-center hidden focus:outline-none">Upload New Files</button>
+        </div>
+    </div>
+</div>
+
+<!-- L1 TO L2 RESIGN MODAL -->
+<div id="resignToL2Modal" class="hidden fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/70 backdrop-blur-sm transition-opacity opacity-0 p-4">
+    <div class="bg-white rounded-3xl w-full max-w-md shadow-2xl p-5 sm:p-8 transform scale-95 transition-transform duration-300 max-h-[90vh] overflow-y-auto custom-scrollbar" id="resignToL2Content">
+        <h3 class="text-xl sm:text-2xl font-black text-purple-900 mb-1.5 sm:mb-2">Instruct L2 to Resubmit</h3>
+        <p class="text-[10px] sm:text-xs text-slate-500 font-medium mb-4 sm:mb-6">Return this task to the original creator so they can fix the evidence.</p>
+        <input type="hidden" id="resignTaskId">
+        <div class="mb-4 sm:mb-6">
+            <label class="block text-[10px] sm:text-[11px] font-black text-slate-500 mb-1.5 sm:mb-2 uppercase tracking-widest">Instructions for L2 <span class="text-red-500">*</span></label>
+            <textarea id="resignComments" rows="3" class="w-full bg-slate-50 border border-slate-300 p-2.5 sm:p-3.5 rounded-xl text-xs sm:text-sm font-bold text-slate-800 focus:ring-2 focus:ring-purple-500/20 focus:border-purple-600 focus:outline-none shadow-sm" placeholder="Please correct the file..."></textarea>
+        </div>
+        <div class="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3">
+            <button onclick="closeModals()" class="w-full sm:w-auto px-5 sm:px-6 py-2.5 text-xs sm:text-sm font-bold text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors shadow-sm focus:outline-none text-center">Cancel</button>
+            <button onclick="executeResignTask()" id="btnResignTask" class="w-full sm:w-auto justify-center px-6 sm:px-8 py-2.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-xl text-xs sm:text-sm font-bold shadow-md transition-all active:scale-95 focus:outline-none flex items-center">Send to L2</button>
+        </div>
+    </div>
+</div>
+
+<!-- FIX & RESUBMIT (V2) MODAL -->
+<div id="resubmitModal" class="hidden fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/70 backdrop-blur-sm transition-opacity opacity-0 p-4">
+    <div class="bg-white rounded-3xl w-full max-w-xl shadow-2xl p-5 sm:p-8 transform transition-transform duration-300 scale-95 flex flex-col max-h-[95vh] sm:max-h-[90vh]" id="resubmitContent">
+        <div class="flex justify-between items-start mb-4 sm:mb-6 shrink-0 border-b border-slate-100 pb-3 sm:pb-4">
+            <h3 class="text-lg sm:text-2xl font-black text-slate-900">Resubmit Task (Version 2)</h3>
+            <button onclick="closeModals()" class="text-slate-400 hover:text-red-500 bg-slate-50 p-1.5 sm:p-2.5 rounded-full transition-colors focus:outline-none shrink-0 ml-2"><svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+        </div>
+        <input type="hidden" id="resubmitTaskId">
+        <div class="overflow-y-auto custom-scrollbar pr-1 flex-1 space-y-4 sm:space-y-6">
+            <div id="resubmitOldEvidenceContainer" class="space-y-2 opacity-60 grayscale cursor-not-allowed"></div>
+            <div class="bg-blue-50/50 p-4 sm:p-5 rounded-2xl border border-blue-200 shadow-inner">
+                <h4 class="text-[9px] sm:text-[10px] font-black text-blue-800 uppercase tracking-widest mb-2 sm:mb-3">Upload Corrected Evidence (V2) *</h4>
+                <div class="border-2 border-dashed border-blue-400 bg-white hover:bg-blue-50 rounded-xl p-5 sm:p-8 text-center cursor-pointer transition-all shadow-sm" onclick="document.getElementById('resubmitFiles').click()">
+                    <p class="text-xs sm:text-sm font-bold text-blue-900">Select replacement file(s)</p>
+                    <input type="file" id="resubmitFiles" multiple class="hidden" onchange="handleResubmitSelection(this)">
+                </div>
+                <div id="resubmitPreviewContainer" class="file-preview-grid"></div>
+            </div>
+        </div>
+        <div class="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 pt-4 sm:pt-5 mt-3 sm:mt-4 border-t border-slate-100 shrink-0">
+            <button onclick="closeModals()" class="w-full sm:w-auto px-5 sm:px-6 py-2.5 sm:py-3 text-xs sm:text-sm font-bold text-slate-600 bg-white border border-slate-200 rounded-xl focus:outline-none text-center">Cancel</button>
+            <button onclick="executeResubmitV2()" id="btnExecuteResubmit" class="w-full sm:w-auto justify-center px-6 sm:px-8 py-2.5 sm:py-3 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-xl text-xs sm:text-sm font-bold hidden focus:outline-none flex items-center">Create V2 & Submit</button>
+        </div>
+    </div>
+</div>
+
+<!-- DETAILS MODAL -->
+<div id="detailsModal" class="hidden fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm transition-opacity opacity-0 p-4">
+    <div class="bg-white rounded-3xl w-full max-w-xl shadow-2xl flex flex-col max-h-[95vh] sm:max-h-[90vh] transform transition-transform duration-300 scale-95" id="detailsContent">
+        <div class="px-5 sm:px-8 py-4 sm:py-6 border-b border-slate-100 flex justify-between items-center bg-white shrink-0 rounded-t-3xl">
+            <h3 class="text-lg sm:text-xl font-black text-slate-900">Task Details</h3>
+            <button onclick="closeModals()" class="text-slate-400 hover:text-red-500 bg-slate-50 p-1.5 sm:p-2 rounded-full transition-colors focus:outline-none"><svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+        </div>
+        <div class="p-5 sm:p-8 overflow-y-auto custom-scrollbar bg-slate-50/50 flex-1 rounded-b-3xl">
+            <div id="detailsBody" class="space-y-4 sm:space-y-6"></div>
+        </div>
+    </div>
+</div>
+
+<!-- SUBMIT TARGET MODAL -->
+<div id="submitTargetModal" class="hidden fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm transition-opacity opacity-0 p-4">
+    <div class="bg-white rounded-3xl w-full max-w-md shadow-2xl p-5 sm:p-8 transform scale-95 transition-transform duration-300 max-h-[90vh] overflow-y-auto custom-scrollbar" id="submitTargetContent">
+        <h3 class="text-xl sm:text-2xl font-black text-slate-900 mb-1.5 sm:mb-2">Submit to Manager</h3>
+        <p class="text-[10px] sm:text-xs text-slate-500 font-medium mb-4 sm:mb-6">Choose the Supervisor or Head to review these selected tasks.</p>
+        <div class="mb-6 sm:mb-8">
+            <label class="block text-[10px] sm:text-[11px] font-black text-slate-500 mb-1.5 sm:mb-2 uppercase tracking-widest">Forward To <span class="text-red-500">*</span></label>
+            <select id="targetManagerId" class="w-full bg-white border border-slate-300 p-2.5 sm:p-3.5 rounded-xl text-xs sm:text-sm font-bold text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none shadow-sm cursor-pointer appearance-none"></select>
+        </div>
+        <div class="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 pt-3 sm:pt-4 border-t border-slate-100">
+            <button onclick="closeModals()" class="w-full sm:w-auto px-5 sm:px-6 py-2.5 text-xs sm:text-sm font-bold text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors shadow-sm focus:outline-none text-center">Cancel</button>
+            <button id="confirmSubmitBtn" onclick="confirmBatchSubmit()" class="w-full sm:w-auto justify-center px-6 sm:px-8 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs sm:text-sm font-bold shadow-md transition-all active:scale-95 focus:outline-none flex items-center">Confirm Submission</button>
+        </div>
+    </div>
+</div>
+
+<input type="hidden" id="loggedInUserId" value="{{ user_id }}">
+
+<!-- REVIEW MODAL -->
+{% if user_level in ['L1', 'L0', 'Level 1', 'Level 0'] %}
+<div id="reviewModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm transition-opacity opacity-0 p-2 sm:p-4">
+    <div class="bg-white rounded-2xl w-full max-w-lg shadow-2xl p-4 sm:p-6 transform transition-all scale-95 flex flex-col max-h-[95vh] sm:max-h-[90vh]" id="reviewContent">
+        <div class="shrink-0 mb-3 sm:mb-4 flex justify-between items-center">
+            <h3 class="text-lg sm:text-xl font-extrabold text-blue-950">Review Submission</h3>
+            <button onclick="closeModals()" class="text-slate-400 hover:text-red-500 focus:outline-none bg-slate-50 p-1.5 sm:p-2 rounded-full"><svg class="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+        </div>
+        <div class="bg-blue-50 border border-blue-100 p-2 sm:p-3 rounded-lg shadow-inner mb-3 sm:mb-4 overflow-hidden" id="reviewSubmitterInfo"></div>
+        <input type="hidden" id="reviewBatchId">
+
+        <div class="overflow-y-auto custom-scrollbar flex-1 mb-4 sm:mb-5 border border-slate-100 rounded-xl p-1.5 sm:p-2 bg-slate-50">
+            <label class="block text-[9px] sm:text-[10px] font-black text-slate-500 mb-1 sm:mb-2 uppercase tracking-widest px-1">Tasks in this Batch</label>
+            <div id="reviewTasksList" class="space-y-2 px-1"></div>
+        </div>
+
+        <div class="shrink-0 border-t border-slate-100 pt-3 sm:pt-4 overflow-y-auto custom-scrollbar max-h-[40vh] sm:max-h-[none] px-1 sm:px-0">
+            <div class="mb-3 sm:mb-4">
+                <label class="block text-[10px] sm:text-xs font-bold text-slate-700 mb-1">Decision <span class="text-red-500">*</span></label>
+                <select id="reviewAction" class="w-full bg-slate-50 border border-slate-200 p-2 sm:p-2.5 rounded-xl text-xs sm:text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-100 cursor-pointer">
+                    <option value="APPROVED">✅ Approve All</option>
+                    <option value="DELAY">⏳ Delay / Return for Fix</option>
+                    <option value="REJECTED">❌ Reject (Deduct KPI Score)</option>
+                </select>
+            </div>
+            
+            <div id="deductionRuleDiv" class="mb-3 sm:mb-4 hidden">
+                <label class="block text-[10px] sm:text-xs font-bold text-red-600 mb-1">Deduction Rule <span class="text-red-500">*</span></label>
+                <select id="deductionRuleId" class="w-full bg-red-50 border border-red-200 p-2 sm:p-2.5 rounded-xl text-xs sm:text-sm font-bold text-red-800 focus:outline-none cursor-pointer"></select>
+                
+                <div class="mt-2.5 sm:mt-3 flex items-center gap-2">
+                    <input type="checkbox" id="hasPercentageToggle" class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-600 bg-white border-red-300 rounded cursor-pointer focus:ring-red-500 shrink-0">
+                    <label for="hasPercentageToggle" class="text-[9px] sm:text-[11px] font-bold text-red-700 cursor-pointer leading-tight">ရာခိုင်နှုန်း/တန်ဖိုး ထည့်သွင်းရန် (Require Percentage/Value)</label>
+                </div>
+            </div>
+
+            <div id="deductionValueDiv" class="mb-3 sm:mb-4 hidden">
+                <label class="block text-[10px] sm:text-xs font-bold text-red-600 mb-1">Actual Value / Percentage (%) <span class="text-red-500">*</span></label>
+                <input type="number" step="0.1" id="deductionValue" class="w-full bg-red-50 border border-red-200 p-2 sm:p-2.5 rounded-xl text-xs sm:text-sm font-bold text-red-800 focus:outline-none" placeholder="e.g., 85">
+            </div>
+
+            <div id="nextReviewerDiv" class="mb-3 sm:mb-4 hidden">
+                <label class="block text-[10px] sm:text-xs font-bold text-slate-700 mb-1">Forward To (L0) <span class="text-red-500">*</span></label>
+                <select id="nextReviewerId" class="w-full bg-slate-50 border border-slate-200 p-2 sm:p-2.5 rounded-xl text-xs sm:text-sm font-bold focus:outline-none cursor-pointer"></select>
+            </div>
+            <div class="mb-4 sm:mb-5">
+                <label class="block text-[10px] sm:text-xs font-bold text-slate-700 mb-1">Feedback Comments</label>
+                <textarea id="reviewComments" rows="2" class="w-full bg-slate-50 border border-slate-200 p-2 sm:p-3 rounded-xl text-xs sm:text-sm focus:outline-none"></textarea>
+            </div>
+            <div class="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3">
+                <button onclick="closeModals()" class="w-full sm:w-auto px-4 sm:px-5 py-2 sm:py-2.5 text-xs sm:text-sm font-bold text-slate-600 bg-white border border-slate-200 rounded-xl transition focus:outline-none text-center">Cancel</button>
+                <button id="submitReviewBtn" onclick="submitReview()" class="w-full sm:w-auto justify-center px-5 sm:px-6 py-2 sm:py-2.5 bg-blue-950 hover:bg-blue-900 disabled:opacity-50 text-white rounded-xl text-xs sm:text-sm font-bold shadow-md transition focus:outline-none flex items-center">Confirm Decision</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const API_BASE = "/api/v1/tasks";
+    const currentUserLevel = "{{ user_level }}";
+    let myTasksList = [];
+    let creationMode = 'single';
+    let selectedFiles = []; 
+    let selectedResubmitFiles = []; 
+
+    document.addEventListener('keydown', function(event) {
+        if (event.key === "Escape") closeModals();
+    });
+
+    // 🌟 SECURITY FIX: Global HTML Escape Function
+    function escapeHTML(str) {
+        if (!str) return "";
+        return str.toString()
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+    function showToast(message, type = 'success') {
+        let container = document.getElementById('toastContainer');
+        if(!container) {
+            container = document.createElement('div');
+            container.id = 'toastContainer';
+            container.className = 'fixed top-5 right-5 z-[9999] flex flex-col gap-2 max-w-[90%] sm:max-w-md w-full items-end';
+            document.body.appendChild(container);
+        }
+        const toast = document.createElement('div');
+        const config = type === 'success' ? 'bg-emerald-50 text-emerald-900 border-emerald-500' : 'bg-red-50 text-red-900 border-red-500';
+        const icon = type === 'success' ? '<svg class="w-4 h-4 sm:w-5 sm:h-5 text-emerald-500 mr-2 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>' : '<svg class="w-4 h-4 sm:w-5 sm:h-5 text-red-500 mr-2 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>';
+        
+        toast.className = `flex items-start px-3 sm:px-5 py-3 sm:py-4 rounded-xl shadow-lg border-l-4 ${config} text-xs sm:text-sm font-bold mb-2 sm:mb-3 animate-fade-in-up w-full`;
+        toast.innerHTML = icon + `<span class="pt-0.5">${escapeHTML(message)}</span>`;
+        container.appendChild(toast);
+        setTimeout(() => toast.remove(), 4500);
+    }
+
+    async function openEvidenceFile(filePath) {
+        try {
+            const response = await fetch(`${API_BASE}/evidence/view?file_key=${encodeURIComponent(filePath)}`);
+            // 🛡️ AUTH FIX
+            if (response.status === 401 || response.status === 403) { window.location.href = '/auth/login'; return; }
+
+            if (response.ok) {
+                const data = await response.json();
+                if (data.view_url) {
+                    window.open(data.view_url, '_blank');
+                } else {
+                    showToast("Failed to retrieve the file link.", "error");
+                }
+            } else {
+                showToast("You do not have permission or file does not exist.", "error");
+            }
+        } catch (e) {
+            showToast("Connection error while trying to open the file.", "error");
+        }
+    }
+
+    function switchTab(tabId) {
+        document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+        document.getElementById(tabId).classList.remove('hidden');
+
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.classList.remove('active');
+            btn.style.borderColor = 'transparent';
+            if(btn.id !== 'btn-approvals-tab') btn.style.color = '#64748b'; 
+        });
+        
+        const activeBtn = document.getElementById(`btn-${tabId}`);
+        activeBtn.classList.add('active');
+        if(tabId !== 'approvals-tab' && tabId !== 'btn-resign-tab') {
+            activeBtn.style.color = '#1d4ed8';
+            activeBtn.style.borderColor = '#1d4ed8';
+        }
+        if(tabId === 'btn-resign-tab') {
+            activeBtn.style.color = '#7e22ce';
+            activeBtn.style.borderColor = '#7e22ce';
+        }
+
+        if(['drafts-tab', 'rejected-tab', 'review-tab', 'completed-tab', 'resign-tab'].includes(tabId)) loadMyTasks();
+        if(tabId === 'approvals-tab' && ['L1', 'L0', 'Level 1', 'Level 0'].includes(currentUserLevel)) loadApprovalQueue();
+    }
+
+    function openModalAnimation(modalId, contentId) {
+        const modal = document.getElementById(modalId);
+        const content = document.getElementById(contentId);
+        if(!modal || !content) return;
+        modal.classList.remove('hidden');
+        void modal.offsetWidth;
+        modal.classList.remove('opacity-0');
+        content.classList.remove('scale-95');
+        content.classList.add('scale-100');
+    }
+
+    function closeModals() {
+        document.querySelectorAll('.fixed.z-\\[60\\], .fixed.z-\\[70\\], .fixed.z-\\[80\\], .fixed.z-50').forEach(modal => {
+            modal.classList.add('opacity-0');
+            const content = modal.children[0];
+            if(content) {
+                content.classList.remove('scale-100');
+                content.classList.add('scale-95');
+            }
+            setTimeout(() => modal.classList.add('hidden'), 300);
+        });
+        selectedFiles = []; 
+        selectedResubmitFiles = [];
+        if(document.getElementById("filePreviewContainer")) document.getElementById("filePreviewContainer").innerHTML = "";
+        if(document.getElementById("resubmitPreviewContainer")) document.getElementById("resubmitPreviewContainer").innerHTML = "";
+    }
+
+    function getTaskOwnerName(t) {
+        const usr = t.owner || t.user || t.submitter; 
+        if (usr) {
+            if (usr.first_name) return `${usr.first_name} ${usr.last_name || ''}`.trim().toUpperCase();
+            if (usr.email) return usr.email.split('@')[0].toUpperCase();
+        }
+        return "UNKNOWN USER";
+    }
+
+    function safeGetValue(id) {
+        const el = document.getElementById(id);
+        return el ? el.value : "";
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+        loadMyTasks();
+        if (['L1', 'L0', 'Level 1', 'Level 0'].includes(currentUserLevel) && document.getElementById('btn-approvals-tab')) {
+            loadApprovalQueue();
+            
+            document.getElementById("reviewAction")?.addEventListener("change", function(e) {
+                const isL1 = (currentUserLevel === "L1" || currentUserLevel === "Level 1");
+                const isReject = (e.target.value === "REJECTED");
+                
+                document.getElementById("nextReviewerDiv").classList.toggle("hidden", !(e.target.value === "APPROVED" && isL1));
+                document.getElementById("deductionRuleDiv").classList.toggle("hidden", !isReject);
+                
+                const toggle = document.getElementById("hasPercentageToggle");
+                if (toggle) toggle.checked = false;
+                document.getElementById("deductionValueDiv").classList.add("hidden");
+                document.getElementById("deductionValue").value = "";
+            });
+
+            document.getElementById("hasPercentageToggle")?.addEventListener("change", function(e) {
+                const isChecked = e.target.checked;
+                document.getElementById("deductionValueDiv").classList.toggle("hidden", !isChecked);
+                if (!isChecked) {
+                    document.getElementById("deductionValue").value = "";
+                }
+            });
+        }
+    });
+
+    async function loadMyTasks() {
+        try {
+            const res = await fetch(API_BASE);
+            // 🛡️ AUTH FIX
+            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+            if (!res.ok) throw new Error("Failed to load tasks");
+            
+            const data = await res.json();
+            myTasksList = Array.isArray(data) ? data : []; 
+            
+            renderDrafts();
+            renderRejected();
+            renderResignTasks(); 
+            renderInReview();
+            renderCompleted();
+            
+            const loggedInUserId = safeGetValue("loggedInUserId");
+            const resubmittedParentIds = myTasksList.filter(t => t.parent_task_id).map(t => String(t.parent_task_id));
+            
+            let rejectedCount = 0;
+            let resignCount = 0;
+
+            myTasksList.forEach(t => {
+                if(['Rejected', 'REJECTED'].includes(t.status) && !resubmittedParentIds.includes(String(t.id))) {
+                    const lastReview = t.reviews && t.reviews.length > 0 ? t.reviews[t.reviews.length - 1] : null;
+                    const isOwnTask = String(t.owner_id || (t.owner ? t.owner.id : '')) === String(loggedInUserId);
+                    
+                    if (['L1', 'Level 1'].includes(currentUserLevel)) {
+                        if (lastReview && lastReview.reviewer_level === 'L0' && lastReview.action === 'REJECTED') resignCount++;
+                        else if (isOwnTask && lastReview && lastReview.action !== 'RESIGNED') rejectedCount++;
+                    } else {
+                        if (lastReview && lastReview.action === 'RESIGNED') resignCount++;
+                        else if (isOwnTask) rejectedCount++;
+                    }
+                }
+            });
+            
+            const rBadge = document.getElementById('rejectBadge');
+            if(rBadge) { rBadge.innerText = rejectedCount; rBadge.classList.toggle('hidden', rejectedCount === 0); }
+            
+            const rsBadge = document.getElementById('resignBadge');
+            if(rsBadge) { rsBadge.innerText = resignCount; rsBadge.classList.toggle('hidden', resignCount === 0); }
+            
+        } catch (err) { console.error("Error loading tasks:", err); }
+    }
+
+    function handleCheckboxChange() {
+        const checkboxes = document.querySelectorAll('.draft-checkbox');
+        let checkedCount = 0;
+        
+        checkboxes.forEach(cb => {
+            const row = cb.closest('tr');
+            if (cb.checked) {
+                checkedCount++;
+                row.classList.add('bg-blue-50/40', 'row-selected');
+            } else {
+                row.classList.remove('bg-blue-50/40', 'row-selected');
+            }
+        });
+
+        const btn = document.getElementById('batchSubmitBtn');
+        const countDisplay = document.getElementById('selectedCount');
+        
+        if(countDisplay) countDisplay.innerText = checkedCount;
+        if(btn) btn.disabled = checkedCount === 0;
+        
+        const selectAllCb = document.getElementById('selectAllCb');
+        if(selectAllCb) selectAllCb.checked = (checkedCount === checkboxes.length && checkboxes.length > 0);
+    }
+
+    function toggleSelectAll(source) {
+        document.querySelectorAll('.draft-checkbox').forEach(cb => {
+            cb.checked = source.checked;
+        });
+        handleCheckboxChange(); 
+    }
+
+    // --- SECTION 1: DRAFTS ---
+    function renderDrafts() {
+        const tbody = document.getElementById("draftsTableBody");
+        const loggedInUserId = safeGetValue("loggedInUserId");
+        
+        const drafts = myTasksList.filter(t => 
+            ['Draft', 'DRAFT'].includes(t.status) && String(t.owner_id || (t.owner ? t.owner.id : '')) === String(loggedInUserId)
+        );
+        
+        const submitBtn = document.getElementById('batchSubmitBtn');
+        if(submitBtn) submitBtn.disabled = true;
+        const countSpan = document.getElementById('selectedCount');
+        if(countSpan) countSpan.innerText = "0";
+        const selectAllCb = document.getElementById('selectAllCb');
+        if(selectAllCb) selectAllCb.checked = false;
+
+        if (drafts.length === 0) {
+            tbody.innerHTML = `<tr>
+                <td colspan="5" class="p-10 sm:p-16 text-center text-slate-500 flex flex-col items-center justify-center">
+                    <div class="bg-slate-50 p-3 sm:p-4 rounded-full mb-2 sm:mb-3 ring-1 ring-slate-200">
+                        <svg class="w-8 h-8 sm:w-10 sm:h-10 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                    </div>
+                    <span class="font-bold text-base sm:text-lg">No draft tasks available.</span>
+                    <span class="text-[10px] sm:text-xs mt-1">Log a new task to get started.</span>
+                </td>
+            </tr>`;
+            return;
+        }
+
+        tbody.innerHTML = drafts.map(t => {
+            let hasEvidence = Array.isArray(t.evidence) && t.evidence.length > 0;
+            let evBadge = hasEvidence
+                ? `<span class="bg-emerald-50 text-emerald-700 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[9px] sm:text-[10px] font-black border shadow-sm flex items-center justify-center w-max mx-auto"><svg class="w-2.5 h-2.5 sm:w-3 sm:h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Attached</span>` 
+                : `<span class="bg-amber-50 text-amber-700 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[9px] sm:text-[10px] font-black border shadow-sm w-max mx-auto block">Required</span>`;
+
+            // 🌟 SECURITY FIX: Applied escapeHTML() to table data
+            return `
+                <tr class="hover:bg-slate-50 transition-colors group">
+                    <td class="p-3 sm:p-5 text-center border-b border-slate-100/60 w-10 sm:w-12"><input type="checkbox" value="${escapeHTML(t.id)}" class="draft-checkbox accent-blue-600 w-3.5 h-3.5 sm:w-4 sm:h-4 rounded cursor-pointer transition-all" onchange="handleCheckboxChange()"></td>
+                    <td class="p-3 sm:p-5 border-b border-slate-100/60 min-w-[200px]">
+                        <p class="font-black text-slate-900 text-xs sm:text-sm tracking-tight truncate max-w-[250px] sm:max-w-none" title="${escapeHTML(t.title)}">${escapeHTML(t.title)}</p>
+                        <p class="text-[8px] sm:text-[9px] font-extrabold text-blue-600 uppercase tracking-widest mt-1 bg-blue-50 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-md w-max border border-blue-100">${escapeHTML(t.category)}</p>
+                    </td>
+                    <td class="p-3 sm:p-5 border-b border-slate-100/60 text-center"><span class="bg-slate-100 text-slate-600 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[9px] sm:text-[10px] font-black uppercase ring-1 inset-ring ring-slate-200 block w-max mx-auto">Draft</span></td>
+                    <td class="p-3 sm:p-5 border-b border-slate-100/60 text-center">${evBadge}</td>
+                    <td class="p-3 sm:p-5 text-right border-b border-slate-100/60">
+                        <div class="flex items-center justify-end gap-1.5 sm:gap-2 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button onclick="openDraftUploadModal('${escapeHTML(t.id)}')" class="text-[9px] sm:text-[11px] font-black uppercase tracking-wider bg-white border border-slate-200 hover:border-blue-300 hover:text-blue-700 hover:bg-blue-50 px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg transition-all shadow-sm">Manage Evidence</button>
+                            <button onclick="deleteTask('${escapeHTML(t.id)}')" class="text-[9px] sm:text-[11px] font-black uppercase tracking-wider bg-white border border-slate-200 hover:border-red-300 hover:text-red-600 hover:bg-red-50 px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg transition-all shadow-sm">Discard</button>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    // --- SECTION 2: REJECTED ---
+    function renderRejected() {
+        const container = document.getElementById("rejectedList");
+        const loggedInUserId = safeGetValue("loggedInUserId");
+        
+        const resubmittedParentIds = myTasksList.filter(t => t.parent_task_id).map(t => String(t.parent_task_id));
+        const rejected = myTasksList.filter(t => {
+            if (!['Rejected', 'REJECTED'].includes(t.status) || resubmittedParentIds.includes(String(t.id)) || String(t.owner_id) !== String(loggedInUserId)) return false;
+            const lastReview = t.reviews && t.reviews.length > 0 ? t.reviews[t.reviews.length - 1] : null;
+            if (!lastReview) return true;
+            if (lastReview.action === 'RESIGNED' || lastReview.reviewer_level === 'L0') return false; 
+            return true;
+        });
+        
+        if (rejected.length === 0) {
+            container.innerHTML = `<div class="text-center text-slate-400 py-16"><span class="font-bold text-xs sm:text-sm">Great job! No rejected tasks.</span></div>`;
+            return;
+        }
+
+        // 🌟 SECURITY FIX: escapeHTML
+        container.innerHTML = rejected.map(t => {
+            let remark = "No specific reason provided.";
+            let rejectorInfo = "System / Unknown Manager"; 
+
+            if(t.reviews && t.reviews.length > 0) {
+                const rejRev = t.reviews.filter(r => r.action === 'REJECTED' || r.action === 'REJECTED_OVERRIDE').pop();
+                if(rejRev) {
+                    if(rejRev.comments) remark = rejRev.comments;
+                    if(rejRev.reviewer) {
+                        rejectorInfo = `${rejRev.reviewer.first_name} ${rejRev.reviewer.last_name || ''} (${rejRev.reviewer_level})`;
+                    } else {
+                        rejectorInfo = `Manager (${rejRev.reviewer_level})`;
+                    }
+                }
+            }
+
+            return `
+                <div class="bg-white border border-red-200 p-4 sm:p-6 rounded-2xl shadow-sm hover:shadow-md transition-shadow relative overflow-hidden mb-4">
+                    <div class="absolute top-0 left-0 w-1.5 h-full bg-red-500"></div>
+                    <div class="flex flex-col sm:flex-row justify-between items-start mb-3 sm:mb-4 gap-2 sm:gap-0">
+                        <div class="min-w-0 pr-2">
+                            <h4 class="font-black text-slate-900 text-sm sm:text-lg truncate" title="${escapeHTML(t.title)}">${escapeHTML(t.title)}</h4>
+                            <div class="flex flex-wrap items-center gap-1.5 sm:gap-2 mt-1 sm:mt-1.5">
+                                <span class="text-[8px] sm:text-[9px] font-extrabold text-red-700 bg-red-50 border border-red-100 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded uppercase tracking-widest inline-block">${escapeHTML(t.category)}</span>
+                                <span class="text-[9px] sm:text-[10px] font-bold text-slate-500">Rejected By: <span class="text-red-600">${escapeHTML(rejectorInfo)}</span></span>
+                            </div>
+                        </div>
+                        <span class="bg-red-100 text-red-800 px-2 sm:px-3 py-1 rounded-lg text-[9px] sm:text-[10px] font-black uppercase ring-1 inset-ring ring-red-200 shadow-sm shrink-0 whitespace-nowrap">Action Required</span>
+                    </div>
+                    <div class="bg-red-50/50 p-3 sm:p-4 rounded-xl border border-red-100 mb-4 sm:mb-5">
+                        <p class="text-[9px] sm:text-[10px] font-black text-red-800 uppercase tracking-widest mb-1 sm:mb-1.5 flex items-center"><svg class="w-3 h-3 sm:w-4 sm:h-4 mr-1 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg> Manager's Feedback</p>
+                        <p class="text-xs sm:text-sm font-bold text-red-900 break-words">${escapeHTML(remark)}</p>
+                    </div>
+                    <div class="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3 pt-3 sm:pt-4 border-t border-slate-100">
+                        <button onclick="viewTaskDetails('${escapeHTML(t.id)}')" class="text-xs font-bold text-slate-600 bg-white hover:bg-slate-50 px-4 py-2.5 rounded-xl shadow-sm border border-slate-200 transition-colors focus:outline-none text-center">View Details</button>
+                        <button onclick="openResubmitModal('${escapeHTML(t.id)}')" class="text-xs font-bold text-white bg-red-600 hover:bg-red-700 px-6 py-2.5 rounded-xl shadow-md transition-all active:scale-95 flex items-center justify-center gap-1.5 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2">
+                            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg> Fix & Resubmit (V2)
+                        </button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    // --- SECTION 3: RESIGN TASKS ---
+    function renderResignTasks() {
+        const container = document.getElementById("resignList");
+        const resubmittedParentIds = myTasksList.filter(t => t.parent_task_id).map(t => String(t.parent_task_id));
+        
+        const resigned = myTasksList.filter(t => {
+            if (!['Rejected', 'REJECTED'].includes(t.status) || resubmittedParentIds.includes(String(t.id))) return false;
+            const lastReview = t.reviews && t.reviews.length > 0 ? t.reviews[t.reviews.length - 1] : null;
+            if (!lastReview) return false;
+            
+            if (['L1', 'Level 1'].includes(currentUserLevel)) {
+                return lastReview.action === 'REJECTED' && lastReview.reviewer_level === 'L0';
+            } else {
+                return lastReview.action === 'RESIGNED';
+            }
+        });
+
+        if (resigned.length === 0) {
+            container.innerHTML = `<div class="text-center text-slate-400 py-16"><span class="font-bold text-xs sm:text-sm">No returned tasks.</span></div>`;
+            return;
+        }
+
+        // 🌟 SECURITY FIX: escapeHTML
+        container.innerHTML = resigned.map(t => {
+            let remark = "No specific reason provided.";
+            let rejectorInfo = "System / Unknown Manager";
+
+            const lastReview = t.reviews[t.reviews.length - 1];
+            if(lastReview) {
+                if(lastReview.comments) remark = lastReview.comments;
+                if(lastReview.reviewer) {
+                    rejectorInfo = `${lastReview.reviewer.first_name} ${lastReview.reviewer.last_name || ''} (${lastReview.reviewer_level})`;
+                } else {
+                    rejectorInfo = `Manager (${lastReview.reviewer_level})`;
+                }
+            }
+
+            let actionBtn = '';
+            if (['L1', 'Level 1'].includes(currentUserLevel)) {
+                actionBtn = `<button onclick="openResignToL2Modal('${escapeHTML(t.id)}')" class="w-full sm:w-auto text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 px-6 py-2.5 rounded-xl shadow-md transition-all active:scale-95 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 flex justify-center items-center">Return to L2</button>`;
+            } else {
+                actionBtn = `<button onclick="openResubmitModal('${escapeHTML(t.id)}')" class="w-full sm:w-auto text-xs font-bold text-white bg-red-600 hover:bg-red-700 px-6 py-2.5 rounded-xl shadow-md transition-all active:scale-95 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 flex justify-center items-center gap-1.5"><svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg> Fix & Resubmit (V2)</button>`;
+            }
+
+            return `
+                <div class="bg-white border border-purple-200 p-4 sm:p-6 rounded-2xl shadow-sm hover:shadow-md transition-shadow relative overflow-hidden mb-4">
+                    <div class="absolute top-0 left-0 w-1.5 h-full bg-purple-500"></div>
+                    <div class="flex flex-col sm:flex-row justify-between items-start mb-3 sm:mb-4 gap-2 sm:gap-0">
+                        <div class="min-w-0 pr-2">
+                            <h4 class="font-black text-slate-900 text-sm sm:text-lg truncate" title="${escapeHTML(t.title)}">${escapeHTML(t.title)}</h4>
+                            <div class="flex flex-wrap items-center gap-1.5 sm:gap-2 mt-1 sm:mt-1.5">
+                                <span class="text-[8px] sm:text-[9px] font-extrabold text-purple-700 bg-purple-50 border border-purple-100 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded uppercase tracking-widest inline-block">${escapeHTML(t.category)}</span>
+                                <span class="text-[9px] sm:text-[10px] font-bold text-slate-500">Returned By: <span class="text-purple-600">${escapeHTML(rejectorInfo)}</span></span>
+                            </div>
+                        </div>
+                        <span class="bg-purple-100 text-purple-800 px-2 sm:px-3 py-1 rounded-lg text-[9px] sm:text-[10px] font-black uppercase ring-1 inset-ring ring-purple-200 shadow-sm shrink-0 whitespace-nowrap">Returned Task</span>
+                    </div>
+                    <div class="bg-purple-50/50 p-3 sm:p-4 rounded-xl border border-purple-100 mb-4 sm:mb-5">
+                        <p class="text-[9px] sm:text-[10px] font-black text-purple-800 uppercase tracking-widest mb-1 sm:mb-1.5">Instructions / Feedback</p>
+                        <p class="text-xs sm:text-sm font-bold text-purple-900 break-words">${escapeHTML(remark)}</p>
+                    </div>
+                    <div class="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3 pt-3 sm:pt-4 border-t border-slate-100">
+                        <button onclick="viewTaskDetails('${escapeHTML(t.id)}')" class="w-full sm:w-auto text-xs font-bold text-slate-600 bg-white hover:bg-slate-50 px-4 py-2.5 rounded-xl shadow-sm border border-slate-200 transition-colors focus:outline-none text-center">View Details</button>
+                        ${actionBtn}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    // --- SECTION 4: IN-REVIEW ---
+    function renderInReview() {
+        const tbody = document.getElementById("inReviewTableBody");
+        const loggedInUserId = safeGetValue("loggedInUserId");
+        
+        const inReview = myTasksList.filter(t => ['Pending L1 Approval', 'PENDING_L1', 'Pending L0 Approval', 'PENDING_L0'].includes(t.status));
+        
+        if (inReview.length === 0) { 
+            tbody.innerHTML = `<tr><td colspan="3" class="p-10 sm:p-16 text-center text-slate-400 font-medium">No tasks are currently under review.</td></tr>`; 
+            return; 
+        }
+        
+        // 🌟 SECURITY FIX: escapeHTML
+        tbody.innerHTML = inReview.map(t => {
+            const isL0 = t.status.includes('L0');
+            const isResubmitted = t.parent_task_id ? true : false;
+            const version = t.version || 1;
+            
+            const badgeClass = isL0 ? 'bg-blue-100 text-blue-800 ring-blue-200' : 'bg-amber-100 text-amber-800 ring-amber-200';
+            
+            let label = isL0 ? 'Approval by L0' : 'Approval by L1';
+            if (isResubmitted || version > 1) {
+                label = isL0 ? 'Reapproval by L0' : 'Reapproval by L1';
+            }
+            
+            const v2Tag = (isResubmitted || version > 1) ? `<span class="ml-1.5 sm:ml-2 text-[8px] sm:text-[9px] font-black text-red-600 bg-red-100 px-1.5 py-0.5 rounded uppercase border border-red-200 shadow-sm shrink-0">V${version}</span>` : '';
+
+            const taskOwnerId = t.owner_id || (t.owner ? t.owner.id : '');
+            const isOwnTask = String(taskOwnerId) === String(loggedInUserId);
+            let ownerName = isOwnTask ? "Me" : getTaskOwnerName(t);
+
+            return `
+                <tr class="hover:bg-slate-50/50 transition-colors">
+                    <td class="p-3 sm:p-5 border-b border-slate-100/60 min-w-[200px]">
+                        <div class="flex items-center">
+                            <p class="font-black text-slate-900 text-xs sm:text-sm tracking-tight truncate max-w-[180px] sm:max-w-none" title="${escapeHTML(t.title)}">${escapeHTML(t.title)}</p>
+                            ${v2Tag}
+                        </div>
+                        <p class="text-[9px] sm:text-[10px] font-bold text-slate-500 uppercase mt-1 tracking-widest truncate">${escapeHTML(t.category)} <span class="text-blue-500 ml-0.5 sm:ml-1">• BY: ${escapeHTML(ownerName)}</span></p>
+                    </td>
+                    <td class="p-3 sm:p-5 border-b border-slate-100/60 text-center text-[10px] sm:text-xs font-semibold text-slate-600 whitespace-nowrap">${formatAppDate(t.created_at)}</td>
+                    <td class="p-3 sm:p-5 border-b border-slate-100/60 text-right">
+                        <span class="${badgeClass} px-2 sm:px-3.5 py-1 sm:py-1.5 rounded-lg text-[8px] sm:text-[10px] font-black uppercase ring-1 inset-ring shadow-sm inline-flex items-center gap-1 sm:gap-1.5 whitespace-nowrap">
+                            <svg class="animate-spin w-2.5 h-2.5 sm:w-3 sm:h-3 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                            ${label}
+                        </span>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    // --- SECTION 5: COMPLETED ---
+    function renderCompleted() {
+        const tbody = document.getElementById("completedTableBody");
+        const loggedInUserId = safeGetValue("loggedInUserId");
+        const completed = myTasksList.filter(t => ['Approved', 'APPROVED', 'Completed', 'COMPLETED'].includes(t.status));
+        
+        if (completed.length === 0) { 
+            tbody.innerHTML = `<tr><td colspan="3" class="p-10 sm:p-16 text-center text-slate-400 font-medium">No completed tasks yet. Keep up the good work!</td></tr>`; 
+            return; 
+        }
+        
+        // 🌟 SECURITY FIX: escapeHTML
+        tbody.innerHTML = completed.map(t => {
+            const taskOwnerId = t.owner_id || (t.owner ? t.owner.id : '');
+            const isOwnTask = String(taskOwnerId) === String(loggedInUserId);
+            let ownerName = isOwnTask ? "Me" : getTaskOwnerName(t);
+            
+            return `
+            <tr class="hover:bg-slate-50/50 transition-colors">
+                <td class="p-3 sm:p-5 border-b border-slate-100/60 min-w-[180px]">
+                    <p class="font-black text-slate-900 text-xs sm:text-sm tracking-tight truncate max-w-[200px] sm:max-w-none" title="${escapeHTML(t.title)}">${escapeHTML(t.title)}</p>
+                    <p class="text-[9px] sm:text-[10px] font-bold text-slate-500 uppercase mt-1 tracking-widest truncate">${escapeHTML(t.category)} <span class="text-blue-500 ml-0.5 sm:ml-1">• BY: ${escapeHTML(ownerName)}</span></p>
+                </td>
+                <td class="p-3 sm:p-5 border-b border-slate-100/60 text-center">
+                    <span class="bg-emerald-50 text-emerald-700 px-2 sm:px-3.5 py-1 sm:py-1.5 rounded-lg text-[8px] sm:text-[10px] font-black uppercase ring-1 inset-ring ring-emerald-200 shadow-sm flex items-center justify-center w-max mx-auto whitespace-nowrap"><svg class="w-2.5 h-2.5 sm:w-3 sm:h-3 mr-1 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg> Verified</span>
+                </td>
+                <td class="p-3 sm:p-5 border-b border-slate-100/60 text-right">
+                    <button onclick="viewTaskDetails('${escapeHTML(t.id)}')" class="text-[9px] sm:text-[11px] font-bold bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-300 whitespace-nowrap">View Details</button>
+                </td>
+            </tr>`
+        }).join('');
+    }
+
+    // --- CREATE TASK API & DYNAMIC CATEGORIES ---
+    function openCreateTaskModal() {
+        document.getElementById("taskForm").reset();
+        const taskListEl = document.getElementById("taskList");
+        if(taskListEl) taskListEl.innerHTML = ""; 
+        
+        try { setTaskMode('single'); } catch(e) {}
+
+        if (window.currentUserContext) {
+            const deptEl = document.getElementById('modalContextDept');
+            const posEl = document.getElementById('modalContextPos');
+            if(deptEl) deptEl.innerText = window.currentUserContext.department_name || 'N/A';
+            if(posEl) posEl.innerText = window.currentUserContext.position_name || 'N/A';
+        }
+
+        openModalAnimation('createTaskModal', 'createTaskContent');
+
+        const catSelect = document.getElementById("tCategory");
+        if (catSelect) {
+            catSelect.innerHTML = '<option value="">-- Loading Categories from Server... --</option>';
+            
+            const CATEGORY_API_URL = "/api/v1/tasks/categories/available"; 
+
+            fetch(CATEGORY_API_URL)
+            .then(res => {
+                // 🛡️ AUTH FIX
+                if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return null; }
+                if (!res.ok) throw new Error("API Error or Endpoint Not Found");
+                return res.json();
+            })
+            .then(data => {
+                if (!data) return;
+                catSelect.innerHTML = '<option value="">-- Select KPI Category --</option>';
+                
+                const categoryList = data.categories || [];
+
+                categoryList.forEach(c => {
+                    const catName = c.name || c;
+                    catSelect.innerHTML += `<option value="${escapeHTML(catName)}">${escapeHTML(catName)}</option>`;
+                });
+            })
+            .catch(e => {
+                catSelect.innerHTML = '<option value="">-- Error: Check Category API --</option>';
+            });
+        }
+    }
+
+    function viewTaskDetails(taskId) {
+        const task = myTasksList.find(t => t.id === taskId);
+        if(!task) return;
+
+        const detailsBody = document.getElementById("detailsBody");
+        // 🌟 SECURITY FIX: escapeHTML
+        const evidenceHtml = (task.evidence && task.evidence.length > 0)
+            ? task.evidence.map(e => `<a href="#" onclick="openEvidenceFile('${escapeHTML(e.file_path)}'); return false;" class="text-[9px] sm:text-[11px] font-bold text-blue-600 underline bg-blue-50 px-2 py-1 rounded border border-blue-100 mb-1.5 flex items-center w-full sm:w-max break-all sm:break-normal"><svg class="w-3 h-3 mr-1 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path></svg><span class="truncate">${escapeHTML(e.file_name)}</span></a>`).join('')
+            : '<span class="text-slate-500 text-xs sm:text-sm font-medium">No evidence attached.</span>';
+
+        detailsBody.innerHTML = `
+            <div class="mb-4 sm:mb-5">
+                <h4 class="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 sm:mb-1.5">Task Title</h4>
+                <p class="text-base sm:text-lg font-black text-slate-900 break-words">${escapeHTML(task.title)}</p>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-4 sm:mb-5">
+                <div class="bg-blue-50 p-2.5 sm:p-3 rounded-xl border border-blue-100">
+                    <h4 class="text-[9px] sm:text-[10px] font-black text-blue-800 uppercase tracking-widest mb-1">Category</h4>
+                    <p class="text-xs sm:text-sm font-bold text-blue-900 truncate" title="${escapeHTML(task.category)}">${escapeHTML(task.category)}</p>
+                </div>
+                <div class="bg-emerald-50 p-2.5 sm:p-3 rounded-xl border border-emerald-100">
+                    <h4 class="text-[9px] sm:text-[10px] font-black text-emerald-800 uppercase tracking-widest mb-1">Status</h4>
+                    <p class="text-xs sm:text-sm font-bold text-emerald-900 truncate">${escapeHTML(task.status)}</p>
+                </div>
+            </div>
+            <div class="mb-4 sm:mb-5">
+                <h4 class="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 sm:mb-1.5">Description</h4>
+                <p class="text-xs sm:text-sm font-medium text-slate-700 bg-slate-50 p-2.5 sm:p-3 rounded-xl border border-slate-100 break-words">${escapeHTML(task.description || 'No description provided.')}</p>
+            </div>
+            <div>
+                <h4 class="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 sm:mb-2">Attached Evidence</h4>
+                <div class="flex flex-col gap-1 w-full sm:w-auto">${evidenceHtml}</div>
+            </div>
+        `;
+        openModalAnimation('detailsModal', 'detailsContent');
+    }
+
+    function setTaskMode(mode) {
+        creationMode = mode;
+        const singleBtn = document.getElementById('modeSingleBtn');
+        const multBtn = document.getElementById('modeMultipleBtn');
+        const singleCont = document.getElementById('singleTaskContainer');
+        const multCont = document.getElementById('multipleTaskContainer');
+
+        if(mode === 'single') {
+            singleBtn.className = "flex-1 sm:flex-none px-3 sm:px-5 py-1.5 sm:py-2.5 text-xs sm:text-sm font-black rounded-lg bg-white shadow-sm text-blue-700 ring-1 ring-slate-200 transition-all focus:outline-none";
+            multBtn.className = "flex-1 sm:flex-none px-3 sm:px-5 py-1.5 sm:py-2.5 text-xs sm:text-sm font-bold rounded-lg text-slate-500 hover:text-slate-800 transition-all focus:outline-none";
+            singleCont.classList.remove('hidden'); multCont.classList.add('hidden');
+        } else {
+            multBtn.className = "flex-1 sm:flex-none px-3 sm:px-5 py-1.5 sm:py-2.5 text-xs sm:text-sm font-black rounded-lg bg-white shadow-sm text-blue-700 ring-1 ring-slate-200 transition-all focus:outline-none";
+            singleBtn.className = "flex-1 sm:flex-none px-3 sm:px-5 py-1.5 sm:py-2.5 text-xs sm:text-sm font-bold rounded-lg text-slate-500 hover:text-slate-800 transition-all focus:outline-none";
+            singleCont.classList.add('hidden'); multCont.classList.remove('hidden');
+            if(document.getElementById("taskList").children.length === 0) addMultipleTaskRow();
+        }
+    }
+
+    function addMultipleTaskRow() {
+        const list = document.getElementById("taskList");
+        const idx = list.children.length;
+        list.insertAdjacentHTML('beforeend', `
+            <div class="flex gap-2 sm:gap-3 items-start bg-white p-3 sm:p-4 rounded-xl border border-slate-200 shadow-sm relative group animate-fade-in-up focus-within:ring-1 focus-within:ring-blue-500 transition-all">
+                <button type="button" onclick="this.parentElement.remove()" class="absolute -top-1.5 sm:-top-2 -right-1.5 sm:-right-2 bg-red-100 text-red-600 rounded-full w-4 h-4 sm:w-5 sm:h-5 flex items-center justify-center hover:bg-red-500 hover:text-white transition-colors sm:opacity-0 group-hover:opacity-100 shadow-sm focus:outline-none focus:ring-2 focus:ring-red-400"><svg class="w-2.5 h-2.5 sm:w-3 sm:h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+                <div class="flex-1 space-y-2 sm:space-y-3">
+                    <input type="text" class="bulk-title w-full bg-slate-50 border border-slate-200 p-2 sm:p-2.5 rounded-lg text-[10px] sm:text-xs font-bold focus:bg-white focus:ring-1 focus:ring-blue-500 focus:outline-none" placeholder="Task Title ${idx+1} *">
+                    <input type="text" class="bulk-desc w-full bg-slate-50 border border-slate-200 p-2 sm:p-2.5 rounded-lg text-[10px] sm:text-xs font-medium focus:bg-white focus:ring-1 focus:ring-blue-500 focus:outline-none" placeholder="Optional notes...">
+                </div>
+            </div>`);
+    }
+
+    async function saveTaskData() {
+        const category = document.getElementById("tCategory").value.trim();
+        if(!category) return showToast("Please select a KPI Category first.", "error");
+
+        const btn = document.getElementById("saveTaskBtn");
+        const originalText = btn.innerHTML;
+        btn.innerHTML = `<svg class="animate-spin h-3.5 w-3.5 sm:h-4 sm:w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Saving...`;
+        btn.disabled = true;
+
+        try {
+            if(creationMode === 'single') {
+                const title = document.getElementById("tTitle").value.trim();
+                const desc = document.getElementById("tDesc").value.trim();
+                if(!title) { btn.innerHTML = originalText; btn.disabled = false; return showToast("Task title is required.", "error"); }
+                
+                const res = await fetch(API_BASE, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({title, category, description: desc}) });
+                
+                // 🛡️ AUTH FIX
+                if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+                
+                if(res.ok) { showToast("Draft saved successfully."); closeModals(); loadMyTasks(); }
+                else { const err = await res.json(); showToast(err.detail || "Failed to save draft.", "error"); }
+            } else {
+                const tasks = [];
+                document.querySelectorAll("#taskList > div").forEach(row => {
+                    const title = row.querySelector(".bulk-title").value.trim();
+                    const desc = row.querySelector(".bulk-desc").value.trim();
+                    if(title) tasks.push({ title, description: desc });
+                });
+                if(tasks.length === 0) { btn.innerHTML = originalText; btn.disabled = false; return showToast("Please add at least one task.", "error"); }
+
+                const res = await fetch(`${API_BASE}/bulk-create`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({category, tasks}) });
+                
+                // 🛡️ AUTH FIX
+                if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+                
+                if(res.ok) { showToast(`Saved ${tasks.length} drafts successfully.`); closeModals(); loadMyTasks(); }
+                else { const err = await res.json(); showToast(err.detail || "Failed to save drafts.", "error"); }
+            }
+        } catch(e) { showToast("Network Error: Could not reach server", "error"); } 
+        finally { btn.innerHTML = originalText; btn.disabled = false; }
+    }
+
+    async function deleteTask(taskId) {
+        if(!confirm("Discard this draft task?")) return;
+        try {
+            const res = await fetch(`${API_BASE}/${taskId}`, { method: 'DELETE' });
+            // 🛡️ AUTH FIX
+            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+            
+            if(res.ok || res.status === 204) { showToast("Draft discarded.", "success"); loadMyTasks(); }
+            else showToast("Failed to discard.", "error");
+        } catch(e) { showToast("Network error.", "error"); }
+    }
+
+    // --- UPLOAD EVIDENCE API ---
+    function openDraftUploadModal(taskId) {
+        document.getElementById("uploadTaskId").value = taskId;
+        document.getElementById("evidenceFiles").value = "";
+        document.getElementById("filePreviewContainer").innerHTML = "";
+        selectedFiles = [];
+        document.getElementById("btnUpload").classList.add("hidden");
+        
+        const task = myTasksList.find(t => t.id === taskId);
+        const existingContainer = document.getElementById("existingEvidenceContainer");
+        
+        // 🌟 SECURITY FIX: escapeHTML
+        if (task && task.evidence && task.evidence.length > 0) {
+            existingContainer.innerHTML = 
+                `<h4 class="text-[9px] sm:text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 sm:mb-3">Currently Attached Files (${task.evidence.length})</h4>` + 
+                `<div class="space-y-2 sm:space-y-3 mb-6 sm:mb-8">` + task.evidence.map(ev => `
+                    <div class="flex items-center justify-between bg-white p-2.5 sm:p-3.5 rounded-2xl border border-slate-200 shadow-sm hover:border-blue-300 transition-colors group">
+                        <div class="flex items-center gap-2.5 sm:gap-3 overflow-hidden min-w-0 pr-2">
+                            <div class="bg-blue-50 text-blue-600 p-2 sm:p-2.5 rounded-xl shrink-0 ring-1 ring-blue-100">
+                                <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path></svg>
+                            </div>
+                            <div class="flex flex-col min-w-0">
+                                <span class="text-xs sm:text-sm font-black text-slate-800 truncate cursor-pointer hover:text-blue-700 hover:underline transition-colors" onclick="openEvidenceFile('${escapeHTML(ev.file_path)}')">${escapeHTML(ev.file_name || 'Document File')}</span>
+                                <span class="text-[8px] sm:text-[9px] font-bold text-emerald-600 uppercase tracking-wider mt-0.5">Uploaded successfully</span>
+                            </div>
+                        </div>
+                        <button type="button" onclick="deleteDraftEvidence('${escapeHTML(taskId)}', '${escapeHTML(ev.id)}')" class="text-red-500 hover:text-white bg-red-50 hover:bg-red-500 p-2 sm:p-2.5 rounded-xl transition-all shrink-0 ring-1 ring-red-100 active:scale-95 sm:opacity-0 group-hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-red-400" title="Remove this wrong file">
+                            <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                        </button>
+                    </div>
+                `).join('') + `</div>`;
+        } else {
+            existingContainer.innerHTML = '';
+        }
+        openModalAnimation('uploadModal', 'uploadContent');
+    }
+
+    async function deleteDraftEvidence(taskId, evidenceId) {
+        if(!confirm("Permanently remove this attached file?")) return;
+        try {
+            const res = await fetch(`${API_BASE}/evidence/${evidenceId}`, { method: 'DELETE' });
+            // 🛡️ AUTH FIX
+            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+            
+            if(res.ok) {
+                showToast("File removed successfully.", "success");
+                await loadMyTasks(); 
+                openDraftUploadModal(taskId); 
+            } else { showToast("Failed to remove file.", "error"); }
+        } catch(e) { showToast("Network error.", "error"); }
+    }
+
+    function handleEvidenceSelection(input) {
+        Array.from(input.files).forEach(f => {
+            if(f.size > 10 * 1024 * 1024) return showToast(`${f.name} exceeds 10MB limit.`, "error");
+            selectedFiles.push(f);
+        });
+        const container = document.getElementById("filePreviewContainer");
+        container.innerHTML = "";
+        selectedFiles.forEach((file, index) => {
+            const div = document.createElement('div'); div.className = "file-preview-item bg-white shadow-sm ring-1 ring-slate-200 group";
+            const removeBtn = document.createElement('button'); removeBtn.type = "button"; removeBtn.className = "file-remove-btn focus:outline-none focus:ring-2 focus:ring-red-400"; removeBtn.innerHTML = "<svg class='w-2.5 h-2.5 sm:w-3 sm:h-3' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='3' d='M6 18L18 6M6 6l12 12'></path></svg>";
+            removeBtn.onclick = () => { selectedFiles.splice(index, 1); handleEvidenceSelection({files:[]}); };
+            
+            if(file.type.startsWith('image/')) {
+                const img = document.createElement('img'); img.src = URL.createObjectURL(file); div.appendChild(img);
+            } else {
+                const ext = file.name.split('.').pop().toUpperCase();
+                div.innerHTML = `<div class="text-center w-full px-1 sm:px-2"><p class="text-[9px] sm:text-[11px] font-black text-blue-600 uppercase">${escapeHTML(ext)}</p><p class="text-[7px] sm:text-[8px] font-bold text-slate-500 truncate mt-1 w-full">${escapeHTML(file.name)}</p></div>`;
+            }
+            div.appendChild(removeBtn); container.appendChild(div);
+        });
+        const btn = document.getElementById("btnUpload");
+        if(selectedFiles.length > 0) btn.classList.remove("hidden");
+        else btn.classList.add("hidden");
+    }
+
+    async function submitEvidence() {
+        const taskId = document.getElementById("uploadTaskId").value;
+        const btn = document.getElementById("btnUpload");
+        const originalText = btn.innerHTML;
+        btn.innerHTML = `<svg class="animate-spin h-3.5 w-3.5 sm:h-4 sm:w-4 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Uploading...`;
+        btn.disabled = true;
+
+        try {
+            const uploadPromises = selectedFiles.map(file => {
+                const formData = new FormData(); formData.append("file", file);
+                return fetch(`${API_BASE}/${taskId}/evidence`, { method: "POST", body: formData });
+            });
+            const results = await Promise.all(uploadPromises);
+            
+            // 🛡️ AUTH FIX
+            if (results.some(r => r.status === 401 || r.status === 403)) { window.location.href = '/auth/login'; return; }
+            
+            if(results.every(r => r.ok)) { 
+                showToast("Files attached successfully.", "success"); 
+                closeModals(); loadMyTasks(); 
+            } else {
+                showToast("Some files failed to upload. Check file size limits.", "error");
+            }
+        } catch(e) { showToast("System connectivity error.", "error"); }
+        finally { btn.innerHTML = originalText; btn.disabled = false; }
+    }
+
+    // --- RESIGN TO L2 API ---
+    function openResignToL2Modal(taskId) {
+        document.getElementById('resignTaskId').value = taskId;
+        document.getElementById('resignComments').value = "";
+        openModalAnimation('resignToL2Modal', 'resignToL2Content');
+    }
+
+    async function executeResignTask() {
+        const taskId = document.getElementById('resignTaskId').value;
+        const comments = document.getElementById('resignComments').value.trim();
+        if(!comments) return showToast("Please provide instructions for the L2 staff.", "error");
+
+        const btn = document.getElementById('btnResignTask');
+        const originalText = btn.innerHTML;
+        btn.innerHTML = "Processing..."; btn.disabled = true;
+
+        try {
+            const res = await fetch(`${API_BASE}/${taskId}/resign`, {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({action: 'RESIGNED', comments: comments})
+            });
+            // 🛡️ AUTH FIX
+            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+            
+            if(res.ok) {
+                showToast("Task resigned to original creator successfully.", "success");
+                closeModals(); loadMyTasks(); switchTab('resign-tab');
+            } else {
+                const err = await res.json(); showToast(err.detail || "Failed to resign task.", "error");
+            }
+        } catch(e) { showToast("Network error.", "error"); }
+        finally { btn.innerHTML = originalText; btn.disabled = false; }
+    }
+
+    // --- RESUBMIT (VERSION 2) API ---
+    function openResubmitModal(taskId) {
+        const task = myTasksList.find(t => t.id === taskId);
+        if(!task) return;
+        
+        document.getElementById("resubmitTaskId").value = taskId;
+        selectedResubmitFiles = [];
+        document.getElementById("resubmitPreviewContainer").innerHTML = "";
+        document.getElementById("btnExecuteResubmit").classList.add("hidden");
+        
+        const oldCont = document.getElementById("resubmitOldEvidenceContainer");
+        // 🌟 SECURITY FIX: escapeHTML
+        if (task.evidence && task.evidence.length > 0) {
+            oldCont.innerHTML = task.evidence.map(ev => `
+                <div class="bg-slate-100 border border-slate-200 p-2 sm:p-3 rounded-xl flex items-center gap-2 sm:gap-3">
+                    <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                    <span class="text-[10px] sm:text-xs font-bold text-slate-600 truncate min-w-0">${escapeHTML(ev.file_name)}</span>
+                    <span class="ml-auto text-[8px] sm:text-[9px] font-black text-red-500 bg-red-100 px-1.5 sm:px-2 py-0.5 rounded uppercase border border-red-200 shrink-0">Rejected File</span>
+                </div>
+            `).join('');
+        } else {
+            oldCont.innerHTML = `<p class="text-[10px] sm:text-xs font-medium text-slate-400 italic">No previous files attached.</p>`;
+        }
+        openModalAnimation('resubmitModal', 'resubmitContent');
+    }
+
+    function handleResubmitSelection(input) {
+        Array.from(input.files).forEach(f => {
+            if(f.size > 10 * 1024 * 1024) return showToast(`${f.name} exceeds 10MB limit.`, "error");
+            selectedResubmitFiles.push(f);
+        });
+        const container = document.getElementById("resubmitPreviewContainer");
+        container.innerHTML = "";
+        selectedResubmitFiles.forEach((file, index) => {
+            const div = document.createElement('div'); div.className = "file-preview-item bg-white shadow-sm ring-1 ring-blue-300 group";
+            const removeBtn = document.createElement('button'); removeBtn.type = "button"; removeBtn.className = "file-remove-btn focus:outline-none focus:ring-2 focus:ring-red-400"; removeBtn.innerHTML = "<svg class='w-2.5 h-2.5 sm:w-3 sm:h-3' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='3' d='M6 18L18 6M6 6l12 12'></path></svg>";
+            removeBtn.onclick = () => { selectedResubmitFiles.splice(index, 1); handleResubmitSelection({files:[]}); };
+            if(file.type.startsWith('image/')) {
+                const img = document.createElement('img'); img.src = URL.createObjectURL(file); div.appendChild(img);
+            } else {
+                const ext = file.name.split('.').pop().toUpperCase();
+                div.innerHTML = `<div class="text-center w-full px-1 sm:px-2"><p class="text-[9px] sm:text-[11px] font-black text-blue-600 uppercase">${escapeHTML(ext)}</p><p class="text-[7px] sm:text-[8px] font-bold text-slate-500 truncate mt-1 w-full">${escapeHTML(file.name)}</p></div>`;
+            }
+            div.appendChild(removeBtn); container.appendChild(div);
+        });
+        const btn = document.getElementById("btnExecuteResubmit");
+        if(selectedResubmitFiles.length > 0) btn.classList.remove("hidden");
+        else btn.classList.add("hidden");
+    }
+
+    async function executeResubmitV2() {
+        if(selectedResubmitFiles.length === 0) return showToast("Please attach the corrected evidence for Version 2.", "error");
+        
+        const taskId = document.getElementById("resubmitTaskId").value;
+        const task = myTasksList.find(t => t.id === taskId);
+        if(!task) return;
+
+        const btn = document.getElementById("btnExecuteResubmit");
+        const originalText = btn.innerHTML;
+        btn.innerHTML = `<svg class="animate-spin h-3.5 w-3.5 sm:h-4 sm:w-4 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Processing V2...`;
+        btn.disabled = true;
+
+        try {
+            const payload = { title: task.title, category: task.category, description: task.description || '' };
+            const res = await fetch(`${API_BASE}/${taskId}/resubmit`, {
+                method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload)
+            });
+            // 🛡️ AUTH FIX
+            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+            
+            if(!res.ok) {
+                const err = await res.json();
+                throw new Error(err.detail || "Failed to create new version");
+            }
+            
+            const newV2Task = await res.json();
+
+            // Upload Evidence
+            const uploadPromises = selectedResubmitFiles.map(file => {
+                const formData = new FormData(); formData.append("file", file);
+                return fetch(`${API_BASE}/${newV2Task.id}/evidence`, { method: "POST", body: formData });
+            });
+
+            const results = await Promise.all(uploadPromises);
+            
+            if(results.every(r => r.ok)) {
+                // Evidence တင်ပြီးသည်နှင့် Batch ကို Auto Submit လုပ်ပေးမည်
+                const submitRes = await fetch(`${API_BASE}/submit-batch`, {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ task_ids: [newV2Task.id], reviewer_id: newV2Task.assigner_id })
+                });
+
+                if(submitRes.ok) {
+                    showToast("Task successfully updated to Version 2 and submitted.", "success");
+                    closeModals(); loadMyTasks(); switchTab('review-tab');
+                } else {
+                    showToast("V2 Evidence uploaded, but submission to Manager failed.", "error");
+                    closeModals(); loadMyTasks(); switchTab('drafts-tab'); 
+                }
+            } else {
+                showToast("V2 created, but some files failed to upload.", "error");
+                closeModals(); loadMyTasks(); switchTab('drafts-tab');
+            }
+        } catch(e) { showToast(e.message || "System error during resubmission.", "error"); } 
+        finally { btn.innerHTML = originalText; btn.disabled = false; }
+    }
+
+    // --- BATCH SUBMIT API ---
+    let selectedTaskIdsForSubmit = [];
+    async function submitBatch() {
+        const checkboxes = document.querySelectorAll('.draft-checkbox:checked');
+        if(checkboxes.length === 0) return showToast("Please select at least one task to submit.", "error");
+
+        let missingEvidence = false;
+        checkboxes.forEach(cb => {
+            const tr = cb.closest('tr');
+            if (tr && tr.innerHTML.includes('Required')) missingEvidence = true;
+        });
+        if (missingEvidence) return showToast("Cannot Submit: Evidence files are required for all selected tasks.", "error");
+
+        selectedTaskIdsForSubmit = Array.from(checkboxes).map(cb => cb.value);
+        openModalAnimation('submitTargetModal', 'submitTargetContent');
+        try {
+            const select = document.getElementById("targetManagerId");
+            const res = await fetch(`${API_BASE}/department-managers`);
+            // 🛡️ AUTH FIX
+            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+            
+            if (res.ok) {
+                const managers = await res.json();
+                select.innerHTML = '<option value="">-- Select Reviewer --</option>';
+                managers.forEach(u => select.innerHTML += `<option value="${escapeHTML(u.id)}">[${escapeHTML(u.level)}] ${escapeHTML(u.first_name)} ${escapeHTML(u.last_name)}</option>`);
+            }
+        } catch(e) { }
+    }
+
+    async function confirmBatchSubmit() {
+        const reviewerId = document.getElementById("targetManagerId").value;
+        if(!reviewerId) return showToast("Please select a manager to review your tasks.", "error");
+
+        const btn = document.getElementById("confirmSubmitBtn");
+        const originalText = btn.innerHTML;
+        btn.innerHTML = `<svg class="animate-spin h-3.5 w-3.5 sm:h-4 sm:w-4 mr-2 inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Submitting...`;
+        btn.disabled = true;
+
+        try {
+            const res = await fetch(`${API_BASE}/submit-batch`, {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ task_ids: selectedTaskIdsForSubmit, reviewer_id: reviewerId })
+            });
+            // 🛡️ AUTH FIX
+            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+            
+            if(res.ok) {
+                showToast("Tasks routed for approval successfully.", "success");
+                closeModals(); loadMyTasks(); switchTab('review-tab');
+            } else {
+                const err = await res.json(); showToast(err.detail || "Submission failed.", "error");
+            }
+        } catch(e) { showToast("Network connection failed.", "error"); } 
+        finally { btn.innerHTML = originalText; btn.disabled = false; }
+    }
+
+</script>
+
+{% if user_level in ['L1', 'L0', 'Level 1', 'Level 0'] %}
+<script>
+    async function loadApprovalQueue() {
+        try {
+            const res = await fetch(`${API_BASE}/approval-queue`);
+            // 🛡️ AUTH FIX
+            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+            
+            if (res.ok) {
+                const queue = await res.json();
+                const badge = document.getElementById('queueBadge');
+                if(badge) badge.innerText = queue.length;
+                const container = document.getElementById("queueCardsContainer");
+                
+                if(queue.length === 0) {
+                    container.innerHTML = `<div class="col-span-full p-10 sm:p-16 text-center text-slate-400 bg-white rounded-3xl border border-dashed border-slate-200"><p class="text-base sm:text-lg font-black">All Caught Up!</p><p class="text-xs sm:text-sm mt-1">No pending tasks await your review.</p></div>`;
+                    return;
+                }
+                
+                // 🌟 SECURITY FIX: escapeHTML
+                container.innerHTML = queue.map(q => `
+                    <div class="bg-white border border-slate-100 rounded-3xl p-5 sm:p-6 shadow-sm hover:shadow-md transition-shadow ring-1 ring-slate-900/5 group relative overflow-hidden flex flex-col">
+                        <div class="absolute top-0 left-0 w-1.5 h-full bg-amber-400"></div>
+                        <p class="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Submitted By</p>
+                        <p class="text-sm sm:text-base font-black text-blue-950 truncate" title="${escapeHTML(q.submitter_email)}">${escapeHTML(q.submitter_email)}</p>
+                        <h4 class="text-2xl sm:text-3xl font-black text-slate-800 mt-3 sm:mt-4 mb-4 sm:mb-5">${escapeHTML(q.pending_count)} <span class="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest">Tasks Pending</span></h4>
+                        <button onclick="openReviewModal('${escapeHTML(q.batch_id)}', '${escapeHTML(q.submitter_email)}')" class="mt-auto w-full bg-slate-900 hover:bg-blue-700 text-white font-bold text-xs sm:text-sm py-2.5 sm:py-3 rounded-xl transition-all shadow-sm active:scale-95 flex justify-center items-center gap-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                            Review Batch <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+                        </button>
+                    </div>
+                `).join('');
+            }
+        } catch(e) { }
+    }
+
+    async function openReviewModal(batchId, submitterIdentity) {
+        document.getElementById("reviewBatchId").value = batchId;
+        document.getElementById("reviewAction").value = "APPROVED";
+        document.getElementById("reviewComments").value = "";
+        document.getElementById("deductionRuleDiv").classList.add("hidden");
+        document.getElementById("deductionValueDiv").classList.add("hidden");
+        
+        const toggle = document.getElementById("hasPercentageToggle");
+        if(toggle) toggle.checked = false; 
+        
+        document.getElementById("deductionRuleId").value = "";
+        document.getElementById("deductionValue").value = "";
+        
+        if (currentUserLevel === "L1" || currentUserLevel === "Level 1") {
+            document.getElementById("nextReviewerDiv").classList.remove("hidden");
+            loadL0Managers();
+        } else {
+            document.getElementById("nextReviewerDiv").classList.add("hidden");
+        }
+
+        document.getElementById("reviewSubmitterInfo").innerHTML = `<span class="text-xs sm:text-sm text-blue-900 font-black truncate block" title="${escapeHTML(submitterIdentity)}">${escapeHTML(submitterIdentity)}</span>`;
+        openModalAnimation('reviewModal', 'reviewContent');
+
+        try {
+            const dedRes = await fetch(`${API_BASE}/batch/${batchId}/deductions`);
+            const sel = document.getElementById("deductionRuleId");
+            sel.innerHTML = '<option value="">-- Select Deduction Reason --</option>';
+            if(dedRes.ok) {
+                const dedData = await dedRes.json();
+                if(dedData.deductions && dedData.deductions.length > 0) {
+                    const rulesHtml = dedData.deductions.map(d => `<option value="${escapeHTML(d)}">${escapeHTML(d)}</option>`).join('');
+                    sel.innerHTML += rulesHtml;
+                }
+            }
+        } catch(e) { }
+
+        try {
+            const res = await fetch(`${API_BASE}/batch/${batchId}/details`);
+            // 🛡️ AUTH FIX
+            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+            
+            if (res.ok) {
+                const batchTasks = await res.json();
+                // 🌟 SECURITY FIX: escapeHTML
+                document.getElementById("reviewTasksList").innerHTML = batchTasks.map(t => {
+                    let evLink = `<span class="text-[9px] sm:text-[10px] text-slate-400 font-bold bg-slate-100 px-2 sm:px-2.5 py-1 rounded border border-slate-200 whitespace-nowrap">No Evidence</span>`;
+                    if (t.evidence && t.evidence.length > 0) {
+                        evLink = `<button type="button" onclick="openEvidenceFile('${escapeHTML(t.evidence[0].file_path)}')" class="text-[9px] sm:text-[10px] text-blue-700 font-extrabold uppercase bg-blue-50 border border-blue-200 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg hover:bg-blue-100 transition shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400 whitespace-nowrap">View Evidence</button>`;
+                    }
+                    const v2Tag = t.version > 1 ? `<span class="ml-1.5 sm:ml-2 text-[8px] sm:text-[9px] font-black text-red-600 bg-red-100 px-1 sm:px-1.5 py-0.5 rounded uppercase border border-red-200 shadow-sm shrink-0">V${t.version}</span>` : '';
+
+                    return `<div class="p-3 sm:p-4 bg-white border border-slate-200 rounded-xl mb-2 sm:mb-3 shadow-sm"><div class="flex items-center"><p class="text-xs sm:text-sm font-black text-slate-900 truncate">${escapeHTML(t.title)}</p>${v2Tag}</div><p class="text-[10px] sm:text-xs text-slate-600 mt-1 truncate" title="${escapeHTML(t.description || '')}">${escapeHTML(t.description || '')}</p><div class="flex justify-between items-center mt-2.5 sm:mt-3 gap-2"><span class="text-[8px] sm:text-[9px] font-black text-slate-500 uppercase tracking-widest bg-slate-100 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded border border-slate-200 truncate min-w-0" title="${escapeHTML(t.category)}">${escapeHTML(t.category)}</span>${evLink}</div></div>`;
+                }).join('');
+            }
+        } catch (e) {}
+    }
+
+    async function loadL0Managers() {
+        try {
+            const select = document.getElementById("nextReviewerId");
+            select.innerHTML = '<option value="">-- Loading Managers... --</option>';
+            const res = await fetch(`${API_BASE}/department-managers`);
+            
+            // 🛡️ AUTH FIX
+            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+            
+            if (res.ok) {
+                const managers = await res.json();
+                select.innerHTML = '<option value="">-- Select L0 Manager --</option>';
+                const mOptions = managers.filter(m => ['L0', 'Level 0'].includes(m.level)).map(m => `<option value="${escapeHTML(m.id)}">[${escapeHTML(m.level)}] ${escapeHTML(m.first_name)} ${escapeHTML(m.last_name)}</option>`).join('');
+                select.innerHTML += mOptions;
+            }
+        } catch(e) {}
+    }
+
+    async function submitReview() {
+        const batchId = document.getElementById('reviewBatchId').value; 
+        const action = document.getElementById('reviewAction').value;
+        let comments = document.getElementById("reviewComments").value.trim(); 
+        const deductionRule = document.getElementById("deductionRuleId").value;
+        const deductionValue = document.getElementById("deductionValue").value; 
+        
+        const toggle = document.getElementById("hasPercentageToggle");
+        const hasPercentage = toggle ? toggle.checked : false;
+        
+        let nextReviewerId = document.getElementById("nextReviewerId").value;
+
+        if((action === 'REJECTED' || action === 'DELAY') && !comments) return showToast("Feedback Comments are required.", "error");
+        
+        // KPI DEDUCTION FORMAT FIX: Automatically prepend the rule syntax so the Python backend parses it properly
+        if(action === 'REJECTED') {
+            if(!deductionRule) return showToast("Select a Deduction Rule.", "error");
+            
+            let valStr = "";
+            if(hasPercentage) {
+                if(!deductionValue) return showToast("Please enter the Percentage or Actual Value.", "error");
+                valStr = `[Value: ${deductionValue}] `;
+            }
+            
+            comments = `[KPI Deduction: ${deductionRule}] ${valStr}${comments}`;
+        }
+        
+        if(action === 'APPROVED' && ['L1', 'Level 1'].includes(currentUserLevel)) {
+            if(!nextReviewerId) return showToast("Select an L0 Manager.", "error");
+        }
+
+        const btn = document.getElementById("submitReviewBtn"); 
+        const originalText = btn.innerHTML;
+        btn.innerHTML = `<svg class="animate-spin h-3.5 w-3.5 sm:h-4 sm:w-4 mr-2 inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Processing...`; 
+        btn.disabled = true;
+        
+        try {
+            const requestBody = { action: action, comments: comments };
+            if (action === 'REJECTED') requestBody.deduction_rule = deductionRule;
+            if (action === 'APPROVED' && nextReviewerId) requestBody.next_reviewer_id = nextReviewerId;
+
+            const res = await fetch(`${API_BASE}/batch/${batchId}/review`, { 
+                method: "POST", headers: { "Content-Type": "application/json" }, 
+                body: JSON.stringify(requestBody) 
+            });
+            
+            // 🛡️ AUTH FIX
+            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+            
+            if(res.ok) { 
+                showToast(`Marked as ${action}.`, "success"); closeModals(); loadApprovalQueue(); loadMyTasks(); switchTab('approvals-tab'); 
+            } else {
+                const errData = await res.json();
+                let errorMsg = "Review failed. Please check inputs.";
+                if (errData.detail) errorMsg = typeof errData.detail === 'string' ? errData.detail : JSON.stringify(errData.detail);
+                showToast(errorMsg, "error");
+            }
+        } catch(e) { 
+            showToast("Network Error: Could not reach server.", "error"); 
+        } finally { 
+            btn.innerHTML = originalText; btn.disabled = false; 
+        }
+    }
+</script>
+{% endif %}
+{% endblock %}

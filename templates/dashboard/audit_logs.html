@@ -1,0 +1,190 @@
+{% extends "layouts/base.html" %}
+{% set active_page = "audit_logs" %}
+
+{% block title %}System Audit Logs - KPI Platform{% endblock %}
+
+{% block content %}
+<style>
+    @keyframes fadeInUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .animate-fade-in-up { animation: fadeInUp 0.4s ease-out forwards; }
+</style>
+
+<!-- 🌟 RESPONSIVE FIX: Adjusted padding for mobile -->
+<div class="min-h-screen bg-slate-50 text-slate-800 p-4 sm:p-6 flex flex-col items-center overflow-x-hidden">
+    
+    <!-- HEADER -->
+    <!-- 🌟 RESPONSIVE FIX: Header layout changed to flex-col on small screens -->
+    <header class="w-full max-w-6xl mb-4 sm:mb-6 animate-fade-in-up flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+        <div>
+            <h2 class="text-2xl sm:text-3xl font-extrabold text-blue-950 tracking-tight flex items-center">
+                <svg class="w-6 h-6 sm:w-8 sm:h-8 mr-2 sm:mr-3 text-blue-800 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
+                System Audit & Activity Logs
+            </h2>
+            <p class="text-slate-500 mt-1 sm:mt-1.5 text-xs sm:text-sm">Monitor system-wide data changes, admin interventions, and security tracking securely.</p>
+        </div>
+        <!-- 🌟 RESPONSIVE FIX: Search and button full width on mobile -->
+        <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto">
+            <div class="relative w-full sm:w-auto group">
+                <input type="text" id="searchInput" placeholder="Search logs by action or admin..." class="pl-10 pr-4 py-2.5 sm:py-2 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-blue-500 w-full sm:w-64 md:w-72 shadow-sm">
+                <svg class="w-4 h-4 sm:w-5 sm:h-5 text-gray-400 absolute left-3 top-3 sm:top-2.5 group-hover:text-blue-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+            </div>
+            <button onclick="fetchAuditLogs()" class="justify-center bg-white border border-gray-200 text-slate-600 hover:text-blue-800 px-5 sm:px-4 py-2.5 sm:py-2 rounded-xl text-sm font-bold shadow-sm transition flex items-center shrink-0">
+                <svg class="w-4 h-4 mr-1.5 sm:mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg> Refresh
+            </button>
+        </div>
+    </header>
+
+    <!-- 🌟 RESPONSIVE FIX: Horizontal scroll wrapper and min-width added to table -->
+    <!-- LOGS TABLE -->
+    <div class="w-full max-w-6xl bg-white rounded-2xl sm:rounded-3xl shadow-sm border border-gray-100 overflow-hidden flex flex-col flex-1 sm:h-[75vh] animate-fade-in-up" style="animation-delay: 0.1s;">
+        <div class="overflow-y-auto overflow-x-auto custom-scrollbar flex-1 w-full">
+            <table class="w-full text-left text-xs sm:text-sm border-collapse min-w-[800px]"> <!-- min-w ensures table doesn't crush -->
+                <thead class="bg-slate-50 border-b border-gray-200 text-[10px] sm:text-xs uppercase text-slate-500 font-bold sticky top-0 z-10 shadow-sm">
+                    <tr>
+                        <th class="p-4 sm:p-5 w-32 sm:w-44">Timestamp</th>
+                        <th class="p-4 sm:p-5">Actor (Admin)</th>
+                        <th class="p-4 sm:p-5">Action Type</th>
+                        <th class="p-4 sm:p-5">Target Table</th>
+                        <th class="p-4 sm:p-5 w-1/3">Change summary</th>
+                        <th class="p-4 sm:p-5 text-right">IP Address</th>
+                    </tr>
+                </thead>
+                <tbody id="logsTableBody" class="divide-y divide-gray-50">
+                    <tr><td colspan="6" class="p-10 sm:p-12 text-center text-slate-400 font-medium text-xs sm:text-sm">Loading audit logs...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let allLogs = [];
+
+    // 🌟 SECURITY FIX: Global HTML Escape Function
+    function escapeHTML(str) {
+        if (str === null || str === undefined) return "";
+        return str.toString()
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+    const displayTimeZone = "{{ timezone or 'Asia/Yangon' }}";
+
+    function formatAuditValue(value) {
+        if (value === null || value === undefined) return "None";
+        if (typeof value === "string") return value.trim() ? value : "(empty)";
+        if (typeof value === "number" || typeof value === "boolean") return String(value);
+        if (Array.isArray(value)) {
+            if (value.length === 0) return "(empty list)";
+            return value.map((item, index) => `${index + 1}. ${formatAuditValue(item)}`).join("; ");
+        }
+        if (typeof value === "object") return "(structured value)";
+        return String(value);
+    }
+
+    function formatTimestamp(timestamp) {
+        if (!timestamp) return "Unknown time";
+        const date = new Date(timestamp);
+        if (Number.isNaN(date.getTime())) return "Unknown time";
+        return new Intl.DateTimeFormat(undefined, {
+            timeZone: displayTimeZone,
+            dateStyle: "medium",
+            timeStyle: "short"
+        }).format(date);
+    }
+
+    function renderChanges(oldValue, newValue) {
+        const oldObject = oldValue && typeof oldValue === "object" && !Array.isArray(oldValue) ? oldValue : {};
+        const newObject = newValue && typeof newValue === "object" && !Array.isArray(newValue) ? newValue : {};
+        const keys = [...new Set([...Object.keys(oldObject), ...Object.keys(newObject)])];
+        if (!keys.length) {
+            return `<div class="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-xs text-slate-500">${escapeHTML(formatAuditValue(newValue || oldValue))}</div>`;
+        }
+        return `<div class="space-y-2">${keys.map(key => `
+            <div class="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
+                <div class="mb-1 text-[10px] font-extrabold uppercase tracking-wide text-slate-400">${escapeHTML(key)}</div>
+                <div class="grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-xs">
+                    <span class="break-words text-slate-500">${escapeHTML(formatAuditValue(oldObject[key]))}</span>
+                    <span class="text-slate-300">→</span>
+                    <span class="break-words font-semibold text-blue-900">${escapeHTML(formatAuditValue(newObject[key]))}</span>
+                </div>
+            </div>`).join("")}</div>`;
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+        fetchAuditLogs();
+
+        document.getElementById('searchInput').addEventListener('input', function(e) {
+            const term = e.target.value.toLowerCase();
+            const filtered = allLogs.filter(log => 
+                (log.admin_name || '').toLowerCase().includes(term) || 
+                (log.action || '').toLowerCase().includes(term) || 
+                (log.table_name || '').toLowerCase().includes(term) ||
+                formatAuditValue(log.new_value).toLowerCase().includes(term)
+            );
+            renderLogs(filtered);
+        });
+    });
+
+    async function fetchAuditLogs() {
+        const tbody = document.getElementById("logsTableBody");
+        tbody.innerHTML = '<tr><td colspan="6" class="p-10 sm:p-12 text-center text-slate-400 font-medium text-xs sm:text-sm"><svg class="animate-spin h-6 w-6 text-blue-900 mx-auto mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>Loading audit records...</td></tr>';
+        
+        try {
+            const response = await fetch('/api/v1/kpi/audit-logs?limit=150');
+            if (response.ok) {
+                allLogs = await response.json();
+                renderLogs(allLogs);
+            } else {
+                tbody.innerHTML = `<tr><td colspan="6" class="p-10 sm:p-12 text-center text-red-500 font-bold text-xs sm:text-sm">Unauthorized access or failed to fetch logs.</td></tr>`;
+            }
+        } catch (error) {
+            tbody.innerHTML = `<tr><td colspan="6" class="p-10 sm:p-12 text-center text-red-500 font-bold text-xs sm:text-sm">Network error occurred.</td></tr>`;
+        }
+    }
+
+    function renderLogs(logs) {
+        const tbody = document.getElementById("logsTableBody");
+        if (logs.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="p-10 sm:p-12 text-center text-slate-400 font-medium text-xs sm:text-sm">No audit logs found.</td></tr>';
+            return;
+        }
+
+        // 🌟 RESPONSIVE FIX: Table cell padding adjustments
+        tbody.innerHTML = logs.map((log) => {
+            let badgeColor = 'bg-blue-50 text-blue-700 border-blue-200';
+            if (log.action.includes('DELETE')) badgeColor = 'bg-red-50 text-red-700 border-red-200';
+            if (log.action.includes('CREATE')) badgeColor = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+            if (log.action.includes('UPDATE')) badgeColor = 'bg-amber-50 text-amber-700 border-amber-200';
+
+            const actionBadge = `<span class="${badgeColor} border px-2 sm:px-2.5 py-1 rounded-md text-[9px] sm:text-[10px] font-extrabold uppercase whitespace-nowrap">${escapeHTML(log.action)}</span>`;
+            
+            // Format values for readability, then escape the resulting text for safe HTML output.
+            let detailsHtml = '';
+            try {
+                detailsHtml = renderChanges(log.old_value, log.new_value);
+            } catch(e) {
+                detailsHtml = `<span class="text-[10px] sm:text-xs text-slate-500">Complex Data</span>`;
+            }
+
+            return `
+                <tr class="hover:bg-slate-50 transition-colors group">
+                    <td class="p-4 sm:p-5 whitespace-nowrap">
+                        <div class="text-xs font-bold text-slate-700">${escapeHTML(formatTimestamp(log.timestamp))}</div>
+                    </td>
+                    <td class="p-4 sm:p-5 font-bold text-blue-950 truncate max-w-[150px]" title="${escapeHTML(log.admin_name)}">${escapeHTML(log.admin_name)}</td>
+                    <td class="p-4 sm:p-5">${actionBadge}</td>
+                    <td class="p-4 sm:p-5 font-mono text-[10px] sm:text-xs text-slate-600 font-bold whitespace-nowrap">${escapeHTML(log.table_name || 'N/A')}</td>
+                    <td class="p-4 sm:p-5 min-w-[250px] sm:min-w-[300px]">${detailsHtml}</td>
+                    <td class="p-4 sm:p-5 text-right font-mono text-[10px] sm:text-xs text-slate-500 whitespace-nowrap">${escapeHTML(log.ip_address)}</td>
+                </tr>
+            `;
+        }).join('');
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,229 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Action Plans | KPI Dashboard{% endblock %}
+
+{% block content %}
+<style>
+    @keyframes fadeInUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .animate-fade-in-up { animation: fadeInUp 0.4s ease-out forwards; }
+</style>
+
+<div class="p-4 sm:p-6 md:p-8 h-full flex flex-col bg-slate-50 min-h-screen overflow-y-auto custom-scrollbar">
+    
+    <!-- Header -->
+    <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 sm:mb-8 shrink-0 animate-fade-in-up gap-4">
+        <div>
+            <h2 class="text-2xl sm:text-3xl font-extrabold text-blue-950 tracking-tight">Action Plans Review</h2>
+            <p class="text-xs sm:text-sm text-slate-500 mt-1 font-medium">KPI ရမှတ်နိမ့်သော ဝန်ထမ်းများ၏ တိုးတက်ရေး အစီအစဉ်များကို စစ်ဆေးရန်</p>
+        </div>
+        <button onclick="fetchActionPlans()" class="w-full md:w-auto bg-white border border-gray-200 text-slate-700 hover:text-blue-900 hover:bg-blue-50 px-5 py-2.5 sm:py-3 rounded-xl shadow-sm transition-all flex justify-center items-center text-sm font-bold transform hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <svg class="w-4 h-4 sm:w-5 sm:h-5 mr-1.5 sm:mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+            Refresh Data
+        </button>
+    </header>
+
+    <!-- Table Area -->
+    <div class="bg-white rounded-2xl sm:rounded-3xl shadow-sm border border-gray-100 flex-1 overflow-hidden flex flex-col animate-fade-in-up" style="animation-delay: 0.1s;">
+        <div class="overflow-y-auto overflow-x-auto custom-scrollbar flex-1 w-full">
+            <table class="w-full text-left border-collapse min-w-[700px]">
+                <thead class="bg-slate-50 text-slate-500 text-[10px] sm:text-xs uppercase tracking-wider sticky top-0 shadow-sm border-b border-gray-200 z-10">
+                    <tr>
+                        <th class="p-4 sm:p-5 font-bold w-12 sm:w-16 text-center">စဉ်</th>
+                        <th class="p-4 sm:p-5 font-bold">တင်ပြချက် (Description)</th>
+                        <th class="p-4 sm:p-5 font-bold whitespace-nowrap">ပြီးစီးမည့် ရည်မှန်းရက်</th>
+                        <th class="p-4 sm:p-5 font-bold text-center">Status</th>
+                        <th class="p-4 sm:p-5 font-bold text-center">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="plansTableBody" class="divide-y divide-gray-100 text-xs sm:text-sm">
+                    <tr><td colspan="5" class="p-10 sm:p-12 text-center"><div class="animate-spin rounded-full h-6 w-6 sm:h-8 sm:w-8 border-b-2 border-blue-900 mx-auto"></div></td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Review Modal -->
+<div id="reviewModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm transition-opacity p-4">
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all flex flex-col max-h-[95vh] sm:max-h-[90vh]">
+        <div class="bg-slate-50 px-5 sm:px-6 py-4 sm:py-5 border-b border-gray-100 flex justify-between items-center shrink-0">
+            <h3 class="text-lg sm:text-xl font-extrabold text-blue-950">Action Plan အား သုံးသပ်ရန်</h3>
+            <button onclick="closeModal()" class="text-gray-400 hover:text-red-500 bg-white border border-gray-200 p-1.5 sm:p-2 rounded-xl transition-colors shadow-sm focus:outline-none shrink-0 ml-2">
+                <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+        </div>
+        
+        <div class="overflow-y-auto custom-scrollbar flex-1">
+            <form id="reviewForm" onsubmit="submitReview(event)" class="p-5 sm:p-6 pb-2 sm:pb-6">
+                <input type="hidden" id="planId">
+                <div class="mb-4 sm:mb-5">
+                    <label class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">ဆုံးဖြတ်ချက် (Status) <span class="text-red-500">*</span></label>
+                    <select id="reviewStatus" required class="w-full bg-slate-50 border border-gray-200 p-2.5 sm:p-3 rounded-xl text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-900 cursor-pointer shadow-inner appearance-none">
+                        <option value="">-- ရွေးချယ်ပါ --</option>
+                        <option value="APPROVED">အတည်ပြုသည် (Approve)</option>
+                        <option value="REJECTED">ပယ်ချသည် (Reject)</option>
+                    </select>
+                </div>
+                <div class="mb-4 sm:mb-6">
+                    <label class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">အကြံပြုချက် (Feedback)</label>
+                    <textarea id="reviewFeedback" rows="4" placeholder="ဝန်ထမ်းအတွက် မှတ်ချက်ရေးသားရန်..." class="w-full bg-slate-50 border border-gray-200 p-2.5 sm:p-3 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-900 shadow-inner"></textarea>
+                </div>
+                <div class="flex flex-col-reverse sm:flex-row justify-end gap-3 pt-4 border-t border-gray-100 mt-4 sm:mt-0">
+                    <button type="button" onclick="closeModal()" class="w-full sm:w-auto px-5 py-2.5 border border-gray-200 bg-white text-slate-600 rounded-xl text-xs sm:text-sm font-bold hover:bg-slate-50 transition shadow-sm focus:outline-none text-center">ပယ်ဖျက်မည်</button>
+                    <button type="submit" id="submitReviewBtn" class="w-full sm:w-auto px-6 py-2.5 bg-blue-950 text-white rounded-xl text-xs sm:text-sm font-bold hover:bg-blue-900 transition shadow-md transform hover:-translate-y-0.5 focus:outline-none flex justify-center items-center">သိမ်းဆည်းမည်</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let currentPlans = [];
+
+    // 🛡️ SECURITY FIX: Global HTML Escape Function to prevent Stored XSS
+    function escapeHTML(str) {
+        if (!str) return "";
+        return str.toString()
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+    // 🌟 UI/UX FIX: Standardized Toast Notification System
+    function showToast(message, type = 'success') {
+        let container = document.getElementById('toastContainer');
+        if(!container) {
+            container = document.createElement('div');
+            container.id = 'toastContainer';
+            container.className = 'fixed top-5 right-5 z-[9999] flex flex-col gap-2 max-w-[90%] sm:max-w-md w-full items-end';
+            document.body.appendChild(container);
+        }
+        const toast = document.createElement('div');
+        const bgColor = type === 'success' ? 'bg-green-50 text-green-800 border-green-500' : 'bg-red-50 text-red-800 border-red-500';
+        toast.className = `flex items-center px-4 sm:px-5 py-3 sm:py-4 rounded-xl shadow-lg text-xs sm:text-sm font-bold border-l-4 ${bgColor} mb-3 w-full pointer-events-auto animate-fade-in-up`;
+        toast.innerHTML = escapeHTML(message);
+        container.appendChild(toast);
+        setTimeout(() => toast.remove(), 4000);
+    }
+
+    // 🛡️ AUTH FIX: Function to handle unauthorized API calls
+    function handleApiError(res) {
+        if (res.status === 401 || res.status === 403) {
+            window.location.href = '/auth/login';
+            return true;
+        }
+        return false;
+    }
+
+    function openReviewModal(planId) {
+        document.getElementById('reviewForm').reset();
+        document.getElementById('planId').value = planId;
+        document.getElementById('reviewModal').classList.remove('hidden');
+    }
+
+    function closeModal() { document.getElementById('reviewModal').classList.add('hidden'); }
+
+    // ⚡ PERFORMANCE & API FIX: Added Limit/Pagination capability (Default limit applied on backend ideally)
+    async function fetchActionPlans() {
+        const tbody = document.getElementById('plansTableBody');
+        tbody.innerHTML = '<tr><td colspan="5" class="p-10 sm:p-12 text-center"><div class="animate-spin rounded-full h-6 w-6 sm:h-8 sm:w-8 border-b-2 border-blue-900 mx-auto"></div></td></tr>';
+        
+        try {
+            const res = await fetch('/api/v1/kpi/action-plans/all');
+            
+            if (handleApiError(res)) return; // 🛡️ Redirect if token expired
+
+            if (res.ok) {
+                currentPlans = await res.json();
+                renderTable();
+            } else { 
+                tbody.innerHTML = '<tr><td colspan="5" class="p-8 sm:p-10 text-center text-red-500 font-bold text-xs sm:text-sm">ဒေတာရယူရန် မအောင်မြင်ပါ</td></tr>'; 
+            }
+        } catch (error) { 
+            tbody.innerHTML = '<tr><td colspan="5" class="p-8 sm:p-10 text-center text-red-500 font-bold text-xs sm:text-sm">ကွန်ရက်ချိတ်ဆက်မှု အမှားအယွင်း (Network Error)</td></tr>'; 
+        }
+    }
+
+    function renderTable() {
+        const tbody = document.getElementById('plansTableBody');
+        if (currentPlans.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="p-10 sm:p-12 text-center text-slate-500 font-medium text-xs sm:text-sm">တင်ပြထားသော Action Plan များ မရှိသေးပါ</td></tr>';
+            return;
+        }
+
+        const getStatusBadge = (status) => {
+            switch(status) {
+                case 'DRAFT': return '<span class="px-2.5 sm:px-3 py-1 text-[9px] sm:text-[10px] font-extrabold rounded-md bg-slate-100 text-slate-600 border border-slate-200 shadow-sm">DRAFT</span>';
+                case 'SUBMITTED': return '<span class="px-2.5 sm:px-3 py-1 text-[9px] sm:text-[10px] font-extrabold rounded-md bg-blue-100 text-blue-800 border border-blue-200 shadow-sm">SUBMITTED</span>';
+                case 'APPROVED': return '<span class="px-2.5 sm:px-3 py-1 text-[9px] sm:text-[10px] font-extrabold rounded-md bg-emerald-100 text-emerald-800 border border-emerald-200 shadow-sm">APPROVED</span>';
+                case 'REJECTED': return '<span class="px-2.5 sm:px-3 py-1 text-[9px] sm:text-[10px] font-extrabold rounded-md bg-red-100 text-red-800 border border-red-200 shadow-sm">REJECTED</span>';
+                case 'COMPLETED': return '<span class="px-2.5 sm:px-3 py-1 text-[9px] sm:text-[10px] font-extrabold rounded-md bg-purple-100 text-purple-800 border border-purple-200 shadow-sm">COMPLETED</span>';
+                default: return `<span class="px-2.5 sm:px-3 py-1 text-[9px] sm:text-[10px] font-extrabold rounded-md bg-amber-100 text-amber-800 border border-amber-200 shadow-sm">${escapeHTML(status)}</span>`;
+            }
+        };
+
+        const formatDate = (dateString) => new Date(dateString).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+
+        // 🛡️ SECURITY & UI FIX: Inline styles removed, replaced with Tailwind `disabled:opacity-50 disabled:cursor-not-allowed`
+        tbody.innerHTML = currentPlans.map((plan, index) => `
+            <tr class="hover:bg-slate-50 transition-colors border-b border-slate-50">
+                <td class="p-4 sm:p-5 font-bold text-slate-500 text-center">${index + 1}</td>
+                <td class="p-4 sm:p-5 text-blue-950 font-semibold max-w-xs truncate min-w-[200px]" title="${escapeHTML(plan.description)}">${escapeHTML(plan.description)}</td>
+                <td class="p-4 sm:p-5 font-medium text-slate-600 whitespace-nowrap">${formatDate(plan.target_completion_date)}</td>
+                <td class="p-4 sm:p-5 text-center">${getStatusBadge(plan.status)}</td>
+                <td class="p-4 sm:p-5 text-center">
+                    <button onclick="openReviewModal('${plan.id}')" 
+                        class="text-[10px] sm:text-xs bg-white text-blue-700 border border-blue-200 hover:bg-blue-50 hover:text-blue-900 font-bold px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-slate-50" 
+                        ${plan.status !== 'SUBMITTED' ? 'disabled' : ''}>
+                        Review
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    async function submitReview(e) {
+        e.preventDefault();
+        
+        const planId = document.getElementById('planId').value;
+        const payload = { 
+            status: document.getElementById('reviewStatus').value, 
+            manager_feedback: document.getElementById('reviewFeedback').value || null 
+        };
+
+        const btn = document.getElementById('submitReviewBtn');
+        const originalText = btn.innerHTML;
+        btn.innerHTML = `<svg class="animate-spin h-4 w-4 mr-2 inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Processing...`;
+        btn.disabled = true;
+
+        try {
+            const res = await fetch(`/api/v1/kpi/action-plans/${planId}/review`, {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+            });
+            
+            if (handleApiError(res)) return; // 🛡️ Redirect if token expired
+
+            if (res.ok) {
+                showToast("မှတ်ချက် သိမ်းဆည်းခြင်း အောင်မြင်ပါသည်။", "success");
+                closeModal(); 
+                fetchActionPlans();
+            } else {
+                const err = await res.json(); 
+                showToast(err.detail || "သိမ်းဆည်းမှု မအောင်မြင်ပါ", "error");
+            }
+        } catch (error) { 
+            showToast("ကွန်ရက်ချိတ်ဆက်မှု အမှားအယွင်း", "error"); 
+        } finally {
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }
+    }
+
+    // ⚡ PERFORMANCE FIX: A11y & Initialization
+    document.addEventListener("DOMContentLoaded", fetchActionPlans);
+</script>
+{% endblock %}

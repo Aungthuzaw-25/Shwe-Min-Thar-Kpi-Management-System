@@ -1,0 +1,99 @@
+{% extends "layouts/base.html" %}
+{% set active_page = "system_logs" %}
+
+{% block title %}System Event Logs - KPI Platform{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-slate-50 text-slate-800 p-4 sm:p-6 flex flex-col items-center overflow-x-hidden">
+    <header class="w-full max-w-6xl mb-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+            <h2 class="text-2xl sm:text-3xl font-extrabold text-blue-950 tracking-tight">System Event Logs</h2>
+            <p class="text-slate-500 mt-1 text-xs sm:text-sm">Monitor background jobs and operational system events.</p>
+        </div>
+        <button type="button" onclick="loadSystemLogs()" class="bg-white border border-gray-200 text-slate-600 hover:text-blue-800 px-4 py-2.5 rounded-xl text-sm font-bold shadow-sm">Refresh</button>
+    </header>
+
+    <div class="w-full max-w-6xl bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex-1">
+        <div class="overflow-auto custom-scrollbar max-h-[75vh]">
+            <table class="w-full min-w-[760px] text-left text-xs sm:text-sm">
+                <thead class="bg-slate-50 border-b border-gray-200 text-[10px] sm:text-xs uppercase text-slate-500 font-bold sticky top-0">
+                    <tr>
+                        <th class="p-4">Timestamp</th>
+                        <th class="p-4">Event Type</th>
+                        <th class="p-4">Level</th>
+                        <th class="p-4">Message</th>
+                        <th class="p-4">Details</th>
+                    </tr>
+                </thead>
+                <tbody id="systemLogsBody">
+                    <tr><td colspan="5" class="p-10 text-center text-slate-400">Loading system logs...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const displayTimeZone = "{{ timezone or 'Asia/Yangon' }}";
+
+    function escapeHTML(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    function levelClass(level) {
+        if (level === 'ERROR' || level === 'CRITICAL') return 'text-red-700 bg-red-50';
+        if (level === 'WARNING') return 'text-amber-700 bg-amber-50';
+        return 'text-blue-700 bg-blue-50';
+    }
+
+    function formatTimestamp(value) {
+        if (!value) return "Unknown time";
+        const normalized = /(?:Z|[+-]\d{2}:\d{2})$/.test(value) ? value : `${value}Z`;
+        const date = new Date(normalized);
+        if (Number.isNaN(date.getTime())) return "Unknown time";
+        return new Intl.DateTimeFormat(undefined, {
+            timeZone: displayTimeZone,
+            dateStyle: "medium",
+            timeStyle: "short"
+        }).format(date);
+    }
+
+    async function loadSystemLogs() {
+        const body = document.getElementById('systemLogsBody');
+        body.innerHTML = '<tr><td colspan="5" class="p-10 text-center text-slate-400">Loading system logs...</td></tr>';
+        try {
+            const response = await fetch('/api/v1/system/logs?limit=200');
+            if (response.status === 401 || response.status === 403) {
+                window.location.href = '/auth/login';
+                return;
+            }
+            if (!response.ok) throw new Error('Unable to load system logs.');
+            const logs = await response.json();
+            if (!logs.length) {
+                body.innerHTML = '<tr><td colspan="5" class="p-10 text-center text-slate-400">No system logs found.</td></tr>';
+                return;
+            }
+            body.innerHTML = logs.map(log => `
+                <tr class="border-b border-slate-50 hover:bg-slate-50">
+                    <td class="p-4 whitespace-nowrap text-slate-500">${escapeHTML(formatTimestamp(log.created_at))}</td>
+                    <td class="p-4 font-bold text-slate-700">${escapeHTML(log.event_type)}</td>
+                    <td class="p-4"><span class="px-2 py-1 rounded-md text-[10px] font-bold ${levelClass(log.level)}">${escapeHTML(log.level)}</span></td>
+                    <td class="p-4 text-slate-700">${escapeHTML(log.message)}</td>
+                    <td class="p-4 text-slate-500">${escapeHTML(log.details ? JSON.stringify(log.details) : '')}</td>
+                </tr>`).join('');
+        } catch (error) {
+            console.error('System log loading failed:', error);
+            body.innerHTML = '<tr><td colspan="5" class="p-10 text-center text-red-500 font-bold">Unable to load system logs.</td></tr>';
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', loadSystemLogs);
+</script>
+{% endblock %}

@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}KPI Dashboard{% endblock %}</title>
+
+    <!-- PWA Settings -->
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#1d4ed8">
+
+    <script>
+    // Service Worker ကို Register လုပ်ခြင်း
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/static/service-worker.js')
+                    .then((registration) => {
+                        console.log('ServiceWorker registration successful with scope: ', registration.scope);
+                    }, (error) => {
+                        console.log('ServiceWorker registration failed: ', error);
+                    });
+            });
+        }
+    </script>
+
+    <!-- Production CSS -->
+    <link rel="stylesheet" href="/static/css/output.css">
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- External Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #FAF9F6; }
+        .bg-kpi-red { background-color: #9b1c1c; }
+        .text-kpi-red { color: #9b1c1c; }
+        
+        /* Sidebar Item Styles */
+        .sidebar-item-active { background-color: #fdf2e9; color: #9b1c1c; font-weight: 600; }
+        .sidebar-item:hover:not(.sidebar-item-active) { background-color: rgba(255,255,255,0.1); }
+        
+        /* Custom Scrollbar */
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 10px; }
+        
+        /* Modal & Toast CSS */
+        .modal-overlay { background-color: rgba(0, 0, 0, 0.5); backdrop-filter: blur(2px); }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
+        @keyframes fadeInUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .toast-enter { animation: slideIn 0.3s ease-out forwards; }
+        .toast-exit { animation: fadeOut 0.3s ease-out forwards; }
+        .animate-fade-in-up { animation: fadeInUp 0.4s ease-out forwards; }
+        
+        {% block extra_css %}{% endblock %}
+    </style>
+</head>
+<body class="flex h-screen overflow-hidden text-gray-800 relative">
+
+    {% if user_role in ['Super Admin', 'System Super Admin', 'Admin'] %}
+    
+    <!-- 📱 MOBILE RESPONSIVE FIX: Sidebar Backdrop Overlay -->
+    <div id="sidebarBackdrop" class="fixed inset-0 bg-slate-900/50 z-20 hidden md:hidden transition-opacity" onclick="toggleMobileSidebar()"></div>
+
+    <!-- 📱 MOBILE RESPONSIVE FIX: absolute positioning and transform classes -->
+    <aside id="mainSidebar" class="w-64 bg-kpi-red text-white flex-col h-full shadow-xl z-30 shrink-0 absolute md:relative inset-y-0 left-0 transform -translate-x-full md:translate-x-0 transition-transform duration-300 flex">
+        <!-- Logo Area -->
+        <div class="p-6 flex items-center justify-between space-x-3 shrink-0">
+            <div class="flex items-center space-x-3">
+                <svg class="w-8 h-8" fill="white" viewBox="0 0 24 24"><path d="M5 19h-4v-4h4v4zm6 0h-4v-8h4v8zm6 0h-4v-12h4v12zm6 0h-4v-16h4v16zM3 13.5l3-3 3 3 5-5 3 3 4-4v-2l-4 4-3-3-5 5-3-3-3 3v2z"/></svg>
+                <div>
+                    <h1 class="text-2xl font-bold tracking-wide leading-none">KPI</h1>
+                    <p class="text-[10px] text-red-200 uppercase tracking-widest">Performance Matters</p>
+                </div>
+            </div>
+            <!-- Mobile Close Button inside Sidebar -->
+            <button class="md:hidden text-red-200 hover:text-white focus:outline-none" onclick="toggleMobileSidebar()">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+        </div>
+
+        <!-- Navigation Links -->
+        <nav class="flex-1 px-4 space-y-1 mt-2 overflow-y-auto custom-scrollbar">
+            <!-- Dashboard -->
+            <a href="/superadmin/dashboard" class="{% if active_page == 'dashboard' %}sidebar-item-active{% else %}sidebar-item text-red-100{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
+                <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg> Dashboard
+            </a>
+            
+            <!-- Users -->
+            <a href="/superadmin/users" class="{% if active_page == 'users' %}sidebar-item-active{% else %}sidebar-item text-red-100{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
+                <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg> Users
+            </a>
+
+            <!-- Departments -->
+            <a href="/superadmin/departments" class="{% if active_page == 'departments' %}sidebar-item-active{% else %}sidebar-item text-red-100{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
+                <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg> Departments
+            </a>
+            <a href="/superadmin/permissions" class="{% if active_page == 'permissions' %}sidebar-item-active{% else %}sidebar-item text-red-100{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
+                <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a3 3 0 11-6 0 3 3 0 016 0zm3 14H6v-2a6 6 0 0112 0v2zm-3-9h6m-3-3v6"></path></svg> Permissions
+            </a>
+
+            <!-- Positions -->
+            <a href="/positions" class="{% if active_page == 'positions' %}sidebar-item-active{% else %}sidebar-item text-red-100{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
+                <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg> Positions
+            </a>
+
+            <!-- KPIs -->
+            <a href="/superadmin/kpi" class="{% if active_page == 'kpis' %}sidebar-item-active{% else %}sidebar-item text-red-100{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
+                <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg> KPIs
+            </a>
+
+            <!-- KPI Upload -->
+            <a href="/superadmin/kpi-upload" class="{% if active_page == 'kpi_upload' %}sidebar-item-active{% else %}sidebar-item text-red-100{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
+                <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg> KPI Import
+            </a>
+
+            <!-- KPI Periods -->
+            <a href="/kpi-periods" class="{% if active_page == 'kpi_periods' %}sidebar-item-active{% else %}sidebar-item text-red-100{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
+                <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg> KPI Periods
+            </a>
+
+            <!-- Targets -->
+            <a href="/superadmin/targets" class="{% if active_page == 'targets' %}sidebar-item-active{% else %}sidebar-item text-red-100{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
+                <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg> Targets
+            </a>
+
+            <!-- Reports -->
+            <a href="/superadmin/reports" class="{% if active_page == 'reports' %}sidebar-item-active{% else %}sidebar-item text-red-100{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
+                <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg> Reports
+            </a>
+
+            <!-- Action Plans -->
+            <a href="/action-plans" class="{% if active_page == 'action_plans' %}sidebar-item-active{% else %}sidebar-item text-red-100{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
+                <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg> Action Plans
+            </a>
+
+           <!-- Super Admin Process Tracking Sidebar Link -->
+            <a href="/superadmin/process-tracking" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all {% if active_page == 'process_tracking' %}bg-blue-600 text-white shadow-md{% else %}text-red-100 hover:bg-[rgba(255,255,255,0.1)]{% endif %}">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                Process Tracking
+            </a>
+
+            <!-- System Settings -->
+            <a href="/system-settings" class="{% if active_page == 'system_settings' %}sidebar-item-active{% else %}sidebar-item text-red-100{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
+                <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg> System Settings
+            </a>
+
+            <!-- Audit Logs -->
+            <a href="/superadmin/audit-logs" class="{% if active_page == 'audit_logs' %}sidebar-item-active{% else %}sidebar-item text-red-100{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
+                <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg> Audit Logs
+            </a>
+            <a href="/superadmin/system-logs" class="{% if active_page == 'system_logs' %}sidebar-item-active{% else %}sidebar-item text-red-100{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
+                <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke="currentColor" stroke-width="1.5" d="M4 5h16M4 12h16M4 19h16"/><circle cx="7" cy="5" r="1"/><circle cx="7" cy="12" r="1"/><circle cx="7" cy="19" r="1"/></svg> System Logs
+            </a>
+        </nav>
+
+        <!-- User Profile Area, Notification Bell & Logout Button -->
+        <div class="p-4 border-t border-red-800 shrink-0 space-y-3 relative">
+            
+            <div class="flex items-center justify-between p-2 bg-red-900/50 rounded-xl">
+                <!-- User Info -->
+                <div class="flex items-center min-w-0 flex-1">
+                    <div class="w-10 h-10 rounded-full bg-orange-200 flex items-center justify-center text-orange-800 font-bold text-lg shrink-0">
+                        {{ user_name[0] if user_name else 'SA' }}
+                    </div>
+                    <div class="ml-3 min-w-0">
+                        <p class="text-sm font-semibold truncate">{{ user_name }}</p>
+                        <p class="text-[10px] sm:text-xs text-red-300 truncate">{{ user_email }}</p>
+                    </div>
+                </div>
+
+                <!-- 🌟 Notification Bell 🌟 -->
+                <button onclick="toggleNotifications(event)" id="bellBtn" class="relative p-2 text-red-200 hover:text-white rounded-lg hover:bg-red-800 transition focus:outline-none shrink-0 ml-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
+                    <span id="unreadBadge" class="hidden absolute top-0 right-0 bg-white text-red-800 text-[10px] font-bold px-1.5 py-0.5 rounded-full shadow-sm">0</span>
+                </button>
+            </div>
+
+            <!-- Logout Button -->
+            <button onclick="handleLogout()" class="w-full flex items-center justify-center space-x-2 bg-red-950/60 hover:bg-red-900 text-red-200 hover:text-white py-2 px-3 rounded-xl text-xs font-semibold transition">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
+                <span>လော့ဂ်အောက်ထွက်ရန် (Logout)</span>
+            </button>
+            
+            <!-- 🌟 Notification Dropdown 🌟 -->
+            <div id="notifDropdown" class="hidden absolute bottom-full mb-4 right-0 w-72 sm:w-80 bg-white border border-slate-200 rounded-3xl shadow-2xl z-[9999] overflow-hidden flex-col text-slate-800 transform transition-all duration-300">
+                <div class="p-4 sm:p-5 bg-slate-50 border-b border-slate-100 flex justify-between items-center shrink-0">
+                    <h3 class="text-xs sm:text-sm font-extrabold text-slate-900">Notifications</h3>
+                    <button onclick="markAllAsRead()" class="text-[9px] sm:text-[10px] text-blue-600 hover:text-blue-800 font-extrabold uppercase tracking-wide transition">Mark all read</button>
+                </div>
+                <div id="notifList" class="max-h-[300px] sm:max-h-[350px] overflow-y-auto custom-scrollbar divide-y divide-slate-50 bg-white">
+                    <div class="p-8 text-center text-slate-400 text-xs font-medium">Loading notifications...</div>
+                </div>
+                <div class="p-3 sm:p-4 bg-slate-50 border-t border-slate-100 text-center shrink-0">
+                    <a href="/notifications" class="text-[10px] sm:text-xs text-slate-600 font-bold hover:text-blue-700 transition-colors">View All History &rarr;</a>
+                </div>
+            </div>
+            
+        </div>
+    </aside>
+    {% endif %}
+
+    <!-- MAIN CONTENT INJECTION -->
+    <main class="flex-1 flex flex-col h-full overflow-hidden min-w-0 bg-gray-50/50 relative z-10">
+        
+        <!-- 📱 MOBILE RESPONSIVE FIX: Functional Mobile Menu Toggle -->
+        {% if user_role in ['Super Admin', 'System Super Admin', 'Admin'] %}
+        <div class="md:hidden flex items-center justify-between bg-kpi-red text-white p-4 shrink-0 shadow-md z-10">
+            <h1 class="text-lg font-bold tracking-wide">KPI Platform</h1>
+            <button class="text-white hover:text-red-200 focus:outline-none" onclick="toggleMobileSidebar()">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+            </button>
+        </div>
+        {% endif %}
+
+        <div class="flex-1 overflow-y-auto custom-scrollbar relative">
+            {% block content %}{% endblock %}
+        </div>
+    </main>
+
+    <!-- GLOBAL TOAST NOTIFICATIONS CONTAINER -->
+    <div id="toastContainer" class="fixed top-5 right-5 z-[9999] flex flex-col space-y-3 max-w-[90%] sm:max-w-md w-full items-end"></div>
+
+    <!-- 🌟 GLOBAL SCRIPTS 🌟 -->
+    <script>
+        // 🌟 SECURITY FIX: Global HTML Escape Function to prevent XSS
+        window.escapeHTML = function(str) {
+            if (!str) return "";
+            return str.toString()
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        };
+
+        // 🌟 UX FIX: Universal Centralized Toast Function
+        window.showToast = function(message, type = 'success') {
+            let container = document.getElementById('toastContainer');
+            if(!container) return;
+
+            const toast = document.createElement('div');
+            const bgColor = type === 'success' ? 'bg-green-50 border-green-500 text-green-900' : 'bg-red-50 border-red-500 text-red-900';
+            const icon = type === 'success' 
+                ? `<svg class="w-5 h-5 text-green-500 mt-0.5 mr-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>`
+                : `<svg class="w-5 h-5 text-red-500 mt-0.5 mr-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>`;
+
+            toast.className = `flex items-start p-3 sm:p-4 mb-3 border-l-4 rounded-xl shadow-lg w-full bg-white ${bgColor} toast-enter pointer-events-auto`;
+            toast.innerHTML = `${icon}<div class="text-xs sm:text-sm font-medium flex-1">${window.escapeHTML(message)}</div>`;
+            
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.classList.replace('toast-enter', 'toast-exit');
+                setTimeout(() => toast.remove(), 300);
+            }, 4000);
+        };
+
+        // 🛡️ API SECURITY & AUTH FIX: Global Interceptor for 401 Unauthorized
+        const originalFetch = window.fetch;
+        window.fetch = async function() {
+            try {
+                let response = await originalFetch.apply(this, arguments);
+                // Token expired or unauthorized -> Auto logout
+                if ((response.status === 401 || response.status === 403) && !window.location.pathname.includes('/login')) {
+                    localStorage.removeItem('user'); // Clear ghost sessions
+                    window.location.href = '/auth/login?session_expired=true';
+                }
+                return response;
+            } catch (err) {
+                throw err;
+            }
+        };
+
+        // 📱 MOBILE RESPONSIVE FIX: Sidebar Toggle Logic
+        function toggleMobileSidebar() {
+            const sidebar = document.getElementById("mainSidebar");
+            const backdrop = document.getElementById("sidebarBackdrop");
+            if (sidebar && backdrop) {
+                sidebar.classList.toggle("-translate-x-full");
+                backdrop.classList.toggle("hidden");
+                // Block background scrolling on mobile when sidebar is open
+                document.body.classList.toggle("overflow-hidden");
+            }
+        }
+
+        // --- LOGOUT LOGIC ---
+        async function handleLogout() {
+            if (!confirm('စနစ်မှ ထွက်ခွာရန် (Logout) သေချာပါသလား?')) return;
+            try {
+                const response = await fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' });
+                localStorage.removeItem('user'); // 🌟 SECURITY: Clear local cache
+                window.location.href = '/auth/login';
+            } catch (error) {
+                console.error('Logout error:', error);
+                alert('ကွန်ရက် ချိတ်ဆက်မှု အမှားအယွင်း ရှိနေပါသည်။');
+            }
+        }
+
+        // --- NOTIFICATION & SMART POLLING LOGIC ---
+        const NOTIF_API_BASE = "/api/v1/notifications";
+        let notifInterval;
+
+        document.addEventListener("DOMContentLoaded", () => {
+            fetchNotifications();
+            startSmartPolling();
+        });
+
+        function startSmartPolling() {
+            if (!notifInterval) {
+                notifInterval = setInterval(fetchNotifications, 60000); // 1 မိနစ်တစ်ခါ Data ယူမည်
+            }
+        }
+
+        // ⚡ PERFORMANCE FIX: Smart Polling (DDoS Prevention)
+        document.addEventListener("visibilitychange", () => {
+            if (document.hidden) {
+                clearInterval(notifInterval);
+                notifInterval = null;
+            } else {
+                fetchNotifications(); // Tab ပြန်ဖွင့်တာနဲ့ ချက်ချင်း ယူမည်
+                startSmartPolling();
+            }
+        });
+
+        // Dropdown ပြင်ပကိုနှိပ်ပါက ပိတ်ရန်
+        document.addEventListener("click", (event) => {
+            const dropdown = document.getElementById("notifDropdown");
+            const btn = document.getElementById("bellBtn");
+            if (dropdown && !dropdown.classList.contains("hidden")) {
+                if (!dropdown.contains(event.target) && !btn.contains(event.target)) {
+                    dropdown.classList.add("hidden");
+                }
+            }
+        });
+
+        function toggleNotifications(event) {
+            if(event) event.stopPropagation();
+            const dropdown = document.getElementById("notifDropdown");
+            if(dropdown) {
+                if (dropdown.classList.contains("hidden")) {
+                    dropdown.classList.remove("hidden");
+                    dropdown.classList.add("flex");
+                } else {
+                    dropdown.classList.add("hidden");
+                    dropdown.classList.remove("flex");
+                }
+            }
+        }
+
+        async function fetchNotifications() {
+            try {
+                const res = await fetch(`${NOTIF_API_BASE}/?limit=15`);
+                if (res.ok) {
+                    const notifications = await res.json();
+                    renderNotifications(notifications);
+                }
+            } catch (err) { /* silent fail to prevent console spam */ }
+        }
+
+        function renderNotifications(notifications) {
+            const listContainer = document.getElementById("notifList");
+            const badge = document.getElementById("unreadBadge");
+            if(!listContainer || !badge) return;
+            
+            const unreadCount = notifications.filter(n => !n.is_read).length;
+            
+            if (unreadCount > 0) {
+                badge.innerText = unreadCount > 99 ? '99+' : unreadCount;
+                badge.classList.remove("hidden");
+            } else {
+                badge.classList.add("hidden");
+            }
+
+            if (notifications.length === 0) {
+                listContainer.innerHTML = `<div class="p-6 text-center text-slate-400 text-xs font-medium">No new notifications</div>`;
+                return;
+            }
+
+            listContainer.innerHTML = notifications.map(n => {
+                const bgClass = n.is_read ? "bg-white" : "bg-blue-50/40";
+                const dot = n.is_read ? "" : `<div class="w-2 h-2 rounded-full bg-blue-600 mt-1.5 shrink-0 shadow-sm"></div>`;
+                
+                // 🌟 SECURITY FIX: Applied window.escapeHTML
+                return `
+                    <div class="p-4 hover:bg-slate-50 transition cursor-pointer flex gap-3 ${bgClass}" onclick="markAsRead('${n.id}')">
+                        ${dot}
+                        <div class="flex-1 min-w-0">
+                            <p class="text-[13px] font-extrabold text-blue-950 mb-0.5 truncate">${window.escapeHTML(n.title)}</p>
+                            <p class="text-[11px] text-slate-600 leading-snug line-clamp-2">${window.escapeHTML(n.message)}</p>
+                            <p class="text-[9px] font-bold text-slate-400 mt-2">${formatAppDate(n.created_at)}</p>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function formatAppDate(value) {
+            if (!value) return "";
+            const normalized = /(?:Z|[+-]\d{2}:\d{2})$/.test(value) ? value : `${value}Z`;
+            const date = new Date(normalized);
+            if (Number.isNaN(date.getTime())) return "";
+            return new Intl.DateTimeFormat(undefined, {
+                timeZone: "Asia/Yangon",
+                dateStyle: "medium",
+                timeStyle: "short"
+            }).format(date);
+        }
+
+        async function markAsRead(notifId) {
+            try {
+                await fetch(`${NOTIF_API_BASE}/${notifId}/read`, { method: "PUT" });
+                fetchNotifications(); // ချက်ချင်း refresh လုပ်မည်
+            } catch (err) {}
+        }
+
+        async function markAllAsRead() {
+            try {
+                await fetch(`${NOTIF_API_BASE}/read-all`, { method: "PUT" });
+                fetchNotifications();
+                toggleNotifications(); // ပိတ်မည်
+            } catch (err) {}
+        }
+    </script>
+
+    <!-- SPECIFIC PAGE SCRIPTS INJECTION -->
+    {% block scripts %}{% endblock %}
+
+</body>
+</html>

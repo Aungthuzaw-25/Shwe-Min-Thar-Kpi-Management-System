@@ -1,0 +1,28 @@
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+python-multipart>=0.0.6
+sqlalchemy>=2.0.25
+asyncpg>=0.29.0
+alembic>=1.13.1
+pydantic>=2.5.3
+pydantic-settings>=2.1.0
+email-validator>=2.1.0
+passlib[argon2]>=1.7.4
+python-jose[cryptography]>=3.3.0
+pytest
+httpx
+pytz==2024.1
+pytest-asyncio==0.23.5
+aiosqlite>=0.19.0
+openpyxl==3.1.2
+asteval==1.0.4
+apscheduler
+bcrypt==4.0.1
+jinja2
+slowapi>=0.1.9
+boto3>=1.34.0
+python-docx>=1.1.0  # Word (.docx) ဖိုင်များအတွက်
+pandas>=2.1.0   
+python-magic    # CSV နှင့် Data Processing များအတွက်
+redis>=5.0.1
+gunicorn>=21.2.0

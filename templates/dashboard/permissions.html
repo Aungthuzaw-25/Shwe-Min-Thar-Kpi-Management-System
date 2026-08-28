@@ -1,0 +1,65 @@
+{% extends "layouts/base.html" %}
+{% set active_page = "permissions" %}
+{% block title %}Role Permissions - KPI Platform{% endblock %}
+{% block content %}
+<div class="min-h-screen bg-slate-50 p-4 sm:p-8">
+    <header class="mb-6">
+        <h2 class="text-2xl sm:text-3xl font-extrabold text-blue-950">Role Permissions</h2>
+        <p class="mt-1 text-sm text-slate-500">Choose a role and enable the permissions available to that role.</p>
+    </header>
+    <section class="mx-auto max-w-4xl rounded-3xl border border-gray-100 bg-white p-5 shadow-sm sm:p-8">
+        <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end">
+            <label class="flex-1 text-xs font-bold uppercase tracking-wide text-slate-600">Role
+                <select id="roleSelect" class="mt-2 w-full rounded-xl border border-gray-200 bg-slate-50 p-3 text-sm font-semibold"></select>
+            </label>
+            <button id="savePermissions" class="rounded-xl bg-blue-950 px-5 py-3 text-sm font-bold text-white hover:bg-blue-900">Save permissions</button>
+        </div>
+        <div id="permissionsList" class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <p class="text-sm text-slate-400">Loading permissions...</p>
+        </div>
+        <p id="permissionMessage" class="mt-5 text-sm font-semibold"></p>
+    </section>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const roleSelect = document.getElementById("roleSelect");
+const list = document.getElementById("permissionsList");
+const message = document.getElementById("permissionMessage");
+let permissions = [];
+function escapePermission(value) {
+    return String(value ?? "").replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[char]));
+}
+async function loadPermissions() {
+    const [rolesResponse, permissionsResponse] = await Promise.all([
+        fetch("/api/v1/users/roles/list"), fetch("/api/v1/permissions/")
+    ]);
+    if (!rolesResponse.ok || !permissionsResponse.ok) throw new Error("Unable to load permissions.");
+    const roles = await rolesResponse.json();
+    permissions = await permissionsResponse.json();
+    roleSelect.innerHTML = roles.map(role => `<option value="${role.id}">${escapePermission(role.name)}</option>`).join("");
+    await loadRolePermissions();
+}
+async function loadRolePermissions() {
+    const response = await fetch(`/api/v1/permissions/role/${roleSelect.value}`);
+    if (!response.ok) throw new Error("Unable to load role permissions.");
+    const assigned = new Set((await response.json()).map(permission => permission.code));
+    list.innerHTML = permissions.map(permission => `
+        <label class="flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-4 hover:bg-blue-50">
+            <input type="checkbox" value="${escapePermission(permission.code)}" ${assigned.has(permission.code) ? "checked" : ""} class="permission-checkbox mt-1 h-4 w-4 accent-blue-900">
+            <span><span class="block text-sm font-bold text-blue-950">${escapePermission(permission.code)}</span>
+            <span class="text-xs text-slate-500">${escapePermission(permission.description || "")}</span></span>
+        </label>`).join("");
+}
+document.getElementById("savePermissions").addEventListener("click", async () => {
+    const permission_codes = [...document.querySelectorAll(".permission-checkbox:checked")].map(input => input.value);
+    const response = await fetch(`/api/v1/permissions/role/${roleSelect.value}`, {
+        method: "PUT", headers: {"Content-Type": "application/json"}, body: JSON.stringify({permission_codes})
+    });
+    message.textContent = response.ok ? "Permissions saved." : "Unable to save permissions.";
+    message.className = response.ok ? "mt-5 text-sm font-semibold text-emerald-600" : "mt-5 text-sm font-semibold text-red-600";
+});
+roleSelect.addEventListener("change", () => loadRolePermissions().catch(error => message.textContent = error.message));
+loadPermissions().catch(error => { list.innerHTML = ""; message.textContent = error.message; message.className = "mt-5 text-sm font-semibold text-red-600"; });
+</script>
+{% endblock %}

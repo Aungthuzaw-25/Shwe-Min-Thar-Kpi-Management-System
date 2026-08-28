@@ -1,0 +1,718 @@
+{% extends "layouts/base.html" %}
+{% set active_page = "users" %}
+
+{% block title %}Users Management - KPI Dashboard{% endblock %}
+
+{% block content %}
+<style>
+    @keyframes fadeInUp {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    .animate-fade-in-up {
+        animation: fadeInUp 0.4s ease-out forwards;
+    }
+    .modal-transition {
+        transition: opacity 0.3s ease, transform 0.3s ease;
+    }
+</style>
+
+<!-- HEADER SECTION -->
+<header class="bg-white px-4 sm:px-6 md:px-8 py-5 sm:py-6 flex flex-col md:flex-row justify-between items-start md:items-center shadow-sm shrink-0 border-b border-gray-100 animate-fade-in-up gap-4">
+    <div>
+        <h2 class="text-2xl sm:text-3xl font-extrabold text-blue-950 tracking-tight">User Management</h2>
+        <p class="text-xs sm:text-sm text-slate-500 mt-1 sm:mt-1.5 font-medium">Manage system users, define roles, and assign departments.</p>
+    </div>
+    <div class="flex flex-col sm:flex-row items-stretch sm:items-center w-full md:w-auto gap-3 sm:space-x-4">
+        <!-- Search Bar -->
+        <div class="relative group w-full sm:w-auto">
+            <input type="text" id="searchInput" placeholder="Search users..." 
+                   class="pl-10 pr-4 py-2.5 bg-slate-50 hover:bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 w-full sm:w-64 md:w-72 shadow-sm transition-all text-slate-700 font-medium">
+            <svg class="w-5 h-5 text-gray-400 absolute left-3 top-2.5 group-hover:text-blue-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+            </svg>
+        </div>
+        <!-- Add User Button -->
+        <button onclick="openUserModal()" class="w-full sm:w-auto justify-center bg-blue-950 hover:bg-blue-900 text-white px-5 py-2.5 rounded-xl text-sm font-bold flex items-center transition-all shadow-md transform hover:-translate-y-0.5 shrink-0">
+            <svg class="w-5 h-5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+            </svg>
+            Add New User
+        </button>
+    </div>
+</header>
+
+<!-- TABS SECTION -->
+<div class="px-4 sm:px-6 md:px-8 pt-4 sm:pt-5 flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-gray-200 bg-slate-50 shrink-0 animate-fade-in-up gap-3" style="animation-delay: 0.1s;">
+    <div class="flex space-x-6 sm:space-x-8 overflow-x-auto w-full sm:w-auto custom-scrollbar pb-1">
+        <button onclick="switchTab('active')" id="activeTabBtn" class="whitespace-nowrap pb-2 sm:pb-3 text-sm font-bold text-blue-950 border-b-2 border-blue-950 transition-all duration-300">
+            Active Users
+        </button>
+        <button onclick="switchTab('deleted')" id="deletedTabBtn" class="whitespace-nowrap pb-2 sm:pb-3 text-sm font-semibold text-slate-500 hover:text-blue-950 border-b-2 border-transparent transition-all duration-300">
+            Deleted Users (Trash)
+        </button>
+    </div>
+    
+    <div class="pb-2 sm:pb-3 w-full sm:w-auto flex justify-end">
+        <button onclick="refreshCurrentTab()" class="px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-xs font-bold flex items-center transition-colors shadow-sm focus:outline-none">
+            <svg class="w-4 h-4 mr-1.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+            </svg>
+            Refresh List
+        </button>
+    </div>
+</div>
+
+<!-- USERS TABLE SECTION -->
+<div class="flex-1 p-4 sm:p-6 md:p-8 min-h-0 flex flex-col relative bg-slate-50 animate-fade-in-up" style="animation-delay: 0.15s;">
+    <div class="bg-white rounded-2xl sm:rounded-3xl shadow-sm border border-gray-100 flex-1 flex flex-col min-h-0 overflow-hidden">
+        <div class="overflow-y-auto overflow-x-auto custom-scrollbar flex-1 min-h-0 w-full">
+            <table class="w-full text-xs sm:text-sm text-left min-w-[700px]">
+                <thead class="text-[10px] sm:text-xs text-slate-500 uppercase tracking-wider bg-slate-50 border-b border-gray-100 sticky top-0 z-10 shadow-sm">
+                    <tr>
+                        <th class="px-4 sm:px-6 py-3 sm:py-4 font-bold">User Profile</th>
+                        <th class="px-4 sm:px-6 py-3 sm:py-4 font-bold">Email</th>
+                        <th class="px-4 sm:px-6 py-3 sm:py-4 font-bold">System Role</th>
+                        <th class="px-4 sm:px-6 py-3 sm:py-4 font-bold w-1/4">Assigned Departments</th>
+                        <th class="px-4 sm:px-6 py-3 sm:py-4 font-bold text-center">Status</th>
+                        <th class="px-4 sm:px-6 py-3 sm:py-4 font-bold text-right">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="usersTableBody" class="divide-y divide-gray-50 bg-white">
+                    <tr>
+                        <td colspan="6" class="px-6 py-16 text-center text-slate-500 flex flex-col items-center justify-center bg-white">
+                            <svg class="animate-spin h-8 w-8 text-blue-900 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            <span class="font-medium text-sm">Loading user data...</span>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- CREATE / EDIT USER MODAL -->
+<div id="userModal" class="fixed inset-0 z-[70] hidden flex items-center justify-center bg-slate-900/60 backdrop-blur-sm transition-opacity opacity-0 modal-transition p-2 sm:p-4">
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-2xl mx-auto overflow-hidden flex flex-col max-h-[95vh] sm:max-h-[90vh] transform scale-95 transition-transform duration-300" id="userModalContent">
+        
+        <div class="px-5 sm:px-8 py-4 sm:py-5 border-b border-gray-100 flex justify-between items-center bg-slate-50 shrink-0">
+            <div>
+                <h3 id="modalTitle" class="text-lg sm:text-xl font-extrabold text-blue-950 tracking-tight">Add New User</h3>
+                <p class="text-[10px] sm:text-xs text-slate-500 mt-0.5 sm:mt-1 font-medium">Enter user details and configure access permissions.</p>
+            </div>
+            <button onclick="closeUserModal()" class="text-slate-400 hover:text-red-500 bg-white border border-gray-200 p-1.5 sm:p-2 rounded-xl focus:outline-none transition-colors shadow-sm shrink-0 ml-2">
+                <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+            </button>
+        </div>
+        
+        <div class="px-5 sm:px-8 py-5 sm:py-6 overflow-y-auto custom-scrollbar flex-1 bg-white">
+            <form id="userForm" class="space-y-4 sm:space-y-6">
+                <input type="hidden" id="userId">
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+                    <div>
+                        <label class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wide">First Name <span class="text-red-500">*</span></label>
+                        <input type="text" id="firstName" required class="w-full px-3 sm:px-4 py-2.5 sm:py-3 bg-slate-50 hover:bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-900 text-xs sm:text-sm font-semibold transition-all shadow-inner">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wide">Last Name <span class="text-red-500">*</span></label>
+                        <input type="text" id="lastName" required class="w-full px-3 sm:px-4 py-2.5 sm:py-3 bg-slate-50 hover:bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-900 text-xs sm:text-sm font-semibold transition-all shadow-inner">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6">
+                    <div>
+                        <label class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wide">Email Address <span class="text-red-500">*</span></label>
+                        <input type="email" id="userEmail" required class="w-full px-3 sm:px-4 py-2.5 sm:py-3 bg-slate-50 hover:bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-900 text-xs sm:text-sm font-semibold transition-all shadow-inner">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wide">Department</label>
+                        <select id="userDepartment" onchange="onDepartmentChange()" class="w-full px-3 sm:px-4 py-2.5 sm:py-3 bg-slate-50 hover:bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-900 text-xs sm:text-sm font-semibold cursor-pointer transition-all shadow-inner appearance-none">
+                            <option value="">-- Select Department --</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6">
+                    <div>
+                        <label class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wide">Position / Title</label>
+                        <select id="userPosition" class="w-full px-3 sm:px-4 py-2.5 sm:py-3 bg-slate-50 hover:bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-900 text-xs sm:text-sm font-semibold cursor-pointer transition-all shadow-inner appearance-none">
+                            <option value="">-- Select Department First --</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wide">System Role <span class="text-red-500">*</span></label>
+                        <select id="userRole" required class="w-full px-3 sm:px-4 py-2.5 sm:py-3 bg-slate-50 hover:bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-900 text-xs sm:text-sm font-semibold cursor-pointer transition-all shadow-inner appearance-none">
+                            <option value="">-- Select Role --</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-1 gap-4 sm:gap-6 mb-4 sm:mb-6">
+                    <div>
+                        <label class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wide">Region / Town</label>
+                        <input type="text" id="userRegionTown" class="w-full px-3 sm:px-4 py-2.5 sm:py-3 bg-slate-50 hover:bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-900 text-xs sm:text-sm font-semibold transition-all shadow-inner" placeholder="e.g. YGN Office">
+                    </div>
+                </div>
+
+                <div id="passwordContainer" class="hidden bg-blue-50/50 p-4 sm:p-5 rounded-2xl border border-blue-100 relative overflow-hidden">
+                    <div class="absolute -right-4 -top-4 text-blue-100 opacity-50">
+                        <svg class="w-16 h-16 sm:w-24 sm:h-24" fill="currentColor" viewBox="0 0 24 24"><path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                    </div>
+                    
+                    <div class="relative z-10">
+                        <label class="block text-[10px] sm:text-xs font-extrabold text-blue-900 mb-2 uppercase tracking-wide">Temporary Password <span class="text-red-500">*</span></label>
+                        <div class="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3">
+                            <input type="text" id="userPassword" class="flex-1 px-3 sm:px-4 py-2.5 sm:py-3 border border-blue-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-xs sm:text-sm transition-all font-mono font-bold bg-white shadow-sm" placeholder="Type password or auto-generate">
+                            <button type="button" onclick="generateRandomPassword()" class="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl text-xs sm:text-sm font-bold transition-colors shadow-sm whitespace-nowrap flex items-center justify-center focus:outline-none">
+                                <svg class="w-4 h-4 mr-1.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                                Auto Generate
+                            </button>
+                        </div>
+                        <p class="text-[9px] sm:text-xs font-medium text-blue-700 mt-2 sm:mt-2.5 flex items-center">
+                            <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                            User will be forced to change this password upon first login.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="flex items-center pt-2">
+                    <label class="relative inline-flex items-center cursor-pointer group">
+                        <input type="checkbox" id="userActive" checked class="sr-only peer">
+                        <div class="w-9 h-5 sm:w-11 sm:h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 sm:after:h-5 sm:after:w-5 after:transition-all peer-checked:bg-green-500 shadow-inner"></div>
+                        <span class="ml-2.5 sm:ml-3 text-xs sm:text-sm font-bold text-slate-700 group-hover:text-blue-950 transition-colors">Account is Active</span>
+                    </label>
+                </div>
+            </form>
+        </div>
+        
+        <div class="px-5 sm:px-8 py-4 sm:py-5 border-t border-gray-100 flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 bg-slate-50 shrink-0">
+            <button type="button" onclick="closeUserModal()" class="w-full sm:w-auto px-5 sm:px-6 py-2.5 bg-white border border-gray-300 rounded-xl text-xs sm:text-sm font-semibold text-slate-700 hover:bg-gray-50 transition-colors shadow-sm focus:outline-none text-center">Cancel</button>
+            <button type="button" id="saveBtn" onclick="saveUser()" class="w-full sm:w-auto px-6 sm:px-8 py-2.5 bg-blue-950 border border-transparent rounded-xl text-xs sm:text-sm font-bold text-white hover:bg-blue-900 transition-all transform hover:-translate-y-0.5 shadow-lg flex items-center justify-center focus:outline-none">
+                <span>Save User</span>
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- RESET PASSWORD MODAL -->
+<div id="resetPasswordModal" class="fixed inset-0 z-[80] hidden flex items-center justify-center bg-slate-900/60 backdrop-blur-sm transition-opacity opacity-0 modal-transition p-4">
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-sm mx-auto overflow-hidden flex flex-col transform scale-95 transition-transform duration-300" id="resetModalContent">
+        <div class="px-5 sm:px-6 py-4 sm:py-5 border-b border-gray-100 flex justify-between items-center bg-amber-50">
+            <h3 class="text-base sm:text-lg font-extrabold text-amber-900 flex items-center">
+                <svg class="w-4 h-4 sm:w-5 sm:h-5 mr-1.5 sm:mr-2 text-amber-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path>
+                </svg>
+                Reset Password
+            </h3>
+        </div>
+        <div class="p-5 sm:p-6">
+            <input type="hidden" id="resetUserId">
+            <label class="block text-[10px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">New Password <span class="text-red-500">*</span></label>
+            <input type="text" id="newPasswordInput" required class="w-full px-3 sm:px-4 py-2.5 sm:py-3 bg-slate-50 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 text-xs sm:text-sm font-bold font-mono transition-colors shadow-inner">
+            <p class="text-[9px] sm:text-[11px] font-medium text-slate-500 mt-2 sm:mt-3 leading-relaxed">Password must meet the security policy (e.g. Minimum 12 characters, uppercase, lowercase, numbers, symbols).</p>
+        </div>
+        <div class="px-5 sm:px-6 py-3 sm:py-4 border-t border-gray-100 flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 bg-slate-50">
+            <button type="button" onclick="closeResetModal()" class="w-full sm:w-auto px-4 sm:px-5 py-2.5 bg-white border border-gray-300 rounded-xl text-xs sm:text-sm font-semibold text-slate-700 hover:bg-gray-50 shadow-sm transition-colors focus:outline-none text-center">Cancel</button>
+            <button type="button" onclick="confirmResetPassword()" class="w-full sm:w-auto px-4 sm:px-5 py-2.5 bg-amber-600 rounded-xl text-xs sm:text-sm font-bold text-white hover:bg-amber-700 shadow-md transition-all transform hover:-translate-y-0.5 focus:outline-none flex justify-center">Force Reset</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    'use strict';
+
+    let allUsers = [];
+    let currentTab = 'active';
+
+    // 🌟 SECURITY FIX: Global HTML Escape Function to prevent XSS
+    function escapeHTML(str) {
+        if (str === null || str === undefined) return "";
+        return str.toString()
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+    // 🌟 RESPONSIVE & UX FIX: Toast styling matching enterprise
+    function showToast(message, type = 'success') {
+        let container = document.getElementById('toastContainer');
+        if(!container) {
+            container = document.createElement('div');
+            container.id = 'toastContainer';
+            container.className = 'fixed top-5 right-5 z-[9999] flex flex-col gap-2 max-w-[90%] sm:max-w-md w-full items-end';
+            document.body.appendChild(container);
+        }
+
+        const toast = document.createElement('div');
+        const config = type === 'success' ? 'bg-emerald-50 text-emerald-900 border-emerald-500' : 'bg-red-50 text-red-900 border-red-500';
+        const icon = type === 'success' 
+            ? `<svg class="w-5 h-5 sm:w-6 sm:h-6 text-emerald-500 mr-2 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>`
+            : `<svg class="w-5 h-5 sm:w-6 sm:h-6 text-red-500 mr-2 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>`;
+
+        toast.className = `flex items-center px-4 py-3 sm:px-5 sm:py-4 rounded-xl shadow-lg border-l-4 ${config} text-xs sm:text-sm font-bold mb-3 animate-fade-in-up w-full bg-white`;
+        toast.innerHTML = icon + `<div>${escapeHTML(message)}</div>`;
+        
+        container.appendChild(toast);
+        setTimeout(() => toast.remove(), 4500);
+    }
+
+    function toggleModal(modalId, contentId, show) {
+        const modal = document.getElementById(modalId);
+        const content = document.getElementById(contentId);
+        if (show) {
+            modal.classList.remove('hidden');
+            void modal.offsetWidth;
+            modal.classList.remove('opacity-0');
+            content.classList.remove('scale-95');
+            content.classList.add('scale-100');
+        } else {
+            modal.classList.add('opacity-0');
+            content.classList.remove('scale-100');
+            content.classList.add('scale-95');
+            setTimeout(() => modal.classList.add('hidden'), 300);
+        }
+    }
+
+    function generateRandomPassword() {
+        const randomPass = Math.random().toString(36).slice(-8) + "Kpi@1!";
+        document.getElementById('userPassword').value = randomPass;
+    }
+
+    document.addEventListener('DOMContentLoaded', async () => {
+        await fetchDropdownData();
+        await loadUsers();
+        
+        document.getElementById('searchInput').addEventListener('input', function(e) {
+            const term = e.target.value.toLowerCase();
+            const filtered = allUsers.filter(u => 
+                (u.first_name || '').toLowerCase().includes(term) || 
+                (u.last_name || '').toLowerCase().includes(term) || 
+                (u.email || '').toLowerCase().includes(term)
+            );
+            renderUsersTable(filtered);
+        });
+    });
+
+    async function switchTab(tab) {
+        currentTab = tab;
+        const activeBtn = document.getElementById('activeTabBtn');
+        const deletedBtn = document.getElementById('deletedTabBtn');
+        document.getElementById('searchInput').value = '';
+
+        const activeStyle = "whitespace-nowrap pb-2 sm:pb-3 text-sm font-bold text-blue-950 border-b-2 border-blue-950 transition-all duration-300";
+        const inactiveStyle = "whitespace-nowrap pb-2 sm:pb-3 text-sm font-semibold text-slate-500 hover:text-blue-950 border-b-2 border-transparent transition-all duration-300";
+
+        if (tab === 'active') {
+            activeBtn.className = activeStyle;
+            deletedBtn.className = inactiveStyle;
+            await loadUsers();
+        } else {
+            deletedBtn.className = "whitespace-nowrap pb-2 sm:pb-3 text-sm font-bold text-red-700 border-b-2 border-red-700 transition-all duration-300";
+            activeBtn.className = inactiveStyle;
+            await loadDeletedUsers();
+        }
+    }
+
+    async function refreshCurrentTab() {
+        document.getElementById('searchInput').value = '';
+        if (currentTab === 'active') {
+            await loadUsers();
+            showToast("Active users list refreshed.", "success");
+        } else {
+            await loadDeletedUsers();
+            showToast("Deleted users trash refreshed.", "success");
+        }
+    }
+
+    async function fetchDropdownData() {
+        try {
+            const roleRes = await fetch('/api/v1/users/roles/list');
+            // 🛡️ AUTH FIX: Redirect on session expiry
+            if (roleRes.status === 401 || roleRes.status === 403) { window.location.href = '/auth/login'; return; }
+            
+            if (roleRes.ok) {
+                const roles = await roleRes.json();
+                document.getElementById('userRole').innerHTML = '<option value="">-- Select Role --</option>' + roles.map(r => `<option value="${r.id}">${escapeHTML(r.name)}</option>`).join('');
+            }
+            
+            const deptRes = await fetch('/api/v1/departments/');
+            if (deptRes.status === 401 || deptRes.status === 403) { window.location.href = '/auth/login'; return; }
+            
+            if (deptRes.ok) {
+                const depts = await deptRes.json();
+                document.getElementById('userDepartment').innerHTML = '<option value="">-- Select Department --</option>' + depts.map(d => `<option value="${d.id}">${escapeHTML(d.name)}</option>`).join('');
+            }
+        } catch (err) {
+            showToast("Failed to load roles and departments data.", "error");
+        }
+    }
+
+    async function onDepartmentChange(selectedPositionId = null) {
+        const deptId = document.getElementById('userDepartment').value;
+        const posSelect = document.getElementById('userPosition');
+        
+        posSelect.innerHTML = '<option value="">-- Select Position --</option>';
+        if (!deptId) return;
+
+        try {
+            const res = await fetch(`/api/v1/positions/department/${deptId}`);
+            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+            
+            if (res.ok) {
+                const positions = await res.json();
+
+                if (positions.length > 0) {
+                    posSelect.innerHTML = '<option value="">-- Select Position --</option>' + positions.map(p => `<option value="${p.id}">${escapeHTML(p.name)}</option>`).join('');
+                } else {
+                    posSelect.innerHTML = '<option value="">-- No positions found --</option>';
+                }
+
+                if (selectedPositionId) {
+                    posSelect.value = selectedPositionId;
+                }
+            } else {
+                console.error("Failed to load positions", await res.text());
+            }
+        } catch (err) {
+            showToast("Failed to load positions for this department.", "error");
+        }
+    }
+
+    async function loadUsers() {
+        try {
+            const res = await fetch('/api/v1/users/');
+            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+            
+            if (res.ok) {
+                allUsers = await res.json();
+                renderUsersTable(allUsers);
+            } else {
+                document.getElementById('usersTableBody').innerHTML = `<tr><td colspan="6" class="px-6 py-12 text-center text-red-500 font-bold bg-white text-xs sm:text-sm">Failed to load users data.</td></tr>`;
+            }
+        } catch (error) {
+            document.getElementById('usersTableBody').innerHTML = `<tr><td colspan="6" class="px-6 py-12 text-center text-red-500 font-bold bg-white text-xs sm:text-sm">Network Error. Please check your connection.</td></tr>`;
+        }
+    }
+
+    async function loadDeletedUsers() {
+        try {
+            const res = await fetch('/api/v1/users/deleted/list');
+            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+            
+            if (res.ok) {
+                allUsers = await res.json();
+                renderUsersTable(allUsers);
+            } else {
+                document.getElementById('usersTableBody').innerHTML = `<tr><td colspan="6" class="px-6 py-12 text-center text-red-500 font-bold bg-white text-xs sm:text-sm">Failed to load deleted users.</td></tr>`;
+            }
+        } catch (error) {
+            document.getElementById('usersTableBody').innerHTML = `<tr><td colspan="6" class="px-6 py-12 text-center text-red-500 font-bold bg-white text-xs sm:text-sm">Network Error.</td></tr>`;
+        }
+    }
+
+    // 🌟 SECURITY FIX: Applied escapeHTML
+    function formatUserDepartments(user) {
+        if (!user.departments || user.departments.length === 0) {
+            return `<span class="text-slate-400 text-[10px] sm:text-xs font-semibold italic bg-slate-50 px-2 sm:px-2.5 py-1 rounded-md border border-slate-100 whitespace-nowrap">No Department</span>`;
+        }
+
+        const deptNames = user.departments.map(d => escapeHTML(d.name));
+        
+        if (deptNames.length <= 2) {
+            return `<span class="text-xs sm:text-sm text-slate-700 font-bold whitespace-nowrap">${deptNames.join(', ')}</span>`;
+        } else {
+            const firstTwo = deptNames.slice(0, 2).join(', ');
+            const extraCount = deptNames.length - 2;
+            return `
+                <div class="flex items-center flex-wrap gap-1 sm:gap-2">
+                    <span class="text-xs sm:text-sm text-slate-700 font-bold whitespace-nowrap">${firstTwo}</span>
+                    <a href="/superadmin/users/${user.id}/profile" class="text-[9px] sm:text-[10px] bg-blue-100 text-blue-800 hover:text-white hover:bg-blue-700 font-extrabold px-1.5 sm:px-2 py-0.5 sm:py-1 rounded cursor-pointer transition-colors shadow-sm whitespace-nowrap">
+                        +${extraCount} more
+                    </a>
+                </div>
+            `;
+        }
+    }
+
+    function renderUsersTable(users) {
+        const tbody = document.getElementById('usersTableBody');
+        
+        if (!users || users.length === 0) {
+            const emptyText = currentTab === 'active' ? 'No active users found.' : 'No deleted users in trash.';
+            tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-16 text-center text-slate-500 font-medium bg-white text-xs sm:text-sm">${emptyText}</td></tr>`;
+            return;
+        }
+
+        // 🌟 SECURITY FIX: Applied escapeHTML() to user inputs and safe JSON Encoding for the Edit Button
+        tbody.innerHTML = users.map((user, index) => {
+            const initial1 = user.first_name ? escapeHTML(user.first_name.charAt(0).toUpperCase()) : '';
+            const initial2 = user.last_name ? escapeHTML(user.last_name.charAt(0).toUpperCase()) : '';
+            const roleName = user.role ? escapeHTML(user.role.name) : 'N/A';
+            const isUserDeleted = currentTab === 'deleted';
+            
+            const positionName = user.position ? escapeHTML(user.position.name) : 'No Title';
+            const regionTown = user.region_town ? escapeHTML(user.region_town) : 'No Region';
+            
+            let statusBadge = '';
+            if (isUserDeleted) {
+                statusBadge = `<span class="px-2.5 sm:px-3 py-1 inline-flex text-[10px] sm:text-xs leading-5 font-bold rounded-md bg-red-100 text-red-800 border border-red-200">Deleted</span>`;
+            } else if (user.is_active) {
+                statusBadge = `<span class="px-2.5 sm:px-3 py-1 inline-flex text-[10px] sm:text-xs leading-5 font-bold rounded-md bg-emerald-100 text-emerald-800 border border-emerald-200">Active</span>`;
+            } else {
+                statusBadge = `<span class="px-2.5 sm:px-3 py-1 inline-flex text-[10px] sm:text-xs leading-5 font-bold rounded-md bg-slate-200 text-slate-600 border border-slate-300">Inactive</span>`;
+            }
+
+            // 🌟 URL-Safe JSON Serialization
+            const safeUserJSON = encodeURIComponent(JSON.stringify(user)).replace(/'/g, "%27");
+
+            let actionButtons = '';
+            if (isUserDeleted) {
+                actionButtons = `
+                    <div class="flex justify-end gap-1.5 flex-wrap">
+                        <button onclick="restoreUser('${user.id}')" class="px-2 sm:px-3 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg transition-colors flex items-center font-bold text-[10px] sm:text-xs border border-emerald-200 shadow-sm" title="Restore User">
+                            <svg class="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                            Restore
+                        </button>
+                        <button onclick="permanentDeleteUser('${user.id}')" class="px-2 sm:px-3 py-1.5 bg-red-50 text-red-700 hover:bg-red-100 rounded-lg transition-colors flex items-center font-bold text-[10px] sm:text-xs border border-red-200 shadow-sm" title="Delete Permanently">
+                            <svg class="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                            Delete
+                        </button>
+                    </div>
+                `;
+            } else {
+                actionButtons = `
+                    <div class="flex justify-end gap-1 flex-wrap opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                        <a href="/superadmin/users/${user.id}/profile" class="p-1.5 sm:p-2 text-emerald-600 hover:bg-emerald-50 rounded-xl transition-colors" title="View Profile">
+                            <svg class="w-4 h-4 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+                        </a>
+                        <button onclick="editUser('${safeUserJSON}')" class="p-1.5 sm:p-2 text-blue-600 hover:bg-blue-50 rounded-xl transition-colors" title="Edit Identity">
+                            <svg class="w-4 h-4 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                        </button>
+                        <button onclick="openResetModal('${user.id}')" class="p-1.5 sm:p-2 text-amber-600 hover:bg-amber-50 rounded-xl transition-colors" title="Reset Password">
+                            <svg class="w-4 h-4 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
+                        </button>
+                        <button onclick="deleteUser('${user.id}')" class="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded-xl transition-colors" title="Delete User">
+                            <svg class="w-4 h-4 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                        </button>
+                    </div>
+                `;
+            }
+
+            return `
+                <tr class="hover:bg-blue-50/30 transition-colors group ${isUserDeleted ? 'opacity-80 bg-red-50/30' : 'bg-white'} animate-fade-in-up" style="animation-delay: ${index * 0.05}s">
+                    <td class="px-4 sm:px-6 py-4 sm:py-5 min-w-[220px]">
+                        <div class="flex items-center">
+                            <div class="w-9 h-9 sm:w-11 sm:h-11 rounded-2xl bg-gradient-to-tr ${isUserDeleted ? 'from-slate-200 to-slate-300' : 'from-blue-100 to-blue-200'} flex items-center justify-center ${isUserDeleted ? 'text-slate-500' : 'text-blue-800'} font-extrabold text-xs sm:text-sm shrink-0 mr-3 sm:mr-4 shadow-sm border border-white">
+                                ${initial1}${initial2}
+                            </div>
+                            <div class="min-w-0 pr-2">
+                                <div class="font-extrabold ${isUserDeleted ? 'text-slate-500 line-through' : 'text-blue-950'} text-sm sm:text-base truncate">${escapeHTML(user.first_name)} ${escapeHTML(user.last_name)}</div>
+                                <div class="text-[9px] sm:text-[11px] font-semibold text-slate-500 mt-0.5 sm:mt-1 tracking-wide truncate">${positionName} • ${regionTown}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="px-4 sm:px-6 py-4 sm:py-5 text-slate-600 font-medium text-xs sm:text-sm truncate max-w-[150px]" title="${escapeHTML(user.email)}">${escapeHTML(user.email)}</td>
+                    <td class="px-4 sm:px-6 py-4 sm:py-5 text-center sm:text-left whitespace-nowrap">
+                        <span class="px-2.5 sm:px-3 py-1 inline-flex text-[10px] sm:text-xs leading-5 font-extrabold rounded-lg bg-blue-50 text-blue-800 border border-blue-200 shadow-sm">${roleName}</span>
+                    </td>
+                    <td class="px-4 sm:px-6 py-4 sm:py-5 text-slate-600 text-xs sm:text-sm min-w-[150px]">
+                        ${formatUserDepartments(user)}
+                    </td>
+                    <td class="px-4 sm:px-6 py-4 sm:py-5 whitespace-nowrap text-center">${statusBadge}</td>
+                    <td class="px-4 sm:px-6 py-4 sm:py-5 text-right w-24">
+                        ${actionButtons}
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    async function openUserModal() {
+        document.getElementById('userForm').reset();
+        document.getElementById('userId').value = '';
+        document.getElementById('modalTitle').innerText = 'Add New User';
+        document.getElementById('passwordContainer').classList.remove('hidden');
+        document.getElementById('userPassword').value = ''; 
+        document.getElementById('userPosition').innerHTML = '<option value="">-- Select Department First --</option>';
+        toggleModal('userModal', 'userModalContent', true);
+    }
+
+    function closeUserModal() {
+        toggleModal('userModal', 'userModalContent', false);
+    }
+
+    async function editUser(encodedUserJSON) {
+        const user = JSON.parse(decodeURIComponent(encodedUserJSON));
+        
+        document.getElementById('userId').value = user.id;
+        document.getElementById('firstName').value = user.first_name || '';
+        document.getElementById('lastName').value = user.last_name || '';
+        document.getElementById('userEmail').value = user.email || '';
+        
+        if (user.departments && user.departments.length > 0) {
+            document.getElementById('userDepartment').value = user.departments[0].id;
+            await onDepartmentChange(user.position ? user.position.id : '');
+        } else {
+            document.getElementById('userDepartment').value = '';
+            document.getElementById('userPosition').innerHTML = '<option value="">-- Select Department First --</option>';
+        }
+        
+        document.getElementById('userRegionTown').value = user.region_town || ''; 
+        document.getElementById('userRole').value = user.role ? user.role.id : ''; 
+        document.getElementById('userActive').checked = user.is_active;
+        
+        document.getElementById('modalTitle').innerText = 'Edit User Identity';
+        document.getElementById('passwordContainer').classList.add('hidden'); 
+        toggleModal('userModal', 'userModalContent', true);
+    }
+
+    async function saveUser() {
+        const id = document.getElementById('userId').value;
+        const isEdit = !!id;
+        const form = document.getElementById('userForm');
+        
+        if (!form.checkValidity()) {
+            form.reportValidity();
+            return;
+        }
+
+        const btn = document.getElementById('saveBtn');
+        const originalText = btn.innerHTML;
+        btn.innerHTML = `<svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Saving...`;
+        btn.disabled = true;
+
+        const payload = {
+            first_name: document.getElementById('firstName').value,
+            last_name: document.getElementById('lastName').value,
+            email: document.getElementById('userEmail').value,
+            department_id: document.getElementById('userDepartment').value || null, 
+            position_id: document.getElementById('userPosition').value || null,
+            region_town: document.getElementById('userRegionTown').value || null, 
+            role_id: document.getElementById('userRole').value,
+            is_active: document.getElementById('userActive').checked
+        };
+
+        const url = isEdit ? `/api/v1/users/${id}` : '/api/v1/users/';
+        const method = isEdit ? 'PUT' : 'POST';
+
+        if (!isEdit) {
+            const providedPassword = document.getElementById('userPassword').value;
+            if (!providedPassword) {
+                showToast("Please provide or auto-generate a temporary password.", "error");
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+                return;
+            }
+            payload.password = providedPassword;
+        }
+
+        try {
+            const res = await fetch(url, { 
+                method: method, 
+                headers: { 'Content-Type': 'application/json' }, 
+                body: JSON.stringify(payload) 
+            });
+            
+            // 🛡️ AUTH FIX
+            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+            
+            if (res.ok) {
+                const savedData = await res.json();
+                closeUserModal();
+                await loadUsers();
+                
+                if (!isEdit && savedData.generated_password) {
+                    showToast(`User created successfully!\nTemporary Password: ${savedData.generated_password}`, "success");
+                } else {
+                    showToast("User updated successfully.", "success");
+                }
+            } else {
+                const err = await res.json();
+                showToast(`Error: ${err.detail || 'Validation failed'}`, "error");
+            }
+        } catch (error) {
+            showToast("Network error occurred while saving user.", "error");
+        } finally {
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }
+    }
+
+    async function deleteUser(id) {
+        if (!confirm("Are you sure you want to disable and move this user to trash?")) return;
+        try {
+            const res = await fetch(`/api/v1/users/${id}`, { method: 'DELETE' });
+            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+            
+            if (res.ok) { showToast("User disabled and moved to trash.", "success"); await loadUsers(); } 
+            else { const err = await res.json(); showToast(`Error: ${err.detail}`, "error"); }
+        } catch (err) { showToast("Network error while deleting user.", "error"); }
+    }
+
+    async function restoreUser(id) {
+        if (!confirm("Are you sure you want to restore and activate this deleted account?")) return;
+        try {
+            const res = await fetch(`/api/v1/users/${id}/restore`, { method: 'POST', headers: { 'Content-Type': 'application/json' }});
+            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+            
+            if (res.ok) { showToast("User restored and activated successfully.", "success"); await loadDeletedUsers(); } 
+            else { const err = await res.json(); showToast(`Error: ${err.detail}`, "error"); }
+        } catch (err) { showToast("Network error while restoring user.", "error"); }
+    }
+
+    async function permanentDeleteUser(id) {
+        if (!confirm("WARNING: This will permanently delete the user from the database and cannot be undone. Are you sure?")) return;
+        try {
+            const res = await fetch(`/api/v1/users/${id}/permanent`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }});
+            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+            
+            if (res.ok) { showToast("User permanently deleted from database.", "success"); await loadDeletedUsers(); } 
+            else { const err = await res.json(); showToast(`Error: ${err.detail}`, "error"); }
+        } catch (err) { showToast("Network error while permanently deleting user.", "error"); }
+    }
+
+    function openResetModal(userId) {
+        document.getElementById('resetUserId').value = userId;
+        document.getElementById('newPasswordInput').value = Math.random().toString(36).slice(-8) + "Kpi@1!";
+        toggleModal('resetPasswordModal', 'resetModalContent', true);
+    }
+
+    function closeResetModal() { toggleModal('resetPasswordModal', 'resetModalContent', false); }
+
+    async function confirmResetPassword() {
+        const id = document.getElementById('resetUserId').value;
+        const newPassword = document.getElementById('newPasswordInput').value;
+        if (!newPassword) return showToast("Password cannot be empty", "error");
+
+        try {
+            const res = await fetch(`/api/v1/users/${id}/reset-password`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ new_password: newPassword })
+            });
+
+            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+
+            if (res.ok) {
+                showToast(`Password reset successful!\nNew Password: ${newPassword}`, "success");
+                closeResetModal();
+            } else {
+                const err = await res.json();
+                showToast(`Error: ${err.detail}`, "error");
+            }
+        } catch (err) { showToast("Network error while resetting password.", "error"); }
+    }
+</script>
+{% endblock %}

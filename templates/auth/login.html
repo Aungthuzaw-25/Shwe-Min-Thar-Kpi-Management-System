@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KPI Dashboard - Sign In</title>
+    
+    <link rel="stylesheet" href="/static/css/output.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .bg-kpi-cream { background-color: #fcf6f0; }
+        
+        /* Toast Animation CSS */
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
+        .toast-enter { animation: slideIn 0.3s ease-out forwards; }
+        .toast-exit { animation: fadeOut 0.3s ease-out forwards; }
+    </style>
+</head>
+<body class="flex flex-col min-h-screen antialiased bg-kpi-cream m-0 p-0 relative">
+
+    <!-- GLOBAL TOAST NOTIFICATIONS CONTAINER -->
+    <div id="toastContainer" class="fixed top-5 right-5 z-[9999] flex flex-col space-y-3 max-w-[90%] sm:max-w-md"></div>
+
+    <!-- MAIN CONTENT AREA -->
+    <main class="flex flex-1 w-full min-h-screen">
+        
+        <!-- LEFT PANEL (Branding) -->
+        <div class="hidden lg:flex lg:w-1/2 bg-red-800 relative overflow-hidden flex-col justify-between p-8 xl:p-12 text-white bg-gradient-to-br from-red-900 to-red-700">
+            
+            <!-- Logo -->
+            <div class="flex items-center space-x-3 z-10 relative">
+                <svg class="w-8 h-8 xl:w-10 xl:h-10 text-white" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M5 19h-4v-4h4v4zm6 0h-4v-8h4v8zm6 0h-4v-12h4v12zm6 0h-4v-16h4v16zM3 13.5l3-3 3 3 5-5 3 3 4-4v-2l-4 4-3-3-5 5-3-3-3 3v2z"/>
+                </svg>
+                <div>
+                    <h1 class="text-2xl xl:text-3xl font-bold tracking-wide">KPI</h1>
+                    <p class="text-[10px] xl:text-xs text-red-200 uppercase tracking-widest">Performance Matters</p>
+                </div>
+            </div>
+
+            <!-- Main Welcome Text -->
+            <div class="z-10 relative my-auto">
+                <h2 class="text-4xl xl:text-5xl font-bold leading-tight mb-4">
+                    Welcome Back!<br>
+                    Sign in to your <span class="text-red-300">KPI</span><br>
+                    Dashboard
+                </h2>
+                <p class="text-base xl:text-lg text-red-100 mb-1">Track performance. Measure progress.</p>
+                <p class="text-base xl:text-lg text-red-100">Achieve success.</p>
+            </div>
+
+            <!-- 4 Feature Icons at Bottom -->
+            <div class="grid grid-cols-4 gap-2 xl:gap-4 z-10 relative">
+                <div class="flex flex-col items-center text-center">
+                    <div class="bg-white bg-opacity-10 p-2 xl:p-3 rounded-full mb-2">
+                        <svg class="w-4 h-4 xl:w-5 xl:h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                    </div>
+                    <h4 class="font-semibold text-[10px] xl:text-xs mb-1">Track KPIs</h4>
+                    <p class="text-[8px] xl:text-[10px] text-red-200">Monitor metrics in real time</p>
+                </div>
+                <div class="flex flex-col items-center text-center">
+                    <div class="bg-white bg-opacity-10 p-2 xl:p-3 rounded-full mb-2">
+                        <svg class="w-4 h-4 xl:w-5 xl:h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                    </div>
+                    <h4 class="font-semibold text-[10px] xl:text-xs mb-1">Visualize Data</h4>
+                    <p class="text-[8px] xl:text-[10px] text-red-200">Insightful charts & graphs</p>
+                </div>
+                <div class="flex flex-col items-center text-center">
+                    <div class="bg-white bg-opacity-10 p-2 xl:p-3 rounded-full mb-2">
+                        <svg class="w-4 h-4 xl:w-5 xl:h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
+                    </div>
+                    <h4 class="font-semibold text-[10px] xl:text-xs mb-1">Generate Reports</h4>
+                    <p class="text-[8px] xl:text-[10px] text-red-200">Export performance reports</p>
+                </div>
+                <div class="flex flex-col items-center text-center">
+                    <div class="bg-white bg-opacity-10 p-2 xl:p-3 rounded-full mb-2">
+                        <svg class="w-4 h-4 xl:w-5 xl:h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
+                    </div>
+                    <h4 class="font-semibold text-[10px] xl:text-xs mb-1">Secure & Reliable</h4>
+                    <p class="text-[8px] xl:text-[10px] text-red-200">Enterprise security</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- RIGHT PANEL (Login Form) -->
+        <div class="w-full lg:w-1/2 flex flex-col items-center justify-center bg-kpi-cream p-4 sm:p-6 lg:p-8">
+            
+            <!-- Login Card -->
+            <div class="bg-white rounded-3xl shadow-xl p-6 sm:p-8 md:p-10 w-full max-w-md border border-gray-100">
+                
+                <!-- Lock Icon Header -->
+                <div class="flex justify-center mb-4">
+                    <div class="bg-orange-100 p-3 sm:p-4 rounded-full text-red-800">
+                        <svg class="w-6 h-6 sm:w-8 sm:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                        </svg>
+                    </div>
+                </div>
+
+                <!-- Title -->
+                <div class="text-center mb-6 sm:mb-8">
+                    <h3 class="text-2xl sm:text-3xl font-bold text-red-900 mb-2">Sign in</h3>
+                    <p class="text-gray-500 text-xs sm:text-sm">Enter your credentials to access your<br>KPI dashboard</p>
+                </div>
+
+                <!-- Form -->
+                <form id="loginForm" class="space-y-4 sm:space-y-5">
+                    
+                    <!-- Email Field -->
+                    <div>
+                        <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Email address</label>
+                        <div class="relative">
+                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <svg class="h-4 w-4 sm:h-5 sm:w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+                                </svg>
+                            </div>
+                            <input type="email" id="email" class="block w-full pl-9 sm:pl-10 pr-3 py-2.5 sm:py-3 border border-gray-300 rounded-lg focus:ring-red-800 focus:border-red-800 text-xs sm:text-sm" placeholder="you@example.com" required>
+                        </div>
+                    </div>
+
+                    <!-- Password Field -->
+                    <div>
+                        <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Password</label>
+                        <div class="relative">
+                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <svg class="h-4 w-4 sm:h-5 sm:w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                                </svg>
+                            </div>
+                            <input type="password" id="password" class="block w-full pl-9 sm:pl-10 pr-10 py-2.5 sm:py-3 border border-gray-300 rounded-lg focus:ring-red-800 focus:border-red-800 text-xs sm:text-sm" placeholder="Enter your password" required>
+                        </div>
+                    </div>
+
+                    <!-- Remember Me & Forgot Password -->
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center">
+                            <input id="remember-me" type="checkbox" class="h-3 w-3 sm:h-4 sm:w-4 text-red-800 focus:ring-red-800 border-gray-300 rounded">
+                            <label for="remember-me" class="ml-2 block text-xs sm:text-sm text-gray-900 font-medium">Remember me</label>
+                        </div>
+                        <div class="text-xs sm:text-sm">
+                            <button type="button" onclick="openForgotPasswordModal()" class="font-medium text-red-800 hover:text-red-700">Forgot password?</button>
+                        </div>
+                    </div>
+
+                    <!-- Sign In Button -->
+                    <button type="submit" class="w-full flex justify-center py-2.5 sm:py-3 px-4 border border-transparent rounded-lg shadow-sm text-xs sm:text-sm font-bold text-white bg-red-800 hover:bg-red-900 transition-colors">
+                        Sign in
+                    </button>
+                </form>
+            </div>
+        </div>
+    </main>
+
+    <!-- GLOBAL FOOTER -->
+    <footer class="w-full bg-white py-3 border-t border-gray-200 flex items-center justify-center space-x-2 text-xs sm:text-sm text-gray-500 flex-wrap px-4 text-center">
+        <svg class="h-3 w-3 sm:h-4 sm:w-4 text-red-800 hidden sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
+        </svg>
+        <span class="font-medium w-full sm:w-auto">Secure KPI Platform</span>
+        <span class="text-gray-300 hidden sm:inline">|</span>
+        <span class="w-full sm:w-auto">© 2026 KPI System. All rights reserved.</span>
+    </footer>
+
+    <!-- FORGOT PASSWORD MODAL -->
+    <div id="forgotPasswordModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 sm:p-8 relative shadow-2xl">
+            <h3 class="text-xl sm:text-2xl font-bold text-red-900 mb-2">Reset Password</h3>
+            <p class="text-gray-500 text-xs sm:text-sm mb-6">Enter your email address and we'll send you instructions to reset your password.</p>
+            
+            <form id="forgotPasswordForm" class="space-y-4">
+                <div>
+                    <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Email address</label>
+                    <input type="email" id="resetEmail" class="block w-full px-3 py-2.5 sm:py-3 border border-gray-300 rounded-lg text-xs sm:text-sm" placeholder="you@example.com" required>
+                </div>
+                <div id="resetAlert" class="text-xs sm:text-sm hidden p-3 rounded-lg"></div>
+                <div class="flex space-x-3 mt-6">
+                    <button type="button" onclick="closeForgotPasswordModal()" class="w-1/2 py-2.5 sm:py-3 border border-gray-300 rounded-lg text-xs sm:text-sm font-bold text-gray-700 hover:bg-gray-50">Cancel</button>
+                    <button type="submit" id="resetSubmitBtn" class="w-1/2 py-2.5 sm:py-3 bg-red-800 text-white rounded-lg text-xs sm:text-sm font-bold hover:bg-red-900 flex justify-center items-center">Send Reset Link</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script>
+        // 🌟 SECURITY FIX: Global HTML Escape Function to prevent XSS
+        function escapeHTML(str) {
+            if (!str) return "";
+            return str.toString()
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        // --- Toast Notification System ---
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toastContainer');
+            if (!container) return;
+            
+            const toast = document.createElement('div');
+            const bgColor = type === 'success' ? 'bg-green-50 border-green-500 text-green-800' : 'bg-red-50 border-red-500 text-red-900';
+            const icon = type === 'success' 
+                 ? '<svg class="w-5 h-5 sm:w-6 sm:h-6 text-green-500 mt-0.5 mr-2 sm:mr-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>'
+                : '<svg class="w-5 h-5 sm:w-6 sm:h-6 text-red-500 mt-0.5 mr-2 sm:mr-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>';
+            
+            toast.className = `flex items-start p-3 sm:p-4 border-l-4 rounded-xl shadow-lg toast-enter ${bgColor} w-full bg-white transition-all duration-300 pointer-events-auto ml-auto`;
+            // 🌟 SECURITY FIX: Render only escaped HTML to prevent XSS Attack
+            toast.innerHTML = `
+                <div class="mr-2 sm:mr-3 mt-0.5">${icon}</div>
+                <div class="flex-1">
+                    <h4 class="font-bold text-xs sm:text-sm ${type === 'success' ? 'text-green-800' : 'text-red-900'}">${type === 'success' ? 'Success' : 'Sign In Failed'}</h4>
+                    <p class="text-[10px] sm:text-xs mt-1 ${type === 'success' ? 'text-green-700' : 'text-red-700'} leading-relaxed">${escapeHTML(message)}</p>
+                </div>
+                <button onclick="this.parentElement.remove()" class="ml-2 sm:ml-3 text-gray-400 hover:text-gray-600 focus:outline-none shrink-0">
+                    <svg class="w-3 h-3 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            `;
+            
+            container.appendChild(toast);
+            
+            setTimeout(() => {
+                if(toast.parentElement) {
+                    toast.classList.replace('toast-enter', 'toast-exit');
+                    setTimeout(() => toast.remove(), 300);
+                }
+            }, 5000);
+        }
+
+        function openForgotPasswordModal() {
+            document.getElementById('forgotPasswordModal').classList.remove('hidden');
+        }
+        
+        function closeForgotPasswordModal() {
+            document.getElementById('forgotPasswordModal').classList.add('hidden');
+            document.getElementById('resetAlert').classList.add('hidden');
+            document.getElementById('forgotPasswordForm').reset();
+        }
+
+        // 🌟 UX FIX: Forgot Password Form Submission Handler
+        document.getElementById('forgotPasswordForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const btn = document.getElementById('resetSubmitBtn');
+            const alertBox = document.getElementById('resetAlert');
+            const email = document.getElementById('resetEmail').value;
+            
+            if(!email) return;
+
+            btn.innerHTML = `<svg class="animate-spin h-4 w-4 text-white inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`;
+            btn.disabled = true;
+
+            // Fake an API call since Reset Password backend is not implemented yet
+            setTimeout(() => {
+                alertBox.classList.remove('hidden');
+                alertBox.classList.add('bg-red-50', 'text-red-800', 'border', 'border-red-200');
+                alertBox.innerHTML = `<strong>Action Required:</strong> For security reasons, automated password reset is disabled. Please contact your System Administrator to reset your password manually.`;
+                
+                btn.innerHTML = "Send Reset Link";
+                btn.disabled = false;
+            }, 1000);
+        });
+
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const submitBtn = document.querySelector('button[type="submit"]');
+            const originalText = submitBtn.innerText;
+            
+            submitBtn.innerHTML = `<svg class="animate-spin -ml-1 mr-2 sm:mr-3 h-4 w-4 sm:h-5 sm:w-5 text-white inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Signing in...`;
+            submitBtn.disabled = true;
+            
+            try {
+                const response = await fetch('/api/v1/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+
+                    if (data.must_change_password) {
+                        window.location.href = '/auth/change-password'; 
+                    } else {
+                        const userData = data.user;
+                        if(userData) {
+                            localStorage.setItem("user", JSON.stringify(userData));
+                            const roleName = userData.role ? userData.role.name : '';
+                            
+                            if (roleName === 'Super Admin' || roleName === 'System Super Admin') {
+                                window.location.href = '/superadmin/dashboard';
+                            } else if (roleName === 'Admin' || roleName === 'HR') {
+                                window.location.href = '/admin/dashboard';
+                            } else {
+                                window.location.href = '/dashboard'; 
+                            }
+                        } else {
+                            const userRole = data.access_token ? JSON.parse(atob(data.access_token.split('.')[1])).role : '';
+                            const roleLower = userRole.toLowerCase();
+                            
+                            if (roleLower === 'super admin' || roleLower === 'system super admin' || roleLower === 'admin') {
+                                window.location.href = '/superadmin/dashboard';
+                            } else {
+                                window.location.href = '/dashboard'; 
+                            }
+                        }
+                    }
+                } else {
+                    const errorData = await response.json();
+                    showToast(errorData.detail || 'Invalid credentials', 'error');
+                }
+            } catch (error) {
+                console.error("Network error:", error);
+                showToast("A network error occurred. Please try again.", "error");
+            } finally {
+                submitBtn.innerText = originalText;
+                submitBtn.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>

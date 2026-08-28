@@ -1,0 +1,269 @@
+{% extends "layouts/base.html" %}
+{% set active_page = "positions" %}
+
+{% block title %}Positions Management | KPI Dashboard{% endblock %}
+
+{% block content %}
+<style>
+    @keyframes fadeInUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .animate-fade-in-up { animation: fadeInUp 0.4s ease-out forwards; }
+</style>
+
+<div class="p-4 sm:p-6 md:p-8 h-full flex flex-col bg-slate-50 min-h-screen overflow-y-auto custom-scrollbar">
+    
+    <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 sm:mb-8 shrink-0 animate-fade-in-up gap-4">
+        <div>
+            <h2 class="text-2xl sm:text-3xl font-extrabold text-blue-950 tracking-tight">Positions Management</h2>
+            <p class="text-xs sm:text-sm text-slate-500 mt-1 font-medium">ဌာနအလိုက် ရာထူးအဆင့်ဆင့်များကို စီမံခန့်ခွဲရန်</p>
+        </div>
+        <button onclick="openModal()" class="w-full md:w-auto bg-blue-950 text-white px-5 py-2.5 rounded-xl shadow-md hover:bg-blue-900 transition-all flex justify-center items-center text-sm font-bold transform hover:-translate-y-0.5">
+            <svg class="w-5 h-5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+            Position အသစ်ထည့်မည်
+        </button>
+    </header>
+
+    <div class="mb-4 sm:mb-6 bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-gray-200 flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 shrink-0 animate-fade-in-up" style="animation-delay: 0.1s;">
+        <label class="font-bold text-slate-700 text-xs sm:text-sm uppercase tracking-wide">ဌာနရွေးချယ်ပါ (Department) :</label>
+        <select id="deptFilter" onchange="fetchPositions()" class="w-full sm:w-auto bg-slate-50 border border-gray-200 rounded-xl p-2.5 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-900 min-w-[200px] sm:min-w-[250px] shadow-inner cursor-pointer">
+            <option value="">-- ဌာနရွေးချယ်ပါ --</option>
+        </select>
+    </div>
+
+    <!-- Table Area -->
+    <div class="bg-white rounded-3xl shadow-sm border border-gray-100 flex-1 overflow-hidden flex flex-col animate-fade-in-up" style="animation-delay: 0.2s;">
+        <div class="overflow-x-auto custom-scrollbar flex-1 w-full">
+            <table class="w-full text-left border-collapse min-w-[600px]">
+                <thead class="bg-slate-50 text-slate-500 text-[10px] sm:text-xs uppercase tracking-wider sticky top-0 shadow-sm border-b border-gray-200">
+                    <tr>
+                        <th class="p-4 sm:p-5 font-bold w-12 sm:w-16">စဉ်</th>
+                        <th class="p-4 sm:p-5 font-bold">ရာထူးအမည် (Position Name)</th>
+                        <th class="p-4 sm:p-5 font-bold">အထက်အရာရှိ (Manager Role)</th>
+                        <th class="p-4 sm:p-5 font-bold">အခြေအနေ</th>
+                        <th class="p-4 sm:p-5 font-bold text-right">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="positionsTableBody" class="divide-y divide-gray-100 text-xs sm:text-sm">
+                    <tr><td colspan="5" class="p-10 sm:p-12 text-center text-slate-500 font-medium">အထက်မှ ဌာနတစ်ခုကို ရွေးချယ်ပေးပါ</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Add/Edit Position Modal -->
+<div id="positionModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm transition-opacity p-4">
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all">
+        <div class="bg-slate-50 px-5 sm:px-6 py-4 sm:py-5 border-b border-gray-100 flex justify-between items-center">
+            <h3 class="text-lg sm:text-xl font-extrabold text-blue-950" id="modalTitle">Position အသစ်ဖန်တီးရန်</h3>
+            <button onclick="closeModal()" class="text-gray-400 hover:text-red-500 bg-white border border-gray-200 p-1.5 sm:p-2 rounded-xl transition-colors shadow-sm shrink-0">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+        </div>
+        
+        <form id="positionForm" onsubmit="savePosition(event)" class="p-5 sm:p-6">
+            <input type="hidden" id="posId">
+            <div class="mb-4 sm:mb-5">
+                <label class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-2 uppercase tracking-wide">ရာထူးအမည် (Name) <span class="text-red-500">*</span></label>
+                <input type="text" id="posName" required placeholder="ဥပမာ - Senior Developer" class="w-full bg-slate-50 border border-gray-200 rounded-xl p-2.5 sm:p-3 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-900 shadow-inner">
+            </div>
+            <div class="mb-4 sm:mb-5">
+                <label class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-2 uppercase tracking-wide">သက်ဆိုင်သည့် ဌာန (Department) <span class="text-red-500">*</span></label>
+                <select id="modalDept" required onchange="loadParentPositions()" class="w-full bg-slate-50 border border-gray-200 rounded-xl p-2.5 sm:p-3 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-900 shadow-inner cursor-pointer">
+                    <option value="">-- ရွေးချယ်ပါ --</option>
+                </select>
+            </div>
+            <div class="mb-5 sm:mb-6">
+                <label class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-2 uppercase tracking-wide">အထက်အရာရှိ ရာထူး (Parent Position)</label>
+                <select id="modalParent" class="w-full bg-slate-50 border border-gray-200 rounded-xl p-2.5 sm:p-3 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-900 shadow-inner cursor-pointer">
+                    <option value="">-- မရှိပါ --</option>
+                </select>
+                <p class="text-[10px] sm:text-[11px] text-slate-500 mt-2 font-medium">Report တင်ရမည့် တိုက်ရိုက်မန်နေဂျာ၏ ရာထူး</p>
+            </div>
+            <div class="flex flex-col-reverse sm:flex-row justify-end gap-3 pt-4 border-t border-gray-100">
+                <button type="button" onclick="closeModal()" class="w-full sm:w-auto px-5 py-2.5 border border-gray-200 bg-white text-slate-600 rounded-xl text-sm font-bold hover:bg-slate-50 shadow-sm transition">ပယ်ဖျက်မည်</button>
+                <button type="submit" class="w-full sm:w-auto px-6 py-2.5 bg-blue-950 text-white rounded-xl text-sm font-bold hover:bg-blue-900 shadow-md transition transform hover:-translate-y-0.5 flex justify-center">သိမ်းဆည်းမည်</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let allDepartments = [];
+    let currentPositions = [];
+
+    function escapeHTML(str) {
+        if (!str) return "";
+        return str.toString()
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+    function showToast(message, type = 'success') {
+        let container = document.getElementById('toastContainer');
+        if(!container) {
+            container = document.createElement('div');
+            container.id = 'toastContainer';
+            container.className = 'fixed top-5 right-5 z-[9999] flex flex-col gap-2 max-w-[90%] sm:max-w-md w-full items-end';
+            document.body.appendChild(container);
+        }
+
+        const toast = document.createElement('div');
+        const bgColor = type === 'success' ? 'bg-green-50 text-green-800 border-green-500' : 'bg-red-50 text-red-800 border-red-500';
+        toast.className = `flex items-center px-4 py-3 rounded-xl shadow-lg text-xs sm:text-sm font-bold border-l-4 ${bgColor} mb-3 pointer-events-auto w-full`;
+        toast.innerHTML = escapeHTML(message);
+        container.appendChild(toast);
+        setTimeout(() => toast.remove(), 4000);
+    }
+
+    async function loadDepartments() {
+        try {
+            const res = await fetch('/api/v1/departments/');
+            // 🌟 SECURITY FIX: Handle 401/403
+            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+
+            if (res.ok) {
+                allDepartments = await res.json();
+                const filterSelect = document.getElementById('deptFilter');
+                const modalSelect = document.getElementById('modalDept');
+                let optionsHtml = '<option value="">-- ရွေးချယ်ပါ --</option>';
+                allDepartments.forEach(dept => { optionsHtml += `<option value="${dept.id}">${escapeHTML(dept.name)}</option>`; });
+                filterSelect.innerHTML = optionsHtml;
+                modalSelect.innerHTML = optionsHtml;
+            }
+        } catch (error) { console.error(error); }
+    }
+
+    async function fetchPositions() {
+        const deptId = document.getElementById('deptFilter').value;
+        const tbody = document.getElementById('positionsTableBody');
+        
+        if (!deptId) {
+            tbody.innerHTML = '<tr><td colspan="5" class="p-10 sm:p-12 text-center text-slate-500 font-medium">အထက်မှ ဌာနတစ်ခုကို ရွေးချယ်ပေးပါ</td></tr>';
+            currentPositions = []; return;
+        }
+
+        tbody.innerHTML = '<tr><td colspan="5" class="p-10 sm:p-12 text-center"><div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-900 mx-auto"></div></td></tr>';
+
+        try {
+            const res = await fetch(`/api/v1/positions/department/${deptId}`);
+            // 🌟 SECURITY FIX: Handle 401/403
+            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+
+            if (res.ok) { currentPositions = await res.json(); renderTable(); } 
+            else { tbody.innerHTML = '<tr><td colspan="5" class="p-10 sm:p-12 text-center text-red-500 font-bold">ဒေတာရယူရန် မအောင်မြင်ပါ</td></tr>'; }
+        } catch (error) { tbody.innerHTML = '<tr><td colspan="5" class="p-10 sm:p-12 text-center text-red-500 font-bold">ကွန်ရက်ချိတ်ဆက်မှု အမှားအယွင်း</td></tr>'; }
+    }
+
+    function renderTable() {
+        const tbody = document.getElementById('positionsTableBody');
+        if (currentPositions.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="p-10 sm:p-12 text-center text-slate-500 font-medium">ဤဌာနတွင် ရာထူးများ မရှိသေးပါ</td></tr>';
+            return;
+        }
+
+        const getParentName = (parentId) => {
+            if (!parentId) return '-';
+            const parent = currentPositions.find(p => p.id === parentId);
+            return parent ? escapeHTML(parent.name) : '-';
+        };
+
+        tbody.innerHTML = currentPositions.map((pos, index) => `
+            <tr class="hover:bg-slate-50 transition-colors">
+                <td class="p-4 sm:p-5 font-bold text-slate-500">${index + 1}</td>
+                <td class="p-4 sm:p-5 font-extrabold text-blue-950">${escapeHTML(pos.name)}</td>
+                <td class="p-4 sm:p-5 font-semibold text-slate-600">${getParentName(pos.parent_position_id)}</td>
+                <td class="p-4 sm:p-5">
+                    <span class="px-2.5 sm:px-3 py-1 sm:py-1.5 text-[9px] sm:text-[10px] font-extrabold rounded-md border shadow-sm ${pos.is_active ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'}">
+                        ${pos.is_active ? 'ACTIVE' : 'INACTIVE'}
+                    </span>
+                </td>
+                <td class="p-4 sm:p-5 text-right">
+                    <button onclick="deletePosition('${pos.id}')" class="text-[10px] sm:text-xs bg-white text-red-600 border border-gray-200 hover:bg-red-50 hover:text-red-700 font-bold px-2.5 sm:px-3 py-1.5 rounded-lg shadow-sm transition-colors">
+                        Delete
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    function openModal() {
+        document.getElementById('positionForm').reset();
+        document.getElementById('posId').value = '';
+        document.getElementById('positionModal').classList.remove('hidden');
+        
+        const currentFilterDept = document.getElementById('deptFilter').value;
+        if(currentFilterDept) {
+            document.getElementById('modalDept').value = currentFilterDept;
+            loadParentPositions();
+        } else {
+            document.getElementById('modalParent').innerHTML = '<option value="">-- မရှိပါ --</option>';
+        }
+    }
+
+    function closeModal() { document.getElementById('positionModal').classList.add('hidden'); }
+
+    async function loadParentPositions() {
+        const deptId = document.getElementById('modalDept').value;
+        const parentSelect = document.getElementById('modalParent');
+        parentSelect.innerHTML = '<option value="">-- မရှိပါ --</option>';
+        if(!deptId) return;
+
+        try {
+            const res = await fetch(`/api/v1/positions/department/${deptId}`);
+            // 🌟 SECURITY FIX: Handle 401/403
+            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+
+            if (res.ok) {
+                const positions = await res.json();
+                positions.forEach(pos => { parentSelect.innerHTML += `<option value="${pos.id}">${escapeHTML(pos.name)}</option>`; });
+            }
+        } catch (error) { console.error(error); }
+    }
+
+    async function savePosition(e) {
+        e.preventDefault();
+        const payload = {
+            name: document.getElementById('posName').value.trim(),
+            department_id: document.getElementById('modalDept').value,
+            parent_position_id: document.getElementById('modalParent').value || null,
+            is_active: true
+        };
+
+        try {
+            const res = await fetch('/api/v1/positions/', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+            });
+            // 🌟 SECURITY FIX: Handle 401/403
+            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+
+            if (res.ok) {
+                showToast("Position အသစ် ထည့်သွင်းအောင်မြင်ပါသည်။");
+                closeModal();
+                if (document.getElementById('deptFilter').value === payload.department_id) fetchPositions();
+            } else {
+                const err = await res.json(); showToast(err.detail || "လုပ်ဆောင်မှု မအောင်မြင်ပါ", "error");
+            }
+        } catch (error) { showToast("ကွန်ရက်ချိတ်ဆက်မှု အမှားအယွင်း", "error"); }
+    }
+
+    async function deletePosition(posId) {
+        if(!confirm("ဤရာထူးကို ဖျက်ရန် သေချာပါသလား?")) return;
+        try {
+            const res = await fetch(`/api/v1/positions/${posId}`, { method: 'DELETE' });
+            // 🌟 SECURITY FIX: Handle 401/403
+            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+
+            if (res.ok || res.status === 204) {
+                showToast("ဖျက်သိမ်းခြင်း အောင်မြင်ပါသည်။"); fetchPositions();
+            } else { const err = await res.json(); showToast(err.detail || "ပယ်ဖျက်၍ မရပါ", "error"); }
+        } catch (error) { showToast("ကွန်ရက်ချိတ်ဆက်မှု အမှားအယွင်း", "error"); }
+    }
+
+    window.onload = loadDepartments;
+</script>
+{% endblock %}

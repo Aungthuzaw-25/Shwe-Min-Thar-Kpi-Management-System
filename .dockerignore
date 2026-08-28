@@ -1,0 +1,54 @@
+# 🌟 1. Git & Version Control (Git History များ Image ထဲ မပါစေရန်)
+.git/
+.gitignore
+.gitattributes
+.github/
+
+# 🌟 2. Environment Variables & Secrets (လုံခြုံရေးအတွက် မဖြစ်မနေ ဖယ်ထုတ်ရန်)
+.env
+.env.*
+!.env.example
+
+# 🌟 3. Python Virtual Environments & Packages
+venv/
+env/
+.venv/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# 🌟 4. Python Caches & Bytecode (Host OS မှ အမှိုက်ဖိုင်များ)
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# 🌟 5. Node.js (Tailwind Build အတွက် မလိုသော အမှိုက်များ)
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# 🌟 6. User Uploads & Temporary Media (MinIO / S3 သုံးသဖြင့် Image ထဲ မထည့်ရန်)
+uploads/*
+!uploads/.gitkeep
+downloads/
+logs/
+*.log
+
+# 🌟 7. IDE & OS Metadata
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# 🌟 8. Documentation & Testing Assets
+tests/
+README.md
+*.md
+alembic.ini.bak

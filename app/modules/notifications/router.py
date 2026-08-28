@@ -1,0 +1,55 @@
+from fastapi import APIRouter, Depends, HTTPException, status, Query
+from sqlalchemy.ext.asyncio import AsyncSession
+from typing import List
+from uuid import UUID
+
+from app.database.connection import get_db
+from app.core.dependencies import get_current_user
+from app.modules.notifications.schemas import NotificationResponse
+
+# 🌟 FIX: Import the module-level functions from repo.py
+from app.modules.notifications.repo import (
+    get_notifications_by_user,
+    mark_all_notifications_as_read,
+    mark_notification_as_read
+)
+
+# 🌟 Swagger UI တွင် သပ်ရပ်စွာပေါ်ရန် Tag ထည့်ပေးခြင်း
+router = APIRouter(tags=["Notifications"])
+
+@router.get("", response_model=List[NotificationResponse])
+async def get_my_notifications(
+    skip: int = Query(0, ge=0),
+    # 🌟 SECURITY FIX: Prevent Memory Exhaustion DoS by capping limit to 100
+    limit: int = Query(50, gt=0, le=100, description="Maximum number of notifications to fetch (capped at 100)"),
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """မိမိ၏ Notification History များအားလုံးကို ကြည့်ရှုရန်"""
+    # 🌟 FIX: Call the function directly
+    return await get_notifications_by_user(db, current_user.id, skip=skip, limit=limit)
+
+# 🌟 အရေးကြီး: /read-all ကို UUID အထက်တွင် ရေးရပါမည်
+@router.put("/read-all", status_code=status.HTTP_200_OK)
+async def mark_all_as_read(
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Notification အားလုံးကို တစ်ပြိုင်တည်း ဖတ်ပြီး (Read) အဖြစ်ပြောင်းရန်"""
+    # 🌟 FIX: Call the function directly
+    updated_count = await mark_all_notifications_as_read(db, current_user.id)
+    return {"success": True, "message": f"{updated_count} notifications marked as read"}
+
+# 🌟 Dynamic Parameter (UUID) ကို အောက်ဆုံးတွင် ထားရပါမည်
+@router.put("/{notification_id}/read", status_code=status.HTTP_200_OK)
+async def mark_as_read(
+    notification_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """တိကျသော Notification တစ်ခုအား ဖတ်ပြီး (Read) အဖြစ်ပြောင်းရန်"""
+    # 🌟 FIX: Call the function directly
+    success = await mark_notification_as_read(db, notification_id, current_user.id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    return {"success": True, "message": "Marked as read"}

@@ -1,0 +1,192 @@
+{% extends "layouts/base.html" %}
+{% set active_page = "users" %}
+
+{% block title %}User Profile - KPI Platform{% endblock %}
+
+{% block content %}
+<!-- HEADER -->
+<header class="bg-white px-4 sm:px-6 md:px-8 py-4 sm:py-6 border-b border-gray-100 shrink-0 shadow-sm animate-fade-in-up">
+    <div class="flex flex-wrap items-center text-xs sm:text-sm text-slate-500 mb-1.5 sm:mb-2 gap-1.5 sm:space-x-2">
+        <a href="/superadmin/users" class="hover:text-blue-900 transition-colors font-semibold">Users Management</a>
+        <span class="text-slate-300">/</span>
+        <span class="text-blue-950 font-bold">User Profile</span>
+    </div>
+    <h2 class="text-2xl sm:text-3xl font-extrabold text-blue-950 tracking-tight break-words" id="profileNameTitle">Loading Profile...</h2>
+</header>
+
+<div class="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 custom-scrollbar bg-slate-50 overflow-x-hidden">
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 md:gap-8 max-w-6xl mx-auto">
+        
+        <!-- 🌟 Identity Card (ဘယ်ဘက်) -->
+        <div class="lg:col-span-4 bg-white rounded-3xl shadow-sm border border-gray-100 p-5 sm:p-8 flex flex-col items-center text-center animate-fade-in-up" style="animation-delay: 0.1s;">
+            <!-- Avatar -->
+            <div class="w-24 h-24 sm:w-32 sm:h-32 bg-gradient-to-tr from-blue-100 to-blue-200 rounded-full flex items-center justify-center text-blue-900 text-3xl sm:text-5xl font-extrabold mb-4 sm:mb-5 shadow-inner border-4 border-white ring-4 ring-slate-50 shrink-0" id="profileAvatar">
+                ?
+            </div>
+            
+            <!-- User Info -->
+            <h3 class="text-xl sm:text-2xl font-extrabold text-blue-950 mb-1 break-words w-full px-2" id="infoName">-</h3>
+            <p class="text-xs sm:text-sm font-medium text-slate-500 mb-2 break-all px-2" id="infoEmail">-</p>
+            
+            <!-- Tags (Position & Region) -->
+            <div class="flex flex-col gap-2 w-full mb-6 sm:mb-8 mt-2 px-2">
+                <p class="text-[10px] sm:text-xs font-bold text-slate-600 bg-slate-100 border border-slate-200 px-3 py-1.5 rounded-lg uppercase tracking-wider mx-auto text-center" id="infoPosition">-</p>
+                <p class="text-[10px] sm:text-xs font-semibold text-slate-400" id="infoRegion">-</p>
+            </div>
+            
+            <!-- Status & Role -->
+            <div class="w-full border-t border-gray-100 pt-5 sm:pt-6 space-y-3 sm:space-y-4">
+                <div class="flex justify-between items-center bg-slate-50 p-2.5 sm:p-3 rounded-xl border border-gray-100">
+                    <span class="text-xs sm:text-sm font-bold text-slate-600">System Role</span>
+                    <span class="text-[10px] sm:text-xs font-extrabold text-blue-800 bg-blue-100 border border-blue-200 px-2 sm:px-3 py-1 rounded-md shadow-sm" id="infoRole">-</span>
+                </div>
+                <div class="flex justify-between items-center bg-slate-50 p-2.5 sm:p-3 rounded-xl border border-gray-100">
+                    <span class="text-xs sm:text-sm font-bold text-slate-600">Account Status</span>
+                    <span id="infoStatus" class="text-[10px] sm:text-xs font-extrabold px-2 sm:px-3 py-1 rounded-md shadow-sm">-</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 🌟 Assigned Departments List (ညာဘက်) -->
+        <div class="lg:col-span-8 bg-white rounded-3xl shadow-sm border border-gray-100 flex flex-col overflow-hidden animate-fade-in-up" style="animation-delay: 0.2s;">
+            <div class="px-5 sm:px-8 py-4 sm:py-6 border-b border-gray-100 bg-slate-50 flex items-center gap-3 shrink-0">
+                <div class="bg-blue-100 p-2 sm:p-2.5 rounded-xl text-blue-800 shadow-inner shrink-0">
+                    <svg class="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>
+                </div>
+                <div>
+                    <h3 class="text-lg sm:text-xl font-extrabold text-blue-950 tracking-tight">Assigned Departments</h3>
+                    <p class="text-[10px] sm:text-xs text-slate-500 mt-0.5 sm:mt-1 font-medium">Departments where this user is currently assigned.</p>
+                </div>
+            </div>
+            
+            <div class="flex-1 overflow-x-auto custom-scrollbar w-full min-h-[250px] sm:min-h-[300px]">
+                <table class="w-full text-left text-xs sm:text-sm min-w-[500px]">
+                    <thead class="bg-white border-b border-gray-100 text-[10px] sm:text-xs text-slate-400 uppercase tracking-wider font-bold">
+                        <tr>
+                            <th class="px-4 sm:px-6 md:px-8 py-4 sm:py-5">Department Name</th>
+                            <th class="px-4 sm:px-6 md:px-8 py-4 sm:py-5">Role Level</th>
+                            <th class="px-4 sm:px-6 md:px-8 py-4 sm:py-5 text-center">Head Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="profileDeptList" class="divide-y divide-gray-50">
+                        <tr>
+                            <td colspan="3" class="p-8 sm:p-12 text-center text-slate-400 flex flex-col items-center justify-center">
+                                <svg class="animate-spin h-6 w-6 sm:h-8 sm:w-8 text-blue-900 mb-3 sm:mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                <span class="font-medium text-xs sm:text-sm">Loading assigned departments...</span>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<input type="hidden" id="targetUserId" value="{{ target_user_id }}">
+
+<style>
+    @keyframes fadeInUp {
+        from { opacity: 0; transform: translateY(15px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    .animate-fade-in-up {
+        animation: fadeInUp 0.5s ease-out forwards;
+        opacity: 0;
+    }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // 🌟 SECURITY FIX: Global HTML Escape Function to prevent XSS
+    function escapeHTML(str) {
+        if (str === null || str === undefined) return "";
+        return str.toString()
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+    document.addEventListener("DOMContentLoaded", async () => {
+        const userId = document.getElementById("targetUserId").value;
+        if(!userId) return;
+
+        try {
+            const response = await fetch(`/api/v1/users/${userId}`);
+            
+            // 🛡️ AUTH FIX: Token/Session Timeout Redirect
+            if (response.status === 401 || response.status === 403) {
+                window.location.href = '/auth/login';
+                return;
+            }
+
+            if(!response.ok) throw new Error("Failed to load user profile");
+            
+            const user = await response.json();
+            const fullName = `${user.first_name} ${user.last_name}`;
+            
+            // innerText is safe from HTML injection
+            document.getElementById("profileNameTitle").innerText = `${fullName}`;
+            document.getElementById("infoName").innerText = fullName;
+            document.getElementById("infoEmail").innerText = user.email;
+            
+            document.getElementById("infoPosition").innerText = user.position?.name || 'No Job Title Assigned';
+            
+            // 🌟 SECURITY FIX: Applied escapeHTML() to user.region_town
+            document.getElementById("infoRegion").innerHTML = user.region_town ? 
+                `<svg class="w-3 h-3 inline-block mr-1 -mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg> ${escapeHTML(user.region_town)}` : 
+                'No Region Assigned';
+                
+            document.getElementById("infoRole").innerText = user.role?.name || 'User';
+            
+            const initial1 = user.first_name ? user.first_name.charAt(0).toUpperCase() : '';
+            const initial2 = user.last_name ? user.last_name.charAt(0).toUpperCase() : '';
+            document.getElementById("profileAvatar").innerText = initial1 + initial2;
+
+            const statusEl = document.getElementById("infoStatus");
+            if(user.is_active) {
+                statusEl.innerText = "Active";
+                statusEl.className = "text-[10px] sm:text-xs font-extrabold text-emerald-800 bg-emerald-100 border border-emerald-200 px-2 sm:px-3 py-1 rounded-md shadow-sm";
+            } else {
+                statusEl.innerText = "Inactive";
+                statusEl.className = "text-[10px] sm:text-xs font-extrabold text-slate-600 bg-slate-200 border border-slate-300 px-2 sm:px-3 py-1 rounded-md shadow-sm";
+            }
+
+            const tbody = document.getElementById("profileDeptList");
+            tbody.innerHTML = "";
+
+            if(!user.departments || user.departments.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="3" class="px-4 sm:px-8 py-10 sm:py-16 text-center text-slate-400 font-medium text-xs sm:text-sm">This user is not currently assigned to any department.</td></tr>`;
+                return;
+            }
+
+            user.departments.forEach(dept => {
+                const tr = document.createElement("tr");
+                tr.className = "hover:bg-slate-50 transition-colors";
+                
+                // 🌟 SECURITY FIX & RESPONSIVE FIX
+                tr.innerHTML = `
+                    <td class="px-4 sm:px-6 md:px-8 py-4 sm:py-5 font-bold text-blue-950">${escapeHTML(dept.name)}</td>
+                    <td class="px-4 sm:px-6 md:px-8 py-4 sm:py-5">
+                        <span class="bg-slate-100 text-slate-600 border border-slate-200 text-[10px] sm:text-xs font-extrabold px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg uppercase shadow-sm">${escapeHTML(dept.level || 'Unknown')}</span>
+                    </td>
+                    <td class="px-4 sm:px-6 md:px-8 py-4 sm:py-5 text-center">
+                        ${dept.is_head ? '<span class="text-yellow-800 bg-yellow-100 border border-yellow-200 text-[10px] sm:text-xs font-extrabold px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg uppercase shadow-sm whitespace-nowrap">★ Dept Head</span>' : '<span class="text-slate-300 font-bold">-</span>'}
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+        } catch (error) {
+            console.error(error);
+            document.getElementById("profileDeptList").innerHTML = `<tr><td colspan="3" class="p-8 sm:p-12 text-center text-red-500 font-bold text-xs sm:text-sm">Error loading user profile data.</td></tr>`;
+            document.getElementById("profileNameTitle").innerText = "Profile Unavailable";
+        }
+    });
+</script>
+{% endblock %}

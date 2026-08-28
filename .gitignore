@@ -1,0 +1,22 @@
+# Environments
+.env
+.env.*
+!.env.example
+venv/
+env/
+.venv/
+
+# Caches & Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+.mypy_cache/
+.pytest_cache/
+
+# Uploads (Production တွင် MinIO သုံးမည်ဖြစ်သော်လည်း Local အတွက်ဖျက်ထားရန်)
+uploads/
+!uploads/evidence/dummy_evidence.txt
+
+# IDEs
+.vscode/
+.idea/

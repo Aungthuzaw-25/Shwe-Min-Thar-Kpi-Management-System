@@ -1,0 +1,410 @@
+{% extends "layouts/base.html" %}
+{% set active_page = "settings" %}
+
+{% block title %}System Settings - Enterprise KPI Platform{% endblock %}
+
+{% block content %}
+<style>
+    @keyframes fadeInUp {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    .animate-fade-in-up {
+        animation: fadeInUp 0.4s ease-out forwards;
+    }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+</style>
+
+<div class="min-h-screen bg-slate-50 text-slate-800 font-sans p-4 sm:p-6 overflow-y-auto custom-scrollbar flex flex-col">
+    
+    <!-- HEADER -->
+    <header class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 shrink-0 animate-fade-in-up">
+        <div class="flex items-center gap-3 sm:gap-4">
+            <div class="bg-white p-2.5 sm:p-3 rounded-xl border border-gray-200 shadow-sm text-blue-950 shrink-0">
+                <svg class="w-6 h-6 sm:w-8 sm:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+            </div>
+            <div>
+                <h2 class="text-2xl sm:text-3xl font-extrabold text-blue-950 tracking-tight">System Settings</h2>
+                <p class="text-xs sm:text-sm text-slate-500 mt-1">Configure global platform preferences, security, and integrations.</p>
+            </div>
+        </div>
+        <div class="flex items-center gap-3 w-full md:w-auto mt-2 md:mt-0">
+            <button onclick="saveAllSettings()" id="saveSettingsBtn" class="w-full md:w-auto justify-center bg-blue-950 hover:bg-blue-900 text-white px-5 sm:px-6 py-2.5 sm:py-3 rounded-xl text-xs sm:text-sm font-bold flex items-center shadow-md transition-all duration-300 transform hover:-translate-y-0.5">
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                Save All Changes
+            </button>
+        </div>
+    </header>
+
+    <!-- SETTINGS LAYOUT (Sidebar + Content) -->
+    <div class="flex flex-col lg:flex-row gap-6 sm:gap-8 flex-1 min-h-0 animate-fade-in-up" style="animation-delay: 0.1s;">
+        
+        <!-- SIDEBAR TABS -->
+        <div class="lg:w-64 shrink-0 overflow-x-auto lg:overflow-visible no-scrollbar pb-2 lg:pb-0">
+            <div class="flex flex-row lg:flex-col gap-2 p-1 lg:p-0">
+                <button onclick="switchSettingTab('general')" id="tab-general" class="setting-tab-btn active-tab w-auto lg:w-full text-left px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center shrink-0 whitespace-nowrap">
+                    <svg class="w-4 h-4 sm:w-5 sm:h-5 mr-2 sm:mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>
+                    General Info
+                </button>
+                <button onclick="switchSettingTab('email')" id="tab-email" class="setting-tab-btn text-slate-500 hover:bg-slate-100 w-auto lg:w-full text-left px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center shrink-0 whitespace-nowrap">
+                    <svg class="w-4 h-4 sm:w-5 sm:h-5 mr-2 sm:mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                    Email & SMTP
+                </button>
+                <button onclick="switchSettingTab('security')" id="tab-security" class="setting-tab-btn text-slate-500 hover:bg-slate-100 w-auto lg:w-full text-left px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center shrink-0 whitespace-nowrap">
+                    <svg class="w-4 h-4 sm:w-5 sm:h-5 mr-2 sm:mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                    Security Policy
+                </button>
+                <button onclick="switchSettingTab('maintenance')" id="tab-maintenance" class="setting-tab-btn text-slate-500 hover:bg-slate-100 w-auto lg:w-full text-left px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center shrink-0 whitespace-nowrap">
+                    <svg class="w-4 h-4 sm:w-5 sm:h-5 mr-2 sm:mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"></path></svg>
+                    Maintenance
+                </button>
+            </div>
+        </div>
+
+        <!-- CONTENT AREA -->
+        <div class="flex-1 bg-white rounded-3xl shadow-sm border border-gray-100 p-5 sm:p-8 min-h-0 overflow-y-auto custom-scrollbar">
+            <form id="settingsForm">
+                
+                <!-- 1. GENERAL SETTINGS -->
+                <div id="content-general" class="setting-content space-y-6">
+                    <h3 class="text-base sm:text-lg font-extrabold text-blue-950 border-b border-gray-100 pb-3 mb-4 sm:mb-6">Company & Localization</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+                        <div>
+                            <label class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">Company Name <span class="text-red-500">*</span></label>
+                            <input type="text" id="set_company_name" value="Enterprise KPI Corp" required class="w-full bg-slate-50 border border-gray-200 p-3 rounded-xl text-sm font-semibold focus:outline-none focus:bg-white focus:border-blue-900 transition-all shadow-inner">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">Support Email <span class="text-red-500">*</span></label>
+                            <input type="email" id="set_support_email" value="support@kpicorp.com" required class="w-full bg-slate-50 border border-gray-200 p-3 rounded-xl text-sm font-semibold focus:outline-none focus:bg-white focus:border-blue-900 transition-all shadow-inner">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">System Timezone</label>
+                            <select id="set_timezone" class="w-full bg-slate-50 border border-gray-200 p-3 rounded-xl text-sm font-semibold focus:outline-none focus:bg-white focus:border-blue-900 transition-all shadow-inner cursor-pointer">
+                                <option value="Asia/Yangon" selected>Asia/Yangon (+06:30)</option>
+                                <option value="UTC">UTC (+00:00)</option>
+                                <option value="Asia/Bangkok">Asia/Bangkok (+07:00)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">Date Format</label>
+                            <select id="set_date_format" class="w-full bg-slate-50 border border-gray-200 p-3 rounded-xl text-sm font-semibold focus:outline-none focus:bg-white focus:border-blue-900 transition-all shadow-inner cursor-pointer">
+                                <option value="DD-MM-YYYY" selected>DD-MM-YYYY (31-12-2026)</option>
+                                <option value="MM-DD-YYYY">MM-DD-YYYY (12-31-2026)</option>
+                                <option value="YYYY-MM-DD">YYYY-MM-DD (2026-12-31)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2. EMAIL & SMTP -->
+                <div id="content-email" class="setting-content space-y-6 hidden">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-end border-b border-gray-100 pb-3 mb-4 sm:mb-6 gap-3 sm:gap-0">
+                        <h3 class="text-base sm:text-lg font-extrabold text-blue-950">Email Server Configuration</h3>
+                        <button type="button" onclick="testSMTP()" class="w-full sm:w-auto text-xs font-bold bg-white text-blue-700 border border-blue-200 hover:bg-blue-50 px-4 py-2 rounded-lg shadow-sm transition-colors text-center">Test Connection</button>
+                    </div>
+                    <p class="text-xs sm:text-sm text-slate-500 mb-4">Configure SMTP details to allow the system to send notification emails and password resets.</p>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+                        <div>
+                            <label class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">SMTP Host</label>
+                            <input type="text" id="set_smtp_host" placeholder="smtp.gmail.com" class="w-full bg-slate-50 border border-gray-200 p-3 rounded-xl text-sm font-semibold focus:outline-none focus:bg-white focus:border-blue-900 transition-all shadow-inner">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">SMTP Port</label>
+                            <input type="number" id="set_smtp_port" placeholder="587" class="w-full bg-slate-50 border border-gray-200 p-3 rounded-xl text-sm font-semibold focus:outline-none focus:bg-white focus:border-blue-900 transition-all shadow-inner">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">SMTP Username</label>
+                            <input type="text" id="set_smtp_user" placeholder="alerts@kpicorp.com" class="w-full bg-slate-50 border border-gray-200 p-3 rounded-xl text-sm font-semibold focus:outline-none focus:bg-white focus:border-blue-900 transition-all shadow-inner">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">SMTP Password / App Password</label>
+                            <input type="password" id="set_smtp_pass" placeholder="••••••••••••" class="w-full bg-slate-50 border border-gray-200 p-3 rounded-xl text-sm font-semibold focus:outline-none focus:bg-white focus:border-blue-900 transition-all shadow-inner">
+                        </div>
+                    </div>
+                    <div class="mt-4 flex items-center">
+                        <label class="relative inline-flex items-center cursor-pointer group">
+                            <input type="checkbox" id="set_smtp_tls" checked class="sr-only peer">
+                            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 shadow-inner"></div>
+                            <span class="ml-3 text-xs sm:text-sm font-bold text-slate-700 group-hover:text-blue-950 transition-colors">Use TLS/SSL Encryption</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- 3. SECURITY POLICY -->
+                <div id="content-security" class="setting-content space-y-6 hidden">
+                    <h3 class="text-base sm:text-lg font-extrabold text-blue-950 border-b border-gray-100 pb-3 mb-4 sm:mb-6">Security & Password Policy</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
+                        <div class="space-y-4 sm:space-y-6">
+                            <div>
+                                <label class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">Minimum Password Length</label>
+                                <input type="number" id="set_pwd_length" value="8" min="6" max="32" class="w-full bg-slate-50 border border-gray-200 p-3 rounded-xl text-sm font-semibold focus:outline-none focus:bg-white focus:border-blue-900 transition-all shadow-inner">
+                            </div>
+                            <div class="space-y-3 sm:space-y-4">
+                                <label class="flex items-center cursor-pointer group">
+                                    <input type="checkbox" id="set_pwd_complex" checked class="w-5 h-5 accent-blue-600 rounded border-gray-300 cursor-pointer shrink-0">
+                                    <span class="ml-3 text-xs sm:text-sm font-bold text-slate-700 group-hover:text-blue-950 transition-colors">Require Complexity (Uppercase, Numbers, Symbols)</span>
+                                </label>
+                                <label class="flex items-center cursor-pointer group">
+                                    <input type="checkbox" id="set_pwd_expire" class="w-5 h-5 accent-blue-600 rounded border-gray-300 cursor-pointer shrink-0">
+                                    <span class="ml-3 text-xs sm:text-sm font-bold text-slate-700 group-hover:text-blue-950 transition-colors">Force password change every 90 days</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">Session Timeout (Minutes)</label>
+                            <input type="number" id="set_session_timeout" value="120" placeholder="e.g. 120" class="w-full bg-slate-50 border border-gray-200 p-3 rounded-xl text-sm font-semibold focus:outline-none focus:bg-white focus:border-blue-900 transition-all shadow-inner">
+                            <p class="text-[10px] sm:text-xs text-slate-500 mt-2 font-medium">Users will be automatically logged out after this period of inactivity.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 4. MAINTENANCE -->
+                <div id="content-maintenance" class="setting-content space-y-6 hidden">
+                    <h3 class="text-base sm:text-lg font-extrabold text-blue-950 border-b border-gray-100 pb-3 mb-4 sm:mb-6">System Maintenance</h3>
+                    
+                    <div class="bg-blue-50/50 border border-blue-100 rounded-2xl p-5 sm:p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                        <div>
+                            <h4 class="font-extrabold text-blue-900 text-sm sm:text-base">Clear System Cache</h4>
+                            <p class="text-xs sm:text-sm text-blue-700 mt-1">Clears temporary dashboard and API cache to free up memory.</p>
+                        </div>
+                        <button type="button" onclick="clearCache()" class="w-full md:w-auto bg-white text-blue-800 border border-blue-200 hover:bg-blue-100 px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold shadow-sm transition-colors whitespace-nowrap text-center">Clear Cache Now</button>
+                    </div>
+
+                    <div class="bg-slate-50 border border-gray-200 rounded-2xl p-5 sm:p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                        <div>
+                            <h4 class="font-extrabold text-slate-800 text-sm sm:text-base">Database Backup</h4>
+                            <p class="text-xs sm:text-sm text-slate-500 mt-1">Download a full JSON/CSV export of all core tables (Users, KPIs, Formulas).</p>
+                        </div>
+                        <button type="button" onclick="downloadBackup()" class="w-full md:w-auto justify-center bg-blue-950 text-white hover:bg-blue-900 px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold shadow-sm transition-colors whitespace-nowrap flex items-center">
+                            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                            Generate Backup
+                        </button>
+                    </div>
+                </div>
+
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function escapeHTML(str) {
+        if (str === null || str === undefined) return "";
+        return str.toString()
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+    const activeTabStyle = "setting-tab-btn active-tab w-auto lg:w-full text-left px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center shrink-0 bg-blue-950 text-white shadow-md whitespace-nowrap";
+    const inactiveTabStyle = "setting-tab-btn text-slate-500 hover:bg-slate-100 w-auto lg:w-full text-left px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center shrink-0 whitespace-nowrap";
+
+    document.addEventListener("DOMContentLoaded", () => {
+        document.getElementById('tab-general').className = activeTabStyle;
+        loadSettings(); 
+    });
+
+    function switchSettingTab(tabId) {
+        document.querySelectorAll('.setting-content').forEach(el => {
+            el.classList.add('hidden');
+        });
+        
+        document.querySelectorAll('.setting-tab-btn').forEach(el => {
+            el.className = inactiveTabStyle;
+        });
+
+        document.getElementById(`content-${tabId}`).classList.remove('hidden');
+        document.getElementById(`tab-${tabId}`).className = activeTabStyle;
+    }
+
+    function showToast(message, type = 'success') {
+        let container = document.getElementById('toastContainer');
+        if(!container) {
+            container = document.createElement('div');
+            container.id = 'toastContainer';
+            container.className = 'fixed top-5 right-5 z-[9999] flex flex-col gap-2 max-w-[90%] sm:max-w-md w-full items-end';
+            document.body.appendChild(container);
+        }
+
+        const toast = document.createElement('div');
+        const bgColor = type === 'success' ? 'bg-green-50 text-green-800 border-green-500' : 'bg-red-50 text-red-800 border-red-500';
+        toast.className = `flex items-center px-4 py-3 rounded-xl shadow-lg text-xs sm:text-sm font-bold border-l-4 ${bgColor} mb-3 animate-fade-in-up w-full`;
+        toast.innerHTML = escapeHTML(message);
+        container.appendChild(toast);
+        setTimeout(() => toast.remove(), 4000);
+    }
+
+    async function loadSettings() {
+        try {
+            const res = await fetch('/api/v1/system/settings');
+            // 🛡️ AUTH FIX
+            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+            
+            if (res.ok) {
+                const settingsArray = await res.json();
+                
+                settingsArray.forEach(setting => {
+                    const data = setting.value || {};
+                    
+                    if (setting.key === 'general') {
+                        if(data.company_name) document.getElementById('set_company_name').value = data.company_name;
+                        if(data.support_email) document.getElementById('set_support_email').value = data.support_email;
+                        if(data.timezone) document.getElementById('set_timezone').value = data.timezone;
+                        if(data.date_format) document.getElementById('set_date_format').value = data.date_format;
+                    } 
+                    else if (setting.key === 'email') {
+                        if(data.host) document.getElementById('set_smtp_host').value = data.host;
+                        if(data.port) document.getElementById('set_smtp_port').value = data.port;
+                        if(data.username) document.getElementById('set_smtp_user').value = data.username;
+                        if(data.password) document.getElementById('set_smtp_pass').value = data.password;
+                        if(data.use_tls !== undefined) document.getElementById('set_smtp_tls').checked = data.use_tls;
+                    } 
+                    else if (setting.key === 'security') {
+                        if(data.min_length) document.getElementById('set_pwd_length').value = data.min_length;
+                        if(data.require_complexity !== undefined) document.getElementById('set_pwd_complex').checked = data.require_complexity;
+                        if(data.password_expiry !== undefined) document.getElementById('set_pwd_expire').checked = data.password_expiry;
+                        if(data.session_timeout) document.getElementById('set_session_timeout').value = data.session_timeout;
+                    }
+                });
+            }
+        } catch (e) { 
+            console.error("Error loading settings:", e); 
+            showToast("Failed to connect to server to fetch settings.", "error");
+        }
+    }
+
+    async function upsertSetting(key, valueObj) {
+        try {
+            let res = await fetch(`/api/v1/system/settings/${key}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ value: valueObj })
+            });
+            // 🛡️ AUTH FIX
+            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return false; }
+            
+            if (res.status === 404) {
+                res = await fetch('/api/v1/system/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ key: key, value: valueObj })
+                });
+            }
+            return res.ok;
+        } catch (e) {
+            console.error(`Error saving ${key}:`, e);
+            return false;
+        }
+    }
+
+    async function saveAllSettings() {
+        const btn = document.getElementById('saveSettingsBtn');
+        const originalHtml = btn.innerHTML;
+        btn.innerHTML = `<svg class="animate-spin -ml-1 mr-2 h-4 w-4 sm:h-5 sm:w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Saving...`;
+        btn.disabled = true;
+
+        const generalVal = {
+            company_name: document.getElementById('set_company_name').value,
+            support_email: document.getElementById('set_support_email').value,
+            timezone: document.getElementById('set_timezone').value,
+            date_format: document.getElementById('set_date_format').value
+        };
+
+        const emailVal = {
+            host: document.getElementById('set_smtp_host').value,
+            port: document.getElementById('set_smtp_port').value,
+            username: document.getElementById('set_smtp_user').value,
+            use_tls: document.getElementById('set_smtp_tls').checked
+        };
+        const pwd = document.getElementById('set_smtp_pass').value;
+        if(pwd) emailVal.password = pwd;
+
+        const securityVal = {
+            min_length: document.getElementById('set_pwd_length').value,
+            require_complexity: document.getElementById('set_pwd_complex').checked,
+            password_expiry: document.getElementById('set_pwd_expire').checked,
+            session_timeout: document.getElementById('set_session_timeout').value
+        };
+
+        try {
+            const p1 = upsertSetting('general', generalVal);
+            const p2 = upsertSetting('email', emailVal);
+            const p3 = upsertSetting('security', securityVal);
+
+            const results = await Promise.all([p1, p2, p3]);
+
+            if (results.every(r => r === true)) {
+                showToast("System settings updated successfully.", "success");
+            } else {
+                showToast("Some settings failed to save.", "error");
+            }
+        } catch(e) {
+            showToast("Network error. Failed to save settings.", "error");
+        } finally {
+            btn.innerHTML = originalHtml;
+            btn.disabled = false;
+        }
+    }
+
+    async function testSMTP() {
+        showToast("Testing SMTP connection (UI Mock)...", "success");
+    }
+
+    async function clearCache() {
+        if(!confirm("Are you sure you want to clear system cache? This may temporarily slow down initial load times.")) return;
+        
+        try {
+            const res = await fetch('/api/v1/system/clear-cache', { method: 'POST' });
+            // 🛡️ AUTH FIX
+            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+            if(res.ok) {
+                showToast("System cache cleared successfully.", "success");
+            } else {
+                const err = await res.json();
+                showToast(err.detail || "Failed to clear cache.", "error");
+            }
+        } catch (e) {
+            showToast("Network error while clearing cache.", "error");
+        }
+    }
+
+    async function downloadBackup() {
+        showToast("Generating database backup. Please wait...", "success");
+        try {
+            const res = await fetch('/api/v1/system/backup', { method: 'GET' });
+            // 🛡️ AUTH FIX
+            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+            
+            if (res.ok) {
+                const blob = await res.blob();
+                const url = window.URL.createObjectURL(blob);
+                
+                let filename = "system_backup.json";
+                const disposition = res.headers.get('Content-Disposition');
+                if (disposition && disposition.includes('filename=')) {
+                    filename = disposition.split('filename=')[1].replace(/"/g, '');
+                }
+                
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                
+                a.remove();
+                window.URL.revokeObjectURL(url);
+                showToast("Backup downloaded successfully.", "success");
+            } else {
+                showToast("Failed to generate backup from server.", "error");
+            }
+        } catch(e) {
+            showToast("Network error while downloading backup.", "error");
+        }
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,365 @@
+{% extends "layouts/base.html" %}
+{% set active_page = "dashboard" %}
+
+{% block title %}KPI Dashboard - Super Admin{% endblock %}
+
+{% block content %}
+<style>
+    /* Smooth animations for elements */
+    @keyframes fadeSlideUp {
+        from { opacity: 0; transform: translateY(15px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    .animate-fade-slide {
+        animation: fadeSlideUp 0.5s ease-out forwards;
+    }
+    
+    .glass-card {
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+</style>
+
+<div class="min-h-screen bg-slate-50 text-slate-800 font-sans flex flex-col overflow-x-hidden">
+    
+    <!-- HEADER -->
+    <header class="bg-transparent px-4 sm:px-6 md:px-8 py-6 sm:py-8 flex flex-col md:flex-row justify-between items-start md:items-center shrink-0 gap-4 sm:gap-5 animate-fade-slide">
+        <div class="w-full md:w-auto">
+            <h2 class="text-2xl sm:text-3xl font-extrabold text-blue-950 flex items-center tracking-tight">
+                Welcome back, {{ user_name }} <span class="ml-2 text-xl sm:text-2xl animate-bounce">👋</span>
+            </h2>
+            <p class="text-slate-500 mt-1 sm:mt-1.5 text-xs sm:text-sm font-medium">Here's a summary of your enterprise KPI platform today.</p>
+        </div>
+        <div class="flex items-center space-x-3 sm:space-x-4 w-full md:w-auto">
+            <div class="flex-1 md:flex-none bg-white border border-gray-200 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold text-slate-700 flex items-center justify-center sm:justify-start shadow-sm whitespace-nowrap">
+                <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5 sm:mr-2 text-blue-900 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                <span id="currentDateDisplay">Today</span>
+            </div>
+            <button class="relative bg-white border border-gray-200 p-2 sm:p-2.5 rounded-xl text-slate-600 hover:text-blue-900 hover:bg-blue-50 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-100 shrink-0">
+                <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
+                <span class="absolute -top-1 sm:-top-1.5 -right-1 sm:-right-1.5 bg-red-500 text-white text-[9px] sm:text-[10px] font-bold px-1 sm:px-1.5 py-0.5 rounded-full ring-2 ring-white shadow-sm" id="alertBadge">0</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- DASHBOARD SCROLLABLE CONTENT -->
+    <div class="flex-1 overflow-y-auto px-4 sm:px-6 md:px-8 pb-8 custom-scrollbar">
+        
+        <!-- TOP METRICS CARDS -->
+        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 md:gap-5 mb-6 sm:mb-8">
+            <div class="glass-card rounded-2xl p-4 sm:p-5 md:p-6 shadow-sm flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left space-y-2 sm:space-y-0 sm:space-x-4 animate-fade-slide" style="animation-delay: 0.1s;">
+                <div class="bg-blue-100 p-2.5 sm:p-3 md:p-3.5 rounded-2xl text-blue-800 shadow-inner shrink-0">
+                    <svg class="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+                </div>
+                <div class="min-w-0"><p class="text-[9px] sm:text-[10px] md:text-[11px] text-slate-500 font-bold uppercase tracking-wider truncate">Total Users</p><h3 class="text-xl sm:text-2xl md:text-3xl font-extrabold text-blue-950 mt-0.5 sm:mt-1" id="valUsers">-</h3></div>
+            </div>
+            
+            <div class="glass-card rounded-2xl p-4 sm:p-5 md:p-6 shadow-sm flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left space-y-2 sm:space-y-0 sm:space-x-4 animate-fade-slide" style="animation-delay: 0.15s;">
+                <div class="bg-emerald-100 p-2.5 sm:p-3 md:p-3.5 rounded-2xl text-emerald-700 shadow-inner shrink-0">
+                    <svg class="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>
+                </div>
+                <div class="min-w-0"><p class="text-[9px] sm:text-[10px] md:text-[11px] text-slate-500 font-bold uppercase tracking-wider truncate">Departments</p><h3 class="text-xl sm:text-2xl md:text-3xl font-extrabold text-blue-950 mt-0.5 sm:mt-1" id="valDepts">-</h3></div>
+            </div>
+            
+            <div class="glass-card rounded-2xl p-4 sm:p-5 md:p-6 shadow-sm flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left space-y-2 sm:space-y-0 sm:space-x-4 animate-fade-slide" style="animation-delay: 0.2s;">
+                <div class="bg-purple-100 p-2.5 sm:p-3 md:p-3.5 rounded-2xl text-purple-700 shadow-inner shrink-0">
+                    <svg class="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                </div>
+                <div class="min-w-0"><p class="text-[9px] sm:text-[10px] md:text-[11px] text-slate-500 font-bold uppercase tracking-wider truncate">Evaluated KPIs</p><h3 class="text-xl sm:text-2xl md:text-3xl font-extrabold text-blue-950 mt-0.5 sm:mt-1" id="valKPIs">-</h3></div>
+            </div>
+            
+            <div class="glass-card rounded-2xl p-4 sm:p-5 md:p-6 shadow-sm flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left space-y-2 sm:space-y-0 sm:space-x-4 animate-fade-slide" style="animation-delay: 0.25s;">
+                <div class="bg-amber-100 p-2.5 sm:p-3 md:p-3.5 rounded-2xl text-amber-600 shadow-inner shrink-0">
+                    <svg class="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                </div>
+                <div class="min-w-0"><p class="text-[9px] sm:text-[10px] md:text-[11px] text-slate-500 font-bold uppercase tracking-wider truncate">Completed KPIs</p><h3 class="text-xl sm:text-2xl md:text-3xl font-extrabold text-blue-950 mt-0.5 sm:mt-1" id="valComplete">-</h3></div>
+            </div>
+            
+            <div class="col-span-2 md:col-span-1 glass-card rounded-2xl p-4 sm:p-5 md:p-6 shadow-sm flex flex-col sm:flex-row items-center sm:justify-center md:justify-start text-center sm:text-left space-y-2 sm:space-y-0 sm:space-x-4 animate-fade-slide" style="animation-delay: 0.3s;">
+                <div class="bg-red-100 p-2.5 sm:p-3 md:p-3.5 rounded-2xl text-red-600 shadow-inner shrink-0">
+                    <svg class="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                </div>
+                <div class="min-w-0"><p class="text-[9px] sm:text-[10px] md:text-[11px] text-slate-500 font-bold uppercase tracking-wider truncate">Active Alerts</p><h3 class="text-xl sm:text-2xl md:text-3xl font-extrabold text-blue-950 mt-0.5 sm:mt-1" id="valAlerts">-</h3></div>
+            </div>
+        </div>
+
+        <!-- CHARTS GRID -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 mb-6 sm:mb-8">
+            <!-- Line Chart -->
+            <div class="lg:col-span-2 bg-white rounded-3xl p-5 sm:p-6 shadow-sm border border-gray-100 flex flex-col min-h-[350px] lg:h-[400px] animate-fade-slide" style="animation-delay: 0.35s;">
+                <div class="flex justify-between items-center mb-4 sm:mb-6 shrink-0">
+                    <h3 class="font-extrabold text-blue-950 text-base sm:text-lg">Company Performance Trend</h3>
+                    <select class="text-[10px] sm:text-xs border-gray-200 rounded-lg text-slate-600 font-semibold focus:ring-blue-100 focus:border-blue-500 cursor-pointer py-1.5 px-2 sm:px-3">
+                        <option>This Week</option>
+                        <option>Last Week</option>
+                    </select>
+                </div>
+                <div class="flex-1 min-h-[250px] relative w-full">
+                    <canvas id="lineChart" class="absolute top-0 left-0 w-full h-full"></canvas>
+                </div>
+            </div>
+
+            <!-- Doughnut Chart -->
+            <div class="lg:col-span-1 bg-white rounded-3xl p-5 sm:p-6 shadow-sm border border-gray-100 flex flex-col min-h-[350px] lg:h-[400px] animate-fade-slide" style="animation-delay: 0.4s;">
+                <h3 class="font-extrabold text-blue-950 text-base sm:text-lg mb-2 sm:mb-4 shrink-0">Overall KPI Completion</h3>
+                <p class="text-[11px] sm:text-xs text-slate-500 mb-4 sm:mb-6 leading-relaxed">Ratio of completed KPIs vs remaining KPIs across all active departments.</p>
+                <div class="flex-1 min-h-[200px] relative w-full flex justify-center items-center">
+                    <canvas id="doughnutChart" class="absolute top-0 left-0 w-full h-full"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- TABLES & ALERTS GRID -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 mb-4">
+            <!-- Top Departments Table -->
+            <div class="lg:col-span-2 bg-white rounded-3xl p-5 sm:p-6 shadow-sm border border-gray-100 flex flex-col min-h-[400px] animate-fade-slide" style="animation-delay: 0.45s;">
+                <div class="flex justify-between items-center mb-4 sm:mb-6 shrink-0">
+                    <h3 class="font-extrabold text-blue-950 text-base sm:text-lg">Top Performing Departments</h3>
+                    <a href="/superadmin/reports" class="text-[10px] sm:text-xs text-blue-600 hover:text-blue-800 font-bold transition-colors">Detailed View</a>
+                </div>
+                <div class="custom-scrollbar flex-1 min-h-0 overflow-y-auto overflow-x-auto rounded-xl border border-gray-100">
+                    <table class="w-full text-xs sm:text-sm text-left min-w-[500px]">
+                        <thead class="text-[10px] sm:text-xs text-slate-500 uppercase tracking-wider bg-slate-50 sticky top-0 z-10 border-b border-gray-200">
+                            <tr>
+                                <th class="py-3 sm:py-4 px-3 sm:px-4 font-bold w-10 sm:w-12 text-center">Rank</th>
+                                <th class="py-3 sm:py-4 px-3 sm:px-4 font-bold">Department</th>
+                                <th class="py-3 sm:py-4 px-3 sm:px-4 font-bold text-center">Avg. Score</th>
+                                <th class="py-3 sm:py-4 px-3 sm:px-4 font-bold w-1/3">Completion</th>
+                            </tr>
+                        </thead>
+                        <tbody id="deptTableBody" class="divide-y divide-gray-50">
+                            <tr><td colspan="4" class="text-center text-slate-400 py-8 font-medium text-xs sm:text-sm">Loading data...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Recent Alerts -->
+            <div class="lg:col-span-1 bg-white rounded-3xl p-5 sm:p-6 shadow-sm border border-gray-100 flex flex-col h-[400px] animate-fade-slide" style="animation-delay: 0.5s;">
+                <div class="flex justify-between items-center mb-4 sm:mb-6 shrink-0">
+                    <h3 class="font-extrabold text-blue-950 text-base sm:text-lg">Recent Alerts</h3>
+                    <span class="text-[10px] sm:text-xs bg-red-100 text-red-700 px-2 py-1 rounded-md font-bold shrink-0" id="alertCountLabel">0 Alerts</span>
+                </div>
+                <div id="alertsList" class="space-y-3 sm:space-y-4 custom-scrollbar flex-1 min-h-0 overflow-y-auto pr-1 sm:pr-2">
+                    <div class="flex items-center justify-center h-full text-slate-400 text-xs sm:text-sm font-medium">Loading alerts...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // 🛡️ SECURITY FIX: Global HTML Escape Function to prevent Stored XSS Attacks
+    function escapeHTML(str) {
+        if (!str) return "";
+        return str.toString()
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+    document.addEventListener('DOMContentLoaded', async () => {
+        const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Yangon' };
+        document.getElementById('currentDateDisplay').textContent = new Date().toLocaleDateString('en-US', options);
+
+        try {
+            const res = await fetch('/api/v1/superadmin/dashboard/summary'); 
+            
+            // 🛡️ AUTH FIX
+            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+
+            if(res.ok) {
+                const data = await res.json();
+                
+                document.getElementById('valUsers').innerText = data.metrics?.total_users ?? 0;
+                document.getElementById('valDepts').innerText = data.metrics?.total_departments ?? 0;
+                document.getElementById('valKPIs').innerText = data.metrics?.total_kpis ?? 0;
+                document.getElementById('valComplete').innerText = data.metrics?.completed_kpis ?? 0;
+                
+                const activeAlerts = data.metrics?.active_alerts ?? 0;
+                document.getElementById('valAlerts').innerText = activeAlerts;
+                document.getElementById('alertBadge').innerText = activeAlerts;
+                document.getElementById('alertCountLabel').innerText = `${activeAlerts} Alerts`;
+
+                if (data.recent_alerts && data.recent_alerts.length > 0) {
+                    document.getElementById('alertsList').innerHTML = data.recent_alerts.map(a => `
+                        <div class="flex items-start p-3 bg-red-50/50 rounded-xl border border-red-100 hover:bg-red-50 transition-colors">
+                            <div class="bg-white p-1.5 rounded-full shadow-sm mr-2.5 sm:mr-3 mt-0.5 shrink-0">
+                                <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <!-- 🛡️ User Name accurately displayed here -->
+                                <p class="text-[9px] sm:text-[10px] font-extrabold text-blue-900 uppercase tracking-widest truncate">${escapeHTML(a.name)}</p>
+                                <p class="text-[11px] sm:text-xs font-bold text-slate-800 leading-tight mt-0.5">${escapeHTML(a.title)}</p>
+                                <!-- 🛡️ Full Message context displayed safely -->
+                                <p class="text-[10px] sm:text-[11px] font-medium text-slate-600 mt-1 break-words">${escapeHTML(a.message)}</p>
+                                <p class="text-[9px] sm:text-[10px] font-bold text-red-500 mt-1 sm:mt-1.5">${escapeHTML(a.time)}</p>
+                            </div>
+                        </div>
+                    `).join('');
+                } else {
+                    document.getElementById('alertsList').innerHTML = `
+                        <div class="flex flex-col items-center justify-center h-full text-center p-4">
+                            <div class="bg-green-50 p-2 sm:p-3 rounded-full mb-2 sm:mb-3"><svg class="w-5 h-5 sm:w-6 sm:h-6 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg></div>
+                            <p class="text-xs sm:text-sm font-bold text-slate-700">All Clear</p>
+                            <p class="text-[10px] sm:text-xs text-slate-500 mt-1">No recent alerts or warnings.</p>
+                        </div>`;
+                }
+
+                if (data.top_departments && data.top_departments.length > 0) {
+                    document.getElementById('deptTableBody').innerHTML = data.top_departments.map((d, i) => {
+                        let rankBadge = i === 0 ? 'bg-yellow-100 text-yellow-700' : (i === 1 ? 'bg-slate-200 text-slate-700' : (i === 2 ? 'bg-amber-100 text-amber-700' : 'bg-slate-50 text-slate-500'));
+                        return `
+                        <tr class="hover:bg-slate-50 transition-colors group">
+                            <td class="py-3 sm:py-4 px-3 sm:px-4 text-center">
+                                <span class="inline-flex items-center justify-center w-5 h-5 sm:w-6 sm:h-6 rounded-full text-[10px] sm:text-xs font-bold ${rankBadge}">${i+1}</span>
+                            </td>
+                            <td class="py-3 sm:py-4 px-3 sm:px-4 font-bold text-slate-700 group-hover:text-blue-900 transition-colors whitespace-nowrap min-w-[120px]">${escapeHTML(d.name)}</td>
+                            <td class="py-3 sm:py-4 px-3 sm:px-4 font-extrabold text-blue-950 text-center">${Number.isFinite(Number(d.avg_score)) ? Number(d.avg_score).toFixed(2) : '-'}</td>
+                            <td class="py-3 sm:py-4 px-3 sm:px-4 min-w-[150px]">
+                                <div class="flex items-center">
+                                    <span class="text-[10px] sm:text-xs font-bold text-slate-600 w-10 sm:w-12 text-right mr-2 sm:mr-3 shrink-0">${d.completion}%</span>
+                                    <div class="w-full bg-slate-100 rounded-full h-1.5 sm:h-2 shadow-inner overflow-hidden">
+                                        <div class="bg-blue-600 h-full rounded-full transition-all duration-1000 ease-out" style="width: 0%;" data-width="${d.completion}%"></div>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                    `}).join('');
+                    
+                    setTimeout(() => {
+                        document.querySelectorAll('[data-width]').forEach(el => { el.style.width = el.getAttribute('data-width'); });
+                    }, 100);
+                } else {
+                    document.getElementById('deptTableBody').innerHTML = '<tr><td colspan="4" class="text-center text-xs sm:text-sm font-medium text-slate-500 py-8 sm:py-10 bg-slate-50/50">No KPI data available yet.</td></tr>';
+                }
+
+                // CHART INITIALIZATION
+                Chart.defaults.font.family = "'Inter', sans-serif";
+                Chart.defaults.color = '#64748b'; 
+                Chart.defaults.scale.grid.color = '#f1f5f9'; 
+
+                const noDataPlugin = {
+                    id: 'noData',
+                    afterDraw: (chart) => {
+                        const hasData = chart.data.datasets.some(dataset => dataset.data && dataset.data.some(val => val > 0));
+                        if (!hasData) {
+                            const { ctx, width, height } = chart;
+                            chart.clear();
+                            ctx.save();
+                            ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; 
+                            ctx.font = 'bold 12px Inter, sans-serif'; 
+                            ctx.fillStyle = '#94a3b8';
+                            ctx.fillText('No Data Available', width / 2, height / 2);
+                            ctx.restore();
+                        }
+                    }
+                };
+                Chart.register(noDataPlugin);
+
+                const completedKpis = data.metrics?.completed_kpis || 0;
+                const totalKpis = data.metrics?.total_kpis || 0;
+                const remainingKpis = totalKpis > completedKpis ? totalKpis - completedKpis : 0;
+
+                new Chart(document.getElementById('doughnutChart').getContext('2d'), {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['Achieved', 'Remaining'],
+                        datasets: [{ 
+                            data: [completedKpis, remainingKpis], 
+                            backgroundColor: ['#2563eb', '#e2e8f0'], 
+                            hoverBackgroundColor: ['#1d4ed8', '#cbd5e1'],
+                            borderWidth: 0,
+                            borderRadius: 2
+                        }]
+                    },
+                    options: { 
+                        cutout: '75%', 
+                        responsive: true, 
+                        maintainAspectRatio: false, 
+                        animation: { animateScale: true, animateRotate: true, duration: 1500, easing: 'easeOutQuart' },
+                        plugins: { 
+                            legend: { position: 'bottom', labels: { boxWidth: 10, usePointStyle: true, padding: window.innerWidth < 640 ? 10 : 20, font: { weight: 'bold', size: window.innerWidth < 640 ? 10 : 12 } } },
+                            tooltip: { backgroundColor: 'rgba(15, 23, 42, 0.9)', padding: 10, cornerRadius: 8, titleFont: {size: 12} }
+                        } 
+                    },
+                    plugins: [{
+                        id: 'centerText',
+                        beforeDraw: function(chart) {
+                            if (totalKpis === 0) return;
+                            var width = chart.width, height = chart.height, ctx = chart.ctx;
+                            ctx.restore();
+                            var baseFontSize = window.innerWidth < 640 ? height / 150 : height / 120;
+                            var fontSize = baseFontSize.toFixed(2);
+                            ctx.font = "bold " + fontSize + "em sans-serif";
+                            ctx.textBaseline = "middle";
+                            ctx.fillStyle = "#1e3a8a"; 
+                            var text = Math.round((completedKpis / totalKpis) * 100) + "%",
+                                textX = Math.round((width - ctx.measureText(text).width) / 2),
+                                textY = height / 2.3;
+                            ctx.fillText(text, textX, textY);
+                            
+                            ctx.font = "600 " + (fontSize * 0.4).toFixed(2) + "em sans-serif";
+                            ctx.fillStyle = "#64748b"; 
+                            var text2 = "Completion",
+                                textX2 = Math.round((width - ctx.measureText(text2).width) / 2),
+                                textY2 = height / 2.3 + (window.innerWidth < 640 ? 20 : 25);
+                            ctx.fillText(text2, textX2, textY2);
+                            ctx.save();
+                        }
+                    }]
+                });
+
+                const trendData = data.trend || { labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], data: [0,0,0,0,0,0,0] };
+                const ctx = document.getElementById('lineChart').getContext('2d');
+                let gradient = ctx.createLinearGradient(0, 0, 0, window.innerWidth < 640 ? 250 : 400);
+                gradient.addColorStop(0, 'rgba(37, 99, 235, 0.2)'); 
+                gradient.addColorStop(1, 'rgba(37, 99, 235, 0)');
+
+                new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: trendData.labels,
+                        datasets: [{ 
+                            label: 'Avg KPI Score', 
+                            data: trendData.data, 
+                            borderColor: '#2563eb',
+                            backgroundColor: gradient, 
+                            fill: true,
+                            tension: 0.4,
+                            borderWidth: window.innerWidth < 640 ? 2 : 3,
+                            pointBackgroundColor: '#ffffff',
+                            pointBorderColor: '#2563eb',
+                            pointBorderWidth: 2,
+                            pointRadius: window.innerWidth < 640 ? 3 : 4,
+                            pointHoverRadius: window.innerWidth < 640 ? 4 : 6
+                        }]
+                    },
+                    options: { 
+                        responsive: true, 
+                        maintainAspectRatio: false, 
+                        animation: { duration: 2000, easing: 'easeOutQuart' },
+                        interaction: { intersect: false, mode: 'index' },
+                        plugins: { 
+                            legend: { display: false },
+                            tooltip: { backgroundColor: 'rgba(15, 23, 42, 0.9)', padding: 10, cornerRadius: 8, titleFont: {size: 12} }
+                        }, 
+                        scales: { 
+                            y: { beginAtZero: true, suggestedMax: 5.0, grid: { borderDash: [4, 4], drawBorder: false }, ticks: { font: { size: 10 } } }, 
+                            x: { grid: { display: false, drawBorder: false }, ticks: { font: { weight: 'bold', size: 10 } } } 
+                        } 
+                    }
+                });
+            }
+        } catch (err) {
+            console.error("Dashboard Error:", err); 
+            document.getElementById('deptTableBody').innerHTML = '<tr><td colspan="4" class="text-center text-red-500 font-bold py-8">Unable to load KPI dashboard data.</td></tr>';
+        }
+    });
+</script>
+{% endblock %}

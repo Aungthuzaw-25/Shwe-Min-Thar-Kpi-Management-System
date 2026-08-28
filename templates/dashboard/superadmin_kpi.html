@@ -1,0 +1,1232 @@
+{% extends "layouts/base.html" %}
+{% set active_page = "kpi" %}
+
+{% block title %}Enterprise KPI Engine - KPI Platform{% endblock %}
+
+{% block content %}
+<style>
+    @keyframes fadeInUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .animate-fade-in-up { animation: fadeInUp 0.4s ease-out forwards; }
+    .modal-transition { transition: opacity 0.3s ease, transform 0.3s ease; }
+    .category-row {
+        display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 6px 0; border-bottom: 1px solid #f9fafb;
+    }
+    .category-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; color: #374151; }
+    .category-weight { min-width: 48px; text-align: right; font-weight: 700; color: #111827; background-color: #f3f4f6; padding: 2px 8px; border-radius: 6px; }
+</style>
+
+<div class="min-h-screen bg-slate-50/50 text-slate-800 font-sans p-4 sm:p-6 md:p-10 overflow-y-auto custom-scrollbar">
+    
+    <!-- HEADER -->
+    <header class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 sm:gap-5 mb-6 sm:mb-8 shrink-0 animate-fade-in-up">
+        <div class="flex items-center gap-3 sm:gap-4">
+            <div class="bg-white p-2.5 sm:p-3.5 rounded-2xl shadow-sm ring-1 ring-slate-900/5 text-blue-700 shrink-0">
+                <svg class="w-6 h-6 sm:w-8 sm:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2m0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+            </div>
+            <div>
+                <h2 class="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">KPI Management</h2>
+                <p class="text-xs sm:text-sm text-slate-500 mt-1 font-medium">Manage formulas, dynamic workflows, and role configurations.</p>
+            </div>
+        </div>
+        <div class="flex items-center gap-3 w-full md:w-auto">
+            <button onclick="openFormulasModal()" class="w-full md:w-auto justify-center bg-blue-700 hover:bg-blue-800 text-white px-5 sm:px-6 py-2.5 sm:py-3 rounded-xl text-sm font-bold flex items-center shadow-md transition-all duration-300 transform hover:-translate-y-0.5 active:scale-95">
+                <svg class="w-4 h-4 sm:w-5 sm:h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                Create Formula
+            </button>
+        </div>
+    </header>
+
+    <!-- TABS -->
+    <div class="flex space-x-6 sm:space-x-8 border-b border-slate-200 mb-6 sm:mb-8 px-1 sm:px-2 overflow-x-auto custom-scrollbar pb-1">
+        <button onclick="switchTab('formulas-tab')" id="btn-formulas-tab" class="whitespace-nowrap pb-3 text-xs sm:text-sm font-bold text-blue-900 border-b-2 border-blue-700 transition-all duration-300">Formula Workflow</button>
+        <button onclick="switchTab('records-tab')" id="btn-records-tab" class="whitespace-nowrap pb-3 text-xs sm:text-sm font-semibold text-slate-500 hover:text-blue-900 border-b-2 border-transparent transition-all duration-300">Employee Records</button>
+        <button onclick="switchTab('settings-tab')" id="btn-settings-tab" class="whitespace-nowrap pb-3 text-xs sm:text-sm font-semibold text-slate-500 hover:text-blue-900 border-b-2 border-transparent transition-all duration-300">Role Tracking</button>
+        <button onclick="switchTab('assignments-tab')" id="btn-assignments-tab" class="whitespace-nowrap pb-3 text-xs sm:text-sm font-semibold text-slate-500 hover:text-blue-900 border-b-2 border-transparent transition-all duration-300">Assignments</button>
+    </div>
+
+    <!-- MAIN CONTENT AREA -->
+    <div class="w-full">
+        
+        <!-- TAB 1: FORMULAS -->
+        <div id="formulas-tab" class="tab-content animate-fade-in-up">
+            <div id="formulaCardsContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
+                <div class="col-span-full py-16 text-center text-slate-500">
+                    <svg class="animate-spin h-8 w-8 text-blue-600 mx-auto mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                    Loading formula cards...
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 2: EMPLOYEE RECORDS -->
+        <div id="records-tab" class="tab-content hidden animate-fade-in-up">
+            <div class="bg-white rounded-3xl shadow-sm ring-1 ring-slate-900/5 overflow-hidden">
+                <div class="p-4 sm:p-6 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white gap-3 sm:gap-0">
+                    <h3 class="font-extrabold text-slate-900 text-base sm:text-lg">Employee KPI Records (Current Cycle)</h3>
+                    <button onclick="loadEmployeeRecords()" class="w-full sm:w-auto text-xs text-blue-700 bg-blue-50 border border-blue-200 px-4 py-2 rounded-xl hover:bg-blue-100 font-bold transition shadow-sm flex items-center justify-center">
+                        <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg> 
+                        Refresh Data
+                    </button>
+                </div>
+                <div class="overflow-x-auto custom-scrollbar w-full">
+                    <table class="w-full text-left border-collapse min-w-[700px]">
+                        <thead class="bg-slate-50/80 backdrop-blur-sm text-slate-500 text-[10px] sm:text-[11px] uppercase tracking-widest">
+                            <tr>
+                                <th class="p-4 sm:p-5 font-black border-b border-slate-200/60">Employee</th>
+                                <th class="p-4 sm:p-5 font-black border-b border-slate-200/60">Department</th>
+                                <th class="p-4 sm:p-5 font-black border-b border-slate-200/60 text-center">Score / 5.0</th>
+                                <th class="p-4 sm:p-5 font-black border-b border-slate-200/60">Grade</th>
+                                <th class="p-4 sm:p-5 font-black border-b border-slate-200/60 text-center">Status</th>
+                                <th class="p-4 sm:p-5 font-black text-right border-b border-slate-200/60">Admin Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="recordsTableBody" class="divide-y divide-slate-100/60 text-xs sm:text-sm bg-white">
+                            <tr><td colspan="6" class="p-10 sm:p-16 text-center text-slate-500 font-medium">Loading records...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 3: ROLE TRACKING -->
+        <div id="settings-tab" class="tab-content hidden animate-fade-in-up">
+            <div class="bg-white rounded-3xl p-5 sm:p-8 shadow-sm ring-1 ring-slate-900/5 max-w-4xl mx-auto">
+                <div class="flex items-start gap-3 sm:gap-4 border-b border-slate-100 pb-4 sm:pb-5 mb-4 sm:mb-6">
+                    <div class="bg-indigo-50 p-2 sm:p-3 rounded-2xl text-indigo-600 shadow-inner shrink-0">
+                        <svg class="w-6 h-6 sm:w-7 sm:h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+                    </div>
+
+                    <div id="assignments-tab" class="tab-content hidden animate-fade-in-up">
+                        <div class="bg-white rounded-3xl p-5 sm:p-8 shadow-sm ring-1 ring-slate-900/5 max-w-4xl mx-auto">
+                            <div class="border-b border-slate-100 pb-4 mb-6">
+                                <h3 class="text-lg sm:text-xl font-extrabold text-slate-900">Assign KPI to Employees</h3>
+                                <p class="text-xs sm:text-sm text-slate-500 font-medium mt-1">Assign an approved KPI formula to one or more employees for an evaluation period.</p>
+                            </div>
+                            <form id="assignmentForm" class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+                                <label class="text-xs font-bold text-slate-700">Department
+                                    <select id="assignmentDepartment" required class="mt-2 w-full bg-slate-50 border border-slate-200 p-3 rounded-xl text-sm focus:bg-white focus:border-blue-600 focus:outline-none">
+                                        <option value="">-- Select Department --</option>
+                                    </select>
+                                </label>
+                                <label class="text-xs font-bold text-slate-700">Position
+                                    <select id="assignmentPosition" required class="mt-2 w-full bg-slate-50 border border-slate-200 p-3 rounded-xl text-sm focus:bg-white focus:border-blue-600 focus:outline-none">
+                                        <option value="">-- Select Position --</option>
+                                    </select>
+                                </label>
+                                <label class="text-xs font-bold text-slate-700">Formula
+                                    <select id="assignmentFormula" required class="mt-2 w-full bg-slate-50 border border-slate-200 p-3 rounded-xl text-sm focus:bg-white focus:border-blue-600 focus:outline-none">
+                                        <option value="">-- Select Formula --</option>
+                                    </select>
+                                </label>
+                                <label class="text-xs font-bold text-slate-700">Evaluation Period
+                                    <select id="assignmentPeriod" required class="mt-2 w-full bg-slate-50 border border-slate-200 p-3 rounded-xl text-sm focus:bg-white focus:border-blue-600 focus:outline-none">
+                                        <option value="">-- Select Period --</option>
+                                    </select>
+                                </label>
+                                <label class="md:col-span-2 text-xs font-bold text-slate-700">Employees
+                                    <select id="assignmentUsers" required multiple size="7" class="mt-2 w-full bg-slate-50 border border-slate-200 p-3 rounded-xl text-sm focus:bg-white focus:border-blue-600 focus:outline-none">
+                                        <option value="">Select a department and position first</option>
+                                    </select>
+                                </label>
+                                <div class="md:col-span-2 flex justify-end">
+                                    <button type="submit" id="assignmentSubmit" class="bg-blue-700 hover:bg-blue-800 text-white px-6 py-3 rounded-xl text-sm font-bold shadow-md transition-all">Assign KPI</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                    <div>
+                        <h3 class="text-lg sm:text-xl font-extrabold text-slate-900 mb-1">Role Tracking Controls</h3>
+                        <p class="text-xs sm:text-sm text-slate-500 font-medium">Enable or disable KPI generation for specific role levels per department.</p>
+                    </div>
+                </div>
+                
+                <div class="overflow-x-auto custom-scrollbar border border-slate-200 rounded-2xl shadow-sm w-full">
+                    <table class="w-full text-left min-w-[500px]">
+                        <thead class="bg-slate-50 text-[9px] sm:text-[10px] uppercase tracking-widest text-slate-500 font-black border-b border-slate-200">
+                            <tr>
+                                <th class="p-3 sm:p-5">Department</th>
+                                <th class="p-3 sm:p-5 text-center">L0 (Head)</th>
+                                <th class="p-3 sm:p-5 text-center">L1 (Sup)</th>
+                                <th class="p-3 sm:p-5 text-center">L2 (Staff)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="deptSettingsTableBody" class="divide-y divide-slate-100 text-xs sm:text-sm">
+                            <tr><td colspan="4" class="p-8 sm:p-10 text-center text-slate-400">Loading controls...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- FORMULA CREATION/EDIT MODAL -->
+<div id="formulasModal" class="hidden fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm transition-opacity opacity-0 modal-transition p-2 sm:p-4">
+    <div class="bg-white rounded-3xl w-full max-w-5xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden text-slate-800 transform scale-95 transition-transform duration-300 max-h-[95vh]" id="formulasModalContent">
+        
+        <div class="bg-slate-50 px-5 sm:px-8 py-4 sm:py-6 border-b border-gray-100 flex justify-between items-center shrink-0">
+            <div>
+                <h3 class="text-xl sm:text-2xl font-extrabold text-slate-900" id="modalTitle">Enterprise Formula Builder</h3>
+                <p class="text-[10px] sm:text-sm text-slate-500 mt-1 font-medium hidden sm:block">Configure targeting, categories, and natural language deduction rules.</p>
+            </div>
+            <button onclick="closeFormulasModal()" class="text-slate-400 hover:text-red-500 transition-colors bg-white rounded-full p-2 sm:p-2.5 shadow-sm border border-gray-200 focus:outline-none shrink-0"><svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+        </div>
+
+        <div class="p-4 sm:p-8 overflow-y-auto custom-scrollbar flex-1 bg-slate-50/50">
+            <input type="hidden" id="fId">
+            
+            <!-- SECTION 1: TARGETING & METADATA -->
+            <div class="bg-white p-5 sm:p-7 rounded-3xl border border-slate-200 shadow-sm mb-6 sm:mb-8">
+                <h4 class="text-xs sm:text-sm font-extrabold text-slate-900 border-b border-slate-100 pb-3 sm:pb-4 mb-4 sm:mb-6 uppercase tracking-wider flex items-center gap-2 sm:gap-3">
+                    <span class="bg-blue-100 text-blue-800 w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-[10px] sm:text-xs">1</span> 
+                    General Information & Targeting
+                </h4>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
+                    <div class="md:col-span-2">
+                        <label class="block text-[10px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">Formula Name <span class="text-red-500">*</span></label>
+                        <input type="text" id="fName" placeholder="e.g., Q3 Finance Operations KPI" class="w-full bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 p-3 sm:p-3.5 rounded-xl text-xs sm:text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none transition-all shadow-inner">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">Effective Month</label>
+                        <input type="month" id="fEffectiveMonth" class="w-full bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 p-3 sm:p-3.5 rounded-xl text-xs sm:text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none transition-all shadow-inner">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-[10px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">Region / Town</label>
+                        <input type="text" id="fRegionTown" placeholder="e.g., YGN Office" class="w-full bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 p-3 sm:p-3.5 rounded-xl text-xs sm:text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none transition-all shadow-inner">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-[10px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">Department <span class="text-red-500">*</span></label>
+                        <select id="fDepartment" class="w-full bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 p-3 sm:p-3.5 rounded-xl text-xs sm:text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none transition-all shadow-inner cursor-pointer">
+                            <option value="">-- Select Department --</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">Position <span class="text-red-500">*</span></label>
+                        <select id="fPosition" class="w-full bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 p-3 sm:p-3.5 rounded-xl text-xs sm:text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none transition-all shadow-inner cursor-pointer">
+                            <option value="">-- Select Position --</option>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-[10px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">User Level <span class="text-red-500">*</span></label>
+                        <select id="fLevel" class="w-full bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 p-3 sm:p-3.5 rounded-xl text-xs sm:text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none transition-all shadow-inner cursor-pointer">
+                            <option value="">-- Select Role Level --</option>
+                            <option value="L0">L0 (Head)</option>
+                            <option value="L1">L1 (Supervisor)</option>
+                            <option value="L2">L2 (Staff)</option>
+                        </select>
+                    </div>
+                    <div class="md:col-span-2 flex items-center justify-start mt-2 sm:mt-6">
+                        <label class="flex items-center gap-2 sm:gap-3 cursor-pointer group p-3 sm:p-4 bg-slate-50 rounded-xl border border-slate-200 hover:border-blue-300 transition-colors w-full md:w-auto shadow-sm">
+                            <input type="checkbox" id="fIsActive" checked class="w-4 h-4 sm:w-5 sm:h-5 accent-blue-700 rounded border-slate-300 cursor-pointer">
+                            <span class="text-xs sm:text-sm font-bold text-slate-700 group-hover:text-blue-900 transition-colors">Set as Active Formula upon approval</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SECTION 2: CATEGORIES & RULES BUILDER -->
+            <div class="bg-white p-5 sm:p-7 rounded-3xl border border-slate-200 shadow-sm">
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-end border-b border-slate-100 pb-4 mb-4 sm:mb-6 gap-3 sm:gap-4">
+                    <h4 class="text-xs sm:text-sm font-extrabold text-slate-900 uppercase tracking-wider flex items-center gap-2 sm:gap-3">
+                        <span class="bg-blue-100 text-blue-800 w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-[10px] sm:text-xs">2</span> 
+                        Categories & Deduction Rules
+                    </h4>
+                    <div id="weightTotalIndicator" class="w-full md:w-auto text-xs sm:text-sm font-bold bg-slate-100 text-slate-500 px-4 sm:px-5 py-2 sm:py-2.5 rounded-xl border border-slate-200 shadow-inner flex items-center justify-center md:justify-start gap-2 transition-colors">
+                        <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3"></path></svg>
+                        Total Weight: <span id="weightText">0%</span>
+                    </div>
+                </div>
+                
+                <p class="text-[11px] sm:text-sm text-slate-600 mb-6 sm:mb-8 bg-blue-50/50 p-4 sm:p-5 rounded-2xl border border-blue-100 leading-relaxed font-medium">
+                    Create categories (e.g., Attendance, Performance). Each category starts with a perfect <strong>5.0 score</strong>. Build intuitive rules to define how points are deducted based on employee metrics.
+                </p>
+                
+                <div id="categoriesContainer" class="space-y-4 sm:space-y-6"></div>
+                
+                <div class="mt-6 sm:mt-8 flex justify-center border-t border-dashed border-slate-200 pt-6 sm:pt-8">
+                    <button type="button" onclick="addCategory()" class="w-full sm:w-auto bg-white hover:bg-blue-50 text-blue-700 border border-blue-200 hover:border-blue-400 font-bold px-6 sm:px-8 py-3 sm:py-3.5 rounded-xl text-xs sm:text-sm shadow-sm transition-all flex items-center justify-center gap-2 transform hover:-translate-y-0.5 active:scale-95">
+                        <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
+                        Add New Category
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-slate-50 px-5 sm:px-8 py-4 sm:py-5 border-t border-slate-200 flex flex-col-reverse sm:flex-row justify-end gap-3 sm:gap-4 shrink-0">
+            <button onclick="closeFormulasModal()" class="w-full sm:w-auto px-6 py-3 text-xs sm:text-sm font-bold text-slate-600 hover:text-slate-900 bg-white border border-slate-300 rounded-xl shadow-sm transition-colors">Cancel</button>
+            <button onclick="saveFormula()" class="w-full sm:w-auto bg-blue-700 hover:bg-blue-800 text-white px-8 sm:px-10 py-3 rounded-xl text-xs sm:text-sm font-bold shadow-md transition-all transform hover:-translate-y-0.5 active:scale-95 flex justify-center">Save Formula</button>
+        </div>
+    </div>
+</div>
+
+<!-- INTERVENTION MODAL -->
+<div id="interventionModal" class="hidden fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm transition-opacity opacity-0 modal-transition p-4">
+    <div class="bg-white rounded-3xl p-6 sm:p-8 w-full max-w-md shadow-2xl border border-slate-200 transform scale-95 transition-transform duration-300" id="interventionModalContent">
+        <h3 class="text-xl sm:text-2xl font-extrabold text-slate-900 mb-2" id="interventionTitle">Adjust Score</h3>
+        <p class="text-xs sm:text-sm text-slate-500 mb-5 sm:mb-6 pb-4 border-b border-slate-100 leading-relaxed font-medium" id="intervDesc">Modify employee KPI record.</p>
+        
+        <input type="hidden" id="intervRecordId">
+        <input type="hidden" id="intervType">
+        
+        <div class="mb-4 sm:mb-5">
+            <label class="block text-[11px] sm:text-xs font-black text-slate-700 mb-2 uppercase tracking-wide" id="intervLabel">Value</label>
+            <input type="number" step="0.1" id="intervValue" class="w-full bg-slate-50 border border-slate-200 p-3 sm:p-3.5 rounded-xl text-sm font-bold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none transition-all shadow-inner placeholder-slate-400">
+        </div>
+        <div class="mb-6 sm:mb-8">
+            <label class="block text-[11px] sm:text-xs font-black text-slate-700 mb-2 uppercase tracking-wide">Reason for Audit Log <span class="text-red-500">*</span></label>
+            <textarea id="intervReason" rows="3" class="w-full bg-slate-50 border border-slate-200 p-3 sm:p-3.5 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none transition-all shadow-inner placeholder-slate-400" placeholder="Please provide detailed reason for this manual adjustment..."></textarea>
+        </div>
+        
+        <div class="flex flex-col-reverse sm:flex-row justify-end gap-3 pt-2">
+            <button onclick="closeInterventionModal()" class="w-full sm:w-auto px-6 py-2.5 text-xs sm:text-sm font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl shadow-sm transition-colors">Cancel</button>
+            <button onclick="submitIntervention()" class="w-full sm:w-auto bg-blue-700 hover:bg-blue-800 text-white px-8 py-2.5 rounded-xl text-xs sm:text-sm font-bold shadow-md transition-all active:scale-95 flex justify-center">Confirm Action</button>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const API_BASE = "/api/v1/kpi"; 
+    const DEPARTMENTS_API = "/api/v1/departments"; 
+    let categoryIndex = 0;
+    let deductionIndex = 0;
+    let assignmentUsers = [];
+
+    // 🌟 SECURITY FIX: Global HTML Escape Function
+    function escapeHTML(str) {
+        if (!str) return "";
+        return str.toString()
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+    function showToast(message, type = 'success') {
+        let container = document.getElementById('toastContainer');
+        if(!container) {
+            container = document.createElement('div');
+            container.id = 'toastContainer';
+            container.className = 'fixed top-5 right-5 z-[9999] flex flex-col gap-2 max-w-[90%] sm:max-w-md w-full items-end';
+            document.body.appendChild(container);
+        }
+        const toast = document.createElement('div');
+        const config = type === 'success' ? 'bg-emerald-50 text-emerald-800 border-emerald-500' : 'bg-red-50 text-red-800 border-red-500';
+        const icon = type === 'success' ? '<svg class="w-5 h-5 text-emerald-500 mr-2 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>' : '<svg class="w-5 h-5 text-red-500 mr-2 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>';
+        
+        toast.className = `flex items-start px-4 py-3 sm:px-5 sm:py-4 rounded-xl shadow-lg border-l-4 ${config} text-xs sm:text-sm font-semibold animate-fade-in-up w-full bg-white`;
+        toast.innerHTML = icon + `<div>${escapeHTML(message)}</div>`;
+        container.appendChild(toast);
+        setTimeout(() => toast.remove(), 4500);
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+        fetchDepartments();
+        loadDepartmentKPIs();
+        loadAssignmentOptions();
+
+        document.getElementById("fDepartment").addEventListener("change", async function() {
+            await loadPositionsForDepartment(this.value);
+        });
+        document.getElementById("assignmentDepartment").addEventListener("change", async function() {
+            await loadAssignmentPositions(this.value);
+        });
+        document.getElementById("assignmentPosition").addEventListener("change", function() {
+            renderAssignmentUsers(this.value);
+        });
+        document.getElementById("assignmentForm").addEventListener("submit", submitAssignment);
+    });
+
+    function switchTab(tabId) {
+        document.querySelectorAll('.tab-content').forEach(el => {
+            el.classList.add('hidden');
+            el.classList.remove('animate-fade-in-up'); 
+        });
+        
+        const targetTab = document.getElementById(tabId);
+        targetTab.classList.remove('hidden');
+        void targetTab.offsetWidth;
+        targetTab.classList.add('animate-fade-in-up');
+        
+        const defaultClass = "whitespace-nowrap pb-3 text-xs sm:text-sm font-semibold text-slate-500 hover:text-blue-900 border-b-2 border-transparent transition-all duration-300";
+        const activeClass = "whitespace-nowrap pb-3 text-xs sm:text-sm font-bold text-blue-900 border-b-2 border-blue-700 transition-all duration-300";
+        
+        document.getElementById('btn-formulas-tab').className = defaultClass;
+        document.getElementById('btn-records-tab').className = defaultClass;
+        document.getElementById('btn-settings-tab').className = defaultClass;
+        document.getElementById('btn-assignments-tab').className = defaultClass;
+        document.getElementById(`btn-${tabId}`).className = activeClass;
+
+        if(tabId === 'records-tab') loadEmployeeRecords();
+        if(tabId === 'settings-tab') loadDepartmentSettings();
+        if(tabId === 'assignments-tab') loadAssignmentOptions();
+    }
+
+    async function loadAssignmentOptions() {
+        try {
+            const [deptRes, userRes, formulaRes, periodRes] = await Promise.all([
+                fetch(`${DEPARTMENTS_API}?is_active=true`),
+                fetch('/api/v1/users/?limit=500'),
+                fetch(`${API_BASE}/formulas`),
+                fetch(`${API_BASE}/periods`)
+            ]);
+            if ([deptRes, userRes, formulaRes, periodRes].some(res => res.status === 401 || res.status === 403)) {
+                window.location.href = '/auth/login';
+                return;
+            }
+            if (![deptRes, userRes, formulaRes, periodRes].every(res => res.ok)) {
+                throw new Error("Failed to load assignment options.");
+            }
+
+            const [departments, users, formulas, periods] = await Promise.all([
+                deptRes.json(), userRes.json(), formulaRes.json(), periodRes.json()
+            ]);
+            const departmentSelect = document.getElementById("assignmentDepartment");
+            departmentSelect.innerHTML = '<option value="">-- Select Department --</option>' +
+                departments.map(dept => `<option value="${dept.id}">${escapeHTML(dept.name)}</option>`).join("");
+            assignmentUsers = users.filter(user => !user.is_deleted && user.is_active);
+            document.getElementById("assignmentFormula").innerHTML =
+                '<option value="">-- Select Formula --</option>' +
+                formulas.filter(formula => formula.status === "ACTIVE" || formula.status === "APPROVED")
+                    .map(formula => `<option value="${formula.id}">${escapeHTML(formula.name)} (V${formula.version})</option>`).join("");
+            document.getElementById("assignmentPeriod").innerHTML =
+                '<option value="">-- Select Period --</option>' +
+                periods.filter(period => !period.is_deleted && period.status !== "CANCELLED")
+                    .map(period => `<option value="${period.id}">${escapeHTML(period.label)}</option>`).join("");
+        } catch (error) {
+            console.error("Assignment options failed:", error);
+            showToast("Failed to load KPI assignment options.", "error");
+        }
+    }
+
+    async function loadAssignmentPositions(departmentId) {
+        const positionSelect = document.getElementById("assignmentPosition");
+        positionSelect.innerHTML = '<option value="">-- Select Position --</option>';
+        document.getElementById("assignmentUsers").innerHTML = '<option value="">Select a position first</option>';
+        if (!departmentId) return;
+        try {
+            const response = await fetch(`/api/v1/positions/department/${departmentId}`);
+            if (response.status === 401 || response.status === 403) {
+                window.location.href = '/auth/login';
+                return;
+            }
+            if (!response.ok) throw new Error("Position lookup failed.");
+            const positions = await response.json();
+            positionSelect.innerHTML += positions.map(position =>
+                `<option value="${position.id}">${escapeHTML(position.name)}</option>`
+            ).join("");
+        } catch (error) {
+            console.error("Assignment positions failed:", error);
+            showToast("Failed to load positions.", "error");
+        }
+    }
+
+    function renderAssignmentUsers(positionId) {
+        const departmentId = document.getElementById("assignmentDepartment").value;
+        const usersSelect = document.getElementById("assignmentUsers");
+        const users = assignmentUsers.filter(user => {
+            const inDepartment = (user.departments || []).some(department => String(department.id) === String(departmentId));
+            return inDepartment && String(user.position_id) === String(positionId);
+        });
+        usersSelect.innerHTML = users.length
+            ? users.map(user => `<option value="${user.id}">${escapeHTML(`${user.first_name || ""} ${user.last_name || ""}`.trim())} - ${escapeHTML(user.email)}</option>`).join("")
+            : '<option value="">No employees match this department and position</option>';
+    }
+
+    async function submitAssignment(event) {
+        event.preventDefault();
+        const departmentId = document.getElementById("assignmentDepartment").value;
+        const positionId = document.getElementById("assignmentPosition").value;
+        const formulaId = document.getElementById("assignmentFormula").value;
+        const periodId = document.getElementById("assignmentPeriod").value;
+        const userIds = Array.from(document.getElementById("assignmentUsers").selectedOptions)
+            .map(option => option.value)
+            .filter(Boolean);
+        if (!departmentId || !positionId || !formulaId || !periodId || !userIds.length) {
+            showToast("Select a department, position, formula, period, and at least one employee.", "error");
+            return;
+        }
+
+        const button = document.getElementById("assignmentSubmit");
+        button.disabled = true;
+        button.textContent = "Assigning...";
+        try {
+            const response = await fetch(`${API_BASE}/assignments/bulk-assign`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    department_id: departmentId,
+                    position_id: positionId,
+                    user_ids: userIds,
+                    kpi_formula_id: formulaId,
+                    kpi_period_id: periodId
+                })
+            });
+            if (response.status === 401 || response.status === 403) {
+                window.location.href = '/auth/login';
+                return;
+            }
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.detail || "Assignment rejected.");
+            }
+            showToast("KPI assigned successfully.", "success");
+            document.getElementById("assignmentUsers").selectedIndex = -1;
+        } catch (error) {
+            console.error("KPI assignment failed:", error);
+            showToast(error.message || "Failed to assign KPI.", "error");
+        } finally {
+            button.disabled = false;
+            button.textContent = "Assign KPI";
+        }
+    }
+
+    async function fetchDepartments() {
+        try {
+            const res = await fetch(`${DEPARTMENTS_API}?is_active=true`);
+            // 🛡️ AUTH FIX
+            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+            const depts = await res.json();
+            const select = document.getElementById("fDepartment");
+            depts.forEach(d => { 
+                select.innerHTML += `<option value="${d.id}">${escapeHTML(d.name)}</option>`; 
+            });
+        } catch(err) { console.error("Error fetching departments:", err); }
+    }
+
+    // 1. FORMULAS WORKFLOW 
+    async function loadDepartmentKPIs() {
+        const container = document.getElementById("formulaCardsContainer");
+        try {
+            const formRes = await fetch(`${API_BASE}/formulas`);
+            // 🛡️ AUTH FIX
+            if (formRes.status === 401 || formRes.status === 403) { window.location.href = '/auth/login'; return; }
+            
+            const formulas = await formRes.json();
+            container.innerHTML = "";
+
+            if(formulas.length === 0) {
+                container.innerHTML = `
+                    <div class="col-span-full py-20 text-center text-slate-500 bg-white rounded-3xl border border-dashed border-slate-300 flex flex-col items-center">
+                        <div class="bg-slate-50 p-4 rounded-full ring-1 ring-slate-200 mb-4 shadow-inner">
+                            <svg class="w-10 h-10 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                        </div>
+                        <span class="text-xl font-extrabold text-slate-800">No Formulas Configured</span>
+                        <span class="text-sm mt-1">Click "Create Formula" to build the first evaluation matrix.</span>
+                    </div>`;
+                return;
+            }
+
+            formulas.forEach((formula, index) => {
+                let statusBadge = '';
+                let menuItems = '';
+                
+                // 🌟 BUG FIX & SECURITY FIX: XSS Protection / Single Quote Escape for JSON passing
+                const encodedFormula = encodeURIComponent(JSON.stringify(formula)).replace(/'/g, "%27");
+                menuItems += `<button onclick="editFormula('${encodedFormula}')" class="w-full text-left px-5 py-3 text-sm font-semibold text-slate-700 hover:text-blue-700 hover:bg-blue-50 border-b border-slate-100 transition-colors">Edit Settings</button>`;
+                
+                if(formula.status === 'DRAFT') {
+                    statusBadge = `<span class="bg-slate-100 text-slate-600 ring-slate-200/60 px-3 py-1.5 rounded-lg text-[9px] sm:text-[10px] font-black uppercase tracking-wider ring-1 inset-ring shadow-sm">Draft V${formula.version}</span>`;
+                    menuItems += `<button onclick="workflowAction('${formula.id}', 'submit')" class="w-full text-left px-5 py-3 text-sm font-semibold text-blue-700 hover:bg-blue-50 transition-colors">Submit for Review</button>`;
+                } else if(formula.status === 'REVIEW') {
+                    statusBadge = `<span class="bg-amber-50 text-amber-700 ring-amber-200 px-3 py-1.5 rounded-lg text-[9px] sm:text-[10px] font-black uppercase tracking-wider ring-1 inset-ring shadow-sm">In Review</span>`;
+                    menuItems += `
+                        <button onclick="workflowAction('${formula.id}', 'approve')" class="w-full text-left px-5 py-3 text-sm font-bold text-emerald-700 hover:bg-emerald-50 transition-colors">Approve Formula</button>
+                        <button onclick="workflowAction('${formula.id}', 'reject')" class="w-full text-left px-5 py-3 text-sm font-bold text-red-600 hover:bg-red-50 border-t border-slate-100 transition-colors">Reject</button>
+                    `;
+                } else if(formula.status === 'APPROVED') {
+                    statusBadge = `<span class="bg-emerald-50 text-emerald-700 ring-emerald-200 px-3 py-1.5 rounded-lg text-[9px] sm:text-[10px] font-black uppercase tracking-wider ring-1 inset-ring shadow-sm">Approved</span>`;
+                    menuItems += `<button onclick="workflowAction('${formula.id}', 'activate')" class="w-full text-left px-5 py-3 text-sm font-bold text-blue-700 hover:bg-blue-50 transition-colors">Activate Now</button>`;
+                } else if(formula.status === 'ACTIVE') {
+                    statusBadge = `<span class="bg-blue-50 text-blue-700 ring-blue-200 px-3 py-1.5 rounded-lg text-[9px] sm:text-[10px] font-black uppercase tracking-wider ring-1 inset-ring shadow-sm">Active V${formula.version}</span>`;
+                    menuItems += `<button onclick="workflowAction('${formula.id}', 'archive')" class="w-full text-left px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors">Archive Formula</button>`;
+                } else {
+                    statusBadge = `<span class="bg-slate-50 text-slate-400 ring-slate-200 px-3 py-1.5 rounded-lg text-[9px] sm:text-[10px] font-black uppercase tracking-wider ring-1 inset-ring shadow-sm">Archived</span>`;
+                    menuItems += `<button onclick="workflowAction('${formula.id}', 'activate')" class="w-full text-left px-5 py-3 text-sm font-bold text-blue-700 hover:bg-blue-50 transition-colors">Restore (Activate)</button>`;
+                }
+
+                const isActiveStyle = formula.status === 'ACTIVE' ? 'border-blue-300 shadow-lg ring-4 ring-blue-50 scale-[1.01]' : 'border-slate-200 shadow-sm hover:shadow-md hover:-translate-y-1';
+                const regionText = formula.region_town ? escapeHTML(formula.region_town) : 'All Regions';
+                const posName = formula.position_name ? escapeHTML(formula.position_name) : 'All Positions'; 
+                
+                const categoryListHtml = (formula.categories || []).map(c => `
+                    <div class="category-row text-[10px] sm:text-xs">
+                        <span class="category-name text-slate-700 font-semibold" title="${escapeHTML(c.name)}">${escapeHTML(c.name)}</span>
+                        <span class="category-weight text-blue-900 bg-blue-50 ring-1 ring-blue-100/50">${(c.weight*100).toFixed(0)}%</span>
+                    </div>
+                `).join('');
+
+                container.innerHTML += `
+                    <div class="bg-white rounded-3xl border ${isActiveStyle} p-5 sm:p-7 flex flex-col h-full transition-all duration-300 animate-fade-in-up" style="animation-delay: ${index * 0.05}s">
+                        <div class="flex justify-between items-start mb-4 sm:mb-5">
+                            <div class="pr-2 w-full">
+                                <h3 class="text-base sm:text-lg font-black text-slate-900 truncate mb-2 sm:mb-3" title="${escapeHTML(formula.name)}">${escapeHTML(formula.name)}</h3>
+                                <div class="flex flex-wrap gap-1.5 sm:gap-2">
+                                    <span class="text-[8px] sm:text-[9px] font-extrabold tracking-widest uppercase bg-blue-50 text-blue-700 border border-blue-100/50 px-2 py-1 rounded-md shadow-sm">${posName}</span>
+                                    <span class="text-[8px] sm:text-[9px] font-extrabold tracking-widest uppercase bg-slate-50 text-slate-600 border border-slate-200/60 px-2 py-1 rounded-md shadow-sm">${regionText}</span>
+                                    <span class="text-[8px] sm:text-[9px] font-extrabold tracking-widest uppercase bg-purple-50 text-purple-700 border border-purple-100/50 px-2 py-1 rounded-md shadow-sm">${escapeHTML(formula.user_level)}</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="flex justify-end mb-4 sm:mb-5">
+                            ${statusBadge}
+                        </div>
+                        
+                        <div class="flex-1 text-xs sm:text-sm mb-5 sm:mb-6 bg-slate-50/50 p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-inner">
+                            <p class="text-[9px] sm:text-[10px] font-black text-slate-400 mb-2 sm:mb-3 uppercase tracking-widest">Weight Distribution</p>
+                            ${categoryListHtml || '<p class="text-xs text-slate-400 font-medium">No parameters defined</p>'}
+                        </div>
+                        
+                        <div class="pt-4 sm:pt-5 border-t border-slate-100 flex justify-between items-center shrink-0">
+                            <button onclick="deleteFormula('${formula.id}')" class="text-xs font-bold text-red-500 hover:text-red-700 hover:bg-red-50 px-3 sm:px-4 py-2 rounded-xl transition-colors">Delete</button>
+                            
+                            <div class="relative group/menu">
+                                <button class="text-blue-700 bg-blue-50 hover:bg-blue-100 px-4 sm:px-5 py-2 sm:py-2.5 rounded-xl border border-blue-100 text-[10px] sm:text-xs font-black uppercase tracking-wider transition-all shadow-sm flex items-center gap-2">
+                                    Actions <svg class="w-3 h-3 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                                </button>
+                                <div class="absolute right-0 bottom-full mb-3 w-48 sm:w-56 bg-white border border-slate-100 rounded-2xl shadow-xl opacity-0 invisible group-hover/menu:opacity-100 group-hover/menu:visible transition-all duration-200 z-10 overflow-hidden divide-y divide-slate-50 transform origin-bottom-right scale-95 group-hover/menu:scale-100">
+                                    ${menuItems}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+        } catch (err) { console.error(err); }
+    }
+
+    async function workflowAction(id, action) {
+        try {
+            const workflowActions = new Set(["submit", "approve", "reject", "activate", "archive"]);
+            if (!workflowActions.has(action)) {
+                showToast("Unsupported formula workflow action.", "error");
+                return;
+            }
+
+            const res = await fetch(`${API_BASE}/formulas/${id}/${action}`, { method: "POST" });
+            // 🛡️ AUTH FIX
+            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+            
+            if(res.ok) {
+                showToast(`Formula state successfully changed.`, "success");
+                loadDepartmentKPIs();
+            }
+            else showToast("Action rejected by system policy.", "error");
+        } catch(err) {
+            console.error("Formula workflow action failed:", err);
+            showToast("Unable to change formula state.", "error");
+        }
+    }
+
+    async function deleteFormula(id) {
+        if(!confirm("Warning: Permanent deletion cannot be undone. Proceed?")) return;
+        try {
+            const res = await fetch(`${API_BASE}/formulas/${id}`, { method: "DELETE" });
+            // 🛡️ AUTH FIX
+            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+            
+            if(res.ok) { 
+                showToast("Formula permanently deleted.", "success");
+                loadDepartmentKPIs(); 
+            }
+            else { showToast("Failed to delete.", "error"); }
+        } catch(err) { console.error(err); }
+    }
+
+    // FORMULA BUILDER MODAL LOGIC
+    async function loadPositionsForDepartment(deptId, selectedPositionName = null) {
+        const posSelect = document.getElementById("fPosition");
+        posSelect.innerHTML = '<option value="">-- Loading... --</option>';
+        if(!deptId) {
+            posSelect.innerHTML = '<option value="">-- Select Position --</option>';
+            return;
+        }
+        try {
+            const res = await fetch(`/api/v1/positions/department/${deptId}`);
+            // 🛡️ AUTH FIX
+            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+            
+            if (res.ok) {
+                const positions = await res.json();
+                posSelect.innerHTML = '<option value="">-- Select Position --</option>';
+                positions.forEach(p => {
+                    const isSelected = (p.name === selectedPositionName) ? 'selected' : '';
+                    posSelect.innerHTML += `<option value="${escapeHTML(p.name)}" ${isSelected}>${escapeHTML(p.name)}</option>`;
+                });
+            }
+        } catch(e) { posSelect.innerHTML = '<option value="">-- Error loading --</option>'; }
+    }
+
+    function openFormulasModal() { 
+        document.getElementById("periodForm") && document.getElementById("periodForm").reset();
+        const modal = document.getElementById("formulasModal");
+        const content = document.getElementById("formulasModalContent");
+        modal.classList.remove("hidden"); 
+        void modal.offsetWidth;
+        modal.classList.remove("opacity-0");
+        content.classList.remove("scale-95");
+        content.classList.add("scale-100");
+        
+        document.getElementById("fId").value = "";
+        document.getElementById("fName").value = "";
+        document.getElementById("fEffectiveMonth").value = "";
+        document.getElementById("fRegionTown").value = "";
+        document.getElementById("fDepartment").value = "";
+        document.getElementById("fPosition").innerHTML = '<option value="">-- Select Position --</option>';
+        document.getElementById("fLevel").value = "";
+        document.getElementById("fIsActive").checked = true;
+        document.getElementById("modalTitle").innerText = "Enterprise Formula Builder";
+        
+        document.getElementById("categoriesContainer").innerHTML = "";
+        categoryIndex = 0;
+        deductionIndex = 0;
+        updateTotalWeightIndicator();
+        addCategory();
+    }
+    
+    async function editFormula(encodedData) {
+        const f = JSON.parse(decodeURIComponent(encodedData));
+        
+        document.getElementById("fId").value = f.id;
+        document.getElementById("fName").value = f.name || "";
+        document.getElementById("fRegionTown").value = f.region_town || "";
+        document.getElementById("fLevel").value = f.user_level || "";
+        document.getElementById("fIsActive").checked = f.is_active !== undefined ? f.is_active : (f.status === 'ACTIVE');
+        document.getElementById("modalTitle").innerText = "Edit Enterprise Formula";
+
+        document.getElementById("fDepartment").value = f.department_id || "";
+        await loadPositionsForDepartment(f.department_id, f.position_name);
+
+        document.getElementById("categoriesContainer").innerHTML = "";
+        categoryIndex = 0;
+        deductionIndex = 0;
+        
+        if (f.categories && f.categories.length > 0) {
+            f.categories.forEach(cat => addCategory(cat));
+        } else {
+            addCategory();
+        }
+        updateTotalWeightIndicator();
+
+        const modal = document.getElementById("formulasModal");
+        const content = document.getElementById("formulasModalContent");
+        modal.classList.remove("hidden"); 
+        void modal.offsetWidth;
+        modal.classList.remove("opacity-0");
+        content.classList.remove("scale-95");
+        content.classList.add("scale-100");
+    }
+    
+    function closeFormulasModal() { 
+        const modal = document.getElementById("formulasModal");
+        const content = document.getElementById("formulasModalContent");
+        modal.classList.add("opacity-0");
+        content.classList.remove("scale-100");
+        content.classList.add("scale-95");
+        setTimeout(() => { modal.classList.add("hidden"); }, 300); 
+    }
+
+    function handleEvalTypeChange(selectEl) {
+        const catBlock = selectEl.closest('.cat-block');
+        const metricsSection = catBlock.querySelector('.metrics-section');
+        if(selectEl.value === 'TARGET') {
+            metricsSection.classList.add('hidden');
+        } else {
+            metricsSection.classList.remove('hidden');
+        }
+    }
+
+    function addCategory(catData = null) {
+        categoryIndex++;
+        const cId = `cat_block_${categoryIndex}`;
+        const nameVal = catData && catData.name ? escapeHTML(catData.name) : "";
+        const weightVal = catData && catData.weight ? (parseFloat(catData.weight) * 100).toFixed(0) : "";
+        const typeVal = catData && catData.evaluation_type ? escapeHTML(catData.evaluation_type) : "DEDUCTION";
+        
+        const html = `
+            <div id="${cId}" class="cat-block bg-white border border-slate-200 rounded-2xl sm:rounded-3xl p-4 sm:p-7 shadow-sm relative transition-all hover:border-blue-300 animate-fade-in-up">
+                <button type="button" onclick="document.getElementById('${cId}').remove(); updateTotalWeightIndicator();" class="absolute top-4 sm:top-6 right-4 sm:right-6 text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 sm:p-2.5 rounded-full transition-colors focus:outline-none" title="Remove Category">
+                    <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                </button>
+                
+                <div class="grid grid-cols-1 md:grid-cols-5 gap-4 sm:gap-6 mb-5 sm:mb-7 pr-10 sm:pr-14">
+                    <div class="md:col-span-2">
+                        <label class="block text-[10px] sm:text-xs font-black text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-widest">Category Name <span class="text-red-500">*</span></label>
+                        <input type="text" class="cat-name w-full bg-slate-50 border border-slate-200 p-3 sm:p-4 rounded-xl text-xs sm:text-sm font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none transition-all shadow-inner" placeholder="e.g. Sales Performance" value="${nameVal}">
+                    </div>
+                    
+                    <div class="md:col-span-2">
+                        <label class="block text-[10px] sm:text-xs font-black text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-widest">Evaluation Type <span class="text-red-500">*</span></label>
+                        <select class="cat-eval-type w-full bg-slate-50 border border-slate-200 p-3 sm:p-4 rounded-xl text-xs sm:text-sm font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none transition-all shadow-inner cursor-pointer appearance-none" onchange="handleEvalTypeChange(this)">
+                            <option value="DEDUCTION" ${typeVal === 'DEDUCTION' ? 'selected' : ''}>Deduction (Penalty)</option>
+                            <option value="TARGET" ${typeVal === 'TARGET' ? 'selected' : ''}>Target (Achievement %)</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-[10px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-widest">Weight <span class="text-red-500">*</span></label>
+                        <div class="relative">
+                            <input type="number" oninput="updateTotalWeightIndicator()" class="cat-weight w-full bg-slate-50 border border-slate-200 p-3 sm:p-4 rounded-xl text-xs sm:text-sm font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none pr-8 transition-all shadow-inner" placeholder="0" value="${weightVal}">
+                            <span class="absolute right-3 top-3 sm:top-4 text-xs sm:text-sm font-bold text-slate-400">%</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="metrics-section bg-slate-50/50 rounded-2xl p-4 sm:p-6 border border-slate-100 ${typeVal === 'TARGET' ? 'hidden' : ''}">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 sm:mb-5 border-b border-slate-200/60 pb-3 sm:pb-4 gap-3 sm:gap-0">
+                        <div class="flex items-center gap-2">
+                            <svg class="w-4 h-4 sm:w-5 sm:h-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                            <h5 class="text-[10px] sm:text-xs font-black text-slate-900 uppercase tracking-widest">Evaluation Metrics</h5>
+                        </div>
+                        <button type="button" onclick="addDeduction('${cId}')" class="w-full sm:w-auto text-[10px] sm:text-[11px] bg-white border border-blue-200 text-blue-700 font-extrabold uppercase tracking-wider px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl shadow-sm hover:bg-blue-50 transition-colors flex items-center justify-center gap-1.5 active:scale-95">
+                            <svg class="w-3 h-3 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg> Add Metric
+                        </button>
+                    </div>
+                    <div id="deductions_${cId}" class="space-y-4"></div>
+                </div>
+            </div>
+        `;
+        document.getElementById("categoriesContainer").insertAdjacentHTML('beforeend', html);
+        
+        if (catData && catData.deductions && catData.deductions.length > 0) {
+            catData.deductions.forEach(ded => addDeduction(cId, ded));
+        } else {
+            addDeduction(cId);
+        }
+    }
+
+    function handleMetricTypeChange(dedBlockId, newType) {
+        const inputName = document.getElementById(`input_name_${dedBlockId}`);
+        const rulesContainer = document.getElementById(`rules_${dedBlockId}`);
+        
+        if (newType === 'percentage') {
+            inputName.placeholder = "e.g. Accuracy, Completion Rate...";
+        } else {
+            inputName.placeholder = "e.g. Days Late, Absences...";
+        }
+        
+        rulesContainer.setAttribute('data-type', newType);
+        
+        const conditionTexts = rulesContainer.querySelectorAll('.condition-text');
+        const valueInputs = rulesContainer.querySelectorAll('.rule-val');
+        const unitTexts = rulesContainer.querySelectorAll('.condition-unit');
+        
+        conditionTexts.forEach(el => el.innerText = newType === 'percentage' ? 'If percentage is' : 'If count is');
+        valueInputs.forEach(el => el.placeholder = newType === 'percentage' ? 'e.g. 95' : 'e.g. 3');
+        unitTexts.forEach(el => el.innerText = newType === 'percentage' ? '% , deduct' : 'times, deduct');
+    }
+
+    function addDeduction(categoryId, dedData = null) {
+        deductionIndex++;
+        const dId = `ded_block_${deductionIndex}`;
+        const nameVal = dedData && dedData.name ? escapeHTML(dedData.name) : "";
+        const typeVal = dedData && dedData.measure_type ? escapeHTML(dedData.measure_type) : "count";
+        
+        const html = `
+            <div id="${dId}" class="ded-block bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-sm relative animate-fade-in-up">
+                <button type="button" onclick="document.getElementById('${dId}').remove();" class="absolute top-3 sm:top-4 right-3 sm:right-4 text-slate-300 hover:text-red-500 transition-colors bg-white rounded-full p-1.5 sm:p-2 hover:bg-red-50 focus:outline-none" title="Remove Metric">
+                    <svg class="w-3 h-3 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+                
+                <h6 class="text-[9px] sm:text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 sm:mb-3 pr-8" id="label_name_${dId}">
+                    Metric Name <span class="normal-case font-semibold text-blue-500 ml-1">(Must match Excel)</span>
+                </h6>
+                
+                <div class="flex flex-col md:flex-row gap-3 sm:gap-5 mb-4 sm:mb-6">
+                    <div class="flex-1">
+                        <input type="text" id="input_name_${dId}" class="ded-name w-full bg-slate-50 border border-slate-200 p-2.5 sm:p-3 rounded-xl text-xs sm:text-sm font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none transition-colors" placeholder="${typeVal === 'percentage' ? 'e.g. Accuracy...' : 'e.g. Absences...'}" value="${nameVal}">
+                    </div>
+                    <div class="w-full md:w-56 lg:w-64 shrink-0 relative">
+                        <select onchange="handleMetricTypeChange('${dId}', this.value)" class="ded-type w-full bg-slate-50 border border-slate-200 text-slate-800 p-2.5 sm:p-3 rounded-xl text-xs sm:text-sm font-bold focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none transition-colors appearance-none cursor-pointer">
+                            <option value="count" ${typeVal === 'count' ? 'selected' : ''}>Occurrences / Count</option>
+                            <option value="percentage" ${typeVal === 'percentage' ? 'selected' : ''}>Percentage (%)</option>
+                        </select>
+                        <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 sm:px-4 text-slate-400">
+                            <svg class="h-3 w-3 sm:h-4 sm:w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-blue-50/50 rounded-xl border border-blue-100 p-3 sm:p-5">
+                    <h6 class="text-[9px] sm:text-[10px] font-black text-blue-800 uppercase tracking-widest mb-3 sm:mb-4">Deduction Conditions <span class="normal-case font-semibold text-slate-500">(Subtracts from 5.0 base)</span></h6>
+                    <div id="rules_${dId}" class="space-y-2 sm:space-y-3 mb-3 sm:mb-4" data-type="${typeVal}"></div>
+                    <button type="button" onclick="addRule('${dId}')" class="text-[10px] sm:text-xs font-bold text-blue-700 hover:text-blue-900 flex items-center gap-1 sm:gap-1.5 transition-colors px-2 sm:px-3 py-1.5 rounded-lg hover:bg-blue-100 w-max">
+                        <svg class="w-3 h-3 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg> Add Condition
+                    </button>
+                </div>
+            </div>
+        `;
+        document.getElementById(`deductions_${categoryId}`).insertAdjacentHTML('beforeend', html);
+        
+        if (dedData && dedData.rules && dedData.rules.length > 0) {
+            dedData.rules.forEach(rule => addRule(dId, rule));
+        } else {
+            addRule(dId);
+        }
+    }
+
+    function addRule(deductionId, ruleData = null) {
+        const opVal = ruleData && ruleData.operator ? escapeHTML(ruleData.operator) : '>=';
+        const valVal = ruleData && ruleData.value !== undefined ? escapeHTML(ruleData.value) : '';
+        const scoreVal = ruleData && ruleData.deduct_score !== undefined ? escapeHTML(ruleData.deduct_score) : '';
+        
+        const container = document.getElementById(`rules_${deductionId}`);
+        const currentType = container.getAttribute('data-type') || 'count';
+        
+        const conditionText = currentType === 'percentage' ? 'If percentage is' : 'If count is';
+        const placeholderText = currentType === 'percentage' ? 'e.g. 95' : 'e.g. 3';
+        const unitText = currentType === 'percentage' ? '% , deduct' : 'times, deduct';
+        
+        const html = `
+            <div class="rule-block flex flex-wrap items-center gap-2 sm:gap-3 bg-white border border-slate-200 px-3 sm:px-5 py-2.5 sm:py-3.5 rounded-xl shadow-sm animate-fade-in-up hover:border-blue-300 transition-colors group relative pr-8">
+                <span class="condition-text text-[10px] sm:text-xs font-bold text-slate-600">${conditionText}</span>
+                <div class="relative">
+                    <select class="rule-op bg-slate-50 border border-slate-200 py-1.5 sm:py-2 pl-2 sm:pl-4 pr-7 sm:pr-10 text-[10px] sm:text-xs rounded-lg font-black text-blue-900 focus:bg-white focus:outline-none focus:border-blue-500 appearance-none cursor-pointer shadow-inner">
+                        <option value=">=" ${opVal === '>=' ? 'selected' : ''}>>=</option>
+                        <option value="<=" ${opVal === '<=' ? 'selected' : ''}><=</option>
+                        <option value="==" ${opVal === '==' ? 'selected' : ''}>==</option>
+                        <option value=">" ${opVal === '>' ? 'selected' : ''}>></option>
+                        <option value="<" ${opVal === '<' ? 'selected' : ''}><</option>
+                    </select>
+                    <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-1.5 sm:px-2 text-blue-700">
+                        <svg class="h-2.5 w-2.5 sm:h-3 sm:w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                    </div>
+                </div>
+                <input type="number" step="0.1" class="rule-val w-16 sm:w-24 bg-slate-50 border border-slate-200 p-1.5 sm:p-2 text-xs sm:text-sm font-black text-center text-slate-800 rounded-lg focus:bg-white focus:outline-none focus:border-blue-500 shadow-inner" placeholder="${placeholderText}" value="${valVal}">
+                <span class="condition-unit text-[10px] sm:text-xs font-bold text-slate-600">${unitText}</span>
+                <input type="number" step="0.1" max="5.0" min="0" class="rule-score w-16 sm:w-24 bg-red-50 border border-red-200 text-red-700 font-black text-center p-1.5 sm:p-2 text-xs sm:text-sm rounded-lg focus:bg-white focus:outline-none focus:border-red-500 shadow-inner" placeholder="1.0" value="${scoreVal}">
+                <span class="text-[10px] sm:text-xs font-bold text-slate-600 hidden sm:inline">points.</span>
+                <button type="button" onclick="this.parentElement.remove()" class="absolute right-2 top-1/2 transform -translate-y-1/2 text-slate-300 hover:text-red-500 p-1.5 rounded-lg hover:bg-red-50 transition-colors sm:opacity-0 group-hover:opacity-100" title="Remove condition">
+                    <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                </button>
+            </div>
+        `;
+        document.getElementById(`rules_${deductionId}`).insertAdjacentHTML('beforeend', html);
+    }
+
+    function updateTotalWeightIndicator() {
+        let total = 0;
+        document.querySelectorAll(".cat-weight").forEach(el => {
+            if(el.value) total += parseFloat(el.value);
+        });
+        
+        const ind = document.getElementById("weightTotalIndicator");
+        const textSpan = document.getElementById("weightText");
+        textSpan.innerText = `${total}%`;
+        
+        if (total === 100) {
+            ind.className = "w-full md:w-auto text-xs sm:text-sm font-extrabold bg-emerald-50 text-emerald-700 px-4 sm:px-5 py-2 sm:py-2.5 rounded-xl border border-emerald-200 shadow-sm flex items-center justify-center md:justify-start gap-2 transition-colors uppercase tracking-wider";
+        } else {
+            ind.className = "w-full md:w-auto text-xs sm:text-sm font-extrabold bg-amber-50 text-amber-700 px-4 sm:px-5 py-2 sm:py-2.5 rounded-xl border border-amber-200 shadow-sm flex items-center justify-center md:justify-start gap-2 transition-colors uppercase tracking-wider";
+        }
+    }
+
+    async function saveFormula() {
+        const payload = {
+            name: document.getElementById("fName").value.trim(),
+            region_town: document.getElementById("fRegionTown").value.trim() || null,
+            department_id: document.getElementById("fDepartment").value,
+            position_name: document.getElementById("fPosition").value, 
+            user_level: document.getElementById("fLevel").value,
+            effective_month: document.getElementById("fEffectiveMonth").value || null,
+            is_active: document.getElementById("fIsActive").checked,
+            scope: "DEPARTMENT",
+            categories: []
+        };
+
+        if(!payload.name || !payload.department_id || !payload.position_name || !payload.user_level) {
+            return showToast("Formula Name, Department, Position, and Level are mandatory fields.", "error");
+        }
+
+        let totalWeight = 0;
+        let validationError = null;
+
+        const catBlocks = document.querySelectorAll(".cat-block");
+        if(catBlocks.length === 0) return showToast("You must add at least one Category.", "error");
+
+        catBlocks.forEach(cat => {
+            const cName = cat.querySelector(".cat-name").value.trim();
+            const cWeightRaw = parseFloat(cat.querySelector(".cat-weight").value || 0);
+            const cEvalType = cat.querySelector(".cat-eval-type").value; 
+            
+            const cWeight = cWeightRaw / 100.0;
+            totalWeight += cWeightRaw;
+
+            if(!cName || isNaN(cWeightRaw)) { validationError = "All categories must have a valid Name and Weight."; return; }
+
+            const deductions = [];
+            cat.querySelectorAll(".ded-block").forEach(ded => {
+                const dName = ded.querySelector(".ded-name").value.trim();
+                const dType = ded.querySelector(".ded-type").value; 
+                
+                if(!dName) { validationError = "All metrics must have a valid Name."; return; }
+
+                const rules = [];
+                ded.querySelectorAll(".rule-block").forEach(r => {
+                    const rOp = r.querySelector(".rule-op").value;
+                    const rVal = parseFloat(r.querySelector(".rule-val").value);
+                    const rScore = parseFloat(r.querySelector(".rule-score").value);
+                    if(isNaN(rVal) || isNaN(rScore)) { validationError = "All conditions and scores must be valid numbers."; return; }
+                    rules.push({ operator: rOp, value: rVal, deduct_score: rScore });
+                });
+
+                if(rules.length === 0 && cEvalType === 'DEDUCTION') { validationError = "Every metric must have at least one condition rule."; return; }
+                if(rules.length > 0) { deductions.push({ name: dName, measure_type: dType, rules: rules }); }
+            });
+
+            payload.categories.push({ 
+                name: cName, 
+                weight: cWeight, 
+                max_score: 5.0, 
+                evaluation_type: cEvalType, 
+                deductions: deductions 
+            });
+        });
+
+        if(validationError) return showToast(validationError, "error");
+        if(Math.abs(totalWeight - 100) > 0.01) return showToast(`Total category weights must equal exactly 100%. Current: ${totalWeight}%`, "error");
+
+        const fId = document.getElementById("fId").value;
+        const url = fId ? `${API_BASE}/formulas/${fId}` : `${API_BASE}/formulas`;
+        const method = fId ? "PUT" : "POST";
+
+        try {
+            const res = await fetch(url, {
+                method: method, 
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+            // 🛡️ AUTH FIX
+            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+            
+            if (res.ok) {
+                showToast(`Formula ${fId ? 'updated' : 'deployed'} successfully!`, "success");
+                closeFormulasModal();
+                loadDepartmentKPIs();
+            } else {
+                const err = await res.json();
+                showToast(err.detail || "Validation Error", "error");
+            }
+        } catch (err) { showToast("System connectivity error.", "error"); }
+    }
+
+    // ==========================================
+    // 2. EMPLOYEE RECORDS & INTERVENTIONS
+    // ==========================================
+    async function loadEmployeeRecords() {
+        const tbody = document.getElementById("recordsTableBody");
+        tbody.innerHTML = `<tr><td colspan="6" class="p-16 text-center"><svg class="animate-spin h-8 w-8 text-blue-600 mx-auto mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></td></tr>`;
+        
+        try {
+            const res = await fetch(`${API_BASE}/dashboard/ranking?period_type=MONTHLY&limit=50`);
+            // 🛡️ AUTH FIX
+            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+            
+            const records = await res.json();
+            
+            tbody.innerHTML = "";
+            if(!records || records.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="p-10 sm:p-16 text-center text-slate-500 font-bold">No evaluation records found for the active cycle.</td></tr>';
+                return;
+            }
+
+            // 🌟 SECURITY FIX: escapeHTML
+            records.forEach((r, index) => {
+                let badgeClass = r.grade === 'EXCELLENT' ? 'bg-emerald-50 text-emerald-700 ring-emerald-200' : 
+                                (r.grade === 'POOR' ? 'bg-red-50 text-red-700 ring-red-200' : 'bg-blue-50 text-blue-700 ring-blue-200');
+                
+                const freezeStatus = r.is_frozen 
+                    ? `<span class="px-2.5 sm:px-3 py-1 bg-slate-100 text-slate-600 rounded-lg text-[9px] sm:text-[10px] font-black uppercase ring-1 inset-ring tracking-wider">Locked</span>`
+                    : `<span class="px-2.5 sm:px-3 py-1 bg-amber-50 text-amber-700 rounded-lg text-[9px] sm:text-[10px] font-black uppercase ring-1 ring-amber-200/50 shadow-sm tracking-wider">Open</span>`;
+                    
+                const displayName = r.full_name || r.user_name || "Unknown";
+
+                tbody.innerHTML += `
+                    <tr class="hover:bg-slate-50/80 transition-colors border-b border-slate-100/60 animate-fade-in-up group" style="animation-delay: ${index * 0.03}s">
+                        <td class="p-4 sm:p-5 font-black text-slate-900 whitespace-nowrap">${escapeHTML(displayName)}</td>
+                        <td class="p-4 sm:p-5 text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wide whitespace-nowrap">${escapeHTML(r.department_name)}</td>
+                        <td class="p-4 sm:p-5 font-black text-blue-900 text-center text-sm sm:text-base">${r.total_score.toFixed(2)}</td>
+                        <td class="p-4 sm:p-5"><span class="px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[9px] sm:text-[10px] font-black uppercase tracking-wider ring-1 inset-ring shadow-sm ${badgeClass}">${escapeHTML(r.grade)}</span></td>
+                        <td class="p-4 sm:p-5 text-center">${freezeStatus}</td>
+                        <td class="p-4 sm:p-5 text-right space-x-1 sm:space-x-2 whitespace-nowrap">
+                            <button onclick="openIntervention('${r.id}', 'override', '${escapeHTML(displayName)}')" class="text-[9px] sm:text-[10px] font-bold bg-white hover:bg-slate-50 text-slate-600 px-2 sm:px-3.5 py-1.5 sm:py-2 rounded-lg border border-slate-200 shadow-sm transition-colors opacity-100 sm:opacity-0 group-hover:opacity-100">Override</button>
+                            <button onclick="openIntervention('${r.id}', 'deduct', '${escapeHTML(displayName)}')" class="text-[9px] sm:text-[10px] font-bold bg-white hover:bg-red-50 text-red-600 px-2 sm:px-3.5 py-1.5 sm:py-2 rounded-lg border border-slate-200 shadow-sm transition-colors opacity-100 sm:opacity-0 group-hover:opacity-100">Deduct</button>
+                            <button onclick="freezeRecord('${r.id}', ${!r.is_frozen})" class="text-[9px] sm:text-[10px] font-bold ${r.is_frozen ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100' : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'} px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg border shadow-sm transition-colors opacity-100 sm:opacity-0 group-hover:opacity-100">${r.is_frozen ? 'Unfreeze' : 'Freeze'}</button>
+                        </td>
+                    </tr>
+                `;
+            });
+        } catch(err) { console.error(err); }
+    }
+
+    function openIntervention(recordId, type, userName = "Employee") {
+        const modal = document.getElementById("interventionModal");
+        const content = document.getElementById("interventionModalContent");
+        
+        modal.classList.remove("hidden");
+        void modal.offsetWidth;
+        modal.classList.remove("opacity-0");
+        content.classList.remove("scale-95");
+        content.classList.add("scale-100");
+
+        document.getElementById("intervRecordId").value = recordId;
+        document.getElementById("intervType").value = type;
+        document.getElementById("intervValue").value = "";
+        document.getElementById("intervReason").value = "";
+
+        if(type === 'override') {
+            document.getElementById("interventionTitle").innerText = `Override Score: ${userName}`;
+            document.getElementById("intervDesc").innerText = "Directly replace the calculated score. Maximum allowed score is 5.0.";
+            document.getElementById("intervLabel").innerText = "New Final Score (0.0 - 5.0)";
+        } else {
+            document.getElementById("interventionTitle").innerText = `Apply Penalty: ${userName}`;
+            document.getElementById("intervDesc").innerText = "Apply a manual penalty deduction to the employee's current score.";
+            document.getElementById("intervLabel").innerText = "Points to Deduct";
+        }
+    }
+    
+    function closeInterventionModal() { 
+        const modal = document.getElementById("interventionModal");
+        const content = document.getElementById("interventionModalContent");
+        modal.classList.add("opacity-0");
+        content.classList.remove("scale-100");
+        content.classList.add("scale-95");
+        setTimeout(() => { modal.classList.add("hidden"); }, 300);
+    }
+
+    async function submitIntervention() {
+        const id = document.getElementById("intervRecordId").value;
+        const type = document.getElementById("intervType").value;
+        const val = parseFloat(document.getElementById("intervValue").value);
+        const reason = document.getElementById("intervReason").value.trim();
+
+        if(isNaN(val) || !reason) return showToast("Value and Audit Reason are mandatory fields.", "error");
+
+        const endpoint = `${API_BASE}/records/${id}/${type}`;
+        const payload = type === 'override' ? { new_score: val, reason: reason } : { deduct_points: val, reason: reason };
+
+        try {
+            const res = await fetch(endpoint, {
+                method: "PUT", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+            // 🛡️ AUTH FIX
+            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+            
+            if(res.ok) {
+                showToast("Action logged and applied successfully.", "success");
+                closeInterventionModal();
+                loadEmployeeRecords();
+            } else {
+                const err = await res.json();
+                showToast(err.detail || "Intervention failed.", "error");
+            }
+        } catch(err) { showToast("System connectivity error.", "error"); }
+    }
+
+    async function freezeRecord(id, freezeState) {
+        if(!confirm(`Proceed with this action on the record?`)) return;
+        try {
+            const res = await fetch(`${API_BASE}/records/${id}/freeze`, {
+                method: "PUT", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ is_frozen: freezeState })
+            });
+            // 🛡️ AUTH FIX
+            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+            
+            if(res.ok) {
+                showToast("Record status updated.", "success");
+                loadEmployeeRecords();
+            } else showToast("Action failed.", "error");
+        } catch(err) { showToast("System connectivity error.", "error"); }
+    }
+
+    // ==========================================
+    // 3. ROLE TRACKING SETTINGS
+    // ==========================================
+    async function loadDepartmentSettings() {
+        const tbody = document.getElementById("deptSettingsTableBody");
+        tbody.innerHTML = "<tr><td colspan='5' class='p-10 sm:p-16 text-center text-slate-500 font-bold'>Loading controls...</td></tr>";
+        
+        try {
+            const [deptRes, setRes] = await Promise.all([
+                fetch(`${DEPARTMENTS_API}?is_active=true`),
+                fetch(`${API_BASE}/settings`)
+            ]);
+            
+            // 🛡️ AUTH FIX
+            if (deptRes.status === 401 || setRes.status === 401 || deptRes.status === 403) { window.location.href = '/auth/login'; return; }
+            
+            const depts = await deptRes.json();
+            const settings = await setRes.json();
+            
+            tbody.innerHTML = "";
+            if(depts.length === 0) {
+                tbody.innerHTML = "<tr><td colspan='5' class='p-10 sm:p-16 text-center text-slate-500 font-bold'>No departments available.</td></tr>";
+                return;
+            }
+            
+            // 🌟 SECURITY FIX: escapeHTML
+            depts.forEach((dept, index) => {
+                const l0 = settings.find(s => s.department_id === dept.id && s.level_name === 'L0')?.is_enabled || false;
+                const l1 = settings.find(s => s.department_id === dept.id && s.level_name === 'L1')?.is_enabled || false;
+                const l2 = settings.find(s => s.department_id === dept.id && s.level_name === 'L2')?.is_enabled || false;
+
+                tbody.innerHTML += `
+                    <tr class="hover:bg-slate-50/50 transition-colors border-b border-slate-100 animate-fade-in-up" style="animation-delay: ${index * 0.05}s">
+                        <td class="p-4 sm:p-5 font-black text-slate-900 whitespace-nowrap">${escapeHTML(dept.name)}</td>
+                        <td class="p-4 sm:p-5 text-center"><input type="checkbox" id="l0_${dept.id}" ${l0 ? 'checked' : ''} class="accent-blue-700 w-4 h-4 sm:w-5 sm:h-5 cursor-pointer rounded border-slate-300"></td>
+                        <td class="p-4 sm:p-5 text-center"><input type="checkbox" id="l1_${dept.id}" ${l1 ? 'checked' : ''} class="accent-blue-700 w-4 h-4 sm:w-5 sm:h-5 cursor-pointer rounded border-slate-300"></td>
+                        <td class="p-4 sm:p-5 text-center"><input type="checkbox" id="l2_${dept.id}" ${l2 ? 'checked' : ''} class="accent-blue-700 w-4 h-4 sm:w-5 sm:h-5 cursor-pointer rounded border-slate-300"></td>
+                        <td class="p-4 sm:p-5 text-right">
+                            <button onclick="saveDeptLevelSettings('${dept.id}', this)" class="text-[10px] sm:text-[11px] bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 px-3 sm:px-5 py-2 sm:py-2.5 rounded-lg font-black uppercase tracking-wider shadow-sm transition-all active:scale-95 w-24 sm:w-32 flex justify-center mx-auto sm:mr-0">Apply</button>
+                        </td>
+                    </tr>
+                `;
+            });
+        } catch (err) {
+            tbody.innerHTML = "<tr><td colspan='5' class='p-10 sm:p-16 text-center text-red-500 font-bold'>Failed to load settings.</td></tr>";
+        }
+    }
+
+    async function saveDeptLevelSettings(deptId, btnElement) {
+        const l0 = Boolean(document.getElementById(`l0_${deptId}`).checked);
+        const l1 = Boolean(document.getElementById(`l1_${deptId}`).checked);
+        const l2 = Boolean(document.getElementById(`l2_${deptId}`).checked);
+        
+        const originalHtml = btnElement.innerHTML;
+        btnElement.disabled = true;
+        btnElement.innerHTML = `Saving...`;
+        
+        const payload = { l0_enabled: l0, l1_enabled: l1, l2_enabled: l2 };
+        
+        try {
+            const res = await fetch(`${API_BASE}/settings/department/${deptId}/kpi-levels`, {
+                method: "PUT", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+            // 🛡️ AUTH FIX
+            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+            
+            if (res.ok) {
+                showToast("Tracking configuration applied.", "success");
+            } else {
+                showToast("Failed to save configuration.", "error");
+                loadDepartmentSettings(); 
+            }
+        } catch (err) {
+            showToast("Network error.", "error");
+            loadDepartmentSettings();
+        } finally {
+            btnElement.disabled = false; btnElement.innerHTML = originalHtml;
+        }
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,399 @@
+{% extends "layouts/base.html" %}
+{% set active_page = "kpi_periods" %}
+
+{% block title %}KPI Cycles & Execution | Enterprise Dashboard{% endblock %}
+
+{% block content %}
+<style>
+    @keyframes fadeInUp { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+    .animate-fade-in-up { animation: fadeInUp 0.5s ease-out forwards; }
+    .glass-panel { background: #ffffff; box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.03), 0 0 3px rgba(0,0,0,0.02); }
+    .status-select {
+        appearance: none;
+        background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23475569' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+        background-position: right 0.75rem center;
+        background-repeat: no-repeat;
+        background-size: 1.1em 1.1em;
+    }
+</style>
+
+<div class="p-4 sm:p-6 md:p-10 h-full flex flex-col bg-slate-50/50 min-h-screen overflow-y-auto custom-scrollbar">
+    
+    <!-- HEADER SECTION -->
+    <header class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 sm:gap-5 mb-6 sm:mb-10 shrink-0 animate-fade-in-up">
+        <div class="flex items-center gap-3 sm:gap-4">
+            <div class="bg-white p-3 sm:p-3.5 rounded-2xl shadow-sm ring-1 ring-slate-900/5 text-blue-700 shrink-0">
+                <svg class="w-6 h-6 sm:w-7 sm:h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+            </div>
+            <div>
+                <h2 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">Cycles & Execution</h2>
+                <p class="text-xs sm:text-sm text-slate-500 mt-1 font-medium">Manage evaluation periods and manually trigger calculation engines.</p>
+            </div>
+        </div>
+    </header>
+
+    <!-- MAIN CONTENT GRID -->
+    <div class="grid grid-cols-1 xl:grid-cols-12 gap-6 sm:gap-8 flex-1 animate-fade-in-up" style="animation-delay: 0.1s;">
+        
+        <!-- LEFT PANEL: MANUAL RECALCULATION ENGINE -->
+        <div class="xl:col-span-4 flex flex-col gap-6">
+            <div class="glass-panel rounded-3xl p-5 sm:p-8 ring-1 ring-slate-200/60 relative overflow-hidden group">
+                <div class="absolute -right-6 -top-6 w-32 h-32 bg-blue-50 rounded-full opacity-50 blur-2xl group-hover:bg-blue-100 transition-colors duration-700"></div>
+                
+                <div class="relative z-10">
+                    <div class="flex items-center gap-3 mb-3">
+                        <div class="bg-blue-600 p-2.5 rounded-xl text-white shadow-md shadow-blue-600/20 shrink-0">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                        </div>
+                        <h3 class="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight">Manual Engine</h3>
+                    </div>
+                    <p class="text-xs sm:text-sm text-slate-500 mb-6 sm:mb-8 leading-relaxed font-medium">Force the system to re-aggregate and calculate KPIs for a specific historical date range.</p>
+                    
+                    <div class="bg-slate-50 p-5 sm:p-6 rounded-2xl ring-1 ring-slate-200/60 shadow-inner flex flex-col gap-4 sm:gap-5">
+                        <div>
+                            <label class="block text-[10px] sm:text-[11px] font-black text-slate-500 mb-2 uppercase tracking-widest">Start Boundary <span class="text-red-500">*</span></label>
+                            <input type="datetime-local" id="cycleStartDate" class="w-full bg-white border border-slate-300 p-3 sm:p-3.5 rounded-xl text-sm font-bold text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all shadow-sm cursor-pointer">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] sm:text-[11px] font-black text-slate-500 mb-2 uppercase tracking-widest">End Boundary <span class="text-red-500">*</span></label>
+                            <input type="datetime-local" id="cycleEndDate" class="w-full bg-white border border-slate-300 p-3 sm:p-3.5 rounded-xl text-sm font-bold text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all shadow-sm cursor-pointer">
+                        </div>
+                        <button onclick="triggerCustomKpiCalculation()" class="w-full bg-slate-900 hover:bg-blue-700 text-white px-5 sm:px-6 py-3 sm:py-4 rounded-xl text-xs sm:text-sm font-black tracking-wide shadow-md transition-all active:scale-95 flex justify-center items-center gap-2 mt-2">
+                            Execute Recalculation
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-amber-50 rounded-2xl p-4 sm:p-5 ring-1 ring-amber-200/50 flex items-start gap-3 sm:gap-4">
+                <svg class="w-5 h-5 text-amber-600 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                <p class="text-[11px] sm:text-xs text-amber-800 font-medium leading-relaxed">
+                    <strong>Note:</strong> Executing the manual engine will overwrite existing KPI scores for the selected timeframe. Use this only if data was modified retroactively.
+                </p>
+            </div>
+        </div>
+
+        <!-- RIGHT PANEL: KPI PERIODS TABLE -->
+        <div class="xl:col-span-8 flex flex-col">
+            <div class="glass-panel rounded-3xl ring-1 ring-slate-200/60 flex flex-col flex-1 overflow-hidden w-full">
+                
+                <div class="p-5 sm:p-6 md:p-8 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white shrink-0 gap-4">
+                    <div>
+                        <h3 class="text-lg sm:text-xl font-black text-slate-900 tracking-tight">Evaluation Periods</h3>
+                        <p class="text-xs sm:text-sm text-slate-500 mt-1 font-medium">Manage active and historical reporting cycles.</p>
+                    </div>
+                    <button onclick="openModal()" class="w-full sm:w-auto text-sm text-blue-700 bg-blue-50 border border-blue-200 px-6 py-2.5 rounded-xl hover:bg-blue-600 hover:text-white hover:border-blue-600 font-extrabold transition-all shadow-sm flex items-center justify-center active:scale-95">
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg> 
+                        New Cycle
+                    </button>
+                </div>
+                
+                <div class="overflow-x-auto custom-scrollbar flex-1 bg-white w-full">
+                    <table class="w-full text-left border-collapse min-w-[800px]">
+                        <thead class="bg-slate-50/80 backdrop-blur-sm text-slate-500 text-[10px] sm:text-[11px] uppercase tracking-widest sticky top-0 z-10">
+                            <tr>
+                                <th class="p-4 sm:p-6 font-black w-12 sm:w-16 text-center border-b border-slate-200/60">#</th>
+                                <th class="p-4 sm:p-6 font-black border-b border-slate-200/60">Cycle Label</th>
+                                <th class="p-4 sm:p-6 font-black border-b border-slate-200/60">Start Date</th>
+                                <th class="p-4 sm:p-6 font-black border-b border-slate-200/60">End Date</th>
+                                <th class="p-4 sm:p-6 font-black border-b border-slate-200/60">State</th>
+                                <th class="p-4 sm:p-6 font-black text-right border-b border-slate-200/60">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="periodsTableBody" class="divide-y divide-slate-100/60 text-xs sm:text-sm">
+                            <tr>
+                                <td colspan="6" class="p-20 text-center">
+                                    <svg class="animate-spin h-8 w-8 sm:h-10 sm:w-10 text-blue-600 mx-auto mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                    <p class="text-slate-500 font-semibold animate-pulse">Synchronizing cycles...</p>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- CREATE PERIOD MODAL -->
+<div id="periodModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm transition-opacity opacity-0 p-4" style="transition: opacity 0.3s ease;">
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden transform scale-95 transition-transform duration-300" id="periodModalContent">
+        
+        <div class="px-6 sm:px-8 py-5 sm:py-6 border-b border-slate-100 flex justify-between items-center bg-white">
+            <div>
+                <h3 class="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">Create KPI Cycle</h3>
+                <p class="text-[11px] sm:text-xs text-slate-500 font-medium mt-1">Define boundaries for the new period.</p>
+            </div>
+            <button onclick="closeModal()" class="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 sm:p-2.5 rounded-full transition-colors focus:outline-none shrink-0">
+                <svg class="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+        </div>
+        
+        <form id="periodForm" onsubmit="savePeriod(event)" class="p-6 sm:p-8 bg-slate-50/50">
+            <div class="mb-5 sm:mb-6">
+                <label class="block text-[11px] sm:text-xs font-black text-slate-700 mb-2 uppercase tracking-wide">Cycle Label <span class="text-red-500">*</span></label>
+                <input type="text" id="periodLabel" required placeholder="e.g. November 2026 or Q3 2026" class="w-full bg-white border border-slate-300 rounded-xl p-3.5 sm:p-4 text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 shadow-sm transition-all placeholder-slate-400">
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5 mb-8 sm:mb-10">
+                <div>
+                    <label class="block text-[11px] sm:text-xs font-black text-slate-700 mb-2 uppercase tracking-wide">Start Date <span class="text-red-500">*</span></label>
+                    <input type="date" id="startDate" required class="w-full bg-white border border-slate-300 rounded-xl p-3.5 sm:p-4 text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 shadow-sm transition-all cursor-pointer">
+                </div>
+                <div>
+                    <label class="block text-[11px] sm:text-xs font-black text-slate-700 mb-2 uppercase tracking-wide">End Date <span class="text-red-500">*</span></label>
+                    <input type="date" id="endDate" required class="w-full bg-white border border-slate-300 rounded-xl p-3.5 sm:p-4 text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 shadow-sm transition-all cursor-pointer">
+                </div>
+            </div>
+            <div class="flex flex-col-reverse sm:flex-row justify-end gap-3">
+                <button type="button" onclick="closeModal()" class="w-full sm:w-auto px-6 py-3 bg-white border border-slate-200 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-50 transition-colors shadow-sm">Cancel</button>
+                <button type="submit" id="savePeriodBtn" class="w-full sm:w-auto px-8 py-3 bg-blue-700 text-white rounded-xl text-sm font-bold hover:bg-blue-800 shadow-md transition-all active:scale-95 flex justify-center items-center">Deploy Cycle</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let currentPeriods = [];
+
+    function escapeHTML(str) {
+        if (str === null || str === undefined) return "";
+        return str.toString()
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+    function showToast(message, type = 'success') {
+        const container = document.getElementById('toastContainer');
+        if(!container) return alert(message);
+        const toast = document.createElement('div');
+        const config = type === 'success' ? 'bg-emerald-50 text-emerald-900 ring-emerald-500/50' : 'bg-red-50 text-red-900 ring-red-500/50';
+        const icon = type === 'success' ? '<svg class="w-5 h-5 sm:w-6 sm:h-6 text-emerald-500 mr-2 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>' : '<svg class="w-5 h-5 sm:w-6 sm:h-6 text-red-500 mr-2 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>';
+        
+        toast.className = `flex items-center px-4 sm:px-5 py-3 sm:py-4 rounded-2xl shadow-xl ring-1 ${config} text-xs sm:text-sm font-bold mb-4 animate-fade-in-up pointer-events-auto`;
+        toast.innerHTML = icon + `<span>${escapeHTML(message)}</span>`;
+        container.appendChild(toast);
+        setTimeout(() => toast.remove(), 4500);
+    }
+
+    function openModal() {
+        document.getElementById('periodForm').reset();
+        const modal = document.getElementById('periodModal');
+        const content = document.getElementById('periodModalContent');
+        modal.classList.remove('hidden');
+        void modal.offsetWidth; 
+        modal.classList.remove('opacity-0');
+        content.classList.remove('scale-95');
+        content.classList.add('scale-100');
+    }
+
+    function closeModal() { 
+        const modal = document.getElementById('periodModal');
+        const content = document.getElementById('periodModalContent');
+        modal.classList.add('opacity-0');
+        content.classList.remove('scale-100');
+        content.classList.add('scale-95');
+        setTimeout(() => modal.classList.add('hidden'), 300);
+    }
+
+    async function triggerCustomKpiCalculation() {
+        const startVal = document.getElementById("cycleStartDate").value;
+        const endVal = document.getElementById("cycleEndDate").value;
+        
+        if(!startVal || !endVal) return showToast("Please select both boundaries for the calculation cycle.", "error");
+        
+        const startIso = new Date(startVal).toISOString();
+        const endIso = new Date(endVal).toISOString();
+
+        try {
+            const res = await fetch(`/api/v1/kpi/calculate/custom`, {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ start_date: startIso, end_date: endIso })
+            });
+            // 🌟 SECURITY FIX: Handle 401/403
+            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+            
+            if (res.ok) {
+                showToast(`Data aggregation executed for selected period.`, "success");
+            } else { showToast("Engine recalculation failed.", "error"); }
+        } catch (err) { showToast("Network error.", "error"); }
+    }
+
+    async function fetchPeriods() {
+        try {
+            const res = await fetch('/api/v1/kpi/periods');
+            // 🌟 SECURITY FIX: Handle 401/403
+            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+            
+            const tbody = document.getElementById('periodsTableBody');
+            if (res.ok) {
+                currentPeriods = await res.json();
+                renderTable();
+            } else { 
+                tbody.innerHTML = '<tr><td colspan="6" class="p-10 sm:p-16 text-center text-red-500 font-bold bg-red-50/50">Failed to load system data.</td></tr>'; 
+            }
+        } catch (error) { 
+            document.getElementById('periodsTableBody').innerHTML = '<tr><td colspan="6" class="p-10 sm:p-16 text-center text-red-500 font-bold bg-red-50/50">Network connection interrupted.</td></tr>'; 
+        }
+    }
+
+    function renderTable() {
+        const tbody = document.getElementById('periodsTableBody');
+        if (currentPeriods.length === 0) {
+            tbody.innerHTML = `<tr>
+                <td colspan="6" class="p-16 sm:p-24 text-center text-slate-500 flex flex-col items-center justify-center">
+                    <div class="bg-slate-50 p-4 sm:p-5 rounded-full mb-4 ring-1 ring-slate-200 shadow-inner">
+                        <svg class="w-10 h-10 sm:w-12 sm:h-12 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                    </div>
+                    <span class="font-black text-lg sm:text-xl text-slate-700 tracking-tight">No Evaluation Periods Found</span>
+                    <span class="text-xs sm:text-sm mt-2 text-slate-400 font-medium">Click "New Cycle" to initialize the first cycle.</span>
+                </td>
+            </tr>`;
+            return;
+        }
+
+        const getStatusBadge = (status) => {
+            const badges = {
+                'DRAFT': 'bg-slate-100 text-slate-600 ring-slate-200/60',
+                'OPEN': 'bg-blue-50 text-blue-700 ring-blue-200 shadow-sm',
+                'FINALIZED': 'bg-emerald-50 text-emerald-700 ring-emerald-200 shadow-sm',
+                'LOCKED': 'bg-red-50 text-red-700 ring-red-200 shadow-sm'
+            };
+            const config = badges[status] || 'bg-amber-50 text-amber-700 ring-amber-200 shadow-sm';
+            return `<span class="px-3 sm:px-4 py-1.5 text-[9px] sm:text-[10px] font-black rounded-lg ring-1 inset-ring uppercase tracking-wider whitespace-nowrap ${config}">${escapeHTML(status)}</span>`;
+        };
+
+        const formatDate = (dateString) => {
+            const options = { day: '2-digit', month: 'short', year: 'numeric' };
+            return new Date(dateString).toLocaleDateString('en-GB', options);
+        };
+
+        tbody.innerHTML = currentPeriods.map((period, index) => `
+            <tr class="hover:bg-slate-50/80 transition-colors group">
+                <td class="p-4 sm:p-6 font-bold text-slate-400 text-center">${index + 1}</td>
+                <td class="p-4 sm:p-6 font-black text-slate-900 text-sm sm:text-base tracking-tight min-w-[150px]">${escapeHTML(period.label)}</td>
+                <td class="p-4 sm:p-6 font-bold text-slate-600 whitespace-nowrap">${formatDate(period.start_date)}</td>
+                <td class="p-4 sm:p-6 font-bold text-slate-600 whitespace-nowrap">${formatDate(period.end_date)}</td>
+                <td class="p-4 sm:p-6">${getStatusBadge(period.status)}</td>
+                <td class="p-4 sm:p-6 text-right flex justify-end gap-2 items-center border-b border-slate-200/60">
+                    <div class="relative inline-block w-36 sm:w-48">
+                        <select onchange="handleStatusChange('${period.id}', this, '${escapeHTML(period.status)}')" class="status-select w-full bg-white border border-slate-200 rounded-xl px-3 sm:px-4 py-2 sm:py-3 text-[10px] sm:text-xs font-black uppercase tracking-wider text-slate-700 hover:bg-slate-50 hover:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 shadow-sm cursor-pointer transition-all text-ellipsis">
+                            <option value="" disabled selected>Change Status</option>
+                            <option value="OPEN" ${period.status === 'OPEN' ? 'disabled' : ''}>Activate (OPEN)</option>
+                            <option value="FINALIZED" ${period.status === 'FINALIZED' ? 'disabled' : ''}>Conclude (FINALIZED)</option>
+                            <option value="LOCKED" ${period.status === 'LOCKED' ? 'disabled' : ''}>Secure (LOCKED)</option>
+                        </select>
+                    </div>
+                    
+                    ${period.status === 'DRAFT' ? `
+                        <button onclick="deletePeriod('${period.id}')" class="text-slate-400 hover:text-white hover:bg-red-500 p-2 sm:p-2.5 rounded-xl border border-slate-200 hover:border-red-500 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-red-500 shrink-0" title="Delete Draft Period">
+                            <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                        </button>
+                    ` : ''}
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    async function savePeriod(e) {
+        e.preventDefault();
+        const startInput = document.getElementById('startDate').value;
+        const endInput = document.getElementById('endDate').value;
+        const btn = document.getElementById('savePeriodBtn');
+        
+        btn.innerHTML = `<svg class="animate-spin h-4 w-4 sm:h-5 sm:w-5 mr-2 inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Deploying...`;
+        btn.disabled = true;
+        
+        const payload = {
+            label: document.getElementById('periodLabel').value,
+            start_date: `${startInput}T00:00:00Z`,
+            end_date: `${endInput}T23:59:59Z`
+        };
+
+        try {
+            const res = await fetch('/api/v1/kpi/periods', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+            });
+            // 🌟 SECURITY FIX: Handle 401/403
+            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+            
+            if (res.ok) {
+                showToast("Cycle deployed successfully.", "success");
+                closeModal(); 
+                fetchPeriods();
+            } else {
+                const err = await res.json(); 
+                showToast(err.detail || "Validation failed.", "error");
+            }
+        } catch (error) { showToast("System connectivity error.", "error"); }
+        finally { btn.innerHTML = "Deploy Cycle"; btn.disabled = false; }
+    }
+
+    async function handleStatusChange(periodId, selectElement, currentStatus) {
+        const newStatus = selectElement.value;
+        if(!newStatus) return;
+
+        let reasonQuery = "";
+        
+        if (newStatus === 'OPEN' && (currentStatus === 'FINALIZED' || currentStatus === 'LOCKED')) {
+            const reason = prompt("A detailed reason is required to reopen a concluded period. Please enter your reason:");
+            if (!reason || reason.trim().length < 5) {
+                showToast("A valid reason (min 5 characters) is strictly required to reopen.", "error");
+                selectElement.value = ""; // Reset dropdown
+                return;
+            }
+            reasonQuery = `&reason=${encodeURIComponent(reason)}`;
+        } else {
+            if(!confirm(`Confirm changing this cycle's status to ${newStatus}?`)) { 
+                selectElement.value = ""; 
+                return; 
+            }
+        }
+
+        try {
+            const res = await fetch(`/api/v1/kpi/periods/${periodId}/status?new_status=${newStatus}${reasonQuery}`, { method: 'PUT' });
+            // 🌟 SECURITY FIX: Handle 401/403
+            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+            
+            if (res.ok) { 
+                showToast(`Cycle status successfully locked to ${newStatus}.`, "success"); 
+                fetchPeriods(); 
+            } else { 
+                const err = await res.json(); 
+                showToast(err.detail || "Status update rejected by policy.", "error"); 
+                selectElement.value = ""; 
+            }
+        } catch (error) { 
+            showToast("System connectivity error.", "error"); 
+            selectElement.value = "";
+        }
+    }
+
+    async function deletePeriod(periodId) {
+        if(!confirm("Are you sure you want to delete this Draft period? This action cannot be undone.")) return;
+        
+        try {
+            const res = await fetch(`/api/v1/kpi/periods/${periodId}`, { method: 'DELETE' });
+            // 🌟 SECURITY FIX: Handle 401/403
+            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+            
+            if (res.ok) {
+                showToast("Draft period successfully deleted.", "success");
+                fetchPeriods(); 
+            } else {
+                const err = await res.json();
+                showToast(err.detail || "Cannot delete this period.", "error");
+            }
+        } catch (error) {
+            showToast("System connectivity error.", "error");
+        }
+    }
+
+    document.addEventListener("DOMContentLoaded", fetchPeriods);
+</script>
+{% endblock %}
