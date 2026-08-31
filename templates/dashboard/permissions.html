@@ -1,65 +1,112 @@
 {% extends "layouts/base.html" %}
 {% set active_page = "permissions" %}
-{% block title %}Role Permissions - KPI Platform{% endblock %}
+{% block title %}Permission Management - KPI Platform{% endblock %}
 {% block content %}
 <div class="min-h-screen bg-slate-50 p-4 sm:p-8">
     <header class="mb-6">
-        <h2 class="text-2xl sm:text-3xl font-extrabold text-blue-950">Role Permissions</h2>
-        <p class="mt-1 text-sm text-slate-500">Choose a role and enable the permissions available to that role.</p>
+        <h2 class="text-2xl font-extrabold text-blue-950">Permission Management</h2>
+        <p class="mt-1 text-sm text-slate-500">Manage role defaults and user-specific overrides. Super Admin permissions cannot be self-edited.</p>
     </header>
-    <section class="mx-auto max-w-4xl rounded-3xl border border-gray-100 bg-white p-5 shadow-sm sm:p-8">
-        <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end">
-            <label class="flex-1 text-xs font-bold uppercase tracking-wide text-slate-600">Role
-                <select id="roleSelect" class="mt-2 w-full rounded-xl border border-gray-200 bg-slate-50 p-3 text-sm font-semibold"></select>
-            </label>
-            <button id="savePermissions" class="rounded-xl bg-blue-950 px-5 py-3 text-sm font-bold text-white hover:bg-blue-900">Save permissions</button>
+    <div class="mx-auto max-w-7xl rounded-3xl border border-gray-100 bg-white p-5 shadow-sm sm:p-8">
+        <div class="mb-6 flex flex-wrap gap-2 border-b border-slate-100 pb-4">
+            <button data-tab="roles" class="tab-button rounded-xl bg-blue-950 px-4 py-2 text-sm font-bold text-white">Role matrix</button>
+            <button data-tab="users" class="tab-button rounded-xl px-4 py-2 text-sm font-bold text-slate-500 hover:bg-slate-100">User overrides</button>
         </div>
-        <div id="permissionsList" class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <p class="text-sm text-slate-400">Loading permissions...</p>
-        </div>
-        <p id="permissionMessage" class="mt-5 text-sm font-semibold"></p>
-    </section>
+        <section id="rolesPanel">
+            <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end">
+                <label class="flex-1 text-xs font-bold uppercase tracking-wide text-slate-600">Role
+                    <select id="roleSelect" class="mt-2 w-full rounded-xl border border-gray-200 bg-slate-50 p-3 text-sm font-semibold"></select>
+                </label>
+                <button id="saveRole" class="rounded-xl bg-blue-950 px-5 py-3 text-sm font-bold text-white">Save role permissions</button>
+            </div>
+            <div id="roleMatrix" class="overflow-x-auto"></div>
+        </section>
+        <section id="usersPanel" class="hidden">
+            <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end">
+                <label class="flex-1 text-xs font-bold uppercase tracking-wide text-slate-600">User
+                    <select id="userSelect" class="mt-2 w-full rounded-xl border border-gray-200 bg-slate-50 p-3 text-sm font-semibold"></select>
+                </label>
+                <span id="userRole" class="rounded-xl bg-slate-100 px-4 py-3 text-sm font-bold text-slate-600"></span>
+            </div>
+            <div id="userOverrides" class="space-y-3"></div>
+        </section>
+        <p id="message" class="mt-5 text-sm font-semibold"></p>
+    </div>
 </div>
 {% endblock %}
 {% block scripts %}
 <script>
 const roleSelect = document.getElementById("roleSelect");
-const list = document.getElementById("permissionsList");
-const message = document.getElementById("permissionMessage");
-let permissions = [];
-function escapePermission(value) {
-    return String(value ?? "").replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[char]));
+const userSelect = document.getElementById("userSelect");
+const matrix = document.getElementById("roleMatrix");
+const overrides = document.getElementById("userOverrides");
+const message = document.getElementById("message");
+let permissions = [], users = [];
+const groups = { users:"User Management", tasks:"Task Management", kpi:"KPI Management", "kpi.rule":"KPI Rule Management", report:"Report Management", department:"Department Management", system:"System Management" };
+function esc(value) { return String(value ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c])); }
+function setMessage(text, good = false) { message.textContent = text; message.className = `mt-5 text-sm font-semibold ${good ? "text-emerald-600" : "text-red-600"}`; }
+function groupFor(code) { const prefix = code.split(".").slice(0, 2).join("."); return groups[prefix] || groups[code.split(".")[0]] || "Other"; }
+function renderRoleMatrix(assigned) {
+    const checked = new Set(assigned);
+    const grouped = permissions.reduce((acc, p) => ((acc[groupFor(p.code)] ||= []).push(p), acc), {});
+    matrix.innerHTML = Object.entries(grouped).map(([group, items]) => `
+        <div class="mb-5 overflow-hidden rounded-2xl border border-slate-100">
+            <div class="bg-slate-50 px-4 py-3 text-sm font-extrabold text-blue-950">${esc(group)}</div>
+            <div class="grid grid-cols-1 gap-2 p-3 sm:grid-cols-2 lg:grid-cols-3">
+                ${items.map(p => `<label class="flex cursor-pointer gap-3 rounded-xl p-3 hover:bg-blue-50"><input class="role-permission mt-1 h-4 w-4 accent-blue-900" type="checkbox" value="${esc(p.code)}" ${checked.has(p.code) ? "checked" : ""}><span><strong class="block text-sm text-slate-700">${esc(p.code)}</strong><small class="text-xs text-slate-500">${esc(p.description || "")}</small></span></label>`).join("")}
+            </div>
+        </div>`).join("");
 }
-async function loadPermissions() {
-    const [rolesResponse, permissionsResponse] = await Promise.all([
-        fetch("/api/v1/users/roles/list"), fetch("/api/v1/permissions/")
-    ]);
-    if (!rolesResponse.ok || !permissionsResponse.ok) throw new Error("Unable to load permissions.");
-    const roles = await rolesResponse.json();
-    permissions = await permissionsResponse.json();
-    roleSelect.innerHTML = roles.map(role => `<option value="${role.id}">${escapePermission(role.name)}</option>`).join("");
-    await loadRolePermissions();
-}
-async function loadRolePermissions() {
+async function loadRole() {
     const response = await fetch(`/api/v1/permissions/role/${roleSelect.value}`);
     if (!response.ok) throw new Error("Unable to load role permissions.");
-    const assigned = new Set((await response.json()).map(permission => permission.code));
-    list.innerHTML = permissions.map(permission => `
-        <label class="flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-4 hover:bg-blue-50">
-            <input type="checkbox" value="${escapePermission(permission.code)}" ${assigned.has(permission.code) ? "checked" : ""} class="permission-checkbox mt-1 h-4 w-4 accent-blue-900">
-            <span><span class="block text-sm font-bold text-blue-950">${escapePermission(permission.code)}</span>
-            <span class="text-xs text-slate-500">${escapePermission(permission.description || "")}</span></span>
-        </label>`).join("");
+    renderRoleMatrix((await response.json()).map(p => p.code));
 }
-document.getElementById("savePermissions").addEventListener("click", async () => {
-    const permission_codes = [...document.querySelectorAll(".permission-checkbox:checked")].map(input => input.value);
-    const response = await fetch(`/api/v1/permissions/role/${roleSelect.value}`, {
-        method: "PUT", headers: {"Content-Type": "application/json"}, body: JSON.stringify({permission_codes})
+async function loadUser() {
+    const user = users.find(u => u.id === userSelect.value);
+    document.getElementById("userRole").textContent = user ? user.email : "";
+    const response = await fetch(`/api/v1/permissions/user/${userSelect.value}`);
+    if (!response.ok) throw new Error("Unable to load user overrides.");
+    const assigned = await response.json();
+    const byCode = new Map(assigned.map(p => [p.permission_code, p]));
+    overrides.innerHTML = permissions.map(p => {
+        const value = byCode.get(p.code);
+        return `<div class="grid grid-cols-1 items-center gap-3 rounded-2xl border border-slate-100 p-4 sm:grid-cols-[1fr_auto_auto_auto]">
+            <div><strong class="block text-sm text-blue-950">${esc(p.code)}</strong><small class="text-xs text-slate-500">${esc(p.description || "")}</small></div>
+            <select data-scope="${esc(p.code)}" class="scope rounded-lg border border-slate-200 p-2 text-xs"><option value="OWN" ${value?.scope === "OWN" ? "selected" : ""}>Own data</option><option value="DEPARTMENT" ${value?.scope === "DEPARTMENT" ? "selected" : ""}>Department data</option><option value="ALL" ${!value || value.scope === "ALL" ? "selected" : ""}>All data</option></select>
+            <button data-permission="${esc(p.code)}" data-allowed="true" class="override rounded-lg px-3 py-2 text-xs font-bold ${value?.allowed === true ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}">Allow</button>
+            <button data-permission="${esc(p.code)}" data-allowed="false" class="override rounded-lg px-3 py-2 text-xs font-bold ${value?.allowed === false ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-500"}">Deny</button>
+        </div>`;
+    }).join("");
+    overrides.querySelectorAll(".override").forEach(button => button.onclick = async () => {
+        const code = button.dataset.permission;
+        const scope = overrides.querySelector(`[data-scope="${CSS.escape(code)}"]`).value;
+        const response = await fetch(`/api/v1/permissions/user/${userSelect.value}`, { method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify({permission_code:code, allowed:button.dataset.allowed === "true", scope}) });
+        if (!response.ok) { setMessage((await response.json()).detail || "Unable to save override."); return; }
+        setMessage("User permission override saved.", true); await loadUser();
     });
-    message.textContent = response.ok ? "Permissions saved." : "Unable to save permissions.";
-    message.className = response.ok ? "mt-5 text-sm font-semibold text-emerald-600" : "mt-5 text-sm font-semibold text-red-600";
+}
+document.querySelectorAll(".tab-button").forEach(button => button.onclick = () => {
+    document.querySelectorAll(".tab-button").forEach(item => item.className = "tab-button rounded-xl px-4 py-2 text-sm font-bold text-slate-500 hover:bg-slate-100");
+    button.className = "tab-button rounded-xl bg-blue-950 px-4 py-2 text-sm font-bold text-white";
+    document.getElementById("rolesPanel").classList.toggle("hidden", button.dataset.tab !== "roles");
+    document.getElementById("usersPanel").classList.toggle("hidden", button.dataset.tab !== "users");
 });
-roleSelect.addEventListener("change", () => loadRolePermissions().catch(error => message.textContent = error.message));
-loadPermissions().catch(error => { list.innerHTML = ""; message.textContent = error.message; message.className = "mt-5 text-sm font-semibold text-red-600"; });
+roleSelect.onchange = () => loadRole().catch(e => setMessage(e.message));
+userSelect.onchange = () => loadUser().catch(e => setMessage(e.message));
+document.getElementById("saveRole").onclick = async () => {
+    const permission_codes = [...document.querySelectorAll(".role-permission:checked")].map(input => input.value);
+    const response = await fetch(`/api/v1/permissions/role/${roleSelect.value}`, { method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify({permission_codes}) });
+    if (!response.ok) { setMessage((await response.json()).detail || "Unable to save role permissions."); return; }
+    setMessage("Role permissions saved.", true);
+};
+(async function init() {
+    const [rolesResponse, permissionResponse, usersResponse] = await Promise.all([fetch("/api/v1/users/roles/list"), fetch("/api/v1/permissions/"), fetch("/api/v1/permissions/users")]);
+    if (!rolesResponse.ok || !permissionResponse.ok || !usersResponse.ok) throw new Error("Unable to load permission management data.");
+    const roles = await rolesResponse.json(); permissions = await permissionResponse.json(); users = await usersResponse.json();
+    roleSelect.innerHTML = roles.map(r => `<option value="${r.id}">${esc(r.name)}</option>`).join("");
+    userSelect.innerHTML = users.map(u => `<option value="${u.id}">${esc(u.name)} (${esc(u.email)})</option>`).join("");
+    await loadRole(); if (users.length) await loadUser();
+})().catch(e => setMessage(e.message));
 </script>
 {% endblock %}

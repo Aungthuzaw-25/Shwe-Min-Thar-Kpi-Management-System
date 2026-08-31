@@ -1,16 +1,16 @@
-﻿from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Query # 🌟 FIX: Added Query for pagination
+﻿from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import joinedload, selectinload
-from sqlalchemy import or_ # 🌟 FIX: Added or_ for Database-level filtering
+from sqlalchemy import or_
 from typing import List
 from uuid import UUID
 import hashlib
 import json  
 import os
-from datetime import datetime
+from datetime import datetime, timezone # 🌟 FIX: Added timezone for late calculation
 import pytz
-import magic # 🌟 SECURITY FIX: Added python-magic for strict MIME type checking
+import magic 
 
 from app.database.connection import get_db
 from app.modules.tasks.schemas import TaskCreate, TaskUpdate, TaskResponse, TaskReviewInput, TaskEvidenceResponse, BulkTaskCreate
@@ -32,7 +32,7 @@ from app.services.storage_service import storage_service
 from app.core.timezone import APPLICATION_TIMEZONE
 
 router = APIRouter()
-timezone = APPLICATION_TIMEZONE
+app_timezone = APPLICATION_TIMEZONE
 
 # 🌟 ADMIN ONLY KEYWORDS 
 ADMIN_ONLY_KEYWORDS = [
@@ -50,10 +50,10 @@ ALLOWED_MIME_TYPES = [
     "image/jpeg", 
     "image/png", 
     "text/csv", 
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", # xlsx
-    "application/vnd.ms-excel", # xls
-    "application/msword", # doc
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document" # docx
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
+    "application/vnd.ms-excel", 
+    "application/msword", 
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document" 
 ]
 
 @router.get('/categories/available', tags=["Tasks"])
@@ -192,6 +192,7 @@ async def get_batch_deductions(
 
 @router.post('', response_model=TaskResponse)
 async def create_new_task(payload: TaskCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """ 🌟 L2 များ ကိုယ်တိုင် Task ဖန်တီးသော Endpoint (Due Date / Late Penalty မလိုပါ) """
     try:
         ud_stmt = select(UserDepartment).where(UserDepartment.user_id == current_user.id)
         ud = (await db.execute(ud_stmt)).scalars().first()
@@ -253,52 +254,17 @@ async def create_new_task(payload: TaskCreate, db: AsyncSession = Depends(get_db
 
 @router.post('/bulk-create', response_model=List[TaskResponse], status_code=status.HTTP_201_CREATED)
 async def create_bulk_tasks(payload: BulkTaskCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """ 🌟 Manager/Admin များမှ Task ကို Assign ချပေးသော Endpoint """
     try:
-        ud_stmt = select(UserDepartment).where(UserDepartment.user_id == current_user.id)
-        ud = (await db.execute(ud_stmt)).scalars().first()
-
-        if not ud or not current_user.position_id:
-            raise HTTPException(status_code=403, detail="Security Violation: User lacks valid organizational context.")
-
-        pos_obj = await db.get(Position, current_user.position_id)
-        user_pos_name = pos_obj.name.strip().lower() if pos_obj and pos_obj.name else ""
-
-        stmt = select(KPIFormula).where(
-            KPIFormula.department_id == ud.department_id,
-            KPIFormula.user_level == ud.user_level,
-            KPIFormula.is_active == True
-        )
-        formulas = (await db.execute(stmt)).scalars().all()
-        
-        target_formulas = []
-        for f in formulas:
-            f_pos_id = str(f.position_id) if f.position_id else ""
-            f_pos_name = f.position_name.strip().lower() if f.position_name else ""
-            if f_pos_id and f_pos_id == str(current_user.position_id):
-                target_formulas.append(f)
-            elif f_pos_name and user_pos_name and f_pos_name == user_pos_name:
-                target_formulas.append(f)
-                
-        if not target_formulas:
-            target_formulas = [f for f in formulas if not f.position_id and not f.position_name]
-        
-        valid_categories = set()
-        for f in target_formulas:
-            raw_cats = f.categories
-            if isinstance(raw_cats, str):
-                try: raw_cats = json.loads(raw_cats)
-                except Exception: raw_cats = []
-            if raw_cats and isinstance(raw_cats, list):
-                for c in raw_cats:
-                    cat_name = c.get("name", "") if isinstance(c, dict) else str(c)
-                    if cat_name and not any(kw in cat_name.lower() for kw in ADMIN_ONLY_KEYWORDS):
-                        valid_categories.add(cat_name)
+        # 🌟 SECURITY FIX: Only Admins or Managers (L0, L1) can assign tasks
+        if current_user.role.name not in ['Super Admin', 'System Super Admin', 'Admin']:
+            ud_stmt = select(UserDepartment).where(UserDepartment.user_id == current_user.id)
+            ud = (await db.execute(ud_stmt)).scalars().first()
+            if not ud or ud.user_level not in ['L0', 'L1', 'Level 0', 'Level 1']:
+                raise HTTPException(status_code=403, detail="Only Managers or Admins can assign tasks to other users.")
 
         created_tasks = []
         for item in payload.tasks:
-            if payload.category not in valid_categories:
-                raise HTTPException(status_code=403, detail=f"Security Violation: Category '{payload.category}' is not allowed for your profile.")
-
             task_data = item.model_dump(exclude_unset=True)
             task_data['category'] = payload.category 
             task_data['status'] = TaskStatus.DRAFT
@@ -463,20 +429,38 @@ async def submit_task_batch(payload: BatchSubmitRequest, db: AsyncSession = Depe
         stmt = select(Task).where(Task.id.in_(payload.task_ids))
         tasks_to_update = (await db.execute(stmt)).scalars().all()
 
+        current_time = datetime.now(timezone.utc)
+
         for t in tasks_to_update:
             t.batch_id = batch.id
             t.assigner_id = payload.reviewer_id
             t.status = TaskStatus.PENDING_L1
+            
+            # 🌟 CORE FIX: Grace Period & Late Penalty Logic
+            # due_date ရှိသော Assigned Task များအတွက်သာ အလုပ်လုပ်မည်
+            if getattr(t, 'due_date', None):
+                t_due = t.due_date if t.due_date.tzinfo else t.due_date.replace(tzinfo=timezone.utc)
+                diff = current_time - t_due
+                days_late = diff.days
+                
+                grace_allowed = getattr(t, 'grace_period_days', 0)
+                if days_late > grace_allowed:
+                    t.is_late = True
+                    t.late_days = days_late - grace_allowed
+                else:
+                    t.is_late = False
+                    t.late_days = 0
+
             db.add(TaskHistory(
                 task_id=t.id, changed_by=current_user.id, action="SUBMITTED_BATCH", 
                 old_value=TaskStatus.DRAFT.value, new_value=TaskStatus.PENDING_L1.value, 
-                remarks="Batch ဖြင့် အစုလိုက် တင်ပြလိုက်ပါသည်"
+                remarks=f"Batch ဖြင့် တင်ပြလိုက်ပါသည် (Late: {t.is_late})"
             ))
             
         await db.commit()
         return BatchSubmitResponse(
             batch_id=batch.id, total_tasks=batch.total_tasks, status=batch.status,
-            message=f"Tasks ({batch.total_tasks}) ခုကို အောင်မြင်စွာ တင်ပြပြီးပါပြီ。"
+            message=f"Tasks ({batch.total_tasks}) ခုကို အောင်မြင်စွာ တင်ပြပြီးပါပြီ။"
         )
     except ValueError as e:
         await db.rollback()
@@ -543,7 +527,7 @@ async def review_task_batch_api(batch_id: UUID, payload: BatchReviewRequest, db:
             if payload.action == "APPROVED" and payload.next_reviewer_id:
                 t.assigner_id = payload.next_reviewer_id
             
-            target_date = t.due_date if t.due_date else datetime.now(timezone)
+            target_date = t.due_date if t.due_date else datetime.now(app_timezone)
             target_kpi_user_id = None
             target_kpi_level = None
             

@@ -15,7 +15,7 @@ from app.database.base import Base
 from app.modules.auth.models import LoginHistory
 from app.modules.auth.models import PasswordHistory
 from app.modules.auth.models import TokenBlacklist
-from app.modules.users.models import User, Position, Permission, RolePermission, Role
+from app.modules.users.models import User, Position, Permission, RolePermission, Role, UserPermissionOverride
 from app.modules.departments.models import Department, UserDepartment
 from app.modules.kpi.models import KPILevelSetting,KPIFormula,KPIRecord,KPIHistory,FormulaAuditLog,KPIPeriod,KPIAssignment,KPIScoringRuleItem,ActionPlan,KpiRule
 from app.modules.notifications.models import Notification

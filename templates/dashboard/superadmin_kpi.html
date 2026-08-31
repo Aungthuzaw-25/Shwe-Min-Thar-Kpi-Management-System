@@ -21,7 +21,7 @@
     <header class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 sm:gap-5 mb-6 sm:mb-8 shrink-0 animate-fade-in-up">
         <div class="flex items-center gap-3 sm:gap-4">
             <div class="bg-white p-2.5 sm:p-3.5 rounded-2xl shadow-sm ring-1 ring-slate-900/5 text-blue-700 shrink-0">
-                <svg class="w-6 h-6 sm:w-8 sm:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2m0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                <svg class="w-6 h-6 sm:w-8 sm:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2-2v6a2 2 0 002 2h2a2 2 0 002-2m0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
             </div>
             <div>
                 <h2 class="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">KPI Management</h2>
@@ -87,51 +87,12 @@
             </div>
         </div>
 
-        <!-- TAB 3: ROLE TRACKING -->
+        <!-- TAB 3: ROLE TRACKING & ASSIGNMENTS -->
         <div id="settings-tab" class="tab-content hidden animate-fade-in-up">
             <div class="bg-white rounded-3xl p-5 sm:p-8 shadow-sm ring-1 ring-slate-900/5 max-w-4xl mx-auto">
                 <div class="flex items-start gap-3 sm:gap-4 border-b border-slate-100 pb-4 sm:pb-5 mb-4 sm:mb-6">
                     <div class="bg-indigo-50 p-2 sm:p-3 rounded-2xl text-indigo-600 shadow-inner shrink-0">
                         <svg class="w-6 h-6 sm:w-7 sm:h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
-                    </div>
-
-                    <div id="assignments-tab" class="tab-content hidden animate-fade-in-up">
-                        <div class="bg-white rounded-3xl p-5 sm:p-8 shadow-sm ring-1 ring-slate-900/5 max-w-4xl mx-auto">
-                            <div class="border-b border-slate-100 pb-4 mb-6">
-                                <h3 class="text-lg sm:text-xl font-extrabold text-slate-900">Assign KPI to Employees</h3>
-                                <p class="text-xs sm:text-sm text-slate-500 font-medium mt-1">Assign an approved KPI formula to one or more employees for an evaluation period.</p>
-                            </div>
-                            <form id="assignmentForm" class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
-                                <label class="text-xs font-bold text-slate-700">Department
-                                    <select id="assignmentDepartment" required class="mt-2 w-full bg-slate-50 border border-slate-200 p-3 rounded-xl text-sm focus:bg-white focus:border-blue-600 focus:outline-none">
-                                        <option value="">-- Select Department --</option>
-                                    </select>
-                                </label>
-                                <label class="text-xs font-bold text-slate-700">Position
-                                    <select id="assignmentPosition" required class="mt-2 w-full bg-slate-50 border border-slate-200 p-3 rounded-xl text-sm focus:bg-white focus:border-blue-600 focus:outline-none">
-                                        <option value="">-- Select Position --</option>
-                                    </select>
-                                </label>
-                                <label class="text-xs font-bold text-slate-700">Formula
-                                    <select id="assignmentFormula" required class="mt-2 w-full bg-slate-50 border border-slate-200 p-3 rounded-xl text-sm focus:bg-white focus:border-blue-600 focus:outline-none">
-                                        <option value="">-- Select Formula --</option>
-                                    </select>
-                                </label>
-                                <label class="text-xs font-bold text-slate-700">Evaluation Period
-                                    <select id="assignmentPeriod" required class="mt-2 w-full bg-slate-50 border border-slate-200 p-3 rounded-xl text-sm focus:bg-white focus:border-blue-600 focus:outline-none">
-                                        <option value="">-- Select Period --</option>
-                                    </select>
-                                </label>
-                                <label class="md:col-span-2 text-xs font-bold text-slate-700">Employees
-                                    <select id="assignmentUsers" required multiple size="7" class="mt-2 w-full bg-slate-50 border border-slate-200 p-3 rounded-xl text-sm focus:bg-white focus:border-blue-600 focus:outline-none">
-                                        <option value="">Select a department and position first</option>
-                                    </select>
-                                </label>
-                                <div class="md:col-span-2 flex justify-end">
-                                    <button type="submit" id="assignmentSubmit" class="bg-blue-700 hover:bg-blue-800 text-white px-6 py-3 rounded-xl text-sm font-bold shadow-md transition-all">Assign KPI</button>
-                                </div>
-                            </form>
-                        </div>
                     </div>
                     <div>
                         <h3 class="text-lg sm:text-xl font-extrabold text-slate-900 mb-1">Role Tracking Controls</h3>
@@ -154,6 +115,58 @@
                         </tbody>
                     </table>
                 </div>
+            </div>
+        </div>
+
+        <div id="assignments-tab" class="tab-content hidden animate-fade-in-up">
+            <div class="bg-white rounded-3xl p-5 sm:p-8 shadow-sm ring-1 ring-slate-900/5 max-w-4xl mx-auto">
+                <div class="border-b border-slate-100 pb-4 mb-6">
+                    <h3 class="text-lg sm:text-xl font-extrabold text-slate-900">Assign KPI to Employees</h3>
+                    <p class="text-xs sm:text-sm text-slate-500 font-medium mt-1">Assign an approved KPI formula to one or more employees for an evaluation period.</p>
+                </div>
+                <form id="assignmentForm" class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+                    <label class="text-xs font-bold text-slate-700">Department
+                        <select id="assignmentDepartment" required class="mt-2 w-full bg-slate-50 border border-slate-200 p-3 rounded-xl text-sm focus:bg-white focus:border-blue-600 focus:outline-none">
+                            <option value="">-- Select Department --</option>
+                        </select>
+                    </label>
+                    <label class="text-xs font-bold text-slate-700">Position
+                        <select id="assignmentPosition" required class="mt-2 w-full bg-slate-50 border border-slate-200 p-3 rounded-xl text-sm focus:bg-white focus:border-blue-600 focus:outline-none">
+                            <option value="">-- Select Position --</option>
+                        </select>
+                    </label>
+                    
+                    <label class="md:col-span-2 text-xs font-bold text-slate-700">Employees
+                        <select id="assignmentUsers" required multiple size="7" class="mt-2 w-full bg-slate-50 border border-slate-200 p-3 rounded-xl text-sm focus:bg-white focus:border-blue-600 focus:outline-none">
+                            <option value="">Select a department and position first</option>
+                        </select>
+                    </label>
+
+                    <!-- 🌟 FIX: Assignment Form တွင် Category ရွေးရန် ပြင်ဆင်ခြင်း -->
+                    <label class="text-xs font-bold text-slate-700">Category
+                        <select id="assignmentCategory" required class="mt-2 w-full bg-slate-50 border border-slate-200 p-3 rounded-xl text-sm focus:bg-white focus:border-blue-600 focus:outline-none">
+                            <option value="">-- Select Employee First --</option>
+                        </select>
+                    </label>
+
+                    <label class="text-xs font-bold text-slate-700">Evaluation Period
+                        <select id="assignmentPeriod" required class="mt-2 w-full bg-slate-50 border border-slate-200 p-3 rounded-xl text-sm focus:bg-white focus:border-blue-600 focus:outline-none">
+                            <option value="">-- Select Period --</option>
+                        </select>
+                    </label>
+
+                    <!-- 🌟 NEW: Due Date နှင့် Grace Period ထည့်ရန် -->
+                    <label class="text-xs font-bold text-slate-700">Due Date
+                        <input type="datetime-local" id="assignmentDueDate" required class="mt-2 w-full bg-slate-50 border border-slate-200 p-3 rounded-xl text-sm focus:bg-white focus:border-blue-600 focus:outline-none">
+                    </label>
+                    <label class="text-xs font-bold text-slate-700">Allowed Late Days (Grace Period)
+                        <input type="number" id="assignmentGracePeriod" min="0" value="2" required class="mt-2 w-full bg-slate-50 border border-slate-200 p-3 rounded-xl text-sm focus:bg-white focus:border-blue-600 focus:outline-none">
+                    </label>
+
+                    <div class="md:col-span-2 flex justify-end">
+                        <button type="submit" id="assignmentSubmit" class="bg-blue-700 hover:bg-blue-800 text-white px-6 py-3 rounded-xl text-sm font-bold shadow-md transition-all">Assign Task</button>
+                    </div>
+                </form>
             </div>
         </div>
 
@@ -241,7 +254,8 @@
                 </div>
                 
                 <p class="text-[11px] sm:text-sm text-slate-600 mb-6 sm:mb-8 bg-blue-50/50 p-4 sm:p-5 rounded-2xl border border-blue-100 leading-relaxed font-medium">
-                    Create categories (e.g., Attendance, Performance). Each category starts with a perfect <strong>5.0 score</strong>. Build intuitive rules to define how points are deducted based on employee metrics.
+                    Create categories (e.g., Attendance, Performance). Each category starts with a perfect <strong>5.0 score</strong>. Build intuitive rules to define how points are deducted based on employee metrics.<br/>
+                    <strong class="text-red-600 mt-2 block">Note: You MUST include at least one category related to 'အချိန်မှီမတင်ပြခြင်း (Late Submission)' and it must be at least 1% of the total weight.</strong>
                 </p>
                 
                 <div id="categoriesContainer" class="space-y-4 sm:space-y-6"></div>
@@ -340,6 +354,39 @@
         document.getElementById("assignmentPosition").addEventListener("change", function() {
             renderAssignmentUsers(this.value);
         });
+        
+        // 🌟 FIX: User ရွေးချယ်မှုအပေါ် မူတည်ပြီး Category ကို ဆွဲထုတ်ခြင်း
+        document.getElementById("assignmentUsers").addEventListener("change", async function() {
+            const selectedUsers = Array.from(this.selectedOptions).map(opt => opt.value);
+            const categorySelect = document.getElementById("assignmentCategory");
+            
+            if (selectedUsers.length === 0) {
+                categorySelect.innerHTML = '<option value="">-- Select Employee First --</option>';
+                return;
+            }
+
+            // ပထမဆုံး ရွေးချယ်ထားသော User ၏ ID ကိုယူ၍ Category များ ဆွဲထုတ်မည်
+            const firstUserId = selectedUsers[0];
+            categorySelect.innerHTML = '<option value="">Loading categories...</option>';
+
+            try {
+                // User ၏ Active Formula မှ Categories များကို ယူရန် API
+                const response = await fetch(`${API_BASE}/formulas/user/${firstUserId}/categories`);
+                if (response.ok) {
+                    const categories = await response.json();
+                    categorySelect.innerHTML = '<option value="">-- Select Category --</option>';
+                    categories.forEach(cat => {
+                        categorySelect.innerHTML += `<option value="${escapeHTML(cat.id)}">${escapeHTML(cat.name)}</option>`;
+                    });
+                } else {
+                    categorySelect.innerHTML = '<option value="">No Active Categories Found</option>';
+                }
+            } catch (error) {
+                console.error("Failed to load categories.");
+                categorySelect.innerHTML = '<option value="">Error loading categories</option>';
+            }
+        });
+
         document.getElementById("assignmentForm").addEventListener("submit", submitAssignment);
     });
 
@@ -370,31 +417,28 @@
 
     async function loadAssignmentOptions() {
         try {
-            const [deptRes, userRes, formulaRes, periodRes] = await Promise.all([
+            const [deptRes, userRes, periodRes] = await Promise.all([
                 fetch(`${DEPARTMENTS_API}?is_active=true`),
                 fetch('/api/v1/users/?limit=500'),
-                fetch(`${API_BASE}/formulas`),
                 fetch(`${API_BASE}/periods`)
             ]);
-            if ([deptRes, userRes, formulaRes, periodRes].some(res => res.status === 401 || res.status === 403)) {
+            if ([deptRes, userRes, periodRes].some(res => res.status === 401 || res.status === 403)) {
                 window.location.href = '/auth/login';
                 return;
             }
-            if (![deptRes, userRes, formulaRes, periodRes].every(res => res.ok)) {
+            if (![deptRes, userRes, periodRes].every(res => res.ok)) {
                 throw new Error("Failed to load assignment options.");
             }
 
-            const [departments, users, formulas, periods] = await Promise.all([
-                deptRes.json(), userRes.json(), formulaRes.json(), periodRes.json()
+            const [departments, users, periods] = await Promise.all([
+                deptRes.json(), userRes.json(), periodRes.json()
             ]);
             const departmentSelect = document.getElementById("assignmentDepartment");
             departmentSelect.innerHTML = '<option value="">-- Select Department --</option>' +
                 departments.map(dept => `<option value="${dept.id}">${escapeHTML(dept.name)}</option>`).join("");
+            
             assignmentUsers = users.filter(user => !user.is_deleted && user.is_active);
-            document.getElementById("assignmentFormula").innerHTML =
-                '<option value="">-- Select Formula --</option>' +
-                formulas.filter(formula => formula.status === "ACTIVE" || formula.status === "APPROVED")
-                    .map(formula => `<option value="${formula.id}">${escapeHTML(formula.name)} (V${formula.version})</option>`).join("");
+            
             document.getElementById("assignmentPeriod").innerHTML =
                 '<option value="">-- Select Period --</option>' +
                 periods.filter(period => !period.is_deleted && period.status !== "CANCELLED")
@@ -443,47 +487,61 @@
         event.preventDefault();
         const departmentId = document.getElementById("assignmentDepartment").value;
         const positionId = document.getElementById("assignmentPosition").value;
-        const formulaId = document.getElementById("assignmentFormula").value;
         const periodId = document.getElementById("assignmentPeriod").value;
+        
+        // 🌟 အသစ်ထည့်ထားသော Fields များ
+        const categoryId = document.getElementById("assignmentCategory").value;
+        const dueDate = document.getElementById("assignmentDueDate").value;
+        const gracePeriod = document.getElementById("assignmentGracePeriod").value;
+        
         const userIds = Array.from(document.getElementById("assignmentUsers").selectedOptions)
             .map(option => option.value)
             .filter(Boolean);
-        if (!departmentId || !positionId || !formulaId || !periodId || !userIds.length) {
-            showToast("Select a department, position, formula, period, and at least one employee.", "error");
+
+        if (!departmentId || !positionId || !categoryId || !periodId || !dueDate || !userIds.length) {
+            showToast("Please fill all required fields and select at least one employee.", "error");
             return;
         }
 
         const button = document.getElementById("assignmentSubmit");
         button.disabled = true;
         button.textContent = "Assigning...";
+
         try {
-            const response = await fetch(`${API_BASE}/assignments/bulk-assign`, {
+            // 🌟 Payload အသစ် (Backend API လိုအပ်ချက်နှင့် ကိုက်ညီအောင် ပြင်ဆင်ပါ)
+            const response = await fetch(`/api/v1/tasks/bulk-create`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     department_id: departmentId,
                     position_id: positionId,
                     user_ids: userIds,
-                    kpi_formula_id: formulaId,
-                    kpi_period_id: periodId
+                    kpi_period_id: periodId,
+                    category_id: categoryId,
+                    due_date: new Date(dueDate).toISOString(),
+                    grace_period_days: parseInt(gracePeriod)
                 })
             });
+
             if (response.status === 401 || response.status === 403) {
                 window.location.href = '/auth/login';
                 return;
             }
+
             if (!response.ok) {
                 const error = await response.json();
                 throw new Error(error.detail || "Assignment rejected.");
             }
-            showToast("KPI assigned successfully.", "success");
+
+            showToast("Tasks assigned successfully.", "success");
             document.getElementById("assignmentUsers").selectedIndex = -1;
+            document.getElementById("assignmentForm").reset();
         } catch (error) {
-            console.error("KPI assignment failed:", error);
-            showToast(error.message || "Failed to assign KPI.", "error");
+            console.error("Task assignment failed:", error);
+            showToast(error.message || "Failed to assign Tasks.", "error");
         } finally {
             button.disabled = false;
-            button.textContent = "Assign KPI";
+            button.textContent = "Assign Task";
         }
     }
 
@@ -991,6 +1049,34 @@
         });
 
         if(validationError) return showToast(validationError, "error");
+        
+        // 🌟 1% LATE SUBMISSION VALIDATION RULE 🌟
+        let hasLateCategory = false;
+        let isWeightValid = false;
+
+        payload.categories.forEach(cat => {
+            let catName = cat.name.toLowerCase();
+            // "late" သို့မဟုတ် "အချိန်မှီ" ဆိုတဲ့ စာသားပါတဲ့ Category ကို ရှာမည်
+            if (catName.includes("late") || catName.includes("အချိန်မှီ") || catName.includes("နောက်ကျ")) {
+                hasLateCategory = true;
+                // Category Weight သည် အနည်းဆုံး 1% (0.01) ရှိရမည် (Formula တည်ဆောက်ချိန်တွင် Percentage ဖြင့် ထည့်လေ့ရှိပါသည်)
+                if (parseFloat(cat.weight) >= 0.01 || parseFloat(cat.weight) >= 1) { 
+                    isWeightValid = true;
+                }
+            }
+        });
+
+        // Validation စစ်ဆေးခြင်း
+        if (!hasLateCategory) {
+            showToast("Formula တွင် 'အချိန်မှီမတင်ပြခြင်း (Late Submission)' Category မဖြစ်မနေ ပါဝင်ရပါမည်။", "error");
+            return;
+        }
+        if (!isWeightValid) {
+            showToast("'အချိန်မှီမတင်ပြခြင်း' Category အတွက် အနည်းဆုံး 1% သတ်မှတ်ပေးရပါမည်။", "error");
+            return;
+        }
+        // 🌟 END OF VALIDATION 🌟
+
         if(Math.abs(totalWeight - 100) > 0.01) return showToast(`Total category weights must equal exactly 100%. Current: ${totalWeight}%`, "error");
 
         const fId = document.getElementById("fId").value;

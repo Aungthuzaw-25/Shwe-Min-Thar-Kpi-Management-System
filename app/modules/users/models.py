@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Boolean, Integer, ForeignKey, DateTime
+from sqlalchemy import Column, String, Boolean, Integer, ForeignKey, DateTime, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.database.base import BaseModel
@@ -91,3 +91,22 @@ class RolePermission(BaseModel):
 
     role = relationship("Role", backref="role_permissions_link")
     permission = relationship("Permission")
+
+
+class UserPermissionOverride(BaseModel):
+    """Explicit allow/deny overrides for one user, taking precedence over role grants."""
+    __tablename__ = "user_permission_overrides"
+
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    permission_id = Column(UUID(as_uuid=True), ForeignKey("permissions.id", ondelete="CASCADE"), nullable=False, index=True)
+    allowed = Column(Boolean, nullable=False)
+    scope = Column(String(20), nullable=False, default="ALL")
+    department_id = Column(UUID(as_uuid=True), ForeignKey("departments.id", ondelete="CASCADE"), nullable=True, index=True)
+
+    user = relationship("User", backref="permission_overrides")
+    permission = relationship("Permission")
+    department = relationship("Department")
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "permission_id", "department_id", name="uq_user_permission_scope"),
+    )

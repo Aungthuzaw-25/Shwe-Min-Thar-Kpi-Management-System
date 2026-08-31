@@ -37,11 +37,20 @@
                 <p class="text-xs sm:text-sm text-slate-500 mt-1 font-medium">Create tasks, manage proof of work files, and track approvals.</p>
             </div>
         </div>
-        <div class="flex items-center gap-3 w-full md:w-auto mt-2 md:mt-0">
-            <button onclick="openCreateTaskModal()" class="w-full md:w-auto justify-center bg-blue-700 hover:bg-blue-800 text-white px-5 sm:px-6 py-2.5 sm:py-3 rounded-xl text-sm font-bold shadow-md transition-all active:scale-95 flex items-center gap-2">
+        <div class="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto mt-2 md:mt-0">
+            <!-- 🌟 Self-Created Task Button (Available to all) -->
+            <button onclick="openSelfTaskModal()" class="w-full sm:w-auto justify-center bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 px-5 sm:px-6 py-2.5 sm:py-3 rounded-xl text-sm font-bold shadow-sm transition-all active:scale-95 flex items-center gap-2">
                 <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
-                Log New Task
+                Personal Task
             </button>
+            
+            <!-- 🌟 Admin / Manager Assign Task Button -->
+            {% if user_level in ['L1', 'L0', 'Level 1', 'Level 0'] or user_role in ['Super Admin', 'System Super Admin', 'Admin'] %}
+            <button onclick="openAssignTaskModal()" class="w-full sm:w-auto justify-center bg-blue-700 hover:bg-blue-800 text-white px-5 sm:px-6 py-2.5 sm:py-3 rounded-xl text-sm font-bold shadow-md transition-all active:scale-95 flex items-center gap-2">
+                <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                Assign Delegation Task
+            </button>
+            {% endif %}
         </div>
     </header>
 
@@ -188,11 +197,11 @@
 <!-- 🌟 ALL MODALS -->
 <!-- ========================================================== -->
 
-<!-- CREATE TASK MODAL -->
-<div id="createTaskModal" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm transition-opacity opacity-0 p-4" style="transition: opacity 0.3s ease;">
-    <div class="bg-white rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden transform scale-95 transition-transform duration-300 flex flex-col max-h-[95vh] sm:max-h-[90vh]" id="createTaskContent">
+<!-- MODAL 1: Personal Task Modal (No Due Date / Penalty) -->
+<div id="selfTaskModal" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm transition-opacity opacity-0 p-4" style="transition: opacity 0.3s ease;">
+    <div class="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden transform scale-95 transition-transform duration-300 flex flex-col max-h-[95vh] sm:max-h-[90vh]" id="selfTaskContent">
         <div class="px-5 sm:px-8 py-4 sm:py-5 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
-            <h3 class="text-lg sm:text-xl font-black text-slate-900">Log New Task</h3>
+            <h3 class="text-lg sm:text-xl font-black text-slate-900">Log Personal Task</h3>
             <button onclick="closeModals()" class="text-slate-400 hover:text-red-500 hover:bg-red-50 p-1.5 sm:p-2 rounded-full transition-colors focus:outline-none"><svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
         </div>
         <div class="p-5 sm:p-8 overflow-y-auto custom-scrollbar bg-slate-50/50 flex-1 pr-1 sm:pr-8">
@@ -202,37 +211,72 @@
                     <div><span class="text-slate-500 font-semibold uppercase tracking-wider text-[8px] sm:text-[9px]">Position:</span> <p class="font-black text-blue-950 mt-0.5" id="modalContextPos">Loading...</p></div>
                 </div>
             </div>
-            <div class="flex items-center justify-center mb-4 sm:mb-6 bg-slate-200/50 p-1 sm:p-1.5 rounded-xl w-full sm:w-max mx-auto">
-                <button type="button" id="modeSingleBtn" onclick="setTaskMode('single')" class="flex-1 sm:flex-none px-3 sm:px-5 py-1.5 sm:py-2 text-xs sm:text-sm font-bold rounded-lg bg-white shadow-sm text-blue-700 transition-all focus:outline-none">Single Task</button>
-                <button type="button" id="modeMultipleBtn" onclick="setTaskMode('multiple')" class="flex-1 sm:flex-none px-3 sm:px-5 py-1.5 sm:py-2 text-xs sm:text-sm font-bold rounded-lg text-slate-500 hover:text-slate-800 transition-all focus:outline-none">Multiple Tasks</button>
-            </div>
             <form id="taskForm">
                 <div class="mb-4 sm:mb-5">
                     <label class="block text-[10px] sm:text-xs font-black text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-widest">KPI Category <span class="text-red-500">*</span></label>
-                    <select id="tCategory" required class="w-full bg-white border border-slate-300 p-2.5 sm:p-3.5 rounded-xl text-xs sm:text-sm font-bold text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none shadow-sm cursor-pointer appearance-none"></select>
+                    <select id="selfTaskCategory" required class="w-full bg-white border border-slate-300 p-2.5 sm:p-3.5 rounded-xl text-xs sm:text-sm font-bold text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none shadow-sm cursor-pointer appearance-none">
+                        <option value="">-- Select Category --</option>
+                    </select>
                 </div>
-                <div id="singleTaskContainer" class="space-y-4 sm:space-y-5 transition-all">
+                <div class="space-y-4 sm:space-y-5">
                     <div>
                         <label class="block text-[10px] sm:text-xs font-black text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-widest">Task Title <span class="text-red-500">*</span></label>
-                        <input type="text" id="tTitle" placeholder="Brief description of what was done..." class="w-full bg-white border border-slate-300 p-2.5 sm:p-3.5 rounded-xl text-xs sm:text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none shadow-sm">
+                        <input type="text" id="selfTaskTitle" placeholder="Brief description of what was done..." class="w-full bg-white border border-slate-300 p-2.5 sm:p-3.5 rounded-xl text-xs sm:text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none shadow-sm">
                     </div>
                     <div>
                         <label class="block text-[10px] sm:text-xs font-black text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-widest">Detailed Description</label>
-                        <textarea id="tDesc" rows="3" placeholder="Additional notes or links..." class="w-full bg-white border border-slate-300 p-2.5 sm:p-3.5 rounded-xl text-xs sm:text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none shadow-sm"></textarea>
+                        <textarea id="selfTaskDesc" rows="3" placeholder="Additional notes or links..." class="w-full bg-white border border-slate-300 p-2.5 sm:p-3.5 rounded-xl text-xs sm:text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none shadow-sm"></textarea>
                     </div>
-                </div>
-                <div id="multipleTaskContainer" class="hidden space-y-3 sm:space-y-4">
-                    <p class="text-[10px] sm:text-xs text-blue-600 font-bold bg-blue-50 p-2 sm:p-3 rounded-xl border border-blue-100">Tasks added here will be saved as drafts under the selected category.</p>
-                    <div id="taskList" class="space-y-2 sm:space-y-3"></div>
-                    <button type="button" onclick="addMultipleTaskRow()" class="text-[10px] sm:text-xs font-bold text-blue-700 hover:text-blue-900 bg-white border border-slate-200 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl shadow-sm flex items-center justify-center sm:justify-start w-full sm:w-auto gap-1.5 transition-colors focus:outline-none">
-                        <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg> Add Another Row
-                    </button>
                 </div>
             </form>
         </div>
         <div class="px-5 sm:px-8 py-4 sm:py-5 border-t border-slate-100 flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 bg-white shrink-0">
             <button onclick="closeModals()" class="w-full sm:w-auto px-5 sm:px-6 py-2.5 text-xs sm:text-sm font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl transition-colors shadow-sm focus:outline-none">Cancel</button>
-            <button onclick="saveTaskData()" id="saveTaskBtn" class="w-full sm:w-auto px-6 sm:px-8 py-2.5 bg-blue-700 hover:bg-blue-800 disabled:opacity-50 text-white rounded-xl text-xs sm:text-sm font-bold shadow-md transition-all active:scale-95 flex items-center justify-center gap-2 focus:outline-none">Save as Draft</button>
+            <button onclick="submitSelfTask(event)" id="saveTaskBtn" class="w-full sm:w-auto px-6 sm:px-8 py-2.5 bg-blue-700 hover:bg-blue-800 disabled:opacity-50 text-white rounded-xl text-xs sm:text-sm font-bold shadow-md transition-all active:scale-95 flex items-center justify-center gap-2 focus:outline-none">Save as Draft</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL 2: Manager Assignment Modal (Includes Due Date & Grace Period) -->
+<div id="assignTaskModal" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm transition-opacity opacity-0 p-4" style="transition: opacity 0.3s ease;">
+    <div class="bg-white rounded-3xl w-full max-w-xl shadow-2xl overflow-hidden transform scale-95 transition-transform duration-300 flex flex-col max-h-[95vh] sm:max-h-[90vh]" id="assignTaskContent">
+        <div class="px-5 sm:px-8 py-4 sm:py-5 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
+            <h3 class="text-lg sm:text-xl font-black text-slate-900">Assign Delegation Task</h3>
+            <button onclick="closeModals()" class="text-slate-400 hover:text-red-500 hover:bg-red-50 p-1.5 sm:p-2 rounded-full transition-colors focus:outline-none"><svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+        </div>
+        <div class="p-5 sm:p-8 overflow-y-auto custom-scrollbar bg-slate-50/50 flex-1 pr-1 sm:pr-8">
+            <form id="assignTaskForm" class="space-y-4 sm:space-y-5">
+                <div>
+                    <label class="block text-[10px] sm:text-xs font-black text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-widest">Assignee (Subordinate) <span class="text-red-500">*</span></label>
+                    <select id="assigneeUser" onchange="loadCategoriesForReceiver(this.value)" required class="w-full bg-white border border-slate-300 p-2.5 sm:p-3.5 rounded-xl text-xs sm:text-sm font-bold text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none shadow-sm cursor-pointer appearance-none">
+                        <option value="">-- Select Subordinate --</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[10px] sm:text-xs font-black text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-widest">Task Title <span class="text-red-500">*</span></label>
+                    <input type="text" id="assignTaskTitle" required placeholder="What needs to be done?" class="w-full bg-white border border-slate-300 p-2.5 sm:p-3.5 rounded-xl text-xs sm:text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none shadow-sm">
+                </div>
+                <div>
+                    <label class="block text-[10px] sm:text-xs font-black text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-widest">Receiver Category <span class="text-red-500">*</span></label>
+                    <select id="assignTaskCategory" required disabled class="w-full bg-slate-100 border border-slate-300 p-2.5 sm:p-3.5 rounded-xl text-xs sm:text-sm font-bold text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none shadow-sm cursor-not-allowed appearance-none">
+                        <option value="">-- Select Assignee First --</option>
+                    </select>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
+                    <div>
+                        <label class="block text-[10px] sm:text-xs font-black text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-widest">Due Date <span class="text-red-500">*</span></label>
+                        <input type="datetime-local" id="assignDueDate" required class="w-full bg-white border border-slate-300 p-2.5 sm:p-3.5 rounded-xl text-xs sm:text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none shadow-sm cursor-pointer">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] sm:text-xs font-black text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-widest">Grace Period (Days) <span class="text-red-500">*</span></label>
+                        <input type="number" id="assignGracePeriod" min="0" value="2" required class="w-full bg-white border border-slate-300 p-2.5 sm:p-3.5 rounded-xl text-xs sm:text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none shadow-sm">
+                    </div>
+                </div>
+            </form>
+        </div>
+        <div class="px-5 sm:px-8 py-4 sm:py-5 border-t border-slate-100 flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 bg-white shrink-0">
+            <button onclick="closeModals()" class="w-full sm:w-auto px-5 sm:px-6 py-2.5 text-xs sm:text-sm font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl transition-colors shadow-sm focus:outline-none">Cancel</button>
+            <button onclick="submitAssignedTask(event)" id="assignTaskBtn" class="w-full sm:w-auto px-6 sm:px-8 py-2.5 bg-blue-700 hover:bg-blue-800 disabled:opacity-50 text-white rounded-xl text-xs sm:text-sm font-bold shadow-md transition-all active:scale-95 flex items-center justify-center gap-2 focus:outline-none">Deploy Assignment</button>
         </div>
     </div>
 </div>
@@ -407,7 +451,6 @@
     const API_BASE = "/api/v1/tasks";
     const currentUserLevel = "{{ user_level }}";
     let myTasksList = [];
-    let creationMode = 'single';
     let selectedFiles = []; 
     let selectedResubmitFiles = []; 
 
@@ -532,6 +575,7 @@
     }
 
     document.addEventListener("DOMContentLoaded", () => {
+        loadInitialTaskData();
         loadMyTasks();
         if (['L1', 'L0', 'Level 1', 'Level 0'].includes(currentUserLevel) && document.getElementById('btn-approvals-tab')) {
             loadApprovalQueue();
@@ -558,6 +602,137 @@
             });
         }
     });
+
+    async function loadInitialTaskData() {
+        try {
+            const [catRes, userRes] = await Promise.all([
+                fetch('/api/v1/tasks/categories/available'),
+                fetch('/api/v1/users/?limit=100')
+            ]);
+            if (catRes.ok) {
+                const data = await catRes.json();
+                const sel = document.getElementById("selfTaskCategory");
+                sel.innerHTML = '<option value="">-- Select Category --</option>';
+                data.categories.forEach(c => sel.innerHTML += `<option value="${escapeHTML(c)}">${escapeHTML(c)}</option>`);
+            }
+            if (userRes.ok) {
+                const users = await userRes.json();
+                const sel = document.getElementById("assigneeUser");
+                sel.innerHTML = '<option value="">-- Select Subordinate --</option>';
+                users.forEach(u => sel.innerHTML += `<option value="${u.id}">${escapeHTML(u.first_name)} ${escapeHTML(u.last_name)} (${escapeHTML(u.email)})</option>`);
+            }
+        } catch(e) { console.error(e); }
+    }
+
+    async function loadCategoriesForReceiver(userId) {
+        const catSelect = document.getElementById("assignTaskCategory");
+        if (!userId) {
+            catSelect.disabled = true;
+            catSelect.classList.add("bg-slate-100", "cursor-not-allowed");
+            catSelect.classList.remove("bg-white", "cursor-pointer");
+            catSelect.innerHTML = '<option value="">-- Select Assignee First --</option>';
+            return;
+        }
+        catSelect.disabled = false;
+        catSelect.classList.remove("bg-slate-100", "cursor-not-allowed");
+        catSelect.classList.add("bg-white", "cursor-pointer");
+        catSelect.innerHTML = '<option value="">Loading categories...</option>';
+        try {
+            const res = await fetch(`/api/v1/kpi/formulas/user/${userId}/categories`);
+            if (res.ok) {
+                const categories = await res.json();
+                catSelect.innerHTML = '<option value="">-- Select Category --</option>';
+                categories.forEach(c => catSelect.innerHTML += `<option value="${escapeHTML(c.name)}">${escapeHTML(c.name)}</option>`);
+            } else {
+                catSelect.innerHTML = '<option value="">No Active Categories Found</option>';
+            }
+        } catch(e) { 
+            catSelect.innerHTML = '<option value="">Error Loading Categories</option>'; 
+        }
+    }
+
+    function openSelfTaskModal() { 
+        document.getElementById("selfTaskForm").reset();
+        
+        if (window.currentUserContext) {
+            const deptEl = document.getElementById('modalContextDept');
+            const posEl = document.getElementById('modalContextPos');
+            if(deptEl) deptEl.innerText = window.currentUserContext.department_name || 'N/A';
+            if(posEl) posEl.innerText = window.currentUserContext.position_name || 'N/A';
+        }
+        openModalAnimation("selfTaskModal", "selfTaskContent"); 
+    }
+    
+    function closeSelfTaskModal() { closeModals(); }
+    
+    function openAssignTaskModal() { 
+        document.getElementById("assignTaskForm").reset();
+        document.getElementById("assignTaskCategory").innerHTML = '<option value="">-- Select Assignee First --</option>';
+        document.getElementById("assignTaskCategory").disabled = true;
+        document.getElementById("assignTaskCategory").classList.add("bg-slate-100", "cursor-not-allowed");
+        document.getElementById("assignTaskCategory").classList.remove("bg-white", "cursor-pointer");
+        openModalAnimation("assignTaskModal", "assignTaskContent"); 
+    }
+    
+    function closeAssignTaskModal() { closeModals(); }
+
+    async function submitSelfTask(e) {
+        e.preventDefault();
+        const payload = {
+            title: document.getElementById("selfTaskTitle").value.trim(),
+            description: document.getElementById("selfTaskDesc").value.trim(),
+            category: document.getElementById("selfTaskCategory").value
+        };
+        const res = await fetch('/api/v1/tasks', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+            closeSelfTaskModal();
+            showToast("Personal task created successfully.", "success");
+            loadMyTasks();
+        } else {
+            showToast("Failed to create task.", "error");
+        }
+    }
+
+    async function submitAssignedTask(e) {
+        e.preventDefault();
+        const btn = document.getElementById("assignTaskBtn");
+        btn.disabled = true;
+        btn.textContent = "Assigning...";
+
+        const payload = {
+            category: document.getElementById("assignTaskCategory").value,
+            tasks: [{
+                title: document.getElementById("assignTaskTitle").value.trim(),
+                owner_id: document.getElementById("assigneeUser").value,
+                due_date: new Date(document.getElementById("assignDueDate").value).toISOString(),
+                grace_period_days: parseInt(document.getElementById("assignGracePeriod").value)
+            }]
+        };
+        try {
+            const res = await fetch('/api/v1/tasks/bulk-create', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            });
+            if (res.ok) {
+                closeAssignTaskModal();
+                showToast("Delegated task assigned successfully.", "success");
+                loadMyTasks();
+            } else {
+                const err = await res.json();
+                showToast(err.detail || "Failed to assign task.", "error");
+            }
+        } catch(err) {
+            showToast("Network Error.", "error");
+        } finally {
+            btn.disabled = false;
+            btn.textContent = "Deploy Assignment";
+        }
+    }
 
     async function loadMyTasks() {
         try {
@@ -911,53 +1086,7 @@
         }).join('');
     }
 
-    // --- CREATE TASK API & DYNAMIC CATEGORIES ---
-    function openCreateTaskModal() {
-        document.getElementById("taskForm").reset();
-        const taskListEl = document.getElementById("taskList");
-        if(taskListEl) taskListEl.innerHTML = ""; 
-        
-        try { setTaskMode('single'); } catch(e) {}
-
-        if (window.currentUserContext) {
-            const deptEl = document.getElementById('modalContextDept');
-            const posEl = document.getElementById('modalContextPos');
-            if(deptEl) deptEl.innerText = window.currentUserContext.department_name || 'N/A';
-            if(posEl) posEl.innerText = window.currentUserContext.position_name || 'N/A';
-        }
-
-        openModalAnimation('createTaskModal', 'createTaskContent');
-
-        const catSelect = document.getElementById("tCategory");
-        if (catSelect) {
-            catSelect.innerHTML = '<option value="">-- Loading Categories from Server... --</option>';
-            
-            const CATEGORY_API_URL = "/api/v1/tasks/categories/available"; 
-
-            fetch(CATEGORY_API_URL)
-            .then(res => {
-                // 🛡️ AUTH FIX
-                if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return null; }
-                if (!res.ok) throw new Error("API Error or Endpoint Not Found");
-                return res.json();
-            })
-            .then(data => {
-                if (!data) return;
-                catSelect.innerHTML = '<option value="">-- Select KPI Category --</option>';
-                
-                const categoryList = data.categories || [];
-
-                categoryList.forEach(c => {
-                    const catName = c.name || c;
-                    catSelect.innerHTML += `<option value="${escapeHTML(catName)}">${escapeHTML(catName)}</option>`;
-                });
-            })
-            .catch(e => {
-                catSelect.innerHTML = '<option value="">-- Error: Check Category API --</option>';
-            });
-        }
-    }
-
+    // --- DETAILS MODAL ---
     function viewTaskDetails(taskId) {
         const task = myTasksList.find(t => t.id === taskId);
         if(!task) return;
@@ -984,7 +1113,7 @@
                 </div>
             </div>
             <div class="mb-4 sm:mb-5">
-                <h4 class="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 sm:mb-1.5">Description</h4>
+                <h4 class="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 sm:mb-2">Description</h4>
                 <p class="text-xs sm:text-sm font-medium text-slate-700 bg-slate-50 p-2.5 sm:p-3 rounded-xl border border-slate-100 break-words">${escapeHTML(task.description || 'No description provided.')}</p>
             </div>
             <div>
@@ -993,93 +1122,6 @@
             </div>
         `;
         openModalAnimation('detailsModal', 'detailsContent');
-    }
-
-    function setTaskMode(mode) {
-        creationMode = mode;
-        const singleBtn = document.getElementById('modeSingleBtn');
-        const multBtn = document.getElementById('modeMultipleBtn');
-        const singleCont = document.getElementById('singleTaskContainer');
-        const multCont = document.getElementById('multipleTaskContainer');
-
-        if(mode === 'single') {
-            singleBtn.className = "flex-1 sm:flex-none px-3 sm:px-5 py-1.5 sm:py-2.5 text-xs sm:text-sm font-black rounded-lg bg-white shadow-sm text-blue-700 ring-1 ring-slate-200 transition-all focus:outline-none";
-            multBtn.className = "flex-1 sm:flex-none px-3 sm:px-5 py-1.5 sm:py-2.5 text-xs sm:text-sm font-bold rounded-lg text-slate-500 hover:text-slate-800 transition-all focus:outline-none";
-            singleCont.classList.remove('hidden'); multCont.classList.add('hidden');
-        } else {
-            multBtn.className = "flex-1 sm:flex-none px-3 sm:px-5 py-1.5 sm:py-2.5 text-xs sm:text-sm font-black rounded-lg bg-white shadow-sm text-blue-700 ring-1 ring-slate-200 transition-all focus:outline-none";
-            singleBtn.className = "flex-1 sm:flex-none px-3 sm:px-5 py-1.5 sm:py-2.5 text-xs sm:text-sm font-bold rounded-lg text-slate-500 hover:text-slate-800 transition-all focus:outline-none";
-            singleCont.classList.add('hidden'); multCont.classList.remove('hidden');
-            if(document.getElementById("taskList").children.length === 0) addMultipleTaskRow();
-        }
-    }
-
-    function addMultipleTaskRow() {
-        const list = document.getElementById("taskList");
-        const idx = list.children.length;
-        list.insertAdjacentHTML('beforeend', `
-            <div class="flex gap-2 sm:gap-3 items-start bg-white p-3 sm:p-4 rounded-xl border border-slate-200 shadow-sm relative group animate-fade-in-up focus-within:ring-1 focus-within:ring-blue-500 transition-all">
-                <button type="button" onclick="this.parentElement.remove()" class="absolute -top-1.5 sm:-top-2 -right-1.5 sm:-right-2 bg-red-100 text-red-600 rounded-full w-4 h-4 sm:w-5 sm:h-5 flex items-center justify-center hover:bg-red-500 hover:text-white transition-colors sm:opacity-0 group-hover:opacity-100 shadow-sm focus:outline-none focus:ring-2 focus:ring-red-400"><svg class="w-2.5 h-2.5 sm:w-3 sm:h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
-                <div class="flex-1 space-y-2 sm:space-y-3">
-                    <input type="text" class="bulk-title w-full bg-slate-50 border border-slate-200 p-2 sm:p-2.5 rounded-lg text-[10px] sm:text-xs font-bold focus:bg-white focus:ring-1 focus:ring-blue-500 focus:outline-none" placeholder="Task Title ${idx+1} *">
-                    <input type="text" class="bulk-desc w-full bg-slate-50 border border-slate-200 p-2 sm:p-2.5 rounded-lg text-[10px] sm:text-xs font-medium focus:bg-white focus:ring-1 focus:ring-blue-500 focus:outline-none" placeholder="Optional notes...">
-                </div>
-            </div>`);
-    }
-
-    async function saveTaskData() {
-        const category = document.getElementById("tCategory").value.trim();
-        if(!category) return showToast("Please select a KPI Category first.", "error");
-
-        const btn = document.getElementById("saveTaskBtn");
-        const originalText = btn.innerHTML;
-        btn.innerHTML = `<svg class="animate-spin h-3.5 w-3.5 sm:h-4 sm:w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Saving...`;
-        btn.disabled = true;
-
-        try {
-            if(creationMode === 'single') {
-                const title = document.getElementById("tTitle").value.trim();
-                const desc = document.getElementById("tDesc").value.trim();
-                if(!title) { btn.innerHTML = originalText; btn.disabled = false; return showToast("Task title is required.", "error"); }
-                
-                const res = await fetch(API_BASE, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({title, category, description: desc}) });
-                
-                // 🛡️ AUTH FIX
-                if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
-                
-                if(res.ok) { showToast("Draft saved successfully."); closeModals(); loadMyTasks(); }
-                else { const err = await res.json(); showToast(err.detail || "Failed to save draft.", "error"); }
-            } else {
-                const tasks = [];
-                document.querySelectorAll("#taskList > div").forEach(row => {
-                    const title = row.querySelector(".bulk-title").value.trim();
-                    const desc = row.querySelector(".bulk-desc").value.trim();
-                    if(title) tasks.push({ title, description: desc });
-                });
-                if(tasks.length === 0) { btn.innerHTML = originalText; btn.disabled = false; return showToast("Please add at least one task.", "error"); }
-
-                const res = await fetch(`${API_BASE}/bulk-create`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({category, tasks}) });
-                
-                // 🛡️ AUTH FIX
-                if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
-                
-                if(res.ok) { showToast(`Saved ${tasks.length} drafts successfully.`); closeModals(); loadMyTasks(); }
-                else { const err = await res.json(); showToast(err.detail || "Failed to save drafts.", "error"); }
-            }
-        } catch(e) { showToast("Network Error: Could not reach server", "error"); } 
-        finally { btn.innerHTML = originalText; btn.disabled = false; }
-    }
-
-    async function deleteTask(taskId) {
-        if(!confirm("Discard this draft task?")) return;
-        try {
-            const res = await fetch(`${API_BASE}/${taskId}`, { method: 'DELETE' });
-            // 🛡️ AUTH FIX
-            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
-            
-            if(res.ok || res.status === 204) { showToast("Draft discarded.", "success"); loadMyTasks(); }
-            else showToast("Failed to discard.", "error");
-        } catch(e) { showToast("Network error.", "error"); }
     }
 
     // --- UPLOAD EVIDENCE API ---
@@ -1383,6 +1425,17 @@
         finally { btn.innerHTML = originalText; btn.disabled = false; }
     }
 
+    function formatAppDate(value) {
+        if (!value) return "";
+        const normalized = /(?:Z|[+-]\d{2}:\d{2})$/.test(value) ? value : `${value}Z`;
+        const date = new Date(normalized);
+        if (Number.isNaN(date.getTime())) return "";
+        return new Intl.DateTimeFormat(undefined, {
+            timeZone: "Asia/Yangon",
+            dateStyle: "medium",
+            timeStyle: "short"
+        }).format(date);
+    }
 </script>
 
 {% if user_level in ['L1', 'L0', 'Level 1', 'Level 0'] %}

@@ -8,8 +8,86 @@ from sqlalchemy.orm import selectinload
 from app.core.config import settings
 from app.database.connection import get_db
 # 🌟 FIX: Permission များကို တစ်ပါတည်း ဆွဲထုတ်ရန် Role ကိုပါ Import လုပ်ပါသည်
-from app.modules.users.models import User, Role, Permission, RolePermission
+from app.modules.users.models import User, Role, Permission, RolePermission, UserPermissionOverride
 from app.modules.auth.models import TokenBlacklist
+
+SUPER_ADMIN_ROLE = "Super Admin"
+
+
+def has_effective_permission(
+    user: User,
+    permission_code: str,
+    *,
+    owner_id=None,
+    department_id=None,
+) -> bool:
+    """Evaluate one permission using deny-over-role precedence.
+
+    Overrides are deliberately evaluated before role grants.  A matching
+    explicit deny always wins; an explicit allow can grant a permission that
+    is not present on the user's role.  Unknown permissions are denied.
+    """
+    if user.role and user.role.name == SUPER_ADMIN_ROLE:
+        return True
+
+    matching = []
+    for override in getattr(user, "permission_overrides", []) or []:
+        permission = getattr(override, "permission", None)
+        if not permission or permission.code != permission_code:
+            continue
+        scope = (override.scope or "ALL").upper()
+        if scope == "ALL":
+            matching.append(override)
+        elif scope == "DEPARTMENT" and department_id is not None:
+            if str(override.department_id) == str(department_id):
+                matching.append(override)
+        elif scope == "OWN" and owner_id is not None:
+            if str(owner_id) == str(user.id):
+                matching.append(override)
+
+    # A deny is stronger than every role grant (and than an allow at another
+    # scope), which makes accidental data exposure fail closed.
+    if any(override.allowed is False for override in matching):
+        return False
+    if any(override.allowed is True for override in matching):
+        return True
+
+    role_permissions = getattr(user.role, "permissions", []) if user.role else []
+    return any(getattr(permission, "code", None) == permission_code
+               for permission in role_permissions)
+
+
+def enforce_permission(
+    user: User,
+    permission_code: str,
+    *,
+    owner_id=None,
+    department_id=None,
+) -> User:
+    if not has_effective_permission(
+        user, permission_code, owner_id=owner_id, department_id=department_id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Missing required permission: {permission_code}",
+        )
+    return user
+
+
+def get_permission_map(user: User) -> dict[str, bool]:
+    """Return the effective global permission map for templates and clients."""
+    codes = {
+        getattr(permission, "code", None)
+        for permission in (getattr(user.role, "permissions", []) if user.role else [])
+    }
+    codes.update(
+        getattr(getattr(override, "permission", None), "code", None)
+        for override in getattr(user, "permission_overrides", []) or []
+    )
+    return {
+        code: has_effective_permission(user, code)
+        for code in sorted(code for code in codes if code)
+    }
 
 # 🌟 KEY FIX: Swagger UI မှ Auth ဝင်ရန် လမ်းကြောင်းကို swagger-login သို့ ပြောင်းထားပါသည်
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/swagger-login", auto_error=False)
@@ -66,7 +144,8 @@ async def get_current_user(
     # 🌟 PERFORMANCE FIX (DBA): User ကို ဆွဲထုတ်စဉ် Role နှင့် ၎င်း၏ Permissions များကို 
     # တစ်ပါတည်း (Eager Load) ဆွဲထုတ်ထားခြင်းဖြင့် RequirePermission တွင် DB ထပ်ခေါ်စရာ မလိုတော့ပါ။
     stmt = select(User).options(
-        selectinload(User.role).selectinload(Role.permissions)
+        selectinload(User.role).selectinload(Role.permissions),
+        selectinload(User.permission_overrides).selectinload(UserPermissionOverride.permission)
     ).where(
         User.email == email, 
         User.is_deleted == False
@@ -117,21 +196,92 @@ class RequirePermission:
         self.required_permissions = required_permissions
 
     # 🌟 FIX: DB ကို ထပ်မံ Query လုပ်စရာ မလိုတော့ဘဲ get_current_user မှရလာသော Data ပေါ်မှ တိုက်ရိုက် စစ်ဆေးမည်
-    async def __call__(self, current_user: User = Depends(get_current_user)):
-        # Super Admin များသည် Permission စစ်ဆေးခြင်းကို ကျော်ဖြတ်နိုင်သည် (Bypass)
-        if current_user.role and current_user.role.name in ["Super Admin"]:
-            return current_user
+    async def __call__(
+        self,
+        request: Request,
+        current_user: User = Depends(get_current_user),
+        db: AsyncSession = Depends(get_db),
+    ):
+        """Check permissions and infer resource scope from common route IDs."""
+        owner_id = None
+        department_id = None
+        params = request.path_params
+        owner_param = next(
+            (params.get(name) for name in ("owner_id", "target_user_id", "user_id")
+             if params.get(name) is not None),
+            None,
+        )
+        if owner_param is not None:
+            owner_id = owner_param
+            try:
+                from app.modules.departments.models import UserDepartment
+                row = (await db.execute(
+                    select(UserDepartment.department_id).where(
+                        UserDepartment.user_id == owner_param,
+                        UserDepartment.is_deleted == False,
+                    )
+                )).first()
+                department_id = row[0] if row else None
+            except Exception:
+                department_id = None
 
-        # User တွင် ရှိသော Permission များကို Eager Load မှတစ်ဆင့် ယူမည်
-        user_perms = [p.code for p in current_user.role.permissions] if current_user.role else []
+        department_id = (
+            params.get("department_id")
+            or params.get("dept_id")
+            or department_id
+        )
 
-        # လိုအပ်သော Permission အနည်းဆုံး တစ်ခုရှိ/မရှိ စစ်ဆေးမည်
-        has_permission = any(perm in user_perms for perm in self.required_permissions)
-        
-        if not has_permission:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Missing required permissions. Needs one of: {', '.join(self.required_permissions)}"
-            )
-            
-        return current_user
+        # Resolve task/KPI/batch resources so OWN and DEPARTMENT overrides work
+        # on routes that expose only a resource UUID.
+        try:
+            resource_id = params.get("task_id")
+            if resource_id:
+                from app.modules.tasks.models.task import Task
+                from app.modules.departments.models import UserDepartment
+                task = await db.get(Task, resource_id)
+                if task:
+                    owner_id = task.owner_id
+                    row = (await db.execute(
+                        select(UserDepartment.department_id).where(
+                            UserDepartment.user_id == task.owner_id,
+                            UserDepartment.is_deleted == False,
+                        )
+                    )).first()
+                    department_id = department_id or (row[0] if row else None)
+            resource_id = params.get("record_id")
+            if resource_id:
+                from app.modules.kpi.models import KPIRecord
+                record = await db.get(KPIRecord, resource_id)
+                if record:
+                    owner_id = record.user_id
+                    department_id = department_id or record.department_id
+            resource_id = params.get("batch_id")
+            if resource_id:
+                from app.modules.tasks.models.submission_batch import SubmissionBatch
+                batch = await db.get(SubmissionBatch, resource_id)
+                if batch:
+                    owner_id = batch.submitter_id
+        except Exception:
+            # Scope resolution must never turn a malformed resource into an
+            # authorization bypass; unresolved scoped overrides simply don't
+            # match and the normal role decision remains fail-closed.
+            pass
+
+        # Required permissions are OR semantics.  A deny only vetoes its own
+        # permission; another explicitly granted required permission may still
+        # satisfy an endpoint declaring alternatives.
+        for permission_code in self.required_permissions:
+            if has_effective_permission(
+                current_user,
+                permission_code,
+                owner_id=owner_id,
+                department_id=department_id,
+            ):
+                return current_user
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "Missing required permissions. Needs one of: "
+                + ", ".join(self.required_permissions)
+            ),
+        )

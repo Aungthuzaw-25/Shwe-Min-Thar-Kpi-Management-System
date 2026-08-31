@@ -10,7 +10,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 from sqlalchemy.future import select
 from app.database.connection import AsyncSessionLocal
-from app.modules.users.models import User, Position, Role
+from app.modules.users.models import User, Position, Role, Permission, RolePermission
 from app.core.security import get_password_hash
 from app.modules.departments.models import Department, UserDepartment
 
@@ -22,8 +22,30 @@ from app.modules.kpi.models import (
 
 ROLES = [
     {"name": "Super Admin", "description": "Has full system control"},
+    {"name": "System Super Admin", "description": "System-wide administration"},
     {"name": "Admin", "description": "Manages assigned organization"},
+    {"name": "HR", "description": "Human resources administration"},
     {"name": "Department User", "description": "Operational users (L0, L1, L2)"}
+]
+
+PERMISSION_CATALOG = [
+    ("users.view", "View users"), ("users.create", "Create users"), ("users.edit", "Edit users"),
+    ("users.delete", "Delete users"), ("users.activate", "Activate users"), ("users.deactivate", "Deactivate users"),
+    ("users.password_reset", "Reset user passwords"),
+    ("tasks.view", "View tasks"), ("tasks.create", "Create tasks"), ("tasks.edit", "Edit tasks"),
+    ("tasks.delete", "Delete tasks"), ("tasks.submit", "Submit tasks"), ("tasks.resubmit", "Resubmit tasks"), ("tasks.approve", "Approve tasks"),
+    ("tasks.reject", "Reject tasks"), ("tasks.return", "Return tasks"),
+    ("kpi.view", "View KPIs"), ("kpi.create", "Create KPIs"), ("kpi.edit", "Edit KPIs"),
+    ("kpi.delete", "Delete KPIs"), ("kpi.assign", "Assign KPIs"), ("kpi.calculate", "Calculate KPIs"),
+    ("kpi.rule.view", "View KPI rules"), ("kpi.rule.create", "Create KPI rules"),
+    ("kpi.rule.edit", "Edit KPI rules"), ("kpi.rule.delete", "Delete KPI rules"),
+    ("report.view", "View reports"), ("report.create", "Create reports"), ("report.export", "Export reports"),
+    ("report.view_all", "View other users' reports"),
+    ("department.view", "View departments"), ("department.create", "Create departments"),
+    ("department.edit", "Edit departments"), ("department.delete", "Delete departments"),
+    ("system.settings.view", "View settings"), ("system.settings.edit", "Edit settings"),
+    ("system.audit.view", "View audit history"),
+    ("system.permissions.manage", "Manage role permissions and user overrides"),
 ]
 
 # Common Deduction Rules
@@ -56,6 +78,13 @@ ATTENDANCE_RULES = [
 async def run_seed():
     async with AsyncSessionLocal() as db:
         print("Starting database seed...")
+
+        for code, description in PERMISSION_CATALOG:
+            existing_permission = (await db.execute(select(Permission).where(Permission.code == code))).scalar_one_or_none()
+            if not existing_permission:
+                db.add(Permission(code=code, description=description))
+        await db.commit()
+        print("Permission catalog seeded!")
         
         # 1. Departments
         departments = [
@@ -91,6 +120,40 @@ async def run_seed():
                 await db.commit()
                 await db.refresh(role)
             role_dict[role.name] = role
+
+        # Seed safe, useful defaults only for roles that have no customized
+        # matrix yet.  Existing role assignments are never overwritten.
+        all_codes = {code for code, _ in PERMISSION_CATALOG}
+        role_defaults = {
+            "Super Admin": all_codes,
+            "System Super Admin": all_codes,
+            "Admin": all_codes - {"system.settings.edit", "system.audit.view"},
+            "HR": {
+                "users.view", "users.create", "users.edit", "users.activate",
+                "users.deactivate", "users.password_reset", "department.view",
+                "kpi.view", "report.view", "report.view_all",
+                "system.permissions.manage",
+            },
+            "Department User": {
+                "users.view", "tasks.view", "tasks.create", "tasks.edit",
+                "tasks.delete", "tasks.submit", "tasks.resubmit",
+                "kpi.view", "report.view", "department.view",
+            },
+        }
+        for role_name, codes in role_defaults.items():
+            role = role_dict[role_name]
+            link_count = (await db.execute(
+                select(RolePermission).where(RolePermission.role_id == role.id)
+            )).scalars().all()
+            if not link_count:
+                permission_rows = (await db.execute(
+                    select(Permission).where(Permission.code.in_(codes))
+                )).scalars().all()
+                for permission in permission_rows:
+                    db.add(RolePermission(
+                        role_id=role.id, permission_id=permission.id
+                    ))
+        await db.commit()
 
         # 3. Super Admin
         sa_email = "superadmin@kpi.com"
