@@ -8,14 +8,14 @@ def test_settings_are_loaded_from_environment():
     assert settings.SECRET_KEY
 
 
-def test_fix_neon_url_keeps_neon_ssl_settings_and_uses_asyncpg():
+def test_fix_neon_url_removes_asyncpg_unsupported_query_params():
     raw = (
-        "postgresql://user:pass@host.neon.tech/neondb"
+        "postgresql://neondb_owner:password@host.neon.tech/neondb"
         "?sslmode=require&channel_binding=require"
     )
 
     fixed = Settings.fix_neon_url(raw)
 
     assert fixed.startswith("postgresql+asyncpg://")
-    assert "sslmode=require" in fixed
+    assert "sslmode=require" not in fixed
     assert "channel_binding=require" not in fixed

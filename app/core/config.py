@@ -36,13 +36,18 @@ class Settings(BaseSettings):
         elif v.startswith("postgresql://") and not v.startswith("postgresql+asyncpg://"):
             v = v.replace("postgresql://", "postgresql+asyncpg://", 1)
 
-        v = v.replace("?channel_binding=require", "")
-        v = v.replace("&channel_binding=require", "")
-        if "sslmode=require" not in v:
-            if "?" in v:
-                v = f"{v}&sslmode=require"
-            else:
-                v = f"{v}?sslmode=require"
+        for pattern in (
+            "?channel_binding=require",
+            "&channel_binding=require",
+            "?sslmode=require",
+            "&sslmode=require",
+            "?sslmode=disable",
+            "&sslmode=disable",
+        ):
+            v = v.replace(pattern, "")
+
+        if v.endswith("?") or v.endswith("&"):
+            v = v.rstrip("?&")
 
         return v
 

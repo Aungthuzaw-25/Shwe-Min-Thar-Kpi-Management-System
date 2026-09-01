@@ -16,9 +16,13 @@ class Base(DeclarativeBase):
 # Base connection options
 engine_options = {
     # Dynamically log SQL queries based on the environment (e.g., True in dev, False in prod)
-    "echo": getattr(settings, "DEBUG", False), 
-    "pool_pre_ping": True, # Tests connection liveness before checking out from pool
+    "echo": getattr(settings, "DEBUG", False),
+    "pool_pre_ping": True,  # Tests connection liveness before checking out from pool
 }
+
+connect_args = {}
+if settings.DATABASE_URL.startswith("postgresql+asyncpg://"):
+    connect_args["ssl"] = True
 
 # 🌟 FIX: PostgreSQL/MySQL specific optimizations. SQLite doesn't support these pool args.
 if not settings.DATABASE_URL.startswith("sqlite"):
@@ -30,7 +34,11 @@ if not settings.DATABASE_URL.startswith("sqlite"):
     )
 
 # Initialize the async engine
-engine = create_async_engine(settings.DATABASE_URL, **engine_options)
+engine = create_async_engine(
+    settings.DATABASE_URL,
+    connect_args=connect_args or None,
+    **engine_options,
+)
 
 # Configure the session factory
 AsyncSessionLocal = async_sessionmaker(

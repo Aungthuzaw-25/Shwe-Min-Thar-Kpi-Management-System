@@ -32,21 +32,26 @@ if not db_url:
     print("❌ ERROR: DATABASE_URL environment variable is not defined.")
     sys.exit(1)
 
-# Ensure the protocol is compliant with asyncpg while preserving Neon SSL settings.
+# Ensure the protocol is compliant with asyncpg. For Neon, sslmode is not accepted by
+# asyncpg; we need to enable SSL via connect_args instead.
 if db_url.startswith("postgres://"):
     db_url = db_url.replace("postgres://", "postgresql+asyncpg://", 1)
 elif db_url.startswith("postgresql://") and not db_url.startswith("postgresql+asyncpg://"):
     db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
 
-# Keep the original query string so Neon SSL and connection params remain intact.
+# Remove unsupported asyncpg query parameters before connection.
+for token in ("?sslmode=require", "&sslmode=require", "?channel_binding=require", "&channel_binding=require"):
+    db_url = db_url.replace(token, "")
+
 clean_url = db_url
+connect_args = {"ssl": True} if clean_url.startswith("postgresql+asyncpg://") else {}
 
 async def verify_connection():
     max_retries = 5
     retry_interval = 2
     for attempt in range(1, max_retries + 1):
         try:
-            engine = create_async_engine(clean_url, pool_pre_ping=True)
+            engine = create_async_engine(clean_url, pool_pre_ping=True, connect_args=connect_args)
             async with engine.connect() as conn:
                 await conn.execute(text("SELECT 1"))
             await engine.dispose()

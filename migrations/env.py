@@ -60,10 +60,15 @@ async def run_async_migrations() -> None:
     # --- .env ထဲက Database URL ကို သုံးရန် သတ်မှတ်ခြင်း ---
     configuration["sqlalchemy.url"] = settings.DATABASE_URL
 
+    connect_args = {}
+    if settings.DATABASE_URL.startswith("postgresql+asyncpg://"):
+        connect_args["ssl"] = True
+
     connectable = async_engine_from_config(
         configuration,
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        connect_args=connect_args,
     )
 
     async with connectable.connect() as connection:
