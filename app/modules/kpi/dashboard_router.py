@@ -18,6 +18,8 @@ from app.modules.tasks.models.task import Task, TaskStatus
 from app.modules.users.router import admin_checker 
 
 router = APIRouter()
+superadmin_router = APIRouter()
+admin_router = APIRouter()
 
 
 def _normalize_role_name(value: Optional[str]) -> str:
@@ -133,7 +135,7 @@ async def _get_dashboard_task_summary(db: AsyncSession, current_user: User) -> D
     return summary
 
 
-@router.get("/summary/role-scope", tags=["Dashboard"])
+@superadmin_router.get("/summary/role-scope", tags=["Dashboard"])
 async def fetch_dashboard_role_summary(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(admin_checker),
@@ -143,7 +145,7 @@ async def fetch_dashboard_role_summary(
     return {"summary": summary}
 
 
-@router.get("/process-tracking", tags=["Dashboard"])
+@superadmin_router.get("/process-tracking", tags=["Dashboard"])
 async def fetch_process_tracking_summary(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(admin_checker),
@@ -206,7 +208,7 @@ async def _get_admin_scope_departments(db: AsyncSession, current_user: User) -> 
     return [str(dept_id) for dept_id in dept_ids] if dept_ids else []
 
 
-@router.get("/summary", tags=["Admin Dashboard"])
+@admin_router.get("/summary", tags=["Admin Dashboard"])
 async def fetch_admin_dashboard_summary(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(admin_checker),
@@ -319,18 +321,22 @@ async def fetch_admin_dashboard_summary(
     }
 
 
-@router.get("/summary", tags=["Super Admin Dashboard"])
+@superadmin_router.get("/summary", tags=["Super Admin Dashboard"])
 async def fetch_superadmin_dashboard_data(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(admin_checker) # 🌟 ဤနေရာတွင် Token နှင့် Role ကို စစ်ဆေးမည်
 ) -> Dict[str, Any]:
     
-    # 1. Total Active Users
-    users_count = await db.execute(select(func.count(User.id)).where(User.is_active == True))
+    # 1. Total Active Users (exclude deleted/trashed users to match User Management)
+    users_count = await db.execute(
+        select(func.count(User.id)).where(User.is_deleted == False, User.is_active == True)
+    )
     total_users = users_count.scalar() or 0
 
-    # 2. Total Departments
-    depts_count = await db.execute(select(func.count(Department.id)))
+    # 2. Total Active Departments (exclude deleted/trashed departments)
+    depts_count = await db.execute(
+        select(func.count(Department.id)).where(Department.is_deleted == False)
+    )
     total_depts = depts_count.scalar() or 0
 
     # 3. Active Alerts (Unread Notifications)

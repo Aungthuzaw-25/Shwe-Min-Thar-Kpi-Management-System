@@ -168,20 +168,26 @@
         document.getElementById('currentDateDisplay').textContent = new Date().toLocaleDateString('en-US', options);
 
         try {
+            document.getElementById('valUsers').innerText = 'Loading...';
+            document.getElementById('valDepts').innerText = 'Loading...';
+            document.getElementById('valKPIs').innerText = 'Loading...';
+            document.getElementById('valComplete').innerText = 'Loading...';
+
             const res = await fetch('/api/v1/superadmin/dashboard/summary'); 
-            
+             
             // 🛡️ AUTH FIX
             if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
 
             if(res.ok) {
                 const data = await res.json();
+                const metrics = data?.metrics ?? {};
                 
-                document.getElementById('valUsers').innerText = data.metrics?.total_users ?? 0;
-                document.getElementById('valDepts').innerText = data.metrics?.total_departments ?? 0;
-                document.getElementById('valKPIs').innerText = data.metrics?.total_kpis ?? 0;
-                document.getElementById('valComplete').innerText = data.metrics?.completed_kpis ?? 0;
+                document.getElementById('valUsers').innerText = metrics.total_users ?? 0;
+                document.getElementById('valDepts').innerText = metrics.total_departments ?? 0;
+                document.getElementById('valKPIs').innerText = metrics.total_kpis ?? 0;
+                document.getElementById('valComplete').innerText = metrics.completed_kpis ?? 0;
                 
-                const activeAlerts = data.metrics?.active_alerts ?? 0;
+                const activeAlerts = metrics.active_alerts ?? 0;
                 document.getElementById('valAlerts').innerText = activeAlerts;
                 document.getElementById('alertBadge').innerText = activeAlerts;
                 document.getElementById('alertCountLabel').innerText = `${activeAlerts} Alerts`;

@@ -29,7 +29,10 @@ from app.modules.kpi.assignment_router import router as kpi_assignment_router
 from app.modules.kpi.action_plan_router import router as action_plan_router
 from app.modules.kpi import upload_router
 from app.modules.targets.router import router as targets_router
-from app.modules.kpi.dashboard_router import router as dashboard_api_router
+from app.modules.kpi.dashboard_router import (
+    admin_router as admin_dashboard_api_router,
+    superadmin_router as superadmin_dashboard_api_router,
+)
 from app.modules.notifications.router import router as notifications_router
 from app.modules.system.router import router as system_router
 
@@ -174,8 +177,8 @@ app.include_router(kpi_assignment_router, prefix="/api/v1/kpi", tags=["KPI Assig
 app.include_router(action_plan_router, prefix="/api/v1/kpi", tags=["KPI Action Plans"])
 app.include_router(upload_router.router, prefix="/api/v1", tags=["KPI Excel Uploads"])
 app.include_router(targets_router, prefix="/api/v1/targets", tags=["Targets"])
-app.include_router(dashboard_api_router, prefix="/api/v1/superadmin/dashboard", tags=["Super Admin Dashboard"])
-app.include_router(dashboard_api_router, prefix="/api/v1/admin/dashboard", tags=["Admin Dashboard"])
+app.include_router(superadmin_dashboard_api_router, prefix="/api/v1/superadmin/dashboard", tags=["Super Admin Dashboard"])
+app.include_router(admin_dashboard_api_router, prefix="/api/v1/admin/dashboard", tags=["Admin Dashboard"])
 app.include_router(notifications_router, prefix="/api/v1/notifications", tags=["Notifications"])
 app.include_router(system_router, prefix="/api/v1", tags=["System Settings"])
 

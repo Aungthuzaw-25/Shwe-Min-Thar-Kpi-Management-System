@@ -131,3 +131,11 @@ def test_dashboard_summary_route_uses_backend_summary(monkeypatch):
     assert payload["summary"]["completed_tasks"] == 8
     app.dependency_overrides.pop(dashboard_router.get_db, None)
     app.dependency_overrides.pop(dashboard_router.admin_checker, None)
+
+
+def test_dashboards_have_distinct_summary_routes():
+    super_paths = {getattr(route, "path", None) for route in dashboard_router.superadmin_router.routes}
+    admin_paths = {getattr(route, "path", None) for route in dashboard_router.admin_router.routes}
+
+    assert "/summary" in super_paths
+    assert "/summary" in admin_paths
