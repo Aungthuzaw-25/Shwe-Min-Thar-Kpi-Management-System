@@ -26,8 +26,8 @@
     };
     const res = await fetch(url, { ...options, headers });
     if (res.status === 401) {
-      window.location.href = '/auth/login';
-      return null;
+      // Let the global fetch interceptor handle token refresh
+      return res;
     }
     return res;
   }
