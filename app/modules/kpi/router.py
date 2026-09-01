@@ -13,7 +13,7 @@ from sqlalchemy.orm import joinedload, selectinload
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.database.connection import get_db, AsyncSessionLocal
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_user, enforce_permission
 from app.core.timezone import APPLICATION_TIMEZONE
 
 from app.modules.users.models import User
@@ -92,6 +92,7 @@ async def get_kpi_settings(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(allow_admins)
 ):
+    enforce_permission(current_user, "system.settings.view")
     try:
         return await kpi_service.get_kpi_level_settings(db)
     except Exception as e:
@@ -105,6 +106,7 @@ async def update_kpi_setting(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(allow_admins)
 ):
+    enforce_permission(current_user, "system.settings.edit")
     try:
         return await kpi_service.update_kpi_level_setting(db, level_name, payload)
     except SQLAlchemyError as e:
@@ -119,6 +121,7 @@ async def update_targeted_department_levels(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(allow_admins)
 ):
+    enforce_permission(current_user, "system.settings.edit")
     try:
         levels_map = {
             "L0": payload.l0_enabled,
@@ -161,6 +164,7 @@ async def create_kpi_formula(
     db: AsyncSession = Depends(get_db), 
     current_user: User = Depends(allow_admins)
 ):
+    enforce_permission(current_user, "kpi.create")
     try:
         return await kpi_service.create_kpi_formula(db, payload)
     except SQLAlchemyError as e:
@@ -171,10 +175,11 @@ async def create_kpi_formula(
 @router.put('/formulas/{formula_id}', response_model=KPIFormulaResponse)
 async def edit_kpi_formula(
     formula_id: UUID,
-    payload: KPIFormulaCreate, 
+    payload: KPIFormulaUpdate, 
     db: AsyncSession = Depends(get_db), 
     current_user: User = Depends(allow_admins)
 ):
+    enforce_permission(current_user, "kpi.edit")
     try:
         return await kpi_service.update_kpi_formula(db, formula_id, payload)
     except SQLAlchemyError as e:
@@ -187,6 +192,7 @@ async def get_kpi_formulas(
     db: AsyncSession = Depends(get_db), 
     current_user: User = Depends(get_current_user)
 ):
+    enforce_permission(current_user, "kpi.view")
     return await kpi_repo.get_all_formulas(db)
 
 @router.put('/formulas/{formula_id}/toggle', response_model=KPIFormulaResponse)
@@ -196,6 +202,7 @@ async def toggle_kpi_formula(
     db: AsyncSession = Depends(get_db), 
     current_user: User = Depends(allow_admins)
 ):
+    enforce_permission(current_user, "kpi.edit")
     try:
         formula = await kpi_repo.get_formula_by_id(db, formula_id)
         if not formula:
@@ -276,6 +283,7 @@ async def get_monthly_kpi_records(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    enforce_permission(current_user, "kpi.view")
     if current_user.id != target_user_id and current_user.role.name not in ["Super Admin", "System Super Admin", "Admin"]:
         raise HTTPException(status_code=403, detail="Not authorized to view other user's KPIs.")
         
@@ -291,6 +299,7 @@ async def get_available_kpi_categories(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    enforce_permission(current_user, "kpi.view")
     try:
         ud_stmt = select(UserDepartment).where(UserDepartment.user_id == current_user.id)
         ud = (await db.execute(ud_stmt)).scalars().first()
@@ -325,6 +334,7 @@ async def freeze_kpi_record(
     db: AsyncSession = Depends(get_db), 
     current_user: User = Depends(allow_admins)
 ):
+    enforce_permission(current_user, "kpi.edit")
     try:
         record = await db.get(KPIRecord, record_id)
         if not record:
@@ -345,6 +355,7 @@ async def override_kpi_record(
     db: AsyncSession = Depends(get_db), 
     current_user: User = Depends(allow_admins)
 ):
+    enforce_permission(current_user, "kpi.edit")
     try:
         record = await db.get(KPIRecord, record_id)
         if not record:
@@ -392,6 +403,7 @@ async def deduct_kpi_record(
     db: AsyncSession = Depends(get_db), 
     current_user: User = Depends(allow_admins)
 ):
+    enforce_permission(current_user, "kpi.edit")
     try:
         record = await db.get(KPIRecord, record_id)
         if not record:
@@ -448,6 +460,7 @@ async def get_kpi_ranking(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    enforce_permission(current_user, "kpi.view")
     try:
         today = datetime.now(APPLICATION_TIMEZONE).date()
         start_date = today.replace(day=1) if period_type == PeriodType.MONTHLY else today
@@ -505,9 +518,10 @@ async def get_kpi_trend_chart(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    enforce_permission(current_user, "kpi.view")
     if current_user.id != target_user_id and current_user.role.name not in ["Super Admin", "System Super Admin", "Admin", "Level 0", "Level 1"]:
         raise HTTPException(status_code=403, detail="Not authorized to view other user's charts.")
-
+ 
     try:
         start_date = datetime.now(APPLICATION_TIMEZONE).date() - timedelta(days=days_limit)
 
@@ -548,6 +562,7 @@ async def get_kpi_summary_report(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(allow_reports)
 ):
+    enforce_permission(current_user, "report.view")
     try:
         return await kpi_service.KpiReportService.generate_summary_report(
             db=db, 
@@ -591,6 +606,7 @@ async def trigger_custom_calculation(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(allow_admins)
 ):
+    enforce_permission(current_user, "kpi.calculate")
     try:
         stmt = select(User.id).where(User.is_active == True)
         user_ids = (await db.execute(stmt)).scalars().all()

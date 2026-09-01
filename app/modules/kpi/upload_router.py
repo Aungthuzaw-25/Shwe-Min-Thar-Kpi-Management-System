@@ -8,11 +8,16 @@ import pandas as pd
 import io
 import calendar
 import os
-import magic # SECURITY FIX: File Content (MIME) Type Validation
+import mimetypes
 from datetime import datetime, timezone
 
+try:
+    import magic  # Optional dependency for MIME validation.
+except ImportError:  # pragma: no cover - libmagic may be absent in runtime image.
+    magic = None
+
 from app.database.connection import get_db, AsyncSessionLocal # Background Worker DB Session
-from app.core.dependencies import RoleChecker
+from app.core.dependencies import RoleChecker, enforce_permission
 from app.modules.users.models import User
 from app.modules.departments.models import UserDepartment
 from app.modules.kpi.models import PeriodType
@@ -37,6 +42,32 @@ ALLOWED_MIME_TYPES = [
     "application/octet-stream", # Excel 
     "application/zip" # xlsx XML 
 ]
+
+
+def _detect_mime_type(file_bytes: bytes, filename: str | None = None) -> str:
+    """Fallback MIME detection if libmagic is missing."""
+    if magic is not None:
+        try:
+            detected = magic.from_buffer(file_bytes, mime=True)
+            if detected:
+                return detected
+        except Exception:
+            pass
+
+    if filename:
+        guessed = mimetypes.guess_type(filename)[0]
+        if guessed:
+            return guessed
+
+    if file_bytes.startswith(b"PK"):
+        return "application/zip"
+    if file_bytes.startswith(b"\x89PNG"):
+        return "image/png"
+    if file_bytes.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if file_bytes.startswith(b"%PDF"):
+        return "application/pdf"
+    return "application/octet-stream"
 
 # ==============================================================================
 # BACKGROUND WORKER FUNCTION (Non-Blocking Heavy Calculation Engine)
@@ -82,6 +113,7 @@ async def export_kpi_template(
     db: AsyncSession = Depends(get_db), 
     current_user: User = Depends(admin_hr_checker)
 ):
+    enforce_permission(current_user, "report.export")
     try:
         # Database Active 
         stmt = select(User).options(
@@ -150,6 +182,7 @@ async def upload_monthly_kpi_data(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(admin_hr_checker)
 ):
+    enforce_permission(current_user, "kpi.create")
     try:
         # 1. SECURITY: Prevent Denial of Service (DoS) via huge file memory loads
         file.file.seek(0, 2)
@@ -168,7 +201,7 @@ async def upload_monthly_kpi_data(
         contents = await file.read()
         
         # SECURITY FIX: File Content (MIME) Type Spoofing Detection
-        mime_type = magic.from_buffer(contents, mime=True)
+        mime_type = _detect_mime_type(contents, file.filename)
         if not any(mime in mime_type.lower() for mime in ["csv", "excel", "sheet", "zip", "text", "octet-stream"]):
             raise ValueError(f"Security Alert: File content signature ({mime_type}) does not match a valid spreadsheet.")
         

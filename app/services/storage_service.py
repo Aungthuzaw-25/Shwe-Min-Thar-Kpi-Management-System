@@ -12,10 +12,22 @@ logger = logging.getLogger(__name__)
 
 class StorageService:
     def __init__(self):
-        if settings.USE_S3:
+        self.s3_client = None
+        self.bucket_name = settings.S3_BUCKET_NAME
+        self.is_available = False
+
+        if not settings.USE_S3:
+            logger.info("S3 storage is disabled via configuration.")
+            return
+
+        if not all((settings.S3_ENDPOINT, settings.S3_ACCESS_KEY, settings.S3_SECRET_KEY)):
+            logger.warning("S3 storage is enabled but endpoint/credentials are missing; storage will remain unavailable.")
+            return
+
+        try:
             # 🌟 PERFORMANCE FIX: Added connection pooling and timeouts to prevent hanging
             boto_config = Config(
-                connect_timeout=5, 
+                connect_timeout=5,
                 read_timeout=60,
                 retries={'max_attempts': 3}
             )
@@ -26,42 +38,50 @@ class StorageService:
                 aws_secret_access_key=settings.S3_SECRET_KEY,
                 config=boto_config
             )
-            self.bucket_name = settings.S3_BUCKET_NAME
-            self._ensure_bucket_exists()
+            self.is_available = self._ensure_bucket_exists()
+        except Exception as exc:
+            logger.warning(f"S3 client could not be initialized; storage will stay unavailable: {exc}")
+            self.s3_client = None
+            self.is_available = False
 
     def _ensure_bucket_exists(self):
-        """Bucket မရှိသေးပါက အလိုအလျောက် အသစ်ဖန်တီးပေးမည်။ MinIO မတက်သေးလျှင် စောင့်ဆိုင်းပေးမည်။"""
-        max_retries = 5
-        retry_delay = 3  # seconds
-        
+        """Bucket မရှိသေးပါက အလိုအလျောက် အသစ်ဖန်တီးပေးမည်။ MinIO မတက်သေးလျှင် safe mode ဖြင့် သင့်တော်စွာ back off လုပ်မည်။"""
+        if not self.s3_client:
+            return False
+
+        max_retries = 3
+        retry_delay = 1  # Fast-fail for local/dev environments when storage is absent.
+
         for attempt in range(max_retries):
             try:
                 self.s3_client.head_bucket(Bucket=self.bucket_name)
                 logger.info(f"Storage bucket '{self.bucket_name}' is ready.")
-                return
-                
-            except EndpointConnectionError:
+                return True
+
+            except (EndpointConnectionError, ConnectionError, OSError):
                 if attempt < max_retries - 1:
-                    logger.warning(f"MinIO not ready yet. Retrying in {retry_delay} seconds... (Attempt {attempt + 1}/{max_retries})")
+                    logger.warning(f"Storage backend not ready yet. Retrying in {retry_delay} second(s)... (Attempt {attempt + 1}/{max_retries})")
                     time.sleep(retry_delay)
                 else:
-                    logger.error("CRITICAL: Failed to connect to MinIO during startup.")
-                    raise
-                    
+                    logger.warning("Storage backend is unavailable; continuing without S3-backed uploads.")
+                    return False
+
             except ClientError as e:
                 error_code = e.response.get("Error", {}).get("Code")
                 if error_code == "404":
                     logger.info(f"Creating new PRIVATE bucket: {self.bucket_name}")
                     self.s3_client.create_bucket(Bucket=self.bucket_name)
-                    return
+                    return True
                 else:
-                    logger.error(f"Unexpected ClientError checking bucket: {str(e)}")
-                    raise e
+                    logger.warning(f"Unexpected S3 bucket error: {str(e)}. Storage will remain unavailable.")
+                    return False
+
+        return False
 
     async def upload_file(self, file: UploadFile, folder: str = "evidence") -> str:
         """UploadFile ကို လက်ခံပြီး MinIO သို့ သိမ်းဆည်းမည်။ (Non-Blocking)"""
-        if not settings.USE_S3:
-            raise HTTPException(status_code=500, detail="S3 storage is not enabled")
+        if not settings.USE_S3 or not self.s3_client:
+            raise HTTPException(status_code=503, detail="Storage backend is unavailable. Please try again later.")
 
         if not file or not file.filename:
              raise HTTPException(status_code=400, detail="No file provided")
@@ -69,15 +89,15 @@ class StorageService:
         try:
             # Handle files with no extension gracefully
             parts = file.filename.split('.')
-            file_extension = parts[-1] if len(parts) > 1 else "bin" 
+            file_extension = parts[-1] if len(parts) > 1 else "bin"
             object_name = f"{folder}/{uuid.uuid4()}.{file_extension}"
-            
+
             # 🌟 PERFORMANCE & BUG FIX: Offload synchronous boto3 call to a separate thread
             # This prevents the FastAPI event loop from being blocked, ensuring large files upload successfully.
-            
+
             # 1. Spool file content into memory (safe since we have a 10MB limit in the router)
             content = await file.read()
-            
+
             # 2. Use run_in_threadpool to execute the blocking put_object call
             await run_in_threadpool(
                 self.s3_client.put_object,
@@ -86,9 +106,9 @@ class StorageService:
                 Body=content,
                 ContentType=file.content_type
             )
-            
+
             return object_name
-            
+
         except ClientError as e:
             logger.error(f"AWS ClientError during upload: {str(e)}")
             raise HTTPException(status_code=500, detail="Storage service error during upload")
@@ -100,8 +120,8 @@ class StorageService:
         """
         Database ထဲရှိ Object Name ကိုယူ၍ ကြည့်ရှုခွင့် Presigned URL ထုတ်ပေးမည်။
         """
-        if not object_name:
-            return "" # Handle empty/null object names gracefully
+        if not object_name or not self.s3_client:
+            return ""
 
         try:
             response = self.s3_client.generate_presigned_url(
@@ -116,13 +136,13 @@ class StorageService:
         except ClientError as e:
             logger.error(f"Generate presigned URL failed: {str(e)}")
             raise HTTPException(status_code=500, detail="Could not generate file access link")
-            
+
     # 🌟 ADDED: Missing delete_file function required by router.py
     async def delete_file(self, object_name: str):
         """MinIO/S3 မှ ဖိုင်ကို ဖျက်ပစ်မည်"""
-        if not settings.USE_S3 or not object_name:
+        if not settings.USE_S3 or not object_name or not self.s3_client:
             return
-            
+
         try:
             await run_in_threadpool(
                 self.s3_client.delete_object,

@@ -15,7 +15,7 @@ from app.modules.users.password_schemas import PasswordResetAdmin
 from app.modules.users import repo as user_repo
 from app.modules.users import password_repo
 
-from app.core.dependencies import RoleChecker, get_current_user
+from app.core.dependencies import RoleChecker, get_current_user, enforce_permission
 from app.core.security import get_password_hash
 from app.core.password_policy import validate_password_strength
 
@@ -59,6 +59,7 @@ def serialize_user_obj(u: User) -> UserResponse:
 
 @router.post('/', response_model=UserResponse) 
 async def create_new_user(payload: UserCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
+    enforce_permission(current_user, "users.create")
     if current_user.role.name != 'Super Admin':
         role_req = await db.execute(select(Role).where(Role.id == payload.role_id))
         target_role = role_req.scalar_one_or_none()
@@ -179,6 +180,7 @@ async def get_users(
     db: AsyncSession = Depends(get_db), 
     current_user: User = Depends(admin_checker)
 ):
+    enforce_permission(current_user, "users.view")
     stmt = user_repo.get_user_base_query() if hasattr(user_repo, "get_user_base_query") else select(User).options(
         selectinload(User.role),
         selectinload(User.user_departments).selectinload(UserDepartment.department)
@@ -194,6 +196,7 @@ async def get_users(
 
 @router.get('/{user_id}', response_model=UserResponse)
 async def get_user_profile(user_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    enforce_permission(current_user, "users.view")
     user = await user_repo.get_user_by_id(db, user_id)
     if not user: raise HTTPException(status_code=404, detail='User not found.')
     
@@ -201,6 +204,7 @@ async def get_user_profile(user_id: UUID, db: AsyncSession = Depends(get_db), cu
 
 @router.put('/{user_id}', response_model=UserResponse)
 async def update_existing_user(user_id: UUID, payload: UserUpdate, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
+    enforce_permission(current_user, "users.edit")
     stmt = select(User).options(selectinload(User.role)).where(User.id == user_id)
     result = await db.execute(stmt)
     user = result.scalars().first()
@@ -261,6 +265,7 @@ async def update_existing_user(user_id: UUID, payload: UserUpdate, db: AsyncSess
 
 @router.delete('/{user_id}')
 async def delete_existing_user(user_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
+    enforce_permission(current_user, "users.delete")
     stmt = select(User).options(selectinload(User.role)).where(User.id == user_id)
     result = await db.execute(stmt)
     user = result.scalars().first()
@@ -284,6 +289,7 @@ async def delete_existing_user(user_id: UUID, db: AsyncSession = Depends(get_db)
 
 @router.delete('/{user_id}/permanent')
 async def permanent_delete_user(user_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    enforce_permission(current_user, "users.delete")
     if current_user.role.name not in ['Super Admin', 'System Super Admin']:
         raise HTTPException(status_code=403, detail='Only Super Admins can permanently delete accounts.')
         
@@ -337,6 +343,7 @@ async def permanent_delete_user(user_id: UUID, db: AsyncSession = Depends(get_db
 
 @router.put('/{user_id}/reset-password')
 async def reset_user_password(user_id: UUID, payload: PasswordResetAdmin, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
+    enforce_permission(current_user, "users.password_reset")
     stmt = select(User).options(selectinload(User.role)).where(User.id == user_id)
     result = await db.execute(stmt)
     user = result.scalars().first()
@@ -367,6 +374,7 @@ async def reset_user_password(user_id: UUID, payload: PasswordResetAdmin, db: As
 
 @router.post('/{user_id}/restore', response_model=UserResponse)
 async def restore_user(user_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    enforce_permission(current_user, "users.edit")
     if current_user.role.name not in ['Super Admin', 'System Super Admin']:
         raise HTTPException(status_code=403, detail='Only Super Admins can restore accounts.')
         

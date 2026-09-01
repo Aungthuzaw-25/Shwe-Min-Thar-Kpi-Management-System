@@ -29,9 +29,21 @@ class Settings(BaseSettings):
     @field_validator("DATABASE_URL")
     @classmethod
     def fix_neon_url(cls, v: str) -> str:
-        v = v.replace("sslmode=require", "ssl=require")
-        v = v.replace("&channel_binding=require", "")
+        v = v.strip()
+
+        if v.startswith("postgres://"):
+            v = v.replace("postgres://", "postgresql+asyncpg://", 1)
+        elif v.startswith("postgresql://") and not v.startswith("postgresql+asyncpg://"):
+            v = v.replace("postgresql://", "postgresql+asyncpg://", 1)
+
         v = v.replace("?channel_binding=require", "")
+        v = v.replace("&channel_binding=require", "")
+        if "sslmode=require" not in v:
+            if "?" in v:
+                v = f"{v}&sslmode=require"
+            else:
+                v = f"{v}?sslmode=require"
+
         return v
 
     @model_validator(mode="after")

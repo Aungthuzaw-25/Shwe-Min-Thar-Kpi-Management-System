@@ -6,7 +6,7 @@ from uuid import UUID
 from datetime import datetime, timezone
 
 from app.database.connection import get_db
-from app.core.dependencies import RoleChecker, get_current_user
+from app.core.dependencies import RoleChecker, get_current_user, enforce_permission
 from app.modules.kpi.models import ActionPlan, ActionPlanStatus, KPIRecord
 from app.modules.kpi.action_plan_schemas import ActionPlanCreate, ActionPlanReview
 from app.modules.users.models import User
@@ -23,6 +23,7 @@ async def submit_action_plan(
     current_user: User = Depends(get_current_user)
 ):
     """ဝန်ထမ်းမှ မိမိ၏ ရမှတ်နိမ့်သော KPI အတွက် Action Plan တင်ပြရန်"""
+    enforce_permission(current_user, "kpi.create")
     
     # 🌟 SECURITY: Check if record exists AND belongs to the user
     record = await db.get(KPIRecord, payload.kpi_record_id)
@@ -59,6 +60,7 @@ async def get_all_action_plans(
     current_user: User = Depends(reviewer_role)
 ):
     """System အတွင်းရှိ Action Plan အားလုံးကို ကြည့်ရှုရန် (Manager/Admin View)"""
+    enforce_permission(current_user, "kpi.view")
     stmt = select(ActionPlan).order_by(ActionPlan.created_at.desc()).offset(skip).limit(limit)
     result = await db.execute(stmt)
     return result.scalars().all()
@@ -70,6 +72,7 @@ async def get_action_plan(
     current_user: User = Depends(get_current_user)
 ):
     """KPI Record တစ်ခုနှင့် သက်ဆိုင်သော Action Plan ကို ကြည့်ရှုရန်"""
+    enforce_permission(current_user, "kpi.view")
     
     # 🌟 SECURITY: Prevent IDOR (Data Stealing). Users cannot read other's PIPs.
     record = await db.get(KPIRecord, kpi_record_id)
@@ -95,6 +98,7 @@ async def review_action_plan(
     current_user: User = Depends(get_current_user)
 ):
     """Manager သို့မဟုတ် Admin မှ တင်ပြလာသော Action Plan အား Approve/Reject လုပ်ရန်"""
+    enforce_permission(current_user, "kpi.edit")
     plan = await db.get(ActionPlan, plan_id)
     if not plan:
         raise HTTPException(status_code=404, detail="Action Plan not found.")

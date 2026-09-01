@@ -242,9 +242,32 @@
         }
     }
 
+    function showTrackingEmptyState(message = 'No activity yet') {
+        const container = document.getElementById('realActivityContainer');
+        container.innerHTML = `<div class="text-center py-10 text-slate-400 text-xs font-medium">${message}</div>`;
+        document.getElementById('statTotal').innerText = '0';
+        document.getElementById('statCompleted').innerText = '0';
+        document.getElementById('statInProgress').innerText = '0';
+        document.getElementById('statDraft').innerText = '0';
+        updateDonutChart(0, 0, 0, 0);
+    }
+
+    function showTrackingErrorState(message = 'Unable to load process tracking data.') {
+        const container = document.getElementById('realActivityContainer');
+        container.innerHTML = `<div class="text-center py-10 text-rose-500 text-xs font-bold">${message}</div>`;
+        document.getElementById('statTotal').innerText = '0';
+        document.getElementById('statCompleted').innerText = '0';
+        document.getElementById('statInProgress').innerText = '0';
+        document.getElementById('statDraft').innerText = '0';
+        updateDonutChart(0, 0, 0, 0);
+    }
+
     async function loadRealTrackingData() {
         const targetId = document.getElementById("realTargetDropdown").value;
-        if (!targetId) return;
+        if (!targetId) {
+            showTrackingEmptyState('No target selected');
+            return;
+        }
 
         const container = document.getElementById("realActivityContainer");
         container.innerHTML = `<div class="flex justify-center py-10"><svg class="animate-spin h-6 w-6 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></div>`;
@@ -256,30 +279,29 @@
         try {
             const res = await fetch(endpoint);
             if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
-            if (!res.ok) throw new Error("Failed to fetch tracking data.");
-            
-            const data = await res.json();
+            if (!res.ok) {
+                showTrackingErrorState('Unable to load process tracking data.');
+                return;
+            }
 
-            // Bind Metrics to Cards
+            const data = await res.json();
             const metrics = data.tracking_metrics || {};
-            const draft = metrics.DRAFT || 0;
-            const comp = metrics.COMPLETED || 0;
-            const inProg = (metrics.PENDING_L1_REVIEW || 0) + (metrics.PENDING_L0_REVIEW || 0);
-            const failed = metrics.REJECTED || 0;
+            const draft = Number(metrics.DRAFT ?? metrics['Draft'] ?? 0);
+            const comp = Number(metrics.COMPLETED ?? metrics['Completed'] ?? 0);
+            const inProg = Number(metrics.PENDING_L1_REVIEW ?? metrics['Pending L1 Approval'] ?? 0) + Number(metrics.PENDING_L0_REVIEW ?? metrics['Pending L0 Approval'] ?? 0);
+            const failed = Number(metrics.REJECTED ?? metrics['Rejected'] ?? 0);
             const total = draft + comp + inProg + failed;
 
             document.getElementById("statTotal").innerText = total;
             document.getElementById("statCompleted").innerText = comp;
             document.getElementById("statInProgress").innerText = inProg;
             document.getElementById("statDraft").innerText = draft;
-            
-            // 🌟 DYNAMIC CHART UPDATE
+
             updateDonutChart(comp, inProg, draft, failed);
 
-            // Bind Timeline Activities
-            const activities = data.recent_process_activities || [];
-            if (activities.length === 0) {
-                container.innerHTML = `<div class="text-center py-10 text-slate-400 text-xs font-medium">No recent activity.</div>`;
+            const activities = Array.isArray(data.recent_process_activities) ? data.recent_process_activities : [];
+            if (total === 0 || activities.length === 0) {
+                showTrackingEmptyState('No activity yet');
                 return;
             }
 
@@ -287,7 +309,7 @@
                 let iconBg = "bg-slate-100 text-slate-500";
                 let iconSvg = `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>`;
                 let actionText = escapeHTML(act.action.toLowerCase());
-                
+
                 if (act.action.includes("APPROVED") || act.action.includes("VERIFIED") || act.action.includes("COMPLETED")) {
                     iconBg = "bg-emerald-100 text-emerald-600";
                     iconSvg = `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>`;
@@ -326,7 +348,7 @@
             }).join('');
 
         } catch (e) {
-            container.innerHTML = `<div class="text-center py-10 text-rose-500 text-xs font-bold">Failed to load real-time database records.</div>`;
+            showTrackingErrorState('Unable to load process tracking data.');
         }
     }
 

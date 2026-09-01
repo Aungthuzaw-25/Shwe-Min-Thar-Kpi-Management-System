@@ -11,7 +11,7 @@ from sqlalchemy import func
 from app.database.connection import get_db
 from app.modules.departments.schemas import DepartmentCreate, DepartmentUpdate, DepartmentResponse, AssignUserRequest, PositionInDepartment
 from app.modules.departments import repo as department_repo
-from app.core.dependencies import RoleChecker, get_current_user
+from app.core.dependencies import RoleChecker, get_current_user, enforce_permission
 from app.modules.users.models import User
 from app.modules.departments.models import Department, UserDepartment
 from app.modules.users.models import Position  
@@ -35,6 +35,7 @@ class DepartmentPriorityRequest(BaseModel):
 
 @router.post("/", response_model=DepartmentResponse, status_code=status.HTTP_201_CREATED)
 async def create_department(payload: DepartmentCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
+    enforce_permission(current_user, "department.create")
     existing_dept = await department_repo.get_department_by_name(db, payload.name)
     if existing_dept:
         raise HTTPException(status_code=400, detail="This department name is already in use.")
@@ -54,6 +55,7 @@ async def get_departments(
     db: AsyncSession = Depends(get_db), 
     current_user: User = Depends(get_current_user)
 ):
+    enforce_permission(current_user, "department.view")
     if is_active:
         stmt = select(Department).where(Department.is_deleted == False).order_by(Department.priority.desc(), Department.name).offset(skip).limit(limit)
     else:
@@ -64,6 +66,7 @@ async def get_departments(
 
 @router.get("/{dept_id}", response_model=DepartmentResponse)
 async def get_department(dept_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    enforce_permission(current_user, "department.view")
     dept = await department_repo.get_department_by_id(db, dept_id)
     if not dept:
         raise HTTPException(status_code=404, detail="Department not found.")
@@ -71,6 +74,7 @@ async def get_department(dept_id: UUID, db: AsyncSession = Depends(get_db), curr
 
 @router.get("/{dept_id}/positions", response_model=List[PositionInDepartment])
 async def get_department_positions(dept_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    enforce_permission(current_user, "department.view")
     dept = await department_repo.get_department_by_id(db, dept_id)
     if not dept:
         raise HTTPException(status_code=404, detail="Department not found.")
@@ -81,6 +85,7 @@ async def get_department_positions(dept_id: UUID, db: AsyncSession = Depends(get
 
 @router.put("/{dept_id}", response_model=DepartmentResponse)
 async def update_department(dept_id: UUID, payload: DepartmentUpdate, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
+    enforce_permission(current_user, "department.edit")
     dept = await department_repo.get_department_by_id(db, dept_id)
     if not dept:
         raise HTTPException(status_code=404, detail="Department not found.")
@@ -104,6 +109,7 @@ async def update_department_priority(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(admin_checker),
 ):
+    enforce_permission(current_user, "department.edit")
     dept = await department_repo.get_department_by_id(db, dept_id)
     if not dept:
         raise HTTPException(status_code=404, detail="Department not found.")
@@ -116,6 +122,7 @@ async def update_department_priority(
 
 @router.delete("/{dept_id}")
 async def delete_department(dept_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
+    enforce_permission(current_user, "department.delete")
     dept = await department_repo.get_department_by_id(db, dept_id)
     if not dept:
         raise HTTPException(status_code=404, detail="Department not found.")
@@ -133,6 +140,7 @@ async def delete_department(dept_id: UUID, db: AsyncSession = Depends(get_db), c
 
 @router.post("/{dept_id}/restore", response_model=DepartmentResponse)
 async def restore_department(dept_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
+    enforce_permission(current_user, "department.edit")
     dept = await department_repo.get_department_any(db, dept_id)
     if not dept:
         raise HTTPException(status_code=404, detail="Department not found.")
@@ -144,6 +152,7 @@ async def restore_department(dept_id: UUID, db: AsyncSession = Depends(get_db), 
 
 @router.delete("/{dept_id}/permanent")
 async def permanent_delete_department(dept_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
+    enforce_permission(current_user, "department.delete")
     dept = await department_repo.get_department_any(db, dept_id)
     if not dept:
         raise HTTPException(status_code=404, detail="Department not found.")

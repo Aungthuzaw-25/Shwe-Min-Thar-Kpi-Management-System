@@ -2,34 +2,64 @@ name: KPI System CI Pipeline
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [main, master]
   pull_request:
-    branches: [ main, master ]
+    branches: [main, master]
 
 jobs:
   test:
     runs-on: ubuntu-latest
+
+    env:
+      ENV: "development"
+      PROJECT_NAME: "Enterprise KPI System"
+      VERSION: "1.0.0"
+      SECRET_KEY: "${{ secrets.SECRET_KEY || 'ci-test-secret-key-1234567890' }}"
+      ALGORITHM: "HS256"
+      ACCESS_TOKEN_EXPIRE_MINUTES: "120"
+      REFRESH_TOKEN_EXPIRE_DAYS: "7"
+      DATABASE_URL: "${{ secrets.DATABASE_URL || 'sqlite+aiosqlite:///:memory:' }}"
+      USE_S3: "False"
+      S3_ENDPOINT: "http://localhost:9000"
+      S3_ACCESS_KEY: "minioadmin"
+      S3_SECRET_KEY: "minioadmin123"
+      S3_BUCKET_NAME: "kpi-evidence"
+      ALLOWED_ORIGINS: "http://localhost:8000,http://127.0.0.1:8000"
+      REDIS_URL: "redis://localhost:6379/0"
+      ENABLE_SCHEDULER: "false"
+      TIMEZONE: "Asia/Yangon"
+
     steps:
-      - name: Checkout Code
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Python
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-          cache: 'pip'
+          python-version: "3.11"
+          cache: pip
 
-      - name: Install Dependencies
+      - name: Install system packages
         run: |
-          sudo apt-get update && sudo apt-get install -y libmagic1
-          pip install --upgrade pip
-          pip install -r requirements.txt
+          sudo apt-get update
+          sudo apt-get install -y libmagic1 libmagic-dev
 
-      - name: Run Tests
-        env:
-          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
-          SECRET_KEY: "test-secret-key-100-percent"
-          USE_S3: "False"
-          ENV: "development"
+      - name: Install Python dependencies
         run: |
-          pytest -v
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install -r requirements.txt
+
+      - name: Validate Neon / database configuration
+        shell: bash
+        run: |
+          echo "DATABASE_URL is set: ${DATABASE_URL:+yes}"
+          if [[ "$DATABASE_URL" == postgresql* || "$DATABASE_URL" == postgres* ]]; then
+            echo "Using Postgres/Neon database URL"
+          else
+            echo "Using fallback SQLite in-memory database"
+          fi
+
+      - name: Run tests
+        shell: bash
+        run: |
+          python -m pytest tests -q

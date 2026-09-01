@@ -6,7 +6,7 @@ from uuid import UUID
 
 from app.database.connection import get_db
 # 🌟 RequireRole အစား RoleChecker သို့ ပြောင်းထားပါသည်
-from app.core.dependencies import RoleChecker, get_current_user
+from app.core.dependencies import RoleChecker, get_current_user, enforce_permission
 from app.modules.kpi.models import KPIAssignment
 from app.modules.kpi.assignment_schemas import KPIAssignmentCreate, KPIBulkAssignmentCreate
 from app.modules.kpi import assignment_service
@@ -24,6 +24,7 @@ async def assign_single_kpi(
     current_user: User = Depends(get_current_user)
 ):
     """ဝန်ထမ်းတစ်ဦးချင်းစီအတွက် KPI သတ်မှတ်ပေးရန်"""
+    enforce_permission(current_user, "kpi.create")
     return await assignment_service.assign_kpi_to_user(db, payload.model_dump(), current_user.id)
 
 @router.post("/bulk-assign", status_code=status.HTTP_201_CREATED, dependencies=[Depends(assigner_role)])
@@ -33,6 +34,7 @@ async def bulk_assign_kpi(
     current_user: User = Depends(get_current_user)
 ):
     """ဝန်ထမ်းများစွာအတွက် KPI တစ်ပြိုင်နက် သတ်မှတ်ပေးရန်"""
+    enforce_permission(current_user, "kpi.create")
     return await assignment_service.bulk_assign_kpi(db, payload.model_dump(), current_user.id)
 
 # 🌟 PERFORMANCE FIX: Added skip and limit to prevent memory exhaustion
@@ -45,6 +47,7 @@ async def get_user_assignments(
     current_user: User = Depends(get_current_user)
 ):
     """ဝန်ထမ်းတစ်ဦး၏ KPI Assignment များကို ကြည့်ရှုရန်"""
+    enforce_permission(current_user, "kpi.view")
     stmt = select(KPIAssignment).where(
         KPIAssignment.user_id == user_id, 
         KPIAssignment.is_deleted == False

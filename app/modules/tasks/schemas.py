@@ -11,6 +11,7 @@ class TaskBase(BaseModel):
     title: str = Field(..., max_length=255)
     description: Optional[str] = None
     due_date: Optional[datetime] = None
+    grace_period_days: Optional[int] = Field(0, ge=0, description="Assigned task အတွက်သာ အသုံးပြုမည်")
 
 class TaskCreate(TaskBase):
     owner_id: Optional[UUID] = None 
@@ -27,6 +28,7 @@ class TaskUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     due_date: Optional[datetime] = None
+    grace_period_days: Optional[int] = Field(None, ge=0)
     status: Optional[TaskStatus] = None
     category: Optional[str] = None
 

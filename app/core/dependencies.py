@@ -7,6 +7,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.database.connection import get_db
+from app.core.exceptions import PermissionDeniedException
 # 🌟 FIX: Permission များကို တစ်ပါတည်း ဆွဲထုတ်ရန် Role ကိုပါ Import လုပ်ပါသည်
 from app.modules.users.models import User, Role, Permission, RolePermission, UserPermissionOverride
 from app.modules.auth.models import TokenBlacklist
@@ -67,9 +68,8 @@ def enforce_permission(
     if not has_effective_permission(
         user, permission_code, owner_id=owner_id, department_id=department_id
     ):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Missing required permission: {permission_code}",
+        raise PermissionDeniedException(
+            detail="Access Denied. You do not have permission to perform this action."
         )
     return user
 
@@ -177,9 +177,8 @@ class RoleChecker:
 
     def __call__(self, user: User = Depends(get_current_user)):
         if not user.role or user.role.name not in self.allowed_roles:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, 
-                detail="Operation not permitted. Insufficient role."
+            raise PermissionDeniedException(
+                detail="Access Denied. You do not have permission to perform this action."
             )
         return user
 
@@ -278,10 +277,6 @@ class RequirePermission:
                 department_id=department_id,
             ):
                 return current_user
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=(
-                "Missing required permissions. Needs one of: "
-                + ", ".join(self.required_permissions)
-            ),
+        raise PermissionDeniedException(
+            detail="Access Denied. You do not have permission to perform this action."
         )

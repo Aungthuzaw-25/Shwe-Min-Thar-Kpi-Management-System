@@ -4,6 +4,90 @@ from uuid import UUID
 from datetime import datetime
 from app.modules.kpi.models import FormulaScope, PeriodType, KPIStatus, FormulaStatus
 
+TIMELINESS_CATEGORY_NAME = "အချိန်မှီမတင်ပြခြင်း"
+
+
+def _is_timeliness_category_name(name: str) -> bool:
+    if not name:
+        return False
+    normalized = name.strip().lower()
+    return (
+        normalized == TIMELINESS_CATEGORY_NAME.lower()
+        or "အချိန်မှီ" in normalized
+        or "နောက်ကျ" in normalized
+        or "late submission" in normalized
+        or "late" in normalized
+    )
+
+
+def _normalize_timeliness_category(categories: List["KPICategoryConfig"]) -> List["KPICategoryConfig"]:
+    if not categories:
+        return categories
+
+    normalized = [cat.model_copy(deep=True) for cat in categories]
+    late_category = next((cat for cat in normalized if _is_timeliness_category_name(cat.name)), None)
+    if late_category is not None:
+        late_category.name = TIMELINESS_CATEGORY_NAME
+        late_category.description = late_category.description or "System-defined timeliness KPI category"
+        late_category.weight = max(float(late_category.weight), 0.01)
+        late_category.evaluation_type = "DEDUCTION"
+    else:
+        late_category = KPICategoryConfig(
+            name=TIMELINESS_CATEGORY_NAME,
+            description="System-defined timeliness KPI category",
+            weight=0.01,
+            max_score=5.0,
+            evaluation_type="DEDUCTION",
+            deductions=[]
+        )
+        normalized.append(late_category)
+
+    normalized = [cat for cat in normalized if not _is_timeliness_category_name(cat.name) or cat.name == TIMELINESS_CATEGORY_NAME]
+    late_category_merged = next((cat for cat in normalized if cat.name == TIMELINESS_CATEGORY_NAME), None)
+    if late_category_merged is None:
+        late_category_merged = KPICategoryConfig(
+            name=TIMELINESS_CATEGORY_NAME,
+            description="System-defined timeliness KPI category",
+            weight=0.01,
+            max_score=5.0,
+            evaluation_type="DEDUCTION",
+            deductions=[]
+        )
+        normalized.append(late_category_merged)
+
+    for cat in normalized:
+        if cat.name != TIMELINESS_CATEGORY_NAME:
+            continue
+        cat.name = TIMELINESS_CATEGORY_NAME
+        cat.description = cat.description or "System-defined timeliness KPI category"
+        cat.weight = max(float(cat.weight), 0.01)
+        cat.evaluation_type = "DEDUCTION"
+
+    non_late = [cat for cat in normalized if cat.name != TIMELINESS_CATEGORY_NAME]
+    total_weight = sum(float(cat.weight) for cat in normalized)
+    if total_weight > 1.0:
+        reduction_needed = total_weight - 1.0
+        for cat in reversed(non_late):
+            if cat.weight <= 0:
+                continue
+            amount = min(float(cat.weight), reduction_needed)
+            cat.weight = max(0.0, float(cat.weight) - amount)
+            reduction_needed -= amount
+            if reduction_needed <= 1e-9:
+                break
+    elif total_weight < 1.0 and non_late:
+        remainder = 1.0 - total_weight
+        largest = max(non_late, key=lambda cat: float(cat.weight))
+        largest.weight = float(largest.weight) + remainder
+
+    late_category_merged.weight = max(float(late_category_merged.weight), 0.01)
+    final_total = sum(float(cat.weight) for cat in normalized)
+    if final_total > 1.0 + 1e-9:
+        raise ValueError("Timeliness category validation failed: final category weights must total 100%.")
+    if final_total < 1.0 - 1e-9:
+        raise ValueError("Timeliness category validation failed: final category weights must total 100%.")
+    return normalized
+
 # ---------------------------------------------------------
 # 1. KPI Level Settings (L0, L1, L2 အဖွင့်/အပိတ်)
 # ---------------------------------------------------------
@@ -73,9 +157,13 @@ class KPIFormulaCreate(BaseModel):
 
     @model_validator(mode='after')
     def validate_formula_rules(self):
+        self.categories = _normalize_timeliness_category(self.categories)
         total_weight = sum(cat.weight for cat in self.categories)
         if not (0.99 <= total_weight <= 1.01):
             raise ValueError(f"Category Weights စုစုပေါင်းသည် 1.0 (100%) ဖြစ်ရပါမည်။ လက်ရှိ: {total_weight}")
+        late_category = next((cat for cat in self.categories if cat.name.strip() == TIMELINESS_CATEGORY_NAME), None)
+        if late_category is None or float(late_category.weight) < 0.01:
+            raise ValueError("အချိန်မှီမတင်ပြခြင်း category အတွက် weight သည် 1% အနည်းဆုံး ဖြစ်ရမည်။")
         return self
 
 class KPIFormulaUpdate(BaseModel):
@@ -84,6 +172,18 @@ class KPIFormulaUpdate(BaseModel):
     categories: Optional[List[KPICategoryConfig]] = None
     is_active: Optional[bool] = None
     effective_month: Optional[str] = None
+
+    @model_validator(mode='after')
+    def validate_formula_rules(self):
+        if self.categories is not None:
+            self.categories = _normalize_timeliness_category(self.categories)
+            total_weight = sum(cat.weight for cat in self.categories)
+            if not (0.99 <= total_weight <= 1.01):
+                raise ValueError(f"Category Weights စုစုပေါင်းသည် 1.0 (100%) ဖြစ်ရပါမည်။ လက်ရှိ: {total_weight}")
+            late_category = next((cat for cat in self.categories if cat.name.strip() == TIMELINESS_CATEGORY_NAME), None)
+            if late_category is None or float(late_category.weight) < 0.01:
+                raise ValueError("အချိန်မှီမတင်ပြခြင်း category အတွက် weight သည် 1% အနည်းဆုံး ဖြစ်ရမည်။")
+        return self
 
 class KPIFormulaResponse(KPIFormulaCreate):
     id: UUID

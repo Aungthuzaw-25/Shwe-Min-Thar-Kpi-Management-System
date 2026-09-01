@@ -48,6 +48,11 @@ logger = logging.getLogger("app.main")
 # Evaluate production status early so it can be used during FastAPI instantiation
 IS_PRODUCTION = getattr(settings, "ENV", "development").lower() == "production"
 
+# Ensure static/upload directories exist before any StaticFiles mount is created.
+# This avoids import-time crashes when the app is loaded without the lifespan hook running.
+os.makedirs("static/css", exist_ok=True)
+os.makedirs("uploads", exist_ok=True)
+
 
 # ==============================================================================
 # 🌟 1. LIFESPAN CONTEXT MANAGER (Modern Replacement for on_event)
@@ -170,6 +175,7 @@ app.include_router(action_plan_router, prefix="/api/v1/kpi", tags=["KPI Action P
 app.include_router(upload_router.router, prefix="/api/v1", tags=["KPI Excel Uploads"])
 app.include_router(targets_router, prefix="/api/v1/targets", tags=["Targets"])
 app.include_router(dashboard_api_router, prefix="/api/v1/superadmin/dashboard", tags=["Super Admin Dashboard"])
+app.include_router(dashboard_api_router, prefix="/api/v1/admin/dashboard", tags=["Admin Dashboard"])
 app.include_router(notifications_router, prefix="/api/v1/notifications", tags=["Notifications"])
 app.include_router(system_router, prefix="/api/v1", tags=["System Settings"])
 

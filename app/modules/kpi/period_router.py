@@ -6,7 +6,7 @@ from uuid import UUID
 from datetime import timezone
 
 from app.database.connection import get_db
-from app.core.dependencies import RoleChecker, get_current_user
+from app.core.dependencies import RoleChecker, get_current_user, enforce_permission
 from app.modules.kpi.models import KPIPeriod, KPIPeriodStatus
 from app.modules.kpi.period_schemas import KPIPeriodCreate, KPIPeriodResponse
 from app.modules.kpi import period_service
@@ -18,8 +18,9 @@ router = APIRouter(prefix="/periods", tags=["KPI Periods"])
 admin_only = RoleChecker(["Super Admin", "Admin", "HR"])
 
 @router.post("/", response_model=KPIPeriodResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(admin_only)])
-async def create_kpi_period(payload: KPIPeriodCreate, db: AsyncSession = Depends(get_db)):
+async def create_kpi_period(payload: KPIPeriodCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Initialize a new KPI evaluation cycle (e.g., Q3 2026 or August 2026)"""
+    enforce_permission(current_user, "kpi.create")
     data = payload.model_dump()
     
     # Timezone အတိအကျ ထည့်သွင်းပေးခြင်း
@@ -52,6 +53,7 @@ async def get_kpi_periods(
     current_user: User = Depends(get_current_user)
 ):
     """Retrieve all active and historical KPI periods"""
+    enforce_permission(current_user, "kpi.view")
     stmt = select(KPIPeriod).where(KPIPeriod.is_deleted == False).order_by(KPIPeriod.start_date.desc()).offset(skip).limit(limit)
     result = await db.execute(stmt)
     return result.scalars().all()
@@ -65,6 +67,7 @@ async def update_period_status(
     current_user: User = Depends(get_current_user)
 ):
     """Transition a period's state (e.g., DRAFT -> OPEN -> FINALIZED -> LOCKED)"""
+    enforce_permission(current_user, "kpi.edit")
     return await period_service.change_period_status(db, period_id, new_status, current_user.id, reason)
 
 # =======================================================================
@@ -77,6 +80,7 @@ async def delete_kpi_period(
     current_user: User = Depends(get_current_user)
 ):
     """Delete a KPI period ONLY if it is in DRAFT status"""
+    enforce_permission(current_user, "kpi.edit")
     # 1. ရှာဖွေခြင်း
     stmt = select(KPIPeriod).where(KPIPeriod.id == period_id, KPIPeriod.is_deleted == False)
     result = await db.execute(stmt)

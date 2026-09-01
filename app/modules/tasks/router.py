@@ -8,9 +8,14 @@ from uuid import UUID
 import hashlib
 import json  
 import os
+import mimetypes
 from datetime import datetime, timezone # 🌟 FIX: Added timezone for late calculation
 import pytz
-import magic # 🌟 SECURITY FIX: Added python-magic for strict MIME type checking
+
+try:
+    import magic  # Optional dependency for strict MIME sniffing.
+except ImportError:  # pragma: no cover - environment may not include libmagic.
+    magic = None
 
 from app.database.connection import get_db
 from app.modules.tasks.schemas import TaskCreate, TaskUpdate, TaskResponse, TaskReviewInput, TaskEvidenceResponse, BulkTaskCreate
@@ -27,7 +32,7 @@ from app.modules.tasks.models.task_evidence import TaskEvidence
 from app.modules.tasks import repo as task_repo, workflow_repo
 from app.modules.tasks import service as task_service
 from app.modules.kpi.engine import trigger_kpi_recalculation 
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_user, enforce_permission
 from app.services.storage_service import storage_service
 from app.core.timezone import APPLICATION_TIMEZONE
 
@@ -55,6 +60,114 @@ ALLOWED_MIME_TYPES = [
     "application/msword", 
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document" 
 ]
+
+
+def _detect_mime_type(file_bytes: bytes, filename: str | None = None) -> str:
+    """Best-effort MIME detection with a safe fallback when libmagic is unavailable."""
+    if magic is not None:
+        try:
+            detected = magic.from_buffer(file_bytes, mime=True)
+            if detected:
+                return detected
+        except Exception:
+            pass
+
+    if filename:
+        guessed = mimetypes.guess_type(filename)[0]
+        if guessed:
+            return guessed
+
+    if file_bytes.startswith(b"%PDF"):
+        return "application/pdf"
+    if file_bytes.startswith(b"\x89PNG"):
+        return "image/png"
+    if file_bytes.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if file_bytes.startswith(b"PK"):
+        return "application/zip"
+    if file_bytes.startswith(b"ID"):
+        return "application/vnd.ms-excel"
+    return "application/octet-stream"
+
+
+async def _get_user_allowed_categories(db: AsyncSession, user_id: UUID):
+    stmt = select(KPIFormula).where(KPIFormula.is_active == True)
+    formulas = (await db.execute(stmt)).scalars().all()
+    user = await db.get(User, user_id)
+    if not user or not user.position_id:
+        return set()
+
+    user_department_stmt = select(UserDepartment).where(UserDepartment.user_id == user_id)
+    user_department = (await db.execute(user_department_stmt)).scalars().first()
+    user_position = await db.get(Position, user.position_id)
+    user_pos_name = user_position.name.strip().lower() if user_position and user_position.name else ""
+
+    permitted_categories = set()
+    for formula in formulas:
+        if user_department and formula.department_id != user_department.department_id:
+            continue
+        if formula.user_level and user_department and formula.user_level != str(user_department.user_level):
+            continue
+        if formula.position_id and str(formula.position_id) != str(user.position_id):
+            continue
+        if formula.position_name and user_pos_name and formula.position_name.strip().lower() != user_pos_name:
+            continue
+
+        raw_cats = formula.categories
+        if isinstance(raw_cats, str):
+            try:
+                raw_cats = json.loads(raw_cats)
+            except Exception:
+                raw_cats = []
+        if not isinstance(raw_cats, list):
+            continue
+
+        for cat in raw_cats:
+            cat_name = cat.get("name", "") if isinstance(cat, dict) else str(cat)
+            if cat_name:
+                permitted_categories.add(cat_name)
+
+    return permitted_categories
+
+
+async def _validate_assigned_task_payload(db: AsyncSession, current_user: User, assignee_id: UUID, category: str, due_date, grace_period_days: int):
+    if not assignee_id:
+        raise HTTPException(status_code=400, detail="Assigned task အတွက် Task Receiver မဖြစ်မနေ ရွေးရမည်။")
+    if not due_date:
+        raise HTTPException(status_code=400, detail="Assigned task အတွက် Due Date မဖြစ်မနေ ရွေးရမည်။")
+    if grace_period_days is None or grace_period_days < 0:
+        raise HTTPException(status_code=400, detail="Allowed Late Days သည် 0 ထက်မနည်း ဖြစ်ရမည်။")
+
+    assignee = await db.get(User, assignee_id)
+    if not assignee or not assignee.is_active:
+        raise HTTPException(status_code=404, detail="Selected assignee is no longer active.")
+
+    if str(assignee.id) == str(current_user.id):
+        raise HTTPException(status_code=400, detail="Self-assignment is not allowed; use your personal task flow instead.")
+
+    current_user_department = (await db.execute(select(UserDepartment).where(UserDepartment.user_id == current_user.id))).scalars().first()
+    assignee_department = (await db.execute(select(UserDepartment).where(UserDepartment.user_id == assignee_id))).scalars().first()
+
+    if not current_user_department or not assignee_department:
+        raise HTTPException(status_code=403, detail="Department configuration error: assignment hierarchy could not be validated.")
+
+    current_level = str(current_user_department.user_level).upper().replace("LEVEL ", "")
+    target_level = str(assignee_department.user_level).upper().replace("LEVEL ", "")
+
+    allowed_hierarchy = {
+        "L0": {"L1", "L2"},
+        "L1": {"L2"},
+        "L2": set(),
+    }
+    if current_level not in allowed_hierarchy or target_level not in allowed_hierarchy[current_level]:
+        raise HTTPException(status_code=403, detail="This assignment is outside the allowed reporting hierarchy.")
+
+    allowed_categories = await _get_user_allowed_categories(db, assignee_id)
+    if category not in allowed_categories:
+        raise HTTPException(status_code=403, detail=f"Selected category '{category}' is not allowed for the chosen assignee.")
+
+    return assignee
+
 
 @router.get('/categories/available', tags=["Tasks"])
 async def get_available_task_categories(
@@ -193,6 +306,7 @@ async def get_batch_deductions(
 @router.post('', response_model=TaskResponse)
 async def create_new_task(payload: TaskCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     """ 🌟 L2 များ ကိုယ်တိုင် Task ဖန်တီးသော Endpoint (Due Date / Late Penalty မလိုပါ) """
+    enforce_permission(current_user, "tasks.create")
     try:
         ud_stmt = select(UserDepartment).where(UserDepartment.user_id == current_user.id)
         ud = (await db.execute(ud_stmt)).scalars().first()
@@ -255,29 +369,54 @@ async def create_new_task(payload: TaskCreate, db: AsyncSession = Depends(get_db
 @router.post('/bulk-create', response_model=List[TaskResponse], status_code=status.HTTP_201_CREATED)
 async def create_bulk_tasks(payload: BulkTaskCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     """ 🌟 Manager/Admin များမှ Task ကို Assign ချပေးသော Endpoint """
+    enforce_permission(current_user, "tasks.create")
     try:
-        # Check permissions for assigning tasks (L0/L1 or Admins)
         if current_user.role.name not in ['Super Admin', 'System Super Admin', 'Admin']:
             ud_stmt = select(UserDepartment).where(UserDepartment.user_id == current_user.id)
             ud = (await db.execute(ud_stmt)).scalars().first()
-            if not ud or ud.user_level not in ['L0', 'L1', 'Level 0', 'Level 1']:
+            if not ud or str(ud.user_level).upper().replace('LEVEL ', '') not in ['L0', 'L1']:
                 raise HTTPException(status_code=403, detail="Only Managers or Admins can assign tasks to other users.")
 
         created_tasks = []
         for item in payload.tasks:
             task_data = item.model_dump(exclude_unset=True)
-            task_data['category'] = payload.category 
+            task_data['category'] = payload.category
             task_data['status'] = TaskStatus.DRAFT
             task_data['assigner_id'] = current_user.id
-            if 'owner_id' not in task_data or task_data['owner_id'] is None:
-                task_data['owner_id'] = current_user.id
-                
+
+            owner_id = task_data.get('owner_id')
+            if owner_id is None:
+                owner_id = current_user.id
+                task_data['owner_id'] = owner_id
+
+            if str(owner_id) != str(current_user.id):
+                await _validate_assigned_task_payload(
+                    db=db,
+                    current_user=current_user,
+                    assignee_id=UUID(str(owner_id)),
+                    category=payload.category,
+                    due_date=task_data.get('due_date'),
+                    grace_period_days=task_data.get('grace_period_days', 0)
+                )
+                if task_data.get('due_date') is None:
+                    raise HTTPException(status_code=400, detail="Assigned Task အတွက် Due Date မဖြစ်မနေရှိရမည်။")
+                task_data['grace_period_days'] = int(task_data.get('grace_period_days', 0) or 0)
+            else:
+                task_data['grace_period_days'] = int(task_data.get('grace_period_days', 0) or 0)
+                task_data['due_date'] = task_data.get('due_date')
+
+            if 'due_date' in task_data and task_data['due_date'] is not None and task_data.get('grace_period_days', 0) < 0:
+                raise HTTPException(status_code=400, detail="Allowed Late Days သည် 0 ထက်မနည်း ဖြစ်ရမည်။")
+
             new_task = await task_repo.create_task(db, task_data)
             db.add(TaskHistory(task_id=new_task.id, changed_by=current_user.id, action="ASSIGNED", old_value="NONE", new_value=TaskStatus.DRAFT.value, remarks=f"[{payload.category}] Category ဖြင့် Bulk ဖန်တီးထားပါသည်"))
             created_tasks.append(new_task)
-            
+
         await db.commit()
         return created_tasks
+    except HTTPException:
+        await db.rollback()
+        raise
     except Exception as e:
         await db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
@@ -292,7 +431,9 @@ async def delete_draft_task(task_id: UUID, db: AsyncSession = Depends(get_db), c
         if not task:
             raise HTTPException(status_code=404, detail="Task not found")
         if str(task.owner_id) != str(current_user.id):
-            raise HTTPException(status_code=403, detail="Not authorized to delete this task")
+            enforce_permission(current_user, "tasks.delete")
+        else:
+            enforce_permission(current_user, "tasks.delete", owner_id=task.owner_id)
             
         task_status = getattr(task.status, 'value', str(task.status))
         
@@ -359,6 +500,7 @@ async def get_my_tasks(
     db: AsyncSession = Depends(get_db), 
     current_user: User = Depends(get_current_user)
 ):
+    enforce_permission(current_user, "tasks.view")
     try:
         # Base Query
         stmt = (
@@ -413,6 +555,7 @@ async def get_my_tasks(
 
 @router.get('/batch/{batch_id}/details', response_model=List[TaskResponse])
 async def get_batch_tasks_details(batch_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    enforce_permission(current_user, "tasks.view")
     stmt = select(Task).options(
         selectinload(Task.reviews),
         selectinload(Task.evidence),
@@ -424,6 +567,7 @@ async def get_batch_tasks_details(batch_id: UUID, db: AsyncSession = Depends(get
 
 @router.post('/submit-batch', response_model=BatchSubmitResponse)
 async def submit_task_batch(payload: BatchSubmitRequest, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    enforce_permission(current_user, "tasks.submit")
     try:
         batch = await workflow_repo.submit_task_batch(db, payload.task_ids, current_user.id, payload.reviewer_id)
         stmt = select(Task).where(Task.id.in_(payload.task_ids))
@@ -472,6 +616,7 @@ async def submit_task_batch(payload: BatchSubmitRequest, db: AsyncSession = Depe
 # 🌟 PERFORMANCE FIX: Eliminate N+1 DB Queries from the Loop
 @router.get('/approval-queue', response_model=List[QueueItemResponse])
 async def get_approval_queue(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    enforce_permission(current_user, "tasks.approve")
     queues = await workflow_repo.get_my_approval_queue(db, current_user.id)
     result = []
     
@@ -496,6 +641,12 @@ async def get_approval_queue(db: AsyncSession = Depends(get_db), current_user: U
 
 @router.post('/batch/{batch_id}/review', response_model=BatchSubmitResponse)
 async def review_task_batch_api(batch_id: UUID, payload: BatchReviewRequest, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if payload.action == "APPROVED":
+        enforce_permission(current_user, "tasks.approve")
+    elif payload.action == "REJECTED":
+        enforce_permission(current_user, "tasks.reject")
+    elif payload.action == "DELAY":
+        enforce_permission(current_user, "tasks.edit")
     try:
         ud_stmt = select(UserDepartment).where(UserDepartment.user_id == current_user.id)
         ud = (await db.execute(ud_stmt)).scalars().first()
@@ -579,6 +730,7 @@ async def review_task_batch_api(batch_id: UUID, payload: BatchReviewRequest, db:
 
 @router.post('/{task_id}/resign', response_model=TaskResponse)
 async def resign_task_to_l2(task_id: UUID, payload: TaskReviewInput, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    enforce_permission(current_user, "tasks.return")
     try:
         task = await task_repo.get_task_by_id(db, task_id)
         if not task: raise HTTPException(status_code=404, detail="Task not found")
@@ -616,10 +768,10 @@ async def upload_task_evidence(task_id: UUID, file: UploadFile = File(...), db: 
 
         # 2. Validation: Prevent Malware Uploads (MIME Type Check 🌟)
         content = await file.read()
-        
+
         # 🌟 File ရဲ့ Extension အစစ်ကို ဖတ်ခြင်း
-        mime_type = magic.from_buffer(content, mime=True)
-        
+        mime_type = _detect_mime_type(content, file.filename)
+
         if mime_type not in ALLOWED_MIME_TYPES:
             raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="Security Violation: File content does not match its extension.")
 

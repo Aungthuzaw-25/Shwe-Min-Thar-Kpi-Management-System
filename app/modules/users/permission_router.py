@@ -7,6 +7,7 @@ from uuid import UUID
 
 from app.database.connection import get_db
 from app.core.dependencies import RequirePermission, get_permission_map
+from app.core.exceptions import PermissionDeniedException
 from app.modules.users import permission_repo
 from app.modules.users.permission_schemas import (
     PermissionResponse, AssignPermissionsRequest,
@@ -211,6 +212,12 @@ async def set_user_override(
         department = await db.get(Department, payload.department_id)
         if not department or department.is_deleted:
             raise HTTPException(status_code=404, detail="Department not found.")
+    if current_user.role and current_user.role.name != SUPER_ADMIN_ROLE:
+        from app.core.dependencies import has_effective_permission
+        if payload.allowed and not has_effective_permission(current_user, payload.permission_code):
+            raise PermissionDeniedException(
+                detail="Access Denied. You do not have permission to perform this action."
+            )
     existing = (await db.execute(select(UserPermissionOverride).where(
         UserPermissionOverride.user_id == user_id,
         UserPermissionOverride.permission_id == permission.id,

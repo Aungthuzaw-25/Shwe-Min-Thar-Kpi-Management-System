@@ -19,7 +19,7 @@ class AuthenticationException(CustomAppException):
         )
 
 class PermissionDeniedException(CustomAppException):
-    def __init__(self, detail: str = "Operation not permitted. Insufficient permissions."):
+    def __init__(self, detail: str = "Access Denied. You do not have permission to perform this action."):
         super().__init__(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=detail,

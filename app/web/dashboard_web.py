@@ -58,18 +58,17 @@ async def get_employee_context(db: AsyncSession, current_user: User) -> dict:
 # ==============================================================
 @router.get("/superadmin/dashboard", include_in_schema=False)
 async def render_superadmin_dashboard_view(
-    request: Request, 
+    request: Request,
     current_user: User = Depends(get_current_user)
-): # 🌟 FIX: Missing bracket and colon added
+):
     if not current_user or not current_user.role:
         return RedirectResponse(url="/auth/login")
-        
-    # 🌟 SECURITY FIX: Role check added
-    if not verify_role(current_user, ['Super Admin']):
+
+    if not verify_role(current_user, ['Super Admin', 'System Super Admin']):
         return RedirectResponse(url="/dashboard")
 
     return templates.TemplateResponse(
-        request=request, 
+        request=request,
         name="dashboard/superadmin.html",
         context={
             "user_role": current_user.role.name,
@@ -78,55 +77,76 @@ async def render_superadmin_dashboard_view(
         }
     )
 
+
+# ==============================================================
+# Admin Dashboard Route
+# ==============================================================
+@router.get("/admin/dashboard", include_in_schema=False)
+async def render_admin_dashboard_view(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    if not current_user or not current_user.role:
+        return RedirectResponse(url="/auth/login")
+
+    if not verify_role(current_user, ['Admin', 'System Admin']):
+        return RedirectResponse(url="/dashboard")
+
+    employee_context = await get_employee_context(db, current_user)
+    return templates.TemplateResponse(
+        request=request,
+        name="dashboard/admin_dashboard.html",
+        context={
+            **employee_context,
+            "user_role": current_user.role.name,
+            "user_name": f"{current_user.first_name} {current_user.last_name}",
+            "user_email": current_user.email,
+        }
+    )
+
+
 # ==============================================================
 # General Dashboard Route (Dynamic Routing for L0, L1, L2)
 # ==============================================================
 @router.get("/dashboard", include_in_schema=False)
 async def render_normal_dashboard_view(
-    request: Request, 
-    db: AsyncSession = Depends(get_db), 
+    request: Request,
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
-): # 🌟 FIX: Missing bracket and colon added
+):
     if not current_user or not current_user.role:
         return RedirectResponse(url="/auth/login")
-        
+
     role_name = current_user.role.name
     employee_context = await get_employee_context(db, current_user)
     user_level = employee_context["user_level"]
 
-    # Super Admin Dashboard
-    if role_name in ['Super Admin']:
+    if role_name in ['Super Admin', 'System Super Admin']:
         return RedirectResponse(url="/superadmin/dashboard")
-        
-    # Department Head (L0)
-    elif user_level == 'L0' or 'L0' in role_name:
+
+    if role_name in ['Admin', 'System Admin']:
+        return RedirectResponse(url="/admin/dashboard")
+
+    if user_level == 'L0' or 'L0' in role_name:
         return templates.TemplateResponse(
-            request=request, 
+            request=request,
             name="dashboard/l0_dashboard.html",
-            context={
-                **employee_context
-            }
+            context={**employee_context}
         )
-        
-    # Supervisor (L1)
-    elif user_level == 'L1' or 'L1' in role_name:
+
+    if user_level == 'L1' or 'L1' in role_name:
         return templates.TemplateResponse(
-            request=request, 
+            request=request,
             name="dashboard/l1_dashboard.html",
-            context={
-                **employee_context
-            }
+            context={**employee_context}
         )
-        
-    # Staff/Employee (L2)
-    else:
-        return templates.TemplateResponse(
-            request=request, 
-            name="dashboard/l2_dashboard.html",
-            context={
-                **employee_context
-            }
-        )
+
+    return templates.TemplateResponse(
+        request=request,
+        name="dashboard/l2_dashboard.html",
+        context={**employee_context}
+    )
 
 # ==============================================================
 # Users Management Route
