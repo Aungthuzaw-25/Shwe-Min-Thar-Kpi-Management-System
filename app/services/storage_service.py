@@ -70,7 +70,6 @@ class StorageService:
             # Handle files with no extension gracefully
             parts = file.filename.split('.')
             file_extension = parts[-1] if len(parts) > 1 else "bin" 
-            
             object_name = f"{folder}/{uuid.uuid4()}.{file_extension}"
             
             # 🌟 PERFORMANCE & BUG FIX: Offload synchronous boto3 call to a separate thread

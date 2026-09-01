@@ -2,111 +2,654 @@
 {% set active_page = "permissions" %}
 {% block title %}Permission Management - KPI Platform{% endblock %}
 {% block content %}
-<div class="min-h-screen bg-slate-50 p-4 sm:p-8">
+<div class="min-h-screen bg-slate-50 p-4 sm:p-6 lg:p-8">
     <header class="mb-6">
         <h2 class="text-2xl font-extrabold text-blue-950">Permission Management</h2>
-        <p class="mt-1 text-sm text-slate-500">Manage role defaults and user-specific overrides. Super Admin permissions cannot be self-edited.</p>
+        <p class="mt-1 text-sm text-slate-500">Manage role-based defaults, user-specific overrides, and view the audit trail. Super Admin permissions cannot be self-edited.</p>
     </header>
-    <div class="mx-auto max-w-7xl rounded-3xl border border-gray-100 bg-white p-5 shadow-sm sm:p-8">
+
+    <div class="mx-auto max-w-[1400px] rounded-3xl border border-gray-100 bg-white p-5 shadow-sm sm:p-8">
+        <!-- ========== TAB NAVIGATION ========== -->
         <div class="mb-6 flex flex-wrap gap-2 border-b border-slate-100 pb-4">
-            <button data-tab="roles" class="tab-button rounded-xl bg-blue-950 px-4 py-2 text-sm font-bold text-white">Role matrix</button>
-            <button data-tab="users" class="tab-button rounded-xl px-4 py-2 text-sm font-bold text-slate-500 hover:bg-slate-100">User overrides</button>
+            <button data-tab="roles" class="tab-btn rounded-xl bg-blue-950 px-5 py-2.5 text-sm font-bold text-white transition-all">
+                <svg class="mr-1.5 inline h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
+                Role Matrix
+            </button>
+            <button data-tab="users" class="tab-btn rounded-xl px-5 py-2.5 text-sm font-bold text-slate-500 hover:bg-slate-100 transition-all">
+                <svg class="mr-1.5 inline h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+                User Overrides
+            </button>
+            <button data-tab="audit" class="tab-btn rounded-xl px-5 py-2.5 text-sm font-bold text-slate-500 hover:bg-slate-100 transition-all">
+                <svg class="mr-1.5 inline h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                Audit History
+            </button>
         </div>
+
+        <!-- ========== TAB 1: ROLE PERMISSION MATRIX ========== -->
         <section id="rolesPanel">
             <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end">
-                <label class="flex-1 text-xs font-bold uppercase tracking-wide text-slate-600">Role
-                    <select id="roleSelect" class="mt-2 w-full rounded-xl border border-gray-200 bg-slate-50 p-3 text-sm font-semibold"></select>
+                <label class="flex-1 text-xs font-bold uppercase tracking-wide text-slate-600">Select Role
+                    <select id="roleSelect" class="mt-2 w-full rounded-xl border border-gray-200 bg-slate-50 p-3 text-sm font-semibold focus:border-blue-500 focus:ring-2 focus:ring-blue-200"></select>
                 </label>
-                <button id="saveRole" class="rounded-xl bg-blue-950 px-5 py-3 text-sm font-bold text-white">Save role permissions</button>
+                <div class="flex gap-2">
+                    <button id="selectAllRole" class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold text-slate-600 hover:bg-slate-100 transition-all">Select All</button>
+                    <button id="deselectAllRole" class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold text-slate-600 hover:bg-slate-100 transition-all">Deselect All</button>
+                    <button id="saveRole" class="rounded-xl bg-blue-950 px-5 py-3 text-sm font-bold text-white hover:bg-blue-900 transition-all">
+                        <svg class="mr-1 inline h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                        Save Role Permissions
+                    </button>
+                </div>
+            </div>
+            <!-- Search bar for role matrix -->
+            <div class="mb-4">
+                <input id="roleSearch" type="text" placeholder="🔍 Search permissions..." class="w-full max-w-md rounded-xl border border-gray-200 bg-slate-50 px-4 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
             </div>
             <div id="roleMatrix" class="overflow-x-auto"></div>
         </section>
+
+        <!-- ========== TAB 2: USER PERMISSION OVERRIDES ========== -->
         <section id="usersPanel" class="hidden">
             <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end">
-                <label class="flex-1 text-xs font-bold uppercase tracking-wide text-slate-600">User
-                    <select id="userSelect" class="mt-2 w-full rounded-xl border border-gray-200 bg-slate-50 p-3 text-sm font-semibold"></select>
+                <label class="flex-1 text-xs font-bold uppercase tracking-wide text-slate-600">Select User
+                    <select id="userSelect" class="mt-2 w-full rounded-xl border border-gray-200 bg-slate-50 p-3 text-sm font-semibold focus:border-blue-500 focus:ring-2 focus:ring-blue-200"></select>
                 </label>
-                <span id="userRole" class="rounded-xl bg-slate-100 px-4 py-3 text-sm font-bold text-slate-600"></span>
+                <div class="flex gap-2 flex-wrap">
+                    <button id="resetUserOverrides" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-bold text-red-700 hover:bg-red-100 transition-all">
+                        <svg class="mr-1 inline h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                        Reset to Role Defaults
+                    </button>
+                    <button id="saveUserOverrides" class="rounded-xl bg-blue-950 px-5 py-3 text-sm font-bold text-white hover:bg-blue-900 transition-all">
+                        <svg class="mr-1 inline h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                        Save All Overrides
+                    </button>
+                </div>
             </div>
-            <div id="userOverrides" class="space-y-3"></div>
+            <!-- User info card -->
+            <div id="userInfoCard" class="mb-5 hidden rounded-2xl border border-slate-100 bg-gradient-to-r from-blue-50 to-indigo-50 p-5">
+                <div class="flex flex-wrap items-center gap-4">
+                    <div class="flex h-12 w-12 items-center justify-center rounded-full bg-blue-950 text-lg font-bold text-white" id="userAvatar">?</div>
+                    <div class="flex-1">
+                        <p class="text-base font-bold text-blue-950" id="userInfoName">—</p>
+                        <p class="text-sm text-slate-500" id="userInfoEmail">—</p>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <span class="rounded-lg bg-blue-100 px-3 py-1.5 text-xs font-bold text-blue-800" id="userInfoRole">—</span>
+                        <span class="rounded-lg bg-emerald-100 px-3 py-1.5 text-xs font-bold text-emerald-800" id="userInfoDept">—</span>
+                    </div>
+                </div>
+            </div>
+            <!-- Legend -->
+            <div class="mb-4 flex flex-wrap gap-3 text-xs font-medium text-slate-500">
+                <span><span class="mr-1 inline-block h-3 w-3 rounded-full bg-blue-500"></span>Inherited from Role</span>
+                <span><span class="mr-1 inline-block h-3 w-3 rounded-full bg-amber-500"></span>Override (Allowed)</span>
+                <span><span class="mr-1 inline-block h-3 w-3 rounded-full bg-red-500"></span>Override (Denied)</span>
+                <span><span class="mr-1 inline-block h-3 w-3 rounded-full bg-slate-300"></span>Not Granted (Default)</span>
+            </div>
+            <!-- Search bar for user overrides -->
+            <div class="mb-4">
+                <input id="userSearch" type="text" placeholder="🔍 Search permissions..." class="w-full max-w-md rounded-xl border border-gray-200 bg-slate-50 px-4 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+            </div>
+            <div id="userMatrix" class="space-y-1"></div>
         </section>
+
+        <!-- ========== TAB 3: AUDIT HISTORY ========== -->
+        <section id="auditPanel" class="hidden">
+            <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end">
+                <label class="text-xs font-bold uppercase tracking-wide text-slate-600">Filter by Action
+                    <select id="auditActionFilter" class="mt-2 w-full rounded-xl border border-gray-200 bg-slate-50 p-3 text-sm font-semibold">
+                        <option value="">All Actions</option>
+                        <option value="UPDATE_ROLE_PERMISSIONS">Role Permission Update</option>
+                        <option value="UPDATE_USER_PERMISSION">User Permission Update</option>
+                        <option value="DELETE_USER_PERMISSION">User Permission Delete</option>
+                        <option value="BULK_UPDATE_USER_PERMISSIONS">Bulk User Update</option>
+                        <option value="RESET_USER_PERMISSIONS">User Permission Reset</option>
+                    </select>
+                </label>
+                <button id="refreshAudit" class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold text-slate-600 hover:bg-slate-100 transition-all">
+                    <svg class="mr-1 inline h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                    Refresh
+                </button>
+            </div>
+            <div id="auditTable" class="overflow-x-auto"></div>
+            <div class="mt-4 flex justify-center">
+                <button id="loadMoreAudit" class="hidden rounded-xl border border-slate-200 bg-slate-50 px-6 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-100 transition-all">Load More</button>
+            </div>
+        </section>
+
+        <!-- Toast / Message -->
         <p id="message" class="mt-5 text-sm font-semibold"></p>
     </div>
 </div>
+
+<!-- ========== CONFIRMATION MODAL ========== -->
+<div id="confirmModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50 backdrop-blur-sm">
+    <div class="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl animate-fade-in-up">
+        <h3 id="confirmTitle" class="text-lg font-bold text-blue-950">Confirm Action</h3>
+        <p id="confirmBody" class="mt-2 text-sm text-slate-500"></p>
+        <div class="mt-5 flex justify-end gap-3">
+            <button id="confirmCancel" class="rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-50">Cancel</button>
+            <button id="confirmOk" class="rounded-xl bg-blue-950 px-5 py-2.5 text-sm font-bold text-white hover:bg-blue-900">Confirm</button>
+        </div>
+    </div>
+</div>
 {% endblock %}
+
 {% block scripts %}
 <script>
+// =====================================================================
+// GLOBAL STATE
+// =====================================================================
 const roleSelect = document.getElementById("roleSelect");
 const userSelect = document.getElementById("userSelect");
-const matrix = document.getElementById("roleMatrix");
-const overrides = document.getElementById("userOverrides");
+const roleMatrix = document.getElementById("roleMatrix");
+const userMatrixEl = document.getElementById("userMatrix");
 const message = document.getElementById("message");
-let permissions = [], users = [];
-const groups = { users:"User Management", tasks:"Task Management", kpi:"KPI Management", "kpi.rule":"KPI Rule Management", report:"Report Management", department:"Department Management", system:"System Management" };
-function esc(value) { return String(value ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c])); }
-function setMessage(text, good = false) { message.textContent = text; message.className = `mt-5 text-sm font-semibold ${good ? "text-emerald-600" : "text-red-600"}`; }
-function groupFor(code) { const prefix = code.split(".").slice(0, 2).join("."); return groups[prefix] || groups[code.split(".")[0]] || "Other"; }
+let allPermissions = [], allUsers = [], allDepartments = [];
+let currentEffective = null;
+let auditOffset = 0;
+
+const GROUPS = {
+    "users": "User Management",
+    "tasks": "Task Management",
+    "kpi": "KPI Management",
+    "kpi.rule": "KPI Rule Management",
+    "report": "Report Management",
+    "department": "Department Management",
+    "system": "System Management"
+};
+
+const ACTION_COLUMNS = ["view", "create", "edit", "delete", "approve", "reject", "submit", "resubmit", "return", "export", "assign", "calculate", "activate", "deactivate", "password_reset", "view_all", "settings.view", "settings.edit", "audit.view", "permissions.manage"];
+
+// =====================================================================
+// HELPERS
+// =====================================================================
+function esc(v) { return String(v ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[c])); }
+function setMessage(text, good = false) {
+    message.textContent = text;
+    message.className = `mt-5 text-sm font-semibold ${good ? "text-emerald-600" : "text-red-600"}`;
+    if (text) setTimeout(() => { message.textContent = ""; }, 5000);
+}
+function groupFor(code) {
+    const parts = code.split(".");
+    if (parts.length >= 3) {
+        const prefix2 = parts.slice(0, 2).join(".");
+        if (GROUPS[prefix2]) return GROUPS[prefix2];
+    }
+    return GROUPS[parts[0]] || "Other";
+}
+function actionLabel(action) {
+    const map = {
+        "view": "View", "create": "Create", "edit": "Edit", "delete": "Delete",
+        "approve": "Approve", "reject": "Reject", "submit": "Submit", "resubmit": "Resubmit",
+        "return": "Return", "export": "Export", "assign": "Assign", "calculate": "Calculate",
+        "activate": "Activate", "deactivate": "Deactivate", "password_reset": "Password Reset",
+        "view_all": "View All", "settings.view": "View Settings", "settings.edit": "Edit Settings",
+        "audit.view": "View Audit", "permissions.manage": "Manage Permissions"
+    };
+    return map[action] || action;
+}
+function showConfirm(title, body) {
+    return new Promise((resolve) => {
+        document.getElementById("confirmTitle").textContent = title;
+        document.getElementById("confirmBody").textContent = body;
+        const modal = document.getElementById("confirmModal");
+        modal.classList.remove("hidden");
+        modal.classList.add("flex");
+        document.getElementById("confirmOk").onclick = () => { modal.classList.add("hidden"); modal.classList.remove("flex"); resolve(true); };
+        document.getElementById("confirmCancel").onclick = () => { modal.classList.add("hidden"); modal.classList.remove("flex"); resolve(false); };
+    });
+}
+
+// =====================================================================
+// TAB NAVIGATION
+// =====================================================================
+document.querySelectorAll(".tab-btn").forEach(btn => btn.onclick = () => {
+    document.querySelectorAll(".tab-btn").forEach(b => b.className = "tab-btn rounded-xl px-5 py-2.5 text-sm font-bold text-slate-500 hover:bg-slate-100 transition-all");
+    btn.className = "tab-btn rounded-xl bg-blue-950 px-5 py-2.5 text-sm font-bold text-white transition-all";
+    document.getElementById("rolesPanel").classList.toggle("hidden", btn.dataset.tab !== "roles");
+    document.getElementById("usersPanel").classList.toggle("hidden", btn.dataset.tab !== "users");
+    document.getElementById("auditPanel").classList.toggle("hidden", btn.dataset.tab !== "audit");
+    if (btn.dataset.tab === "audit") loadAudit(true);
+});
+
+// =====================================================================
+// TAB 1: ROLE PERMISSION MATRIX
+// =====================================================================
 function renderRoleMatrix(assigned) {
     const checked = new Set(assigned);
-    const grouped = permissions.reduce((acc, p) => ((acc[groupFor(p.code)] ||= []).push(p), acc), {});
-    matrix.innerHTML = Object.entries(grouped).map(([group, items]) => `
-        <div class="mb-5 overflow-hidden rounded-2xl border border-slate-100">
-            <div class="bg-slate-50 px-4 py-3 text-sm font-extrabold text-blue-950">${esc(group)}</div>
-            <div class="grid grid-cols-1 gap-2 p-3 sm:grid-cols-2 lg:grid-cols-3">
-                ${items.map(p => `<label class="flex cursor-pointer gap-3 rounded-xl p-3 hover:bg-blue-50"><input class="role-permission mt-1 h-4 w-4 accent-blue-900" type="checkbox" value="${esc(p.code)}" ${checked.has(p.code) ? "checked" : ""}><span><strong class="block text-sm text-slate-700">${esc(p.code)}</strong><small class="text-xs text-slate-500">${esc(p.description || "")}</small></span></label>`).join("")}
+    const grouped = {};
+    allPermissions.forEach(p => {
+        const g = groupFor(p.code);
+        (grouped[g] = grouped[g] || []).push(p);
+    });
+
+    let html = "";
+    for (const [group, items] of Object.entries(grouped)) {
+        html += `<div class="mb-4 overflow-hidden rounded-2xl border border-slate-100 perm-group" data-group="${esc(group)}">
+            <div class="flex items-center justify-between bg-slate-50 px-4 py-3">
+                <span class="text-sm font-extrabold text-blue-950">${esc(group)}</span>
+                <label class="flex items-center gap-2 text-xs text-slate-500 cursor-pointer">
+                    <input type="checkbox" class="group-select-all h-4 w-4 accent-blue-900" data-group="${esc(group)}">
+                    Select All
+                </label>
             </div>
-        </div>`).join("");
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="bg-slate-25 text-left text-xs uppercase tracking-wide text-slate-400">
+                            <th class="px-4 py-2 w-1/3">Permission</th>
+                            <th class="px-4 py-2 text-center">Status</th>
+                            <th class="px-4 py-2">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+        for (const p of items) {
+            const isChecked = checked.has(p.code);
+            html += `<tr class="border-t border-slate-50 hover:bg-blue-50/50 transition-colors perm-row" data-code="${esc(p.code)}">
+                <td class="px-4 py-3">
+                    <label class="flex items-center gap-3 cursor-pointer">
+                        <input class="role-permission h-4 w-4 accent-blue-900 rounded" type="checkbox" value="${esc(p.code)}" ${isChecked ? "checked" : ""} data-group="${esc(group)}">
+                        <code class="text-xs font-mono font-semibold text-blue-900">${esc(p.code)}</code>
+                    </label>
+                </td>
+                <td class="px-4 py-3 text-center">
+                    <span class="status-badge inline-block w-6 h-6 rounded-full text-center leading-6 text-xs font-bold ${isChecked ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-400"}">${isChecked ? "✓" : "✗"}</span>
+                </td>
+                <td class="px-4 py-3 text-xs text-slate-500">${esc(p.description || "")}</td>
+            </tr>`;
+        }
+        html += `</tbody></table></div></div>`;
+    }
+    roleMatrix.innerHTML = html;
+
+    // Wire up individual checkboxes to update badge
+    roleMatrix.querySelectorAll(".role-permission").forEach(cb => {
+        cb.addEventListener("change", () => {
+            const badge = cb.closest("tr").querySelector(".status-badge");
+            if (cb.checked) {
+                badge.className = "status-badge inline-block w-6 h-6 rounded-full text-center leading-6 text-xs font-bold bg-emerald-100 text-emerald-700";
+                badge.textContent = "✓";
+            } else {
+                badge.className = "status-badge inline-block w-6 h-6 rounded-full text-center leading-6 text-xs font-bold bg-slate-100 text-slate-400";
+                badge.textContent = "✗";
+            }
+            updateGroupSelectAll(cb.dataset.group);
+        });
+    });
+
+    // Wire group select-all
+    roleMatrix.querySelectorAll(".group-select-all").forEach(sa => {
+        const group = sa.dataset.group;
+        const cbs = roleMatrix.querySelectorAll(`.role-permission[data-group="${CSS.escape(group)}"]`);
+        sa.checked = [...cbs].every(c => c.checked);
+        sa.addEventListener("change", () => {
+            cbs.forEach(c => { c.checked = sa.checked; c.dispatchEvent(new Event("change")); });
+        });
+    });
 }
+
+function updateGroupSelectAll(group) {
+    const cbs = roleMatrix.querySelectorAll(`.role-permission[data-group="${CSS.escape(group)}"]`);
+    const sa = roleMatrix.querySelector(`.group-select-all[data-group="${CSS.escape(group)}"]`);
+    if (sa) sa.checked = [...cbs].every(c => c.checked);
+}
+
+// Search filter for role matrix
+document.getElementById("roleSearch").addEventListener("input", (e) => {
+    const q = e.target.value.toLowerCase();
+    roleMatrix.querySelectorAll(".perm-row").forEach(row => {
+        row.style.display = row.dataset.code.toLowerCase().includes(q) ? "" : "none";
+    });
+    roleMatrix.querySelectorAll(".perm-group").forEach(group => {
+        const visibleRows = group.querySelectorAll(".perm-row:not([style*='display: none'])");
+        group.style.display = visibleRows.length ? "" : "none";
+    });
+});
+
 async function loadRole() {
     const response = await fetch(`/api/v1/permissions/role/${roleSelect.value}`);
     if (!response.ok) throw new Error("Unable to load role permissions.");
     renderRoleMatrix((await response.json()).map(p => p.code));
 }
-async function loadUser() {
-    const user = users.find(u => u.id === userSelect.value);
-    document.getElementById("userRole").textContent = user ? user.email : "";
-    const response = await fetch(`/api/v1/permissions/user/${userSelect.value}`);
-    if (!response.ok) throw new Error("Unable to load user overrides.");
-    const assigned = await response.json();
-    const byCode = new Map(assigned.map(p => [p.permission_code, p]));
-    overrides.innerHTML = permissions.map(p => {
-        const value = byCode.get(p.code);
-        return `<div class="grid grid-cols-1 items-center gap-3 rounded-2xl border border-slate-100 p-4 sm:grid-cols-[1fr_auto_auto_auto]">
-            <div><strong class="block text-sm text-blue-950">${esc(p.code)}</strong><small class="text-xs text-slate-500">${esc(p.description || "")}</small></div>
-            <select data-scope="${esc(p.code)}" class="scope rounded-lg border border-slate-200 p-2 text-xs"><option value="OWN" ${value?.scope === "OWN" ? "selected" : ""}>Own data</option><option value="DEPARTMENT" ${value?.scope === "DEPARTMENT" ? "selected" : ""}>Department data</option><option value="ALL" ${!value || value.scope === "ALL" ? "selected" : ""}>All data</option></select>
-            <button data-permission="${esc(p.code)}" data-allowed="true" class="override rounded-lg px-3 py-2 text-xs font-bold ${value?.allowed === true ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}">Allow</button>
-            <button data-permission="${esc(p.code)}" data-allowed="false" class="override rounded-lg px-3 py-2 text-xs font-bold ${value?.allowed === false ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-500"}">Deny</button>
-        </div>`;
-    }).join("");
-    overrides.querySelectorAll(".override").forEach(button => button.onclick = async () => {
-        const code = button.dataset.permission;
-        const scope = overrides.querySelector(`[data-scope="${CSS.escape(code)}"]`).value;
-        const response = await fetch(`/api/v1/permissions/user/${userSelect.value}`, { method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify({permission_code:code, allowed:button.dataset.allowed === "true", scope}) });
-        if (!response.ok) { setMessage((await response.json()).detail || "Unable to save override."); return; }
-        setMessage("User permission override saved.", true); await loadUser();
+
+// Select / deselect all buttons
+document.getElementById("selectAllRole").onclick = () => {
+    roleMatrix.querySelectorAll(".role-permission").forEach(c => { if (!c.checked) { c.checked = true; c.dispatchEvent(new Event("change")); } });
+};
+document.getElementById("deselectAllRole").onclick = () => {
+    roleMatrix.querySelectorAll(".role-permission").forEach(c => { if (c.checked) { c.checked = false; c.dispatchEvent(new Event("change")); } });
+};
+
+// Save role permissions
+document.getElementById("saveRole").onclick = async () => {
+    const codes = [...roleMatrix.querySelectorAll(".role-permission:checked")].map(c => c.value);
+    const ok = await showConfirm("Save Role Permissions?", `This will set ${codes.length} permission(s) for the selected role. Continue?`);
+    if (!ok) return;
+    const response = await fetch(`/api/v1/permissions/role/${roleSelect.value}`, {
+        method: "PUT", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({permission_codes: codes})
+    });
+    if (!response.ok) { setMessage((await response.json()).detail || "Failed to save."); return; }
+    setMessage("Role permissions saved successfully!", true);
+    await loadRole();
+};
+roleSelect.onchange = () => loadRole().catch(e => setMessage(e.message));
+
+// =====================================================================
+// TAB 2: USER PERMISSION OVERRIDES
+// =====================================================================
+async function loadUserEffective() {
+    const uid = userSelect.value;
+    if (!uid) return;
+    const response = await fetch(`/api/v1/permissions/user/${uid}/effective`);
+    if (!response.ok) { setMessage("Unable to load user permissions."); return; }
+    currentEffective = await response.json();
+    renderUserInfo(currentEffective);
+    renderUserMatrix(currentEffective.permissions);
+}
+
+function renderUserInfo(data) {
+    const card = document.getElementById("userInfoCard");
+    card.classList.remove("hidden");
+    document.getElementById("userAvatar").textContent = (data.user_name || "?")[0].toUpperCase();
+    document.getElementById("userInfoName").textContent = data.user_name || "—";
+    document.getElementById("userInfoEmail").textContent = data.user_email || "—";
+    document.getElementById("userInfoRole").textContent = data.role_name || "No Role";
+    document.getElementById("userInfoDept").textContent = data.department_name || "No Department";
+}
+
+function renderUserMatrix(permissions) {
+    const grouped = {};
+    permissions.forEach(p => {
+        const g = groupFor(p.code);
+        (grouped[g] = grouped[g] || []).push(p);
+    });
+
+    let html = "";
+    for (const [group, items] of Object.entries(grouped)) {
+        html += `<div class="mb-4 overflow-hidden rounded-2xl border border-slate-100 user-perm-group" data-group="${esc(group)}">
+            <div class="bg-slate-50 px-4 py-3">
+                <span class="text-sm font-extrabold text-blue-950">${esc(group)}</span>
+                <span class="ml-2 text-xs text-slate-400">(${items.length} permissions)</span>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-left text-xs uppercase tracking-wide text-slate-400 bg-slate-25">
+                            <th class="px-4 py-2 w-1/4">Permission</th>
+                            <th class="px-4 py-2 text-center w-24">Status</th>
+                            <th class="px-4 py-2 text-center w-48">Override</th>
+                            <th class="px-4 py-2 text-center w-36">Scope</th>
+                            <th class="px-4 py-2 w-1/4">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+        for (const p of items) {
+            const sourceColor = p.source === "role" ? "bg-blue-500" :
+                                p.source === "override" ? "bg-amber-500" :
+                                p.source === "denied_override" ? "bg-red-500" : "bg-slate-300";
+            const sourceLabel = p.source === "role" ? "Role" :
+                                p.source === "override" ? "Allow Override" :
+                                p.source === "denied_override" ? "Deny Override" : "Default";
+            const statusIcon = p.allowed ? "✓" : "✗";
+            const statusClass = p.allowed ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-600";
+
+            // Determine current override state
+            const isOverrideAllow = p.source === "override";
+            const isOverrideDeny = p.source === "denied_override";
+            const isInherit = p.source === "role" || p.source === "default";
+
+            html += `<tr class="border-t border-slate-50 hover:bg-blue-50/30 transition-colors user-perm-row" data-code="${esc(p.code)}">
+                <td class="px-4 py-3">
+                    <div class="flex items-center gap-2">
+                        <span class="inline-block h-2.5 w-2.5 rounded-full ${sourceColor}"></span>
+                        <code class="text-xs font-mono font-semibold text-blue-900">${esc(p.code)}</code>
+                    </div>
+                    <div class="mt-0.5 ml-[18px] text-[10px] text-slate-400">${esc(sourceLabel)}</div>
+                </td>
+                <td class="px-4 py-3 text-center">
+                    <span class="inline-block w-7 h-7 rounded-full text-center leading-7 text-xs font-bold ${statusClass}">${statusIcon}</span>
+                </td>
+                <td class="px-4 py-3 text-center">
+                    <div class="inline-flex rounded-lg border border-slate-200 overflow-hidden">
+                        <button data-code="${esc(p.code)}" data-action="allow"
+                            class="override-btn px-3 py-1.5 text-xs font-bold transition-all ${isOverrideAllow ? "bg-emerald-500 text-white" : "bg-white text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"}">Allow</button>
+                        <button data-code="${esc(p.code)}" data-action="inherit"
+                            class="override-btn px-3 py-1.5 text-xs font-bold transition-all border-x border-slate-200 ${isInherit ? "bg-blue-500 text-white" : "bg-white text-slate-400 hover:bg-blue-50 hover:text-blue-600"}">Inherit</button>
+                        <button data-code="${esc(p.code)}" data-action="deny"
+                            class="override-btn px-3 py-1.5 text-xs font-bold transition-all ${isOverrideDeny ? "bg-red-500 text-white" : "bg-white text-slate-400 hover:bg-red-50 hover:text-red-600"}">Deny</button>
+                    </div>
+                </td>
+                <td class="px-4 py-3 text-center">
+                    <select data-scope-code="${esc(p.code)}" class="scope-select rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-semibold bg-white focus:ring-2 focus:ring-blue-200">
+                        <option value="ALL" ${p.scope === "ALL" ? "selected" : ""}>All Data</option>
+                        <option value="DEPARTMENT" ${p.scope === "DEPARTMENT" ? "selected" : ""}>Department</option>
+                        <option value="OWN" ${p.scope === "OWN" ? "selected" : ""}>Own Data</option>
+                    </select>
+                </td>
+                <td class="px-4 py-3 text-xs text-slate-500">${esc(p.description || "")}</td>
+            </tr>`;
+        }
+        html += `</tbody></table></div></div>`;
+    }
+    userMatrixEl.innerHTML = html;
+
+    // Wire override buttons
+    userMatrixEl.querySelectorAll(".override-btn").forEach(btn => {
+        btn.onclick = () => {
+            const code = btn.dataset.code;
+            const action = btn.dataset.action;
+            // Update button group visuals
+            const row = btn.closest("tr");
+            row.querySelectorAll(".override-btn").forEach(b => {
+                b.className = b.className.replace(/bg-\w+-500 text-white/g, "").trim();
+                b.classList.add("bg-white", "text-slate-400");
+                b.classList.remove("bg-emerald-500", "bg-blue-500", "bg-red-500", "text-white");
+            });
+            if (action === "allow") { btn.classList.add("bg-emerald-500", "text-white"); btn.classList.remove("bg-white", "text-slate-400"); }
+            else if (action === "inherit") { btn.classList.add("bg-blue-500", "text-white"); btn.classList.remove("bg-white", "text-slate-400"); }
+            else if (action === "deny") { btn.classList.add("bg-red-500", "text-white"); btn.classList.remove("bg-white", "text-slate-400"); }
+        };
     });
 }
-document.querySelectorAll(".tab-button").forEach(button => button.onclick = () => {
-    document.querySelectorAll(".tab-button").forEach(item => item.className = "tab-button rounded-xl px-4 py-2 text-sm font-bold text-slate-500 hover:bg-slate-100");
-    button.className = "tab-button rounded-xl bg-blue-950 px-4 py-2 text-sm font-bold text-white";
-    document.getElementById("rolesPanel").classList.toggle("hidden", button.dataset.tab !== "roles");
-    document.getElementById("usersPanel").classList.toggle("hidden", button.dataset.tab !== "users");
+
+// Search filter for user matrix
+document.getElementById("userSearch").addEventListener("input", (e) => {
+    const q = e.target.value.toLowerCase();
+    userMatrixEl.querySelectorAll(".user-perm-row").forEach(row => {
+        row.style.display = row.dataset.code.toLowerCase().includes(q) ? "" : "none";
+    });
+    userMatrixEl.querySelectorAll(".user-perm-group").forEach(group => {
+        const visibleRows = group.querySelectorAll(".user-perm-row:not([style*='display: none'])");
+        group.style.display = visibleRows.length ? "" : "none";
+    });
 });
-roleSelect.onchange = () => loadRole().catch(e => setMessage(e.message));
-userSelect.onchange = () => loadUser().catch(e => setMessage(e.message));
-document.getElementById("saveRole").onclick = async () => {
-    const permission_codes = [...document.querySelectorAll(".role-permission:checked")].map(input => input.value);
-    const response = await fetch(`/api/v1/permissions/role/${roleSelect.value}`, { method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify({permission_codes}) });
-    if (!response.ok) { setMessage((await response.json()).detail || "Unable to save role permissions."); return; }
-    setMessage("Role permissions saved.", true);
+
+// Collect current user override state from UI
+function collectUserOverrides() {
+    const overrides = [];
+    userMatrixEl.querySelectorAll(".user-perm-row").forEach(row => {
+        const code = row.dataset.code;
+        const activeBtn = row.querySelector(".override-btn.bg-emerald-500, .override-btn.bg-red-500");
+        if (!activeBtn) return; // "inherit" = no override
+
+        const allowed = activeBtn.dataset.action === "allow";
+        const scopeSelect = row.querySelector(".scope-select");
+        const scope = scopeSelect ? scopeSelect.value : "ALL";
+        overrides.push({ permission_code: code, allowed, scope, department_id: null });
+    });
+    return overrides;
+}
+
+// Save all overrides
+document.getElementById("saveUserOverrides").onclick = async () => {
+    const uid = userSelect.value;
+    if (!uid) return;
+    const overrides = collectUserOverrides();
+    const ok = await showConfirm("Save User Overrides?", `This will save ${overrides.length} override(s) for this user. Permissions set to "Inherit" will use role defaults. Continue?`);
+    if (!ok) return;
+    const response = await fetch(`/api/v1/permissions/user/${uid}/bulk`, {
+        method: "PUT", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ overrides })
+    });
+    if (!response.ok) { const err = await response.json(); setMessage(err.detail || "Failed to save."); return; }
+    setMessage("User permission overrides saved successfully!", true);
+    await loadUserEffective();
 };
+
+// Reset to role defaults
+document.getElementById("resetUserOverrides").onclick = async () => {
+    const uid = userSelect.value;
+    if (!uid) return;
+    const ok = await showConfirm("Reset to Role Defaults?", "This will remove ALL user-specific overrides. The user will inherit all permissions from their role only. Continue?");
+    if (!ok) return;
+    const response = await fetch(`/api/v1/permissions/user/${uid}/all-overrides`, { method: "DELETE" });
+    if (!response.ok) { const err = await response.json(); setMessage(err.detail || "Failed to reset."); return; }
+    setMessage("User permissions reset to role defaults!", true);
+    await loadUserEffective();
+};
+
+userSelect.onchange = () => loadUserEffective();
+
+// =====================================================================
+// TAB 3: AUDIT HISTORY
+// =====================================================================
+async function loadAudit(reset = false) {
+    if (reset) auditOffset = 0;
+    const actionFilter = document.getElementById("auditActionFilter").value;
+    const url = `/api/v1/permissions/audit?limit=100&offset=${auditOffset}` + (actionFilter ? `&action=${actionFilter}` : "");
+    const response = await fetch(url);
+    if (!response.ok) { setMessage("Unable to load audit history."); return; }
+    const logs = await response.json();
+    renderAuditTable(logs, reset);
+    document.getElementById("loadMoreAudit").classList.toggle("hidden", logs.length < 100);
+}
+
+function renderAuditTable(logs, reset) {
+    const actionLabels = {
+        "UPDATE_ROLE_PERMISSIONS": "Role Updated",
+        "UPDATE_USER_PERMISSION": "User Override Changed",
+        "DELETE_USER_PERMISSION": "User Override Removed",
+        "BULK_UPDATE_USER_PERMISSIONS": "Bulk User Update",
+        "RESET_USER_PERMISSIONS": "User Reset to Defaults",
+    };
+    const actionColors = {
+        "UPDATE_ROLE_PERMISSIONS": "bg-blue-100 text-blue-700",
+        "UPDATE_USER_PERMISSION": "bg-amber-100 text-amber-700",
+        "DELETE_USER_PERMISSION": "bg-red-100 text-red-700",
+        "BULK_UPDATE_USER_PERMISSIONS": "bg-purple-100 text-purple-700",
+        "RESET_USER_PERMISSIONS": "bg-slate-100 text-slate-700",
+    };
+
+    let tableHtml = `<table class="w-full text-sm">
+        <thead>
+            <tr class="text-left text-xs uppercase tracking-wide text-slate-400 border-b border-slate-100">
+                <th class="px-4 py-3">Timestamp</th>
+                <th class="px-4 py-3">Action</th>
+                <th class="px-4 py-3">Performed By</th>
+                <th class="px-4 py-3">Target</th>
+                <th class="px-4 py-3">Changes</th>
+            </tr>
+        </thead>
+        <tbody>`;
+
+    if (logs.length === 0) {
+        tableHtml += `<tr><td colspan="5" class="px-4 py-8 text-center text-sm text-slate-400">No permission changes found.</td></tr>`;
+    }
+
+    for (const log of logs) {
+        const date = log.created_at ? new Date(log.created_at).toLocaleString() : "—";
+        const badge = actionLabels[log.action] || log.action;
+        const badgeClass = actionColors[log.action] || "bg-slate-100 text-slate-600";
+
+        let changes = "";
+        if (log.old_value && log.new_value) {
+            if (log.action === "UPDATE_ROLE_PERMISSIONS") {
+                const oldPerms = (log.old_value.permissions || []);
+                const newPerms = (log.new_value.permissions || []);
+                const added = newPerms.filter(p => !oldPerms.includes(p));
+                const removed = oldPerms.filter(p => !newPerms.includes(p));
+                if (added.length) changes += `<span class="text-emerald-600">+${added.length} added</span> `;
+                if (removed.length) changes += `<span class="text-red-600">-${removed.length} removed</span>`;
+                if (!added.length && !removed.length) changes = `<span class="text-slate-400">No changes</span>`;
+            } else if (log.action === "BULK_UPDATE_USER_PERMISSIONS" || log.action === "RESET_USER_PERMISSIONS") {
+                const oldCount = (log.old_value.overrides || []).length;
+                const newCount = (log.new_value.overrides || []).length;
+                changes = `<span class="text-slate-500">${oldCount} → ${newCount} overrides</span>`;
+            } else {
+                const code = log.new_value?.permission_code || log.old_value?.permission_code || "—";
+                const oldAllowed = log.old_value?.allowed;
+                const newAllowed = log.new_value?.allowed;
+                changes = `<code class="text-xs">${esc(code)}</code>: `;
+                if (oldAllowed !== undefined && newAllowed !== undefined) {
+                    changes += `<span class="${oldAllowed ? "text-emerald-600" : "text-red-600"}">${oldAllowed ? "Allow" : "Deny"}</span>`;
+                    changes += ` → <span class="${newAllowed ? "text-emerald-600" : "text-red-600"}">${newAllowed ? "Allow" : "Deny"}</span>`;
+                } else if (newAllowed !== undefined) {
+                    changes += `<span class="${newAllowed ? "text-emerald-600" : "text-red-600"}">${newAllowed ? "Allow" : "Deny"}</span>`;
+                } else {
+                    changes += `<span class="text-red-600">Removed</span>`;
+                }
+            }
+        } else if (log.old_value && !log.new_value) {
+            changes = `<span class="text-red-600">Override removed</span>`;
+        } else {
+            changes = `<span class="text-slate-400">—</span>`;
+        }
+
+        tableHtml += `<tr class="border-t border-slate-50 hover:bg-slate-50/50 transition-colors">
+            <td class="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">${date}</td>
+            <td class="px-4 py-3"><span class="rounded-lg px-2 py-1 text-xs font-bold ${badgeClass}">${badge}</span></td>
+            <td class="px-4 py-3 text-xs text-slate-600">${esc(log.actor_name || "System")}</td>
+            <td class="px-4 py-3 text-xs text-slate-600 font-medium">${esc(log.target_name || log.target_id || "—")}</td>
+            <td class="px-4 py-3 text-xs">${changes}</td>
+        </tr>`;
+    }
+    tableHtml += `</tbody></table>`;
+
+    if (reset) {
+        document.getElementById("auditTable").innerHTML = tableHtml;
+    } else {
+        // Append rows
+        const tbody = document.getElementById("auditTable").querySelector("tbody");
+        const temp = document.createElement("div");
+        temp.innerHTML = tableHtml;
+        const newRows = temp.querySelector("tbody").children;
+        while (newRows.length) tbody.appendChild(newRows[0]);
+    }
+}
+
+document.getElementById("auditActionFilter").onchange = () => loadAudit(true);
+document.getElementById("refreshAudit").onclick = () => loadAudit(true);
+document.getElementById("loadMoreAudit").onclick = () => { auditOffset += 100; loadAudit(false); };
+
+// =====================================================================
+// INITIALIZATION
+// =====================================================================
 (async function init() {
-    const [rolesResponse, permissionResponse, usersResponse] = await Promise.all([fetch("/api/v1/users/roles/list"), fetch("/api/v1/permissions/"), fetch("/api/v1/permissions/users")]);
-    if (!rolesResponse.ok || !permissionResponse.ok || !usersResponse.ok) throw new Error("Unable to load permission management data.");
-    const roles = await rolesResponse.json(); permissions = await permissionResponse.json(); users = await usersResponse.json();
-    roleSelect.innerHTML = roles.map(r => `<option value="${r.id}">${esc(r.name)}</option>`).join("");
-    userSelect.innerHTML = users.map(u => `<option value="${u.id}">${esc(u.name)} (${esc(u.email)})</option>`).join("");
-    await loadRole(); if (users.length) await loadUser();
-})().catch(e => setMessage(e.message));
+    try {
+        const [rolesRes, permRes, usersRes, deptRes] = await Promise.all([
+            fetch("/api/v1/users/roles/list"),
+            fetch("/api/v1/permissions/"),
+            fetch("/api/v1/permissions/users"),
+            fetch("/api/v1/permissions/departments"),
+        ]);
+        if (!rolesRes.ok || !permRes.ok || !usersRes.ok) throw new Error("Unable to load permission management data.");
+
+        const roles = await rolesRes.json();
+        allPermissions = await permRes.json();
+        allUsers = await usersRes.json();
+        if (deptRes.ok) allDepartments = await deptRes.json();
+
+        roleSelect.innerHTML = roles.map(r => `<option value="${r.id}">${esc(r.name)}</option>`).join("");
+        userSelect.innerHTML = allUsers.map(u =>
+            `<option value="${u.id}">${esc(u.name)} (${esc(u.role_name || "No Role")}${u.department_name ? " - " + esc(u.department_name) : ""})</option>`
+        ).join("");
+
+        await loadRole();
+        if (allUsers.length) await loadUserEffective();
+    } catch (e) {
+        setMessage(e.message);
+    }
+})();
 </script>
 {% endblock %}

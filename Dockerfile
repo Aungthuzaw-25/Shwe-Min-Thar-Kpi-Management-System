@@ -5,13 +5,13 @@ FROM node:20-alpine AS tailwind-builder
 
 WORKDIR /app
 
-# ၁။ CSS နှင့် သက်ဆိုင်သော ဖိုင်များကိုသာ Copy ကူးပါ
+# Copy configuration and style dependency files first
 COPY tailwind.config.js ./
 COPY static/css/input.css ./static/css/
 COPY templates/ ./templates/
 COPY app/ ./app/ 
 
-# ၂။ package.json မလိုဘဲ npx ဖြင့် တိုက်ရိုက် Download ဆွဲ၍ CSS Build ပါမည်
+# Build and minify Tailwind CSS output directly via npx
 RUN npx -y tailwindcss@3 -i ./static/css/input.css -o ./static/css/output.css --minify
 
 # ============================================================
@@ -19,7 +19,7 @@ RUN npx -y tailwindcss@3 -i ./static/css/input.css -o ./static/css/output.css --
 # ============================================================
 FROM python:3.11-slim
 
-# ၁။ Production Environment Variables သတ်မှတ်ခြင်း
+# Set production environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/code \
@@ -28,7 +28,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /code
 
-# ၂။ လိုအပ်သော System Packages များ သွင်းပြီး Cache ရှင်းလင်းခြင်း
+# Install system dependencies and clean up apt lists to keep image slim
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         build-essential \
@@ -37,38 +37,37 @@ RUN apt-get update && \
         curl && \
     rm -rf /var/lib/apt/lists/*
 
-# ၃။ လုံခြုံရေးအတွက် Non-root User တည်ဆောက်ခြင်း
+# Create a non-root system user for security compliance
 RUN useradd --create-home --uid 1000 appuser
 
-# ၄။ Python Dependencies များကို Cache Layer သုံး၍ သွင်းခြင်း
+# Install Python dependencies leveraging layer caching
 COPY requirements.txt .
 RUN pip install --upgrade pip && \
     pip install -r requirements.txt
 
-# ၅။ Application Source Code များကို ကူးယူခြင်း
+# Copy application source code
 COPY . .
 
-# ၆။ Stage 1 မှ Minify လုပ်ထားသော Production CSS ကိုသာ ကူးယူခြင်း
+# Copy minified production CSS from Stage 1
 COPY --from=tailwind-builder /app/static/css/output.css /code/static/css/output.css
 
-# ၇။ 🌟 Root အနေဖြင့် Permission ပေးခြင်းနှင့် Folder များ ဖန်တီးခြင်း
-RUN chmod +x /code/entrypoint.sh && \
-    mkdir -p uploads logs static/css && \
+# Setup directory structure, permissions, and make entrypoint executable
+RUN mkdir -p uploads logs static/css && \
+    chmod +x /code/entrypoint.sh && \
     chown -R appuser:appuser /code
 
-# ၈။ Non-root User သို့ ပြောင်းလဲခြင်း (Production Security)
+# Switch to non-root user for runtime security
 USER appuser
 
+# Document exposed ports (PaaS compatible)
 EXPOSE 8000
 
-# ၉။ Health Check (/health သို့ တိုက်ရိုက် စစ်ဆေးရန်)
+# Container Health Check (evaluating default port 8000 or overridden env)
 HEALTHCHECK --interval=30s \
             --timeout=5s \
-            --start-period=15s \
+            --start-period=20s \
             --retries=3 \
     CMD curl -fsS http://localhost:8000/health || exit 1
 
-# ၁၀။ 🌟 Entrypoint နှင့် Server Start Command
+# Define entrypoint script to execute pre-flight checks and migrations
 ENTRYPOINT ["/code/entrypoint.sh"]
-
-CMD ["gunicorn", "app.main:app", "-w", "4", "-k", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:8000", "--timeout", "120", "--keep-alive", "5", "--proxy-allow-from", "*"]

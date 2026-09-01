@@ -1,18 +1,90 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
+set -euo pipefail
 
-echo "🚀 1. Checking and Starting Database Migrations..."
+# ==========================================
+# Dynamic Port & Worker Configuration
+# ==========================================
+PORT="${PORT:-8000}"
+HOST="${HOST:-0.0.0.0}"
+WORKERS="${GUNICORN_WORKERS:-2}"
+TIMEOUT="${GUNICORN_TIMEOUT:-120}"
+LOG_LEVEL="${LOG_LEVEL:-info}"
+
+echo "=================================================="
+echo "🚀 Initializing Application Deployment on Railway"
+echo "⚙️  Binding to ${HOST}:${PORT} with ${WORKERS} worker(s)"
+echo "=================================================="
+
+# ==========================================
+# 1. Pre-Flight Database Connectivity Check
+# ==========================================
+echo "⏳ Step 1: Checking PostgreSQL Connectivity..."
+
+python - << 'EOF'
+import os
+import sys
+import asyncio
+from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy import text
+
+db_url = os.getenv("DATABASE_URL")
+if not db_url:
+    print("❌ ERROR: DATABASE_URL environment variable is not defined.")
+    sys.exit(1)
+
+# Ensure the protocol is compliant with asyncpg
+if db_url.startswith("postgres://"):
+    db_url = db_url.replace("postgres://", "postgresql+asyncpg://", 1)
+elif db_url.startswith("postgresql://") and not db_url.startswith("postgresql+asyncpg://"):
+    db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+# Remove pooling or conflicting query parameters for the test probe
+if "?" in db_url:
+    clean_url = db_url.split("?")[0]
+else:
+    clean_url = db_url
+
+async def verify_connection():
+    max_retries = 5
+    retry_interval = 2
+    for attempt in range(1, max_retries + 1):
+        try:
+            engine = create_async_engine(clean_url, pool_pre_ping=True)
+            async with engine.connect() as conn:
+                await conn.execute(text("SELECT 1"))
+            await engine.dispose()
+            print("✅ Database is reachable and accepting connections.")
+            return True
+        except Exception as e:
+            print(f"⚠️  Database connection attempt {attempt}/{max_retries} failed: {e}")
+            if attempt < max_retries:
+                await asyncio.sleep(retry_interval)
+            else:
+                print("❌ ERROR: Could not establish database connection within timeout.")
+                sys.exit(1)
+
+asyncio.run(verify_connection())
+EOF
+
+# ==========================================
+# 2. Database Migrations
+# ==========================================
+echo "🚀 Step 2: Running Database Schema Migrations..."
 alembic upgrade head
-echo "✅ Migrations applied successfully!"
+echo "✅ Migrations completed successfully."
 
-echo "🌱 2. Seeding Initial System Roles & Super Admin (if not exists)..."
-python -m app.database.seed
-echo "✅ Database seeded successfully!"
-
-echo "🔥 3. Starting Production Gunicorn/Uvicorn Server..."
+# ==========================================
+# 3. Server Startup
+# ==========================================
+echo "🔥 Step 3: Starting Gunicorn / Uvicorn Server..."
 exec gunicorn app.main:app \
-    --workers 4 \
+    --workers "$WORKERS" \
     --worker-class uvicorn.workers.UvicornWorker \
-    --bind 0.0.0.0:8000 \
-    --timeout 120 \
-    --keep-alive 5
+    --bind "${HOST}:${PORT}" \
+    --timeout "$TIMEOUT" \
+    --keep-alive 5 \
+    --log-level "$LOG_LEVEL" \
+    --access-logfile - \
+    --error-logfile - \
+    --forwarded-allow-ips "*" \
+    --proxy-allow-from "*"

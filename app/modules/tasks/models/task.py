@@ -37,11 +37,17 @@ class Task(BaseModel):
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
     
-    # Weighted KPI အတွက် Admin သတ်မှတ်ထားသော Category (e.g., "Sales", "Cash Handling")
+    # 🌟 Weighted KPI အတွက် Admin သတ်မှတ်ထားသော Category 
     category = Column(String(100), nullable=True, index=True) 
+    category_id = Column(UUID(as_uuid=True), ForeignKey('kpi_categories.id', ondelete="SET NULL"), nullable=True, index=True)
     
     status = Column(SQLEnum(TaskStatus), default=TaskStatus.DRAFT, nullable=False, index=True)
+    
+    # 🌟 DUE DATE & LATE PENALTY SETTINGS (Assigned Task များအတွက်သာ အလုပ်လုပ်မည်)
     due_date = Column(DateTime(timezone=True), nullable=True, index=True)
+    grace_period_days = Column(Integer, default=0, nullable=False) # ခွင့်ပြုထားသော နောက်ကျရက်
+    is_late = Column(Boolean, default=False, nullable=False, index=True) # နောက်ကျမှ တင်ခြင်း ဟုတ်/မဟုတ်
+    late_days = Column(Integer, default=0, nullable=False) # အမှန်တကယ် ဘယ်နှစ်ရက် နောက်ကျသွားသလဲ
 
     # Task တာဝန်ယူလုပ်ဆောင်သူ (L2 Staff)
     owner_id = Column(UUID(as_uuid=True), ForeignKey('users.id', ondelete="CASCADE"), nullable=False, index=True)

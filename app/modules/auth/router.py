@@ -217,7 +217,7 @@ async def login_for_swagger(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Account disabled or deleted.')
 
     # Verify Password
-    is_valid_password = await run_in_threadpool(security.verify_password, form_data.password, user.hashed_password)
+    is_valid_password = await run_in_threadpool(security.verify_password, payload.password, user.hashed_password)
 
     if not is_valid_password:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Incorrect email or password.')

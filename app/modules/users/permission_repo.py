@@ -1,18 +1,23 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy import delete
 from uuid import UUID
-from typing import List
-from app.modules.users.models import Permission, RolePermission, Role
+from typing import List, Optional, Dict
+from app.modules.users.models import Permission, RolePermission, Role, UserPermissionOverride, User
+from app.modules.departments.models import Department, UserDepartment
+
 
 async def get_all_permissions(db: AsyncSession) -> List[Permission]:
     stmt = select(Permission).order_by(Permission.code)
     result = await db.execute(stmt)
     return result.scalars().all()
 
+
 async def get_role_permissions(db: AsyncSession, role_id: UUID) -> List[Permission]:
     stmt = select(Permission).join(RolePermission).where(RolePermission.role_id == role_id)
     result = await db.execute(stmt)
     return result.scalars().all()
+
 
 async def assign_permissions_to_role(db: AsyncSession, role_id: UUID, permission_codes: List[str]):
     # 1. ယခင်ရှိပြီးသား Permission များကို အရင်ဖျက်ပါမည် (Clean Slate)
@@ -35,3 +40,169 @@ async def assign_permissions_to_role(db: AsyncSession, role_id: UUID, permission
 
     await db.commit()
     return await get_role_permissions(db, role_id)
+
+
+# =====================================================================
+# 🌟 NEW: Effective Permission Computation
+# =====================================================================
+async def get_user_effective_permissions(
+    db: AsyncSession, user_id: UUID
+) -> Dict:
+    """Compute the effective permission matrix for a user by merging
+    role permissions with user-specific overrides.
+
+    Returns a dict with user info and a list of effective permission items.
+    """
+    # Fetch user with role
+    from sqlalchemy.orm import selectinload
+    user = (await db.execute(
+        select(User).options(
+            selectinload(User.role).selectinload(Role.permissions),
+            selectinload(User.permission_overrides).selectinload(UserPermissionOverride.permission),
+        ).where(User.id == user_id, User.is_deleted == False)
+    )).scalar_one_or_none()
+
+    if not user:
+        return None
+
+    # Fetch user department
+    ud = (await db.execute(
+        select(UserDepartment)
+        .options(selectinload(UserDepartment.department))
+        .where(UserDepartment.user_id == user_id, UserDepartment.is_deleted == False)
+    )).scalar_one_or_none()
+
+    dept_name = ud.department.name if ud and ud.department else None
+    dept_id = ud.department_id if ud else None
+
+    # All system permissions
+    all_permissions = await get_all_permissions(db)
+
+    # Build override lookup: code -> override
+    override_map: Dict[str, UserPermissionOverride] = {}
+    for ov in (user.permission_overrides or []):
+        perm = getattr(ov, "permission", None)
+        if perm:
+            override_map[perm.code] = ov
+
+    # Build role permission codes set
+    role_codes = set()
+    if user.role:
+        for p in (user.role.permissions or []):
+            role_codes.add(p.code)
+
+    # Merge into effective list
+    effective = []
+    for perm in all_permissions:
+        code = perm.code
+        override = override_map.get(code)
+
+        if override is not None:
+            # User override exists
+            effective.append({
+                "code": code,
+                "description": perm.description,
+                "allowed": override.allowed,
+                "source": "override" if override.allowed else "denied_override",
+                "scope": override.scope or "ALL",
+                "department_id": override.department_id,
+            })
+        elif code in role_codes:
+            # Inherited from role
+            effective.append({
+                "code": code,
+                "description": perm.description,
+                "allowed": True,
+                "source": "role",
+                "scope": "ALL",
+                "department_id": None,
+            })
+        else:
+            # Not granted
+            effective.append({
+                "code": code,
+                "description": perm.description,
+                "allowed": False,
+                "source": "default",
+                "scope": "ALL",
+                "department_id": None,
+            })
+
+    return {
+        "user_id": user.id,
+        "user_name": f"{user.first_name} {user.last_name}".strip(),
+        "user_email": user.email,
+        "role_name": user.role.name if user.role else None,
+        "department_name": dept_name,
+        "department_id": dept_id,
+        "permissions": effective,
+    }
+
+
+# =====================================================================
+# 🌟 NEW: Bulk save user overrides
+# =====================================================================
+async def bulk_save_user_overrides(
+    db: AsyncSession,
+    user_id: UUID,
+    overrides: List[Dict],
+) -> List[Dict]:
+    """Atomically replace all user permission overrides.
+
+    ``overrides`` is a list of dicts with keys:
+      permission_code, allowed, scope, department_id (optional)
+
+    Only items whose state differs from the role baseline are stored; items
+    set to "inherit" (no override) are simply omitted / deleted.
+    """
+    # Delete existing overrides for this user
+    existing = (await db.execute(
+        select(UserPermissionOverride).where(UserPermissionOverride.user_id == user_id)
+    )).scalars().all()
+    for row in existing:
+        await db.delete(row)
+    await db.flush()
+
+    if not overrides:
+        await db.commit()
+        return []
+
+    # Resolve permission codes -> IDs
+    codes = [o["permission_code"] for o in overrides]
+    perm_rows = (await db.execute(
+        select(Permission).where(Permission.code.in_(codes))
+    )).scalars().all()
+    code_to_id = {p.code: p.id for p in perm_rows}
+
+    saved = []
+    for item in overrides:
+        perm_id = code_to_id.get(item["permission_code"])
+        if not perm_id:
+            continue
+        new_override = UserPermissionOverride(
+            user_id=user_id,
+            permission_id=perm_id,
+            allowed=item["allowed"],
+            scope=item.get("scope", "ALL"),
+            department_id=item.get("department_id"),
+        )
+        db.add(new_override)
+        saved.append(item)
+
+    await db.commit()
+    return saved
+
+
+# =====================================================================
+# 🌟 NEW: Delete all overrides for a user
+# =====================================================================
+async def delete_all_user_overrides(db: AsyncSession, user_id: UUID) -> int:
+    """Remove all user-specific permission overrides (reset to role defaults)."""
+    existing = (await db.execute(
+        select(UserPermissionOverride).where(UserPermissionOverride.user_id == user_id)
+    )).scalars().all()
+    count = len(existing)
+    for row in existing:
+        await db.delete(row)
+    await db.commit()
+    return count

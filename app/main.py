@@ -43,6 +43,13 @@ from app.background_jobs.scheduler import start_scheduler
 logger = logging.getLogger("app.main")
 
 # ==============================================================================
+# 🌟 0. ENVIRONMENT & SECURITY SETUP
+# ==============================================================================
+# Evaluate production status early so it can be used during FastAPI instantiation
+IS_PRODUCTION = getattr(settings, "ENV", "development").lower() == "production"
+
+
+# ==============================================================================
 # 🌟 1. LIFESPAN CONTEXT MANAGER (Modern Replacement for on_event)
 # ==============================================================================
 @asynccontextmanager
@@ -79,13 +86,18 @@ if redis_url:
 else:
     limiter = Limiter(key_func=get_remote_address)
 
+
+# ==============================================================================
+# 🚀 3. FASTAPI INSTANTIATION
+# ==============================================================================
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
     lifespan=lifespan,
-    docs_url="/api/docs",
-    redoc_url="/api/redoc",
-    openapi_url="/api/openapi.json"
+    # 🔴 ENTERPRISE SECURITY: Disable Swagger UI & OpenAPI schema in Production
+    docs_url=None if IS_PRODUCTION else "/api/docs",
+    redoc_url=None if IS_PRODUCTION else "/api/redoc",
+    openapi_url=None if IS_PRODUCTION else "/api/openapi.json"
 )
 
 # Rate Limiter Exception Handler ချိတ်ဆက်ခြင်း
@@ -93,14 +105,13 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # ==============================================================================
-# 🛡️ 3. SECURITY & PERFORMANCE MIDDLEWARES
+# 🛡️ 4. SECURITY & PERFORMANCE MIDDLEWARES
 # ==============================================================================
 
 # A. GZip Compression (API Response Payload ကို ချုံ့ပေး၍ Speed မြန်စေသည်)
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # B. Strict CORS Policy
-IS_PRODUCTION = getattr(settings, "ENV", "development").lower() == "production"
 ALLOWED_ORIGINS = [
     origin.strip()
     for origin in settings.ALLOWED_ORIGINS.split(",")
@@ -138,13 +149,13 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 app.add_middleware(SecurityHeadersMiddleware)
 
 # ==============================================================================
-# 📂 4. STATIC FILES & STORAGE MOUNTING
+# 📂 5. STATIC FILES & STORAGE MOUNTING
 # ==============================================================================
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 # ==============================================================================
-# 🔌 5. BACKEND API ROUTERS (Domain-Driven Design)
+# 🔌 6. BACKEND API ROUTERS (Domain-Driven Design)
 # ==============================================================================
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["Authentication"])
 app.include_router(dept_router, prefix="/api/v1/departments", tags=["Departments"])
@@ -163,13 +174,13 @@ app.include_router(notifications_router, prefix="/api/v1/notifications", tags=["
 app.include_router(system_router, prefix="/api/v1", tags=["System Settings"])
 
 # ==============================================================================
-# 💻 6. FRONTEND WEB ROUTERS (Jinja2 UI Pages)
+# 💻 7. FRONTEND WEB ROUTERS (Jinja2 UI Pages)
 # ==============================================================================
 app.include_router(auth_web_router, prefix="/auth", tags=["Web Auth"])
 app.include_router(dashboard_web_router, tags=["Web Dashboard UI"])
 
 # ==============================================================================
-# 🌐 7. ROOT & HEALTH CHECK ENDPOINTS
+# 🌐 8. ROOT & HEALTH CHECK ENDPOINTS
 # ==============================================================================
 @app.get("/", include_in_schema=False)
 async def root():

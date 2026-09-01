@@ -10,7 +10,7 @@ import json
 import os
 from datetime import datetime, timezone # 🌟 FIX: Added timezone for late calculation
 import pytz
-import magic 
+import magic # 🌟 SECURITY FIX: Added python-magic for strict MIME type checking
 
 from app.database.connection import get_db
 from app.modules.tasks.schemas import TaskCreate, TaskUpdate, TaskResponse, TaskReviewInput, TaskEvidenceResponse, BulkTaskCreate
@@ -256,7 +256,7 @@ async def create_new_task(payload: TaskCreate, db: AsyncSession = Depends(get_db
 async def create_bulk_tasks(payload: BulkTaskCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     """ 🌟 Manager/Admin များမှ Task ကို Assign ချပေးသော Endpoint """
     try:
-        # 🌟 SECURITY FIX: Only Admins or Managers (L0, L1) can assign tasks
+        # Check permissions for assigning tasks (L0/L1 or Admins)
         if current_user.role.name not in ['Super Admin', 'System Super Admin', 'Admin']:
             ud_stmt = select(UserDepartment).where(UserDepartment.user_id == current_user.id)
             ud = (await db.execute(ud_stmt)).scalars().first()
@@ -273,7 +273,7 @@ async def create_bulk_tasks(payload: BulkTaskCreate, db: AsyncSession = Depends(
                 task_data['owner_id'] = current_user.id
                 
             new_task = await task_repo.create_task(db, task_data)
-            db.add(TaskHistory(task_id=new_task.id, changed_by=current_user.id, action="CREATED", old_value="NONE", new_value=TaskStatus.DRAFT.value, remarks=f"[{payload.category}] Category ဖြင့် Bulk ဖန်တီးထားပါသည်"))
+            db.add(TaskHistory(task_id=new_task.id, changed_by=current_user.id, action="ASSIGNED", old_value="NONE", new_value=TaskStatus.DRAFT.value, remarks=f"[{payload.category}] Category ဖြင့် Bulk ဖန်တီးထားပါသည်"))
             created_tasks.append(new_task)
             
         await db.commit()
