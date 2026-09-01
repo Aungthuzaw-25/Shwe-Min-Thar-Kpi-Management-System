@@ -21,7 +21,7 @@
   async function api(url, options = {}) {
     const headers = {
       'Content-Type': 'application/json',
-      ...(TOKEN ? { Authorization: TOKEN } : {}),
+      ...(TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {}),
       ...options.headers
     };
     const res = await fetch(url, { ...options, headers });
