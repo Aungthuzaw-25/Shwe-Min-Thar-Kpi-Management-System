@@ -633,11 +633,7 @@
                 closeUserModal();
                 await loadUsers();
                 
-                if (!isEdit && savedData.generated_password) {
-                    showToast(`User created successfully!\nTemporary Password: ${savedData.generated_password}`, "success");
-                } else {
-                    showToast("User updated successfully.", "success");
-                }
+                showToast(isEdit ? "User updated successfully." : "User created successfully. The user must set a password before signing in.", "success");
             } else {
                 const err = await res.json();
                 showToast(`Error: ${err.detail || 'Validation failed'}`, "error");

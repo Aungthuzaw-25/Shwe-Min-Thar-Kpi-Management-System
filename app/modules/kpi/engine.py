@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime
@@ -7,19 +9,16 @@ import re
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import or_, and_, func
+from sqlalchemy import or_, and_, func, desc
 from sqlalchemy.orm import selectinload 
 from uuid import UUID
 
-from app.modules.kpi.models import KPIStatus, KPIRecord, PeriodType, KPIHistory
-from app.modules.kpi.models import KPILevelSetting, KPIFormula, FormulaScope, FormulaStatus, KPIScoringRuleItem, KPIPeriod, KPIAssignment
-from app.modules.users.models import User, Position 
-from app.modules.departments.models import UserDepartment 
-
+from app.modules.kpi.models import KPIStatus, KPIRecord, PeriodType, KPIScoringRuleItem
+from app.modules.kpi.models import KPILevelSetting, KPIFormula, FormulaStatus, KPIPeriod, KPIPeriodStatus, KPIAssignment
+from app.modules.users.models import User
 from app.modules.tasks.models.task import Task
 from app.modules.tasks.models.task_review import TaskReview
-
-from app.modules.targets.models import Target 
+from app.modules.kpi.engine_helpers import standardize_key
 
 # Configure Module Logger for Observability
 logger = logging.getLogger(__name__)
@@ -35,6 +34,203 @@ LATE_SUBMISSION_KEYWORDS = ["late", "အချိန်", "နောက်ကျ
 DEFAULT_LATE_CAT_NAME = "အချိန်မှီမတင်ပြခြင်း"
 
 
+def _parse_numeric(value, context: str) -> Optional[float]:
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        logger.warning("Invalid numeric value for %s", context)
+        return None
+
+
+def _group_scoring_rules(rules):
+    grouped = {}
+    for rule in rules:
+        key = standardize_key(rule.rule_name)
+        grouped.setdefault(key, []).append(rule)
+    return grouped
+
+
+def _rule_deduction(actual_value: float, rule) -> float:
+    operation = OPERATORS.get(rule.operator)
+    if not operation:
+        logger.error("Unsupported operator '%s' in rule '%s'", rule.operator, rule.rule_name)
+        return 0.0
+    target = _parse_numeric(rule.target_value, f"rule {rule.rule_name}")
+    deduction = _parse_numeric(rule.deduct_score, f"deduction {rule.rule_name}")
+    if target is None or deduction is None or not operation(actual_value, target):
+        return 0.0
+    return deduction
+
+
+def _score_rule_group(actual_value: float, rules) -> float:
+    return max((_rule_deduction(actual_value, rule) for rule in rules), default=0.0)
+
+
+def _merge_kpi_data(deduction_values, deduction_counts, manual_data):
+    merged = {}
+    for key, values in deduction_values.items():
+        value = min(values) if all(item <= 100 for item in values) else sum(values)
+        normalized = standardize_key(key)
+        merged[normalized] = merged.get(normalized, 0.0) + value
+    for key, value in deduction_counts.items():
+        normalized = standardize_key(key)
+        merged[normalized] = merged.get(normalized, 0.0) + float(value)
+    for key, value in manual_data.items():
+        try:
+            normalized = standardize_key(key)
+            merged[normalized] = merged.get(normalized, 0.0) + float(value)
+        except (ValueError, TypeError):
+            logger.warning("Skipping non-numeric manual data for key %s", key)
+    return merged
+
+
+async def _find_fallback_formula(db, user, target_month: str):
+    active_memberships = [
+        membership for membership in (user.user_departments or [])
+        if not getattr(membership, "is_deleted", False)
+    ]
+    department_id = active_memberships[0].department_id if active_memberships else None
+    if not department_id and user.position and user.position.is_active and not user.position.is_deleted:
+        department_id = user.position.department_id
+    if not department_id:
+        return None
+    statement = select(KPIFormula).options(
+        selectinload(KPIFormula.scoring_rules)
+    ).where(
+        KPIFormula.department_id == department_id,
+        KPIFormula.position_name == (user.position.name if user.position else "Unknown"),
+        KPIFormula.status == FormulaStatus.ACTIVE,
+        KPIFormula.is_active == True,
+        KPIFormula.is_deleted == False,
+        or_(
+            KPIFormula.effective_month.is_(None),
+            KPIFormula.effective_month <= target_month,
+        ),
+    )
+    if user.region_town:
+        statement = statement.where(KPIFormula.region_town == user.region_town)
+    statement = statement.order_by(
+        desc(KPIFormula.effective_month), desc(KPIFormula.version), KPIFormula.id
+    )
+    formulas = (await db.execute(statement)).scalars().all()
+    if len(formulas) > 1 and formulas[0].effective_month == formulas[1].effective_month and formulas[0].version == formulas[1].version:
+        raise ValueError("Multiple equally-prioritized active KPI formulas matched the user.")
+    return formulas[0] if formulas else None
+
+
+async def _collect_deductions(db, user, formula, period_start, period_end):
+    start = period_start.replace(tzinfo=None)
+    end = period_end.replace(tzinfo=None)
+    date_filter = or_(
+        Task.due_date.between(start, end),
+        and_(Task.due_date.is_(None), Task.created_at.between(start, end)),
+    )
+    l2 = select(TaskReview.task_id, TaskReview.comments).join(Task, TaskReview.task_id == Task.id).where(
+        Task.owner_id == user.id,
+        Task.is_deleted == False,
+        TaskReview.is_deleted == False,
+        TaskReview.action.in_(["REJECTED", "REJECTED_OVERRIDE"]),
+        TaskReview.reviewer_level.in_(["L1", "Level 1"]),
+        date_filter,
+    )
+    l1 = select(TaskReview.task_id, TaskReview.comments).join(Task, TaskReview.task_id == Task.id).where(
+        TaskReview.task_id.in_(select(TaskReview.task_id).where(
+            TaskReview.reviewer_id == user.id,
+            TaskReview.action == "APPROVED",
+            TaskReview.reviewer_level.in_(["L1", "Level 1"]),
+        ).scalar_subquery()),
+        TaskReview.reviewer_level.in_(["L0", "Level 0"]),
+        TaskReview.action.in_(["REJECTED", "REJECTED_OVERRIDE"]),
+        Task.is_deleted == False,
+        TaskReview.is_deleted == False,
+        date_filter,
+    )
+    comments = (await db.execute(l2)).all() + (await db.execute(l1)).all()
+    counts, values = {}, {}
+    rejected_task_ids = set()
+    for task_id, comment in comments:
+        if not comment:
+            continue
+        rejected_task_ids.add(task_id)
+        match = re.search(r"\[KPI Deduction:([^\]]+)\]", comment)
+        if not match:
+            continue
+        rule_name = match.group(1).strip()
+        value_match = re.search(r"\[Value:\s*([\d\.]+)\]", comment)
+        if value_match:
+            value = _parse_numeric(value_match.group(1), f"comment {rule_name}")
+            if value is not None:
+                values.setdefault(rule_name, []).append(value)
+        else:
+            counts[rule_name] = counts.get(rule_name, 0) + 1
+    late_query = select(func.count(Task.id)).where(
+        Task.owner_id == user.id, Task.is_late == True, Task.is_deleted == False,
+        date_filter,
+        ~Task.id.in_(rejected_task_ids) if rejected_task_ids else True,
+    )
+    late_count = (await db.execute(late_query)).scalar() or 0
+    if late_count:
+        late_name = next(
+            (category.get("name", "") for category in formula.categories
+             if any(keyword in category.get("name", "").lower() for keyword in LATE_SUBMISSION_KEYWORDS)),
+            DEFAULT_LATE_CAT_NAME,
+        )
+        counts[late_name] = counts.get(late_name, 0) + late_count
+    return counts, values
+
+
+async def _save_kpi_record(db, user, formula, period, period_type, period_start, period_end, total_score, percentage):
+    if period is not None:
+        locked_period = (await db.execute(
+            select(KPIPeriod).where(KPIPeriod.id == period.id).with_for_update()
+        )).scalars().first()
+        if locked_period and locked_period.status in {
+            KPIPeriodStatus.FINALIZED, KPIPeriodStatus.LOCKED, KPIPeriodStatus.CANCELLED
+        }:
+            raise ValueError("KPI calculation is not allowed for a finalized, locked, or cancelled period.")
+    statement = select(KPIRecord).where(
+        KPIRecord.user_id == user.id,
+        KPIRecord.period_type == period_type,
+        KPIRecord.period_start == period_start,
+        KPIRecord.is_deleted == False,
+    ).with_for_update()
+    record = (await db.execute(statement)).scalars().first()
+    if record:
+        if record.is_frozen or record.is_overridden:
+            return
+        record.weighted_score = total_score
+        record.raw_score = total_score
+        record.percentage = percentage
+        record.status_bucket = KPICalculationEngine.get_grade(percentage)
+        record.kpi_period_id = period.id if period else None
+        return
+    db.add(KPIRecord(
+        user_id=user.id,
+        department_id=formula.department_id,
+        formula_id=formula.id,
+        period_type=period_type,
+        period_start=period_start,
+        period_end=period_end,
+        kpi_period_id=period.id if period else None,
+        weighted_score=total_score,
+        raw_score=total_score,
+        percentage=percentage,
+        status_bucket=KPICalculationEngine.get_grade(percentage),
+    ))
+
+
+def formula_max_score(formula) -> float:
+    return sum(
+        float(category.get("max_score", 5.0))
+        * (
+            float(category.get("weight", 0.0))
+            if float(category.get("weight", 0.0)) <= 1
+            else float(category.get("weight", 0.0)) / 100
+        )
+        for category in (formula.categories or [])
+    )
+
+
 # ==============================================================================
 # 1. KPI Aggregation Engine 
 # ==============================================================================
@@ -47,8 +243,7 @@ class KPICalculationEngine:
         Space အပိုများကို ဖယ်ရှား၍ စာလုံးအသေးသို့ ပြောင်းလဲပေးမည်။ 
         Excel Column များနှင့် Rule Name များ လွဲချော်မှုကို အပြည့်အဝ ကာကွယ်ပေးသည်။
         """
-        if not key_str: return ""
-        return re.sub(r'\s+', ' ', str(key_str).strip().lower())
+        return standardize_key(key_str)
 
     @staticmethod
     def get_grade(percentage: float) -> KPIStatus:
@@ -60,59 +255,24 @@ class KPICalculationEngine:
         else: return KPIStatus.POOR
 
     @staticmethod
-    def evaluate_db_rules(cat_name: str, rules: List[KPIScoringRuleItem], evaluated_data: dict, max_score: float = 5.0) -> float:
+    def evaluate_db_rules(cat_name: str, rules: List["KPIScoringRuleItem"], evaluated_data: dict, max_score: float = 5.0) -> float:
         """
         Checks BOTH the Category Name (from Excel) AND the Rule Name (from System Workflow)
         to ensure no deductions are missed. Uses highest applicable deduction per rule.
         """
-        current_score = float(max_score)
-        std_cat_name = KPICalculationEngine.standardize_key(cat_name)
-        
-        # Extract base value from Excel data using Category Name
-        base_actual_value = 0.0
-        if std_cat_name in evaluated_data:
-            try:
-                base_actual_value = float(evaluated_data[std_cat_name])
-            except (ValueError, TypeError):
-                logger.warning(f"Invalid numeric value in evaluated_data for key: {std_cat_name}")
-                
-        grouped_rules = {}
-        for r in rules:
-            std_rule_name = KPICalculationEngine.standardize_key(r.rule_name)
-            grouped_rules.setdefault(std_rule_name, []).append(r)
-            
-        total_deduction_for_category = 0.0
-            
-        for std_rule_name, rule_items in grouped_rules.items():
-            # Combine System value (by rule_name) and Excel value (by cat_name)
-            actual_value = base_actual_value
-            if std_rule_name and std_rule_name in evaluated_data:
-                try:
-                    actual_value = max(actual_value, float(evaluated_data[std_rule_name]))
-                except (ValueError, TypeError):
-                    logger.warning(f"Invalid numeric value in evaluated_data for rule: {std_rule_name}")
-                
-            highest_deduction = 0.0
-            
-            for r in rule_items:
-                op_func = OPERATORS.get(r.operator)
-                if not op_func: 
-                    logger.error(f"Unsupported operator '{r.operator}' in rule '{r.rule_name}'")
-                    continue
-                
-                try:
-                    target_val = float(r.target_value)
-                    # Apply the specific HR Step-Tier logic strictly
-                    if op_func(actual_value, target_val):
-                        deduct_amt = float(r.deduct_score)
-                        if deduct_amt > highest_deduction:
-                            highest_deduction = deduct_amt
-                except (ValueError, TypeError) as e:
-                    logger.error(f"Failed to parse rule values for '{r.rule_name}': {e}")
-                        
-            total_deduction_for_category += highest_deduction
-            
-        return max(0.0, current_score - total_deduction_for_category)
+        category_key = standardize_key(cat_name)
+        base_value = 0.0
+        if category_key in evaluated_data:
+            base_value = _parse_numeric(evaluated_data[category_key], category_key) or 0.0
+        total_deduction = 0.0
+        for rule_name, rule_items in _group_scoring_rules(rules).items():
+            actual_value = base_value
+            if rule_name and rule_name in evaluated_data:
+                rule_value = _parse_numeric(evaluated_data[rule_name], rule_name)
+                if rule_value is not None:
+                    actual_value = max(base_value, rule_value)
+            total_deduction += _score_rule_group(actual_value, rule_items)
+        return max(0.0, float(max_score) - total_deduction)
 
     @staticmethod
     async def get_applicable_formula_and_period(db: AsyncSession, user: User, target_date: datetime) -> Tuple[Optional[KPIFormula], Optional[KPIPeriod]]:
@@ -124,46 +284,39 @@ class KPICalculationEngine:
             KPIPeriod.start_date <= target_date,
             KPIPeriod.end_date >= target_date,
             KPIPeriod.is_deleted == False
-        )
-        period = (await db.execute(stmt_period)).scalars().first()
-        
-        formula = None
+        ).order_by(KPIPeriod.start_date.desc(), KPIPeriod.id)
+        periods = (await db.execute(stmt_period)).scalars().all()
+        if len(periods) > 1:
+            raise ValueError("Multiple active KPI periods overlap the calculation date.")
+        period = periods[0] if periods else None
         
         if period:
             stmt_assign = select(KPIAssignment).where(
                 KPIAssignment.user_id == user.id,
                 KPIAssignment.kpi_period_id == period.id,
                 KPIAssignment.is_deleted == False
-            )
-            assignment = (await db.execute(stmt_assign)).scalars().first()
+            ).order_by(KPIAssignment.created_at.desc(), KPIAssignment.id)
+            assignments = (await db.execute(stmt_assign)).scalars().all()
+            if len(assignments) > 1:
+                raise ValueError("Multiple active KPI assignments matched the user and period.")
+            assignment = assignments[0] if assignments else None
             
             if assignment:
                 stmt_form = select(KPIFormula).options(selectinload(KPIFormula.scoring_rules)).where(
                     KPIFormula.id == assignment.kpi_formula_id,
-                    KPIFormula.status == FormulaStatus.ACTIVE
+                    KPIFormula.status == FormulaStatus.ACTIVE,
+                    KPIFormula.is_active == True,
+                    KPIFormula.is_deleted == False,
+                    or_(
+                        KPIFormula.effective_month.is_(None),
+                        KPIFormula.effective_month <= target_date.strftime("%Y-%m"),
+                    ),
                 )
                 formula = (await db.execute(stmt_form)).scalars().first()
-                
-        if not formula:
-            dept_id = user.user_departments[0].department_id if hasattr(user, 'user_departments') and user.user_departments else None
-            if not dept_id and hasattr(user, 'position') and user.position:
-                dept_id = user.position.department_id
-                
-            pos_name = user.position.name if hasattr(user, 'position') and user.position else "Unknown"
-            region_town = getattr(user, 'region_town', None)
-            
-            if dept_id:
-                stmt_form = select(KPIFormula).options(selectinload(KPIFormula.scoring_rules)).where(
-                    KPIFormula.department_id == dept_id,
-                    KPIFormula.position_name == pos_name,
-                    KPIFormula.status == FormulaStatus.ACTIVE
-                )
-                if region_town:
-                    stmt_form = stmt_form.where(KPIFormula.region_town == region_town)
-                    
-                formula = (await db.execute(stmt_form)).scalars().first()
-                
-        return formula, period
+                if formula:
+                    return formula, period
+
+        return await _find_fallback_formula(db, user, target_date.strftime("%Y-%m")), period
 
     @staticmethod
     async def execute_kpi_calculation(db: AsyncSession, user: User, period_start: datetime, period_end: datetime, period_type: PeriodType, task_data: dict = None):
@@ -171,241 +324,25 @@ class KPICalculationEngine:
         Core Engine: Aggregates tasks, parses text-based deductions, calculates target completion, 
         and updates or creates the final KPI Record securely with Transaction rollback protection.
         """
-        formula, period = await KPICalculationEngine.get_applicable_formula_and_period(db, user, period_start)
-        
-        if not formula: 
-            logger.info(f"No active formula found for user {user.id}")
-            return None
-        
-        dept_id = formula.department_id
-
-        deduction_counts = {}
-        deduction_values = {}
-
-        # 🌟 SENIOR FIX 4: The Time-Boundary Leak 
-        # Task ပြီးစီးရမည့်ရက် (due_date) ကို အဓိကထား၍ လပိုင်းခြားမည်။ 
-        # due_date မပါရှိမှသာ created_at ကို အသုံးပြုမည်။
-        period_start_naive = period_start.replace(tzinfo=None)
-        period_end_naive = period_end.replace(tzinfo=None)
-
         try:
-            # ======================================================================
-            # 🌟 (၁) အလုပ်မှားယွင်းမှုအတွက် (Reject) Penalty စစ်ဆေးခြင်း
-            # ======================================================================
-            stmt_l2 = select(TaskReview.comments).join(Task, TaskReview.task_id == Task.id).where(
-                Task.owner_id == user.id,
-                TaskReview.action.in_(["REJECTED", "REJECTED_OVERRIDE"]),
-                TaskReview.reviewer_level.in_(["L1", "Level 1"]), 
-                or_(
-                    Task.due_date.between(period_start_naive, period_end_naive),
-                    and_(Task.due_date.is_(None), Task.created_at.between(period_start_naive, period_end_naive))
-                )
+            formula, period = await KPICalculationEngine.get_applicable_formula_and_period(db, user, period_start)
+            if not formula:
+                logger.info("No active formula found for user %s", user.id)
+                return None
+            counts, values = await _collect_deductions(db, user, formula, period_start, period_end)
+            merged_data = _merge_kpi_data(values, counts, task_data or {})
+            total_score = await score_formula_categories(
+                db, formula, formula.department_id, period_start.strftime("%Y-%m"), merged_data
             )
-            l2_reviews = (await db.execute(stmt_l2)).scalars().all()
-
-            # 🌟 FIXED: Added .scalar_subquery() for SQLAlchemy 2.0 compatibility
-            stmt_l1 = select(TaskReview.comments).join(Task, TaskReview.task_id == Task.id).where(
-                TaskReview.task_id.in_(
-                    select(TaskReview.task_id).where(
-                        TaskReview.reviewer_id == user.id,
-                        TaskReview.action == "APPROVED",
-                        TaskReview.reviewer_level.in_(["L1", "Level 1"])
-                    ).scalar_subquery()
-                ),
-                TaskReview.reviewer_level.in_(["L0", "Level 0"]),
-                TaskReview.action.in_(["REJECTED", "REJECTED_OVERRIDE"]),
-                or_(
-                    Task.due_date.between(period_start_naive, period_end_naive),
-                    and_(Task.due_date.is_(None), Task.created_at.between(period_start_naive, period_end_naive))
-                )
-            ) 
-
-            l1_reviews = (await db.execute(stmt_l1)).scalars().all()
-
-            for comment in l2_reviews + l1_reviews:
-                if not comment: continue
-                
-                rule_match = re.search(r"\[KPI Deduction:\s*(.*?)\]", comment)
-                if not rule_match: continue
-                    
-                rule_name = rule_match.group(1).strip()
-                
-                val_match = re.search(r"\[Value:\s*([\d\.]+)\]", comment)
-                
-                if val_match:
-                    try:
-                        val = float(val_match.group(1))
-                        if rule_name not in deduction_values:
-                            deduction_values[rule_name] = []
-                        deduction_values[rule_name].append(val)
-                    except ValueError:
-                        logger.warning(f"Invalid rule value parsing in comment: {comment}")
-                else:
-                    deduction_counts[rule_name] = deduction_counts.get(rule_name, 0) + 1
-
-            # ======================================================================
-            # 🌟 (၂) အချိန်နောက်ကျမှုအတွက် (Late Submission) Penalty စစ်ဆေးခြင်း
-            # ======================================================================
-            stmt_late = select(func.count(Task.id)).where(
-                Task.owner_id == user.id,
-                Task.is_late == True,  # Assigned Task တွေမှာသာ True ဖြစ်နိုင်သည်
-                or_(
-                    Task.due_date.between(period_start_naive, period_end_naive),
-                    and_(Task.due_date.is_(None), Task.created_at.between(period_start_naive, period_end_naive))
-                )
+            weighted_max = formula_max_score(formula)
+            percentage = 0.0 if weighted_max <= 0 else min(100.0, max(0.0, total_score / weighted_max * 100.0))
+            await _save_kpi_record(
+                db, user, formula, period, period_type, period_start, period_end, total_score, percentage
             )
-            late_tasks_count = (await db.execute(stmt_late)).scalar() or 0
-
-            if late_tasks_count > 0:
-                # Formula ထဲမှာ "အချိန်မှီမတင်ပြခြင်း" နဲ့သက်ဆိုင်တဲ့ Category ကို ရှာမည်
-                late_cat_name = DEFAULT_LATE_CAT_NAME 
-                for cat in formula.categories:
-                    c_name = cat.get("name", "")
-                    # "late", "အချိန်", "နောက်ကျ" စသည့် keyword များကို ရှာဖွေမည်
-                    if any(keyword in c_name.lower() for keyword in LATE_SUBMISSION_KEYWORDS):
-                        late_cat_name = c_name
-                        break
-                
-                # တွေ့ရှိသော Late Tasks အရေအတွက်ကို Deduction Counts ထဲသို့ ထပ်ပေါင်းထည့်မည် (Dual Penalty အလုပ်လုပ်ရန်)
-                deduction_counts[late_cat_name] = deduction_counts.get(late_cat_name, 0) + late_tasks_count
-
-            excel_manual_data = task_data if task_data is not None else {}
-            final_merged_data = {}
-            
-            # ======================================================================
-            # 🌟 (၃) Merge Collision & min() Aggregation Fallacy ကို ဖြေရှင်းခြင်း
-            # ======================================================================
-            
-            # (၁) List ဖြင့် လက်ခံထားသော Value များကို ပေါင်းစပ်မည် (e.g. ပျောက်ဆုံးငွေ၊ ရာခိုင်နှုန်း)
-            for k, v_list in deduction_values.items():
-                std_k = KPICalculationEngine.standardize_key(k)
-                # အကယ်၍ တန်ဖိုးအားလုံး 100 အောက်ဖြစ်ပါက Percentage ဟု ယူဆ၍ Worst Case (min) ကို ယူမည်။
-                # 100 ထက်ကျော်လွန်ပါက Amount ဟု ယူဆ၍ စုစုပေါင်း အမှားပမာဏ (sum) ကို ပေါင်းမည်။
-                if all(v <= 100 for v in v_list):
-                    aggregated_val = min(v_list)
-                else:
-                    aggregated_val = sum(v_list)
-                final_merged_data[std_k] = final_merged_data.get(std_k, 0.0) + aggregated_val
-
-            # (၂) System ၏ အကြိမ်ရေ (Count) များကို ပေါင်းစပ်မည် (Reject + Late Counts ပါဝင်သည်)
-            for k, v in deduction_counts.items():
-                std_k = KPICalculationEngine.standardize_key(k)
-                final_merged_data[std_k] = final_merged_data.get(std_k, 0.0) + float(v)
-
-            # (၃) HR မှ Upload တင်သော Excel Data ကို Additive Merge လုပ်မည်
-            for k, v in excel_manual_data.items():
-                std_k = KPICalculationEngine.standardize_key(k)
-                try:
-                    final_merged_data[std_k] = final_merged_data.get(std_k, 0.0) + float(v)
-                except ValueError:
-                    logger.warning(f"Skipping non-numeric manual data for key {k}")
-            
-            # ======================================================================
-            # 🌟 HYBRID SCORING ENGINE (TARGET-BASED vs DEDUCTION-BASED)
-            # ======================================================================
-            total_weighted_score = 0.0
-            target_month_str = period_start.strftime("%Y-%m")
-
-            for category in formula.categories:
-                cat_name = category.get("name", "")
-                std_cat_name = KPICalculationEngine.standardize_key(cat_name)
-                
-                raw_weight = float(category.get("weight", 0.0))
-                cat_weight = raw_weight if raw_weight <= 1.0 else raw_weight / 100.0 
-                max_score = float(category.get("max_score", 5.0))
-                
-                eval_type = category.get("evaluation_type", "DEDUCTION")
-                cat_actual_score = max_score
-                
-                if eval_type == "TARGET":
-                    # 🎯 TARGET-BASED LOGIC
-                    stmt_target = select(Target).where(
-                        Target.target_month == target_month_str,
-                        or_(Target.department_id == dept_id, Target.department_id.is_(None))
-                    )
-                    targets = (await db.execute(stmt_target)).scalars().all()
-                    
-                    assigned_target = None
-                    for t in targets:
-                        if KPICalculationEngine.standardize_key(t.name) == std_cat_name:
-                            if t.department_id == dept_id:
-                                assigned_target = t
-                                break
-                            elif not assigned_target:
-                                assigned_target = t 
-
-                    if assigned_target and assigned_target.target_value > 0:
-                        target_val = float(assigned_target.target_value)
-                        actual_val = float(final_merged_data.get(std_cat_name, 0.0))
-                        
-                        # 🌟 FIXED: Safe evaluation of metric_type to prevent AttributeError
-                        metric_type_attr = getattr(assigned_target, 'metric_type', '')
-                        metric_type_val = getattr(metric_type_attr, 'value', str(metric_type_attr)).upper()
-                        
-                        is_lower_better = "COUNT" in metric_type_val 
-                        
-                        if target_val == 0.0:
-                            achievement_ratio = 1.0
-                        else:
-                            if is_lower_better:
-                                # ဥပမာ - စက်ပျက်ချိန်: Target 5 hrs, Actual 10 hrs => 5 / 10 = 0.5 (50% ပဲရမည်)
-                                achievement_ratio = target_val / actual_val if actual_val > 0 else 1.0
-                            else:
-                                # ဥပမာ - Sales: Target 1M, Actual 800k => 800k / 1M = 0.8 (80% ရမည်)
-                                achievement_ratio = actual_val / target_val
-                                
-                        achievement_ratio = min(1.0, max(0.0, achievement_ratio)) # Clamped Score
-                        cat_actual_score = max_score * achievement_ratio
-                    else:
-                        cat_actual_score = 0.0
-
-                else:
-                    # 📉 DEDUCTION-BASED LOGIC
-                    cat_rules = [r for r in formula.scoring_rules if r.category_name == cat_name]
-                    if cat_rules:
-                        cat_actual_score = KPICalculationEngine.evaluate_db_rules(cat_name, cat_rules, final_merged_data, max_score)
-                
-                total_weighted_score += (cat_actual_score * cat_weight)
-
-            # Final Percentage & Grade Computation
-            percentage = min(100.0, max(0.0, (total_weighted_score / 5.0) * 100.0))
-            grade = KPICalculationEngine.get_grade(percentage)
-
-            period_id = period.id if period else None
-
-            stmt = select(KPIRecord).where(
-                KPIRecord.user_id == user.id,
-                KPIRecord.period_type == period_type,
-                KPIRecord.period_start == period_start
-            )
-            record = (await db.execute(stmt)).scalars().first()
-            
-            if record:
-                if record.is_frozen or record.is_overridden: return
-                record.weighted_score = total_weighted_score
-                record.percentage = percentage
-                record.status_bucket = grade
-                record.kpi_period_id = period_id # Update relation
-            else:
-                new_record = KPIRecord(
-                    user_id=user.id, 
-                    department_id=dept_id, 
-                    formula_id=formula.id,
-                    period_type=period_type, 
-                    period_start=period_start, 
-                    period_end=period_end,
-                    kpi_period_id=period_id, 
-                    weighted_score=total_weighted_score, 
-                    percentage=percentage, 
-                    status_bucket=grade
-                )
-                db.add(new_record)
-                
             await db.commit()
-
-        except Exception as e:
+        except Exception:
             await db.rollback()
-            logger.error(f"Critical error calculating KPI for user {user.id}: {str(e)}", exc_info=True)
+            logger.exception("Critical error calculating KPI for user %s", user.id)
             raise
 
     @staticmethod

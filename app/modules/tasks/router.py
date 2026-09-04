@@ -32,12 +32,49 @@ from app.modules.tasks.models.task_evidence import TaskEvidence
 from app.modules.tasks import repo as task_repo, workflow_repo
 from app.modules.tasks import service as task_service
 from app.modules.kpi.engine import trigger_kpi_recalculation 
-from app.core.dependencies import get_current_user, enforce_permission
+from app.core.dependencies import get_current_user, enforce_permission, GLOBAL_SCOPE_ROLES
 from app.services.storage_service import storage_service
 from app.core.timezone import APPLICATION_TIMEZONE
 
 router = APIRouter()
 app_timezone = APPLICATION_TIMEZONE
+
+
+async def _authorized_task(
+    db: AsyncSession, task_id: UUID, current_user: User
+) -> Task:
+    """Load a task only when the caller has an ownership or organizational relationship."""
+    stmt = select(Task).options(
+        joinedload(Task.owner).selectinload(User.user_departments),
+        selectinload(Task.reviews),
+    ).where(Task.id == task_id)
+    task = (await db.execute(stmt)).unique().scalars().first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found.")
+
+    if current_user.role and current_user.role.name in GLOBAL_SCOPE_ROLES:
+        return task
+    if current_user.id in {task.owner_id, task.assigner_id}:
+        return task
+    if any(review.reviewer_id == current_user.id for review in task.reviews):
+        return task
+
+    owner_departments = {
+        str(link.department_id) for link in (task.owner.user_departments or [])
+    }
+    current_links = await db.execute(
+        select(UserDepartment.department_id).where(
+            UserDepartment.user_id == current_user.id
+        )
+    )
+    current_departments = {str(value) for value in current_links.scalars().all()}
+    if (
+        current_user.role
+        and current_user.role.name in {"Admin", "Department Head"}
+        and owner_departments.intersection(current_departments)
+    ):
+        return task
+    raise HTTPException(status_code=404, detail="Task not found.")
 
 # 🌟 ADMIN ONLY KEYWORDS 
 ADMIN_ONLY_KEYWORDS = [
@@ -522,20 +559,22 @@ async def get_my_tasks(
         
         # 🌟 PERFORMANCE FIX: Database-Level Filtering instead of Python Loop Filtering
         if current_user.role.name not in ['Super Admin', 'System Super Admin', 'Admin', 'Level 0']: 
-            stmt = stmt.outerjoin(TaskReview, Task.id == TaskReview.task_id)
             stmt = stmt.where(
                 or_(
                     Task.owner_id == current_user.id,
                     Task.assigner_id == current_user.id,
-                    TaskReview.reviewer_id == current_user.id
+                    Task.id.in_(
+                        select(TaskReview.task_id).where(
+                            TaskReview.reviewer_id == current_user.id
+                        )
+                    ),
                 )
             )
 
         # Pagination & Ordering
         stmt = stmt.order_by(Task.created_at.desc()).offset(skip).limit(limit)
         result = await db.execute(stmt)
-        # unique() removes duplicate task rows caused by outerjoin matching multiple reviews
-        tasks = result.scalars().unique().all()
+        tasks = result.scalars().all()
         
         # Preserve the UI/UX logic for L2 users (Masking L0 rejection comments)
         if current_user.role.name not in ['Super Admin', 'System Super Admin', 'Admin', 'Level 0']: 
@@ -563,7 +602,22 @@ async def get_batch_tasks_details(batch_id: UUID, db: AsyncSession = Depends(get
     ).where(Task.batch_id == batch_id)
     
     result = await db.execute(stmt)
-    return result.scalars().unique().all()
+    tasks = result.scalars().unique().all()
+    if not tasks:
+        raise HTTPException(status_code=404, detail="Batch not found.")
+    if current_user.role and current_user.role.name in GLOBAL_SCOPE_ROLES:
+        return tasks
+    if any(task.owner_id == current_user.id or task.assigner_id == current_user.id for task in tasks):
+        return tasks
+    queue = await db.execute(
+        select(ApprovalQueue.id).where(
+            ApprovalQueue.batch_id == batch_id,
+            ApprovalQueue.reviewer_id == current_user.id,
+        )
+    )
+    if queue.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="Batch not found.")
+    return tasks
 
 @router.post('/submit-batch', response_model=BatchSubmitResponse)
 async def submit_task_batch(payload: BatchSubmitRequest, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
@@ -755,9 +809,9 @@ async def resign_task_to_l2(task_id: UUID, payload: TaskReviewInput, db: AsyncSe
 @router.post("/{task_id}/evidence", response_model=TaskEvidenceResponse)
 async def upload_task_evidence(task_id: UUID, file: UploadFile = File(...), db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     try:
-        task = await task_repo.get_task_by_id(db, task_id)
-        if not task:
-            raise HTTPException(status_code=404, detail="Task not found")
+        task = await _authorized_task(db, task_id, current_user)
+        if task.status not in {TaskStatus.DRAFT, TaskStatus.REJECTED}:
+            raise HTTPException(status_code=409, detail="Evidence cannot be added in the current task state.")
 
         # 1. Validation: Prevent Denial of Service (DoS) via huge file memory loads
         file.file.seek(0, 2)
@@ -805,12 +859,24 @@ async def upload_task_evidence(task_id: UUID, file: UploadFile = File(...), db: 
         raise HTTPException(status_code=500, detail=f"Failed to upload evidence: {str(e)}")
 
 @router.get("/evidence/view", summary="Get Presigned URL to View Evidence")
-async def get_evidence_url(file_key: str, current_user: User = Depends(get_current_user)):
+async def get_evidence_url(
+    evidence_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     try:
-        presigned_url = storage_service.get_presigned_url(object_name=file_key, expiration=3600)
+        evidence = (await db.execute(
+            select(TaskEvidence).where(TaskEvidence.id == evidence_id)
+        )).scalars().first()
+        if not evidence:
+            raise HTTPException(status_code=404, detail="Evidence file not found.")
+        await _authorized_task(db, evidence.task_id, current_user)
+        presigned_url = storage_service.get_presigned_url(object_name=evidence.file_path, expiration=3600)
         presigned_url = presigned_url.replace("http://minio:9000", "http://localhost:9000")
         return {"view_url": presigned_url, "expires_in_seconds": 3600}
-    except Exception as e:
+    except HTTPException:
+        raise
+    except Exception:
         raise HTTPException(status_code=500, detail="Could not generate file access link")
 
 @router.delete("/evidence/{evidence_id}", status_code=status.HTTP_200_OK, tags=["Tasks"])
@@ -821,6 +887,7 @@ async def delete_task_evidence(evidence_id: UUID, db: AsyncSession = Depends(get
         
         if not evidence:
             raise HTTPException(status_code=404, detail="Evidence file not found.")
+        await _authorized_task(db, evidence.task_id, current_user)
             
         try:
             if hasattr(storage_service, 'delete_file'):
@@ -833,18 +900,22 @@ async def delete_task_evidence(evidence_id: UUID, db: AsyncSession = Depends(get
         await db.delete(evidence)
         await db.commit()
         return {"message": "Evidence file removed successfully."}
-    except Exception as e:
+    except HTTPException:
+        raise
+    except Exception:
         await db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Failed to remove evidence.")
 
 # =====================================================================
 # 🌟 FIX 2: V2 Resubmit လလုပ်ရာတွင် Auto Submit မလုပ်ရန်နှင့် Old Task မဖျက်ရန်
 # =====================================================================
 @router.post('/{task_id}/resubmit', response_model=TaskResponse)
 async def resubmit_task(task_id: UUID, payload: TaskCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    old_task = await task_repo.get_task_by_id(db, task_id)
-    if not old_task:
-        raise HTTPException(status_code=404, detail='Original task not found')
+    old_task = await _authorized_task(db, task_id, current_user)
+    if old_task.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the task owner can resubmit this task.")
+    if old_task.status != TaskStatus.REJECTED:
+        raise HTTPException(status_code=409, detail="Only rejected tasks can be resubmitted.")
         
     try:
         task_data = payload.model_dump(exclude_unset=True)

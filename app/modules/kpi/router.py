@@ -13,7 +13,7 @@ from sqlalchemy.orm import joinedload, selectinload
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.database.connection import get_db, AsyncSessionLocal
-from app.core.dependencies import get_current_user, enforce_permission
+from app.core.dependencies import get_current_user, enforce_permission, enforce_user_scope, enforce_department_scope
 from app.core.timezone import APPLICATION_TIMEZONE
 
 from app.modules.users.models import User
@@ -23,17 +23,18 @@ from app.models.audit_log import AuditLog
 from app.modules.kpi import service as kpi_service
 from app.modules.kpi import repo as kpi_repo 
 from app.modules.kpi.models import (
-    KPIRecord, PeriodType, KPIFormula, FormulaStatus, 
+    KPIRecord, PeriodType, KPIFormula, FormulaStatus, KPIPeriodStatus,
     KPILevelSetting, KpiRule
 )
-from app.modules.kpi.engine import KPICalculationEngine, calculate_custom_period_kpi
+from app.modules.kpi.engine import KPICalculationEngine, calculate_custom_period_kpi, formula_max_score
 
 from app.modules.kpi.schemas import (
     KPIFormulaCreate, KPIFormulaUpdate, KPIFormulaResponse,
     KPILevelSettingUpdate, KPILevelSettingResponse, KPIRecordResponse,
     KPIOverrideRequest, KPIDeductionRequest, KPIFreezeRequest,
     KPIRankingResponse, KPIChartResponse, KpiReportSummaryResponse,
-    CustomKpiCalculationRequest, KPIChartPoint
+    CustomKpiCalculationRequest, KPIChartPoint,
+    BulkKpiCalculationRequest
 )
 
 # 🌟 1. Setup Production Logger
@@ -107,6 +108,7 @@ async def update_kpi_setting(
     current_user: User = Depends(allow_admins)
 ):
     enforce_permission(current_user, "system.settings.edit")
+    await enforce_department_scope(db, current_user, department_id)
     try:
         return await kpi_service.update_kpi_level_setting(db, level_name, payload)
     except SQLAlchemyError as e:
@@ -189,11 +191,13 @@ async def edit_kpi_formula(
 
 @router.get('/formulas', response_model=List[KPIFormulaResponse])
 async def get_kpi_formulas(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, gt=0, le=500),
     db: AsyncSession = Depends(get_db), 
     current_user: User = Depends(get_current_user)
 ):
     enforce_permission(current_user, "kpi.view")
-    return await kpi_repo.get_all_formulas(db)
+    return await kpi_repo.get_all_formulas(db, skip=skip, limit=limit)
 
 @router.put('/formulas/{formula_id}/toggle', response_model=KPIFormulaResponse)
 async def toggle_kpi_formula(
@@ -284,8 +288,7 @@ async def get_monthly_kpi_records(
     current_user: User = Depends(get_current_user)
 ):
     enforce_permission(current_user, "kpi.view")
-    if current_user.id != target_user_id and current_user.role.name not in ["Super Admin", "System Super Admin", "Admin"]:
-        raise HTTPException(status_code=403, detail="Not authorized to view other user's KPIs.")
+    await enforce_user_scope(db, current_user, target_user_id)
         
     try:
         return await kpi_service.get_kpi_records_by_user(db, target_user_id, "MONTHLY")
@@ -336,9 +339,16 @@ async def freeze_kpi_record(
 ):
     enforce_permission(current_user, "kpi.edit")
     try:
-        record = await db.get(KPIRecord, record_id)
+        record = (await db.execute(
+            select(KPIRecord).options(
+                selectinload(KPIRecord.period), selectinload(KPIRecord.formula)
+            ).where(KPIRecord.id == record_id)
+        )).scalars().first()
         if not record:
             raise HTTPException(status_code=404, detail="KPI Record not found.")
+        await enforce_user_scope(db, current_user, record.user_id)
+        if record.period and record.period.status in [KPIPeriodStatus.FINALIZED, KPIPeriodStatus.LOCKED, KPIPeriodStatus.CANCELLED]:
+            raise HTTPException(status_code=409, detail="Finalized KPI records require the correction workflow.")
 
         record.is_frozen = payload.is_frozen
         await db.commit()
@@ -357,9 +367,14 @@ async def override_kpi_record(
 ):
     enforce_permission(current_user, "kpi.edit")
     try:
-        record = await db.get(KPIRecord, record_id)
+        record = (await db.execute(
+            select(KPIRecord).options(
+                selectinload(KPIRecord.period), selectinload(KPIRecord.formula)
+            ).where(KPIRecord.id == record_id)
+        )).scalars().first()
         if not record:
             raise HTTPException(status_code=404, detail="KPI Record not found.")
+        await enforce_user_scope(db, current_user, record.user_id)
         if record.is_frozen:
             raise HTTPException(status_code=400, detail="This KPI is frozen and cannot be modified. Unfreeze it first.")
 
@@ -371,9 +386,11 @@ async def override_kpi_record(
         old_pct = float(record.percentage or 0.0)
 
         record.weighted_score = payload.new_score
-        record.percentage = (payload.new_score / 5.0) * 100 
-        record.grade = KPICalculationEngine.get_grade(record.percentage)
-        record.status_bucket = record.grade
+        max_score = formula_max_score(record.formula) if record.formula else 5.0
+        if payload.new_score > max_score:
+            raise HTTPException(status_code=400, detail=f"Override score cannot exceed {max_score}.")
+        record.percentage = 0.0 if max_score <= 0 else (payload.new_score / max_score) * 100
+        record.status_bucket = KPICalculationEngine.get_grade(record.percentage)
         record.is_overridden = True
         record.override_reason = payload.reason
 
@@ -405,9 +422,16 @@ async def deduct_kpi_record(
 ):
     enforce_permission(current_user, "kpi.edit")
     try:
-        record = await db.get(KPIRecord, record_id)
+        record = (await db.execute(
+            select(KPIRecord).options(
+                selectinload(KPIRecord.period), selectinload(KPIRecord.formula)
+            ).where(KPIRecord.id == record_id)
+        )).scalars().first()
         if not record:
             raise HTTPException(status_code=404, detail="KPI Record not found.")
+        await enforce_user_scope(db, current_user, record.user_id)
+        if record.period and record.period.status in [KPIPeriodStatus.FINALIZED, KPIPeriodStatus.LOCKED, KPIPeriodStatus.CANCELLED]:
+            raise HTTPException(status_code=409, detail="Finalized KPI records require the correction workflow.")
         if record.is_frozen:
             raise HTTPException(status_code=400, detail="This KPI is frozen and cannot be modified.")
 
@@ -422,9 +446,9 @@ async def deduct_kpi_record(
         old_pct = float(record.percentage or 0.0)
 
         record.weighted_score = max(0.0, record.weighted_score - payload.deduct_points)
-        record.percentage = (record.weighted_score / 5.0) * 100
-        record.grade = KPICalculationEngine.get_grade(record.percentage)
-        record.status_bucket = record.grade
+        max_score = formula_max_score(record.formula) if record.formula else 5.0
+        record.percentage = 0.0 if max_score <= 0 else (record.weighted_score / max_score) * 100
+        record.status_bucket = KPICalculationEngine.get_grade(record.percentage)
         record.is_overridden = True
         
         existing_reason = f"{record.override_reason} | " if record.override_reason else ""
@@ -456,7 +480,7 @@ async def deduct_kpi_record(
 @router.get('/dashboard/ranking', response_model=List[KPIRankingResponse], tags=["Dashboard"])
 async def get_kpi_ranking(
     period_type: PeriodType = PeriodType.MONTHLY,
-    limit: int = Query(10, le=100),
+    limit: int = Query(10, gt=0, le=100),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -469,9 +493,11 @@ async def get_kpi_ranking(
             joinedload(KPIRecord.user).selectinload(User.user_departments)
         ).where(
             KPIRecord.period_type == period_type,
+            KPIRecord.is_deleted == False,
+            KPIRecord.user.has(User.is_deleted == False),
             KPIRecord.period_start >= start_date
         ).order_by(
-            desc(KPIRecord.weighted_score)
+            desc(KPIRecord.weighted_score), KPIRecord.user_id, KPIRecord.id
         ).limit(limit)
         
         records = (await db.execute(stmt)).scalars().all()
@@ -497,7 +523,7 @@ async def get_kpi_ranking(
                 department_name=dept_name,
                 total_score=record.weighted_score,
                 percentage=record.percentage,
-                grade=record.grade.value if hasattr(record.grade, 'value') else str(record.grade),
+                grade=record.status_bucket.value if hasattr(record.status_bucket, 'value') else str(record.status_bucket),
                 rank=index + 1  
             ))
             
@@ -519,8 +545,7 @@ async def get_kpi_trend_chart(
     current_user: User = Depends(get_current_user)
 ):
     enforce_permission(current_user, "kpi.view")
-    if current_user.id != target_user_id and current_user.role.name not in ["Super Admin", "System Super Admin", "Admin", "Level 0", "Level 1"]:
-        raise HTTPException(status_code=403, detail="Not authorized to view other user's charts.")
+    await enforce_user_scope(db, current_user, target_user_id)
  
     try:
         start_date = datetime.now(APPLICATION_TIMEZONE).date() - timedelta(days=days_limit)
@@ -528,6 +553,7 @@ async def get_kpi_trend_chart(
         stmt = select(KPIRecord).where(
             KPIRecord.user_id == target_user_id,
             KPIRecord.period_type == period_type,
+            KPIRecord.is_deleted == False,
             KPIRecord.period_start >= start_date
         ).order_by(asc(KPIRecord.period_start))
         
@@ -563,6 +589,8 @@ async def get_kpi_summary_report(
     current_user: User = Depends(allow_reports)
 ):
     enforce_permission(current_user, "report.view")
+    if department_id is not None:
+        await enforce_department_scope(db, current_user, department_id)
     try:
         return await kpi_service.KpiReportService.generate_summary_report(
             db=db, 
@@ -636,7 +664,50 @@ async def trigger_custom_calculation(
 # ==============================================================================
 # 9. Audit Logs Extraction API
 # ==============================================================================
-@router.get('/audit-logs', response_model=List[AuditLogResponse], tags=["Audit & Logs"])
+
+@router.post('/calculate', tags=["KPI Engine"])
+async def bulk_calculate_endpoint(
+    payload: BulkKpiCalculationRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(allow_admins),
+):
+    """Bulk KPI calculation for multiple users.
+    If `user_ids` is empty, all active users are targeted.
+    """
+    enforce_permission(current_user, "kpi.calculate")
+    # Resolve target users
+    if payload.user_ids:
+        target_user_ids = payload.user_ids
+    else:
+        # fetch all active user ids
+        target_user_ids = await kpi_repo.get_active_user_ids(db)
+
+    if not target_user_ids:
+        raise HTTPException(status_code=400, detail="No users found for KPI calculation.")
+
+    # Validate dates
+    if payload.start_date >= payload.end_date:
+        raise HTTPException(status_code=400, detail="Start date must be before end date.")
+
+    if payload.run_in_background:
+        background_tasks.add_task(
+            kpi_service.bulk_calculate_kpis,
+            db,
+            target_user_ids,
+            payload.start_date.replace(tzinfo=None),
+            payload.end_date.replace(tzinfo=None),
+        )
+        return {"detail": "Bulk KPI calculation started in background."}
+
+    result = await kpi_service.bulk_calculate_kpis(
+        db,
+        target_user_ids,
+        payload.start_date.replace(tzinfo=None),
+        payload.end_date.replace(tzinfo=None),
+    )
+    return result
+
 async def get_system_audit_logs(
     limit: int = Query(100, le=1000), 
     db: AsyncSession = Depends(get_db),

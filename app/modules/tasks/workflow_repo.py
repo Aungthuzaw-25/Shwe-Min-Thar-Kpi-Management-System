@@ -26,7 +26,8 @@ async def submit_task_batch(
     )
     result = await db.execute(stmt)
     tasks = result.scalars().all()
-    if not tasks:
+    requested_ids = set(task_ids)
+    if not tasks or {task.id for task in tasks} != requested_ids:
         raise ValueError("တင်ပြရန် သင့်လျော်သော Task များ မတွေ့ရှိပါ။")
         
     if not reviewer_id:

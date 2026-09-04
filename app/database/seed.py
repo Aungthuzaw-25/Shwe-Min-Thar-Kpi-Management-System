@@ -17,7 +17,7 @@ from app.modules.departments.models import Department, UserDepartment
 # 🌟 Import ALL KPI Models correctly for Fully Relational Ecosystem
 from app.modules.kpi.models import (
     KPIFormula, FormulaStatus, FormulaScope, KPIScoringRuleItem, 
-    KPIPeriod, KPIPeriodStatus, KPIAssignment
+    KPIPeriod, KPIPeriodStatus, KPIAssignment, KpiCategory, KpiRule
 )
 
 ROLES = [
@@ -27,6 +27,35 @@ ROLES = [
     {"name": "HR", "description": "Human resources administration"},
     {"name": "Department User", "description": "Operational users (L0, L1, L2)"}
 ]
+
+
+def resolve_seed_password(*candidate_names: str) -> str | None:
+    for name in candidate_names:
+        value = os.getenv(name)
+        if value and value.strip():
+            return value
+    return None
+
+
+def resolve_user_password(email: str) -> str | None:
+    password_map = {
+        "cashier.mdy@kpi.com": (
+            "SEED_L2_PASSWORD",
+            "UI_TEST_L2_PASSWORD",
+            "SEED_DEMO_PASSWORD",
+        ),
+        "finance.l0@kpi.com": (
+            "SEED_L0_PASSWORD",
+            "UI_TEST_L0_PASSWORD",
+            "SEED_DEMO_PASSWORD",
+        ),
+        "finance.l1@kpi.com": (
+            "SEED_L1_PASSWORD",
+            "UI_TEST_L1_PASSWORD",
+            "SEED_DEMO_PASSWORD",
+        ),
+    }
+    return resolve_seed_password(*password_map.get(email, ("SEED_DEMO_PASSWORD",)))
 
 PERMISSION_CATALOG = [
     ("users.view", "View users"), ("users.create", "Create users"), ("users.edit", "Edit users"),
@@ -160,27 +189,34 @@ async def run_seed():
         stmt = select(User).where(User.email == sa_email)
         sa_user = (await db.execute(stmt)).scalar_one_or_none()
         
+        bootstrap_password = resolve_seed_password(
+            "SEED_SUPER_ADMIN_PASSWORD",
+            "UI_TEST_SUPERADMIN_PASSWORD",
+        )
         if not sa_user:
-            # 🌟 FIX: Removed position="System Administrator" string assignment
-            sa_user = User(
-                email=sa_email, first_name="System", last_name="Super Admin",
-                hashed_password=get_password_hash("SuperSecret123!"),
-                role_id=role_dict["Super Admin"].id, is_active=True, must_change_password=False
-            )
-            db.add(sa_user)
-            await db.commit()
-            await db.refresh(sa_user)
-            print("Super Admin created!")
-        else: 
-            sa_user.hashed_password = get_password_hash("SuperSecret123!")
-            sa_user.must_change_password = False
+            if bootstrap_password:
+                sa_user = User(
+                    email=sa_email, first_name="System", last_name="Super Admin",
+                    hashed_password=get_password_hash(bootstrap_password),
+                    role_id=role_dict["Super Admin"].id, is_active=True, must_change_password=False
+                )
+                db.add(sa_user)
+                await db.commit()
+                await db.refresh(sa_user)
+                print("Super Admin created!")
+            else:
+                print("Skipping Super Admin bootstrap: no seed password was configured.")
+        elif bootstrap_password:
+            sa_user.hashed_password = get_password_hash(bootstrap_password)
             sa_user.is_active = True
-            sa_user.is_locked = False
             sa_user.failed_login_attempts = 0
+            sa_user.is_locked = False
             sa_user.lockout_until = None
+            sa_user.must_change_password = False
             await db.commit()
-            await db.refresh(sa_user)
-            print("Existing Super Admin updated/unlocked!")
+            print("Super Admin credentials refreshed from seed configuration.")
+        else:
+            print("Super Admin already exists; preserving its credential and account state.")
 
         # 🌟 4. KPI Period Setup (Active Cycle) 🌟
         target_date = datetime.now(timezone.utc)
@@ -306,8 +342,41 @@ async def run_seed():
                     new_f.version = 1
                     new_f.created_by_id = sa_user.id
                     
+                    # Upsert KPI categories (create if not exists)
+                    for cat in f["cats"]:
+                        cat_name = cat.get("name")
+                        if cat_name:
+                            stmt_cat = select(KpiCategory).where(KpiCategory.name == cat_name)
+                            existing_cat = (await db.execute(stmt_cat)).scalar_one_or_none()
+                            if not existing_cat:
+                                new_cat = KpiCategory(name=cat_name)
+                                db.add(new_cat)
+                                await db.commit()
+                                await db.refresh(new_cat)
+                            # Create or ensure KpiRule entry for this category
+                            stmt_rule = select(KpiRule).where(
+                                KpiRule.department_id == finance_dept_id,
+                                KpiRule.position_id == pos_obj.id,
+                                KpiRule.level == f["lvl"],
+                                KpiRule.category_name == cat_name,
+                            )
+                            existing_rule = (await db.execute(stmt_rule)).scalar_one_or_none()
+                            if not existing_rule:
+                                new_rule = KpiRule(
+                                    department_id=finance_dept_id,
+                                    position_id=pos_obj.id,
+                                    level=f["lvl"],
+                                    category_name=cat_name,
+                                    weight=cat.get("weight", 0.0),
+                                    is_active=True,
+                                )
+                                db.add(new_rule)
+                                await db.commit()
+                                await db.refresh(new_rule)
+                    
                     formulas_to_add.append(new_f)
                     created_formula_maps[f["formula_title"]] = {"formula_id": new_f.id, "position_id": pos_obj.id}
+
 
                     # 🌟 Normalized Scoring Rules များ သေချာ ထည့်သွင်းခြင်း
                     for cat in f["cats"]:
@@ -336,58 +405,141 @@ async def run_seed():
                     print(f"Skipped: {f['formula_title']} (Already Exists)")
                     created_formula_maps[f["formula_title"]] = {"formula_id": exists.id, "position_id": pos_obj.id}
 
-        if formulas_to_add:
-            db.add_all(formulas_to_add)
-        if rules_to_add:
-            db.add_all(rules_to_add)
-        await db.commit()
+        # Insert formulas individually to avoid large transaction overload
+        for formula in formulas_to_add:
+            db.add(formula)
+            await db.commit()
+
+        # Insert scoring rules in manageable batches (e.g., 100 at a time)
+        batch_size = 100
+        for i in range(0, len(rules_to_add), batch_size):
+            db.add_all(rules_to_add[i:i + batch_size])
+            await db.commit()
+            # Redundant batch insertion removed
+        # Redundant rule batch insertion removed – rules already inserted in batches above
 
         # 🌟 6. Link Everything Together (User -> Assignment -> Formula -> Period) 🌟
         print("Finalizing KPI Assignments linking...")
         
-        # Test User အနေဖြင့် 'Cashier MDY' ကို ဖန်တီး၍ ချိတ်ဆက်ပြပါမည်
         test_email = "cashier.mdy@kpi.com"
+        demo_password = resolve_user_password(test_email)
         stmt = select(User).where(User.email == test_email)
         test_user = (await db.execute(stmt)).scalars().first()
         
         if "Cashier KPI (MDY)" in created_formula_maps:
             f_map = created_formula_maps["Cashier KPI (MDY)"]
-            
-            if not test_user:
-                # 🌟 FIX: Removed position="Cashier" string assignment
+
+            if not test_user and demo_password:
                 test_user = User(
-                    email=test_email, first_name="Aung", last_name="Cashier", 
-                    position_id=f_map["position_id"], 
-                    hashed_password=get_password_hash("Secret123!"), 
-                    role_id=role_dict["Department User"].id, is_active=True
+                    email=test_email,
+                    first_name="Aung",
+                    last_name="Cashier",
+                    position_id=f_map["position_id"],
+                    hashed_password=get_password_hash(demo_password),
+                    role_id=role_dict["Department User"].id,
+                    is_active=True,
+                    must_change_password=False,
                 )
                 db.add(test_user)
                 await db.commit()
                 await db.refresh(test_user)
-                
+
                 db.add(UserDepartment(user_id=test_user.id, department_id=finance_dept_id, user_level="L2"))
                 await db.commit()
-            
-            # သက်ဆိုင်ရာ Assignment တည်ဆောက်ခြင်း
-            stmt = select(KPIAssignment).where(
-                KPIAssignment.user_id == test_user.id, 
-                KPIAssignment.kpi_period_id == period.id
-            )
-            assignment = (await db.execute(stmt)).scalars().first()
-            if not assignment:
-                assignment = KPIAssignment(
-                    department_id=finance_dept_id,
-                    position_id=f_map["position_id"],
-                    user_id=test_user.id,
-                    kpi_formula_id=f_map["formula_id"],
-                    kpi_period_id=period.id,
-                    assigned_by_id=sa_user.id,
-                    assigned_at=datetime.now(timezone.utc).replace(tzinfo=None)
-                )
-                db.add(assignment)
+            elif test_user and demo_password:
+                test_user.hashed_password = get_password_hash(demo_password)
+                test_user.is_active = True
+                test_user.failed_login_attempts = 0
+                test_user.is_locked = False
+                test_user.lockout_until = None
+                test_user.must_change_password = False
                 await db.commit()
-                print("✅ KPI Assignment (Cashier MDY) successfully linked with Formula & Period!")
 
+            if test_user and period and sa_user:
+                existing_assignment = (await db.execute(
+                    select(KPIAssignment).where(
+                        KPIAssignment.user_id == test_user.id,
+                        KPIAssignment.kpi_formula_id == f_map["formula_id"],
+                        KPIAssignment.kpi_period_id == period.id,
+                        KPIAssignment.is_deleted == False,
+                    )
+                )).scalars().first()
+                if not existing_assignment:
+                    db.add(KPIAssignment(
+                        department_id=finance_dept_id,
+                        position_id=f_map["position_id"],
+                        user_id=test_user.id,
+                        kpi_formula_id=f_map["formula_id"],
+                        kpi_period_id=period.id,
+                        assigned_by_id=sa_user.id,
+                        assigned_at=datetime.now(timezone.utc).replace(tzinfo=None),
+                    ))
+                    await db.commit()
+
+        position_dict = {}
+        finance_positions = (await db.execute(
+            select(Position).where(Position.department_id == finance_dept_id)
+        )).scalars().all()
+        for position in finance_positions:
+            position_dict[position.name] = position
+
+        if "Accountant" not in position_dict:
+            accountant_position = Position(name="Accountant", department_id=finance_dept_id)
+            db.add(accountant_position)
+            await db.commit()
+            await db.refresh(accountant_position)
+            position_dict[accountant_position.name] = accountant_position
+
+        async def _ensure_finance_user(email: str, last_name: str, user_level: str):
+            existing = (await db.execute(select(User).where(User.email == email))).scalars().first()
+            password = resolve_user_password(email)
+
+            if existing:
+                if password:
+                    existing.hashed_password = get_password_hash(password)
+                    existing.is_active = True
+                    existing.failed_login_attempts = 0
+                    existing.is_locked = False
+                    existing.lockout_until = None
+                    existing.must_change_password = False
+                    if not existing.position_id and position_dict.get("Accountant"):
+                        existing.position_id = position_dict["Accountant"].id
+                dept_link = (await db.execute(
+                    select(UserDepartment).where(
+                        UserDepartment.user_id == existing.id,
+                        UserDepartment.department_id == finance_dept_id,
+                    )
+                )).scalars().first()
+                if not dept_link:
+                    db.add(UserDepartment(user_id=existing.id, department_id=finance_dept_id, user_level=user_level))
+                elif dept_link.user_level != user_level:
+                    dept_link.user_level = user_level
+                await db.commit()
+                return existing
+
+            if not password:
+                return None
+            user = User(
+                email=email,
+                first_name="Finance",
+                last_name=last_name,
+                position_id=position_dict.get("Accountant").id,
+                hashed_password=get_password_hash(password),
+                role_id=role_dict["Department User"].id,
+                is_active=True,
+                must_change_password=False,
+            )
+            db.add(user)
+            await db.commit()
+            await db.refresh(user)
+            db.add(UserDepartment(user_id=user.id, department_id=finance_dept_id, user_level=user_level))
+            await db.commit()
+            return user
+
+        await _ensure_finance_user("finance.l0@kpi.com", "L0", "L0")
+        await _ensure_finance_user("finance.l1@kpi.com", "L1", "L1")
+
+        print("KPI assignment and department user seed complete.")
         print("✅ Database seeding completed successfully! All rules and relations are perfectly configured.")
 
 if __name__ == "__main__":

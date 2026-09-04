@@ -2,6 +2,7 @@ import boto3
 import uuid
 import logging
 import time
+import os
 from botocore.exceptions import ClientError, EndpointConnectionError
 from fastapi import UploadFile, HTTPException
 from fastapi.concurrency import run_in_threadpool # 🌟 ADDED: For Non-Blocking I/O
@@ -9,6 +10,7 @@ from botocore.client import Config
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+MAX_UPLOAD_SIZE = 10 * 1024 * 1024
 
 class StorageService:
     def __init__(self):
@@ -95,20 +97,29 @@ class StorageService:
             # 🌟 PERFORMANCE & BUG FIX: Offload synchronous boto3 call to a separate thread
             # This prevents the FastAPI event loop from being blocked, ensuring large files upload successfully.
 
-            # 1. Spool file content into memory (safe since we have a 10MB limit in the router)
-            content = await file.read()
+            # Validate the spooled upload before handing the file object to boto3.
+            file_object = file.file
+            current_position = file_object.tell()
+            file_object.seek(0, os.SEEK_END)
+            file_size = file_object.tell()
+            file_object.seek(current_position)
+            if file_size > MAX_UPLOAD_SIZE:
+                raise HTTPException(status_code=413, detail="File exceeds the 10 MB upload limit.")
+            file_object.seek(0)
 
-            # 2. Use run_in_threadpool to execute the blocking put_object call
+            # Stream the spooled file instead of duplicating the entire payload in memory.
             await run_in_threadpool(
-                self.s3_client.put_object,
+                self.s3_client.upload_fileobj,
                 Bucket=self.bucket_name,
                 Key=object_name,
-                Body=content,
-                ContentType=file.content_type
+                Fileobj=file_object,
+                ExtraArgs={"ContentType": file.content_type or "application/octet-stream"},
             )
 
             return object_name
 
+        except HTTPException:
+            raise
         except ClientError as e:
             logger.error(f"AWS ClientError during upload: {str(e)}")
             raise HTTPException(status_code=500, detail="Storage service error during upload")

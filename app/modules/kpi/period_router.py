@@ -17,7 +17,16 @@ router = APIRouter(prefix="/periods", tags=["KPI Periods"])
 # 🌟 Security: Restrict access to HR and Admins
 admin_only = RoleChecker(["Super Admin", "Admin", "HR"])
 
-@router.post("/", response_model=KPIPeriodResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(admin_only)])
+@router.post(
+    "/",
+    response_model=KPIPeriodResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(admin_only)],
+    responses={
+        status.HTTP_400_BAD_REQUEST: {"description": "Invalid period dates"},
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {"description": "Database error"},
+    },
+)
 async def create_kpi_period(payload: KPIPeriodCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Initialize a new KPI evaluation cycle (e.g., Q3 2026 or August 2026)"""
     enforce_permission(current_user, "kpi.create")
@@ -39,7 +48,7 @@ async def create_kpi_period(payload: KPIPeriodCreate, db: AsyncSession = Depends
         await db.commit()
         await db.refresh(new_period)
         return new_period
-    except Exception as e:
+    except Exception:
         # ⚡ SECURITY & INTEGRITY FIX: Added Rollback
         await db.rollback()
         raise HTTPException(status_code=500, detail="Database error occurred while creating period.")
@@ -73,7 +82,16 @@ async def update_period_status(
 # =======================================================================
 # 🌟 NEW FEATURE: DELETE DRAFT PERIOD (ယခင် မေးထားသော ဖျက်ခွင့်ပြုရန် API အသစ်)
 # =======================================================================
-@router.delete("/{period_id}", status_code=status.HTTP_200_OK, dependencies=[Depends(admin_only)])
+@router.delete(
+    "/{period_id}",
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(admin_only)],
+    responses={
+        status.HTTP_400_BAD_REQUEST: {"description": "Only draft periods can be deleted"},
+        status.HTTP_404_NOT_FOUND: {"description": "KPI period not found"},
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {"description": "Database error"},
+    },
+)
 async def delete_kpi_period(
     period_id: UUID, 
     db: AsyncSession = Depends(get_db),
@@ -101,6 +119,6 @@ async def delete_kpi_period(
         period.is_deleted = True
         await db.commit()
         return {"success": True, "message": "Draft period deleted successfully."}
-    except Exception as e:
+    except Exception:
         await db.rollback()
         raise HTTPException(status_code=500, detail="Error occurred while deleting period.")

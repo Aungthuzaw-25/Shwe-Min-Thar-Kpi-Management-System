@@ -176,6 +176,27 @@ async def render_superadmin_users_view(
 # ==============================================================
 # Departments Management Web Route 
 # ==============================================================
+@router.get("/superadmin/super-admins", include_in_schema=False)
+async def render_super_admin_management_view(
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    if not current_user or not current_user.role:
+        return RedirectResponse(url="/auth/login")
+    if not verify_role(current_user, ['Super Admin', 'System Super Admin']):
+        return RedirectResponse(url="/dashboard")
+
+    return templates.TemplateResponse(
+        request=request,
+        name="dashboard/super_admin_management.html",
+        context={
+            "user_role": current_user.role.name,
+            "user_name": f"{current_user.first_name} {current_user.last_name}",
+            "user_email": current_user.email
+        }
+    )
+
+
 @router.get("/superadmin/departments", include_in_schema=False)
 async def render_departments_view(
     request: Request, 

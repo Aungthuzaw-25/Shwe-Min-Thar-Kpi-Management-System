@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
+﻿from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 from fastapi.concurrency import run_in_threadpool # ⚡ PERFORMANCE FIX
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -20,6 +20,7 @@ from app.core.config import settings
 
 # 🌟 MODIFIED: Imported TokenBlacklist from unified models
 from app.modules.auth.models import LoginHistory, TokenBlacklist
+from app.modules.auth.service import AuthService
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
@@ -30,8 +31,25 @@ router = APIRouter()
 # 🌟 SECURITY: Dummy bcrypt hash to prevent timing attacks
 DUMMY_PASSWORD_HASH = "$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjIQ6VSAca"
 
-# 🌟 SECURITY: Ensure cookies are sent securely in production
+# 🌟 SECURITY: Ensure cookies are sent securely only on HTTPS, including local HTTP testing
 IS_PRODUCTION = getattr(settings, "ENV", "development").lower() == "production"
+
+
+def cookie_secure_for_request(request: Request) -> bool:
+    forwarded_proto = request.headers.get("x-forwarded-proto")
+    if forwarded_proto:
+        proto = forwarded_proto.split(",")[0].strip().lower()
+        if proto == "https":
+            host = (request.url.hostname or "").lower()
+            return host not in {"localhost", "127.0.0.1", "::1"}
+        return False
+
+    host = (request.url.hostname or "").lower()
+    if host in {"localhost", "127.0.0.1", "::1"}:
+        return False
+
+    return request.url.scheme == "https"
+
 
 @router.get('/me')
 async def get_current_user_context(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
@@ -79,6 +97,23 @@ async def login(request: Request, response: Response, payload: LoginRequest, db:
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     client_ip = request.client.host if request.client else 'Unknown'
     user_agent = request.headers.get('user-agent', 'Unknown')
+
+    # Keep JSON login and Swagger login on the same authentication policy.
+    auth_result = await AuthService.authenticate_user(
+        db, payload.email, payload.password, client_ip, user_agent
+    )
+    secure_cookie = cookie_secure_for_request(request)
+    response.set_cookie(
+        key="access_token", value=auth_result["access_token"], httponly=True,
+        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        samesite="strict", secure=secure_cookie,
+    )
+    response.set_cookie(
+        key="refresh_token", value=auth_result["refresh_token"], httponly=True,
+        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
+        samesite="strict", secure=secure_cookie,
+    )
+    return auth_result
 
     stmt = select(User).options(
         selectinload(User.role),
@@ -150,25 +185,25 @@ async def login(request: Request, response: Response, payload: LoginRequest, db:
     access_token = security.create_access_token(data=token_data)
     refresh_token = security.create_refresh_token(data=token_data)
 
-    # 🛡️ SECURITY FIX: Upgraded to Strict CSRF Protection via samesite="strict"
+    secure_cookie = cookie_secure_for_request(request)
     response.set_cookie(
         key="access_token",
-        value=f"Bearer {access_token}",
+        value=access_token,
         httponly=True,
         max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-        samesite="strict", 
-        secure=IS_PRODUCTION 
+        samesite="strict",
+        secure=secure_cookie,
     )
-    
-    # 🛡️ SECURITY FIX: Upgraded to Strict CSRF Protection via samesite="strict"
+
     response.set_cookie(
         key="refresh_token",
         value=refresh_token,
         httponly=True,
         max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
         samesite="strict",
-        secure=IS_PRODUCTION
+        secure=secure_cookie
     )
+
 
     user_dict = {
         "id": str(user.id),
@@ -205,33 +240,17 @@ async def login_for_swagger(
     Swagger UI က 'username' ဆိုတဲ့ field နဲ့ ပို့လိုက်တဲ့ Data ကို 
     ဒီ Route က 'email' အဖြစ်ပြောင်းပြီး Database မှာ တိုက်စစ်ပေးပါမယ်။
     """
-    stmt = select(User).where(User.email == form_data.username) 
-    result = await db.execute(stmt)
-    user = result.scalars().first()
-
-    if not user:
-        await run_in_threadpool(security.verify_password, form_data.password, DUMMY_PASSWORD_HASH)
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Incorrect email or password.')
-
-    if not user.is_active or user.is_deleted:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Account disabled or deleted.')
-
-    # Verify Password
-    is_valid_password = await run_in_threadpool(security.verify_password, payload.password, user.hashed_password)
-
-    if not is_valid_password:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Incorrect email or password.')
-
-    # Generate Access Token
-    role_value = str(user.role_id)
-    user_level = 'L2'
-    
-    token_data = {'sub': user.email, 'user_id': str(user.id), 'role': role_value, 'level': user_level}
-    access_token = security.create_access_token(data=token_data)
+    result = await AuthService.authenticate_user(
+        db,
+        form_data.username,
+        form_data.password,
+        ip_address=request.client.host if request.client else "Unknown",
+        user_agent=request.headers.get("user-agent", "Unknown"),
+    )
 
     # Swagger က အတိအကျတောင်းဆိုတဲ့ format
     return {
-        "access_token": access_token,
+        "access_token": result["access_token"],
         "token_type": "bearer"
     }
 
@@ -294,6 +313,11 @@ async def refresh_token(request: Request, response: Response, payload: RefreshTo
     if not user or user.is_deleted or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='User not found or account is inactive.')
 
+    # Rotation makes a refresh token single-use. A second presentation is
+    # rejected by the blacklist check above.
+    db.add(TokenBlacklist(token=token_to_verify))
+    await db.commit()
+
     role_value = user.role.name if user.role else str(user.role_id)
     user_level = 'L2'
     if user.user_departments and len(user.user_departments) > 0:
@@ -304,8 +328,9 @@ async def refresh_token(request: Request, response: Response, payload: RefreshTo
     new_refresh_token = security.create_refresh_token(data=token_data)
 
     # 🛡️ SECURITY FIX: Upgraded to Strict CSRF Protection via samesite="strict"
-    response.set_cookie(key="access_token", value=f"Bearer {new_access_token}", httponly=True, max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60, samesite="strict", secure=IS_PRODUCTION)
-    response.set_cookie(key="refresh_token", value=new_refresh_token, httponly=True, max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60, samesite="strict", secure=IS_PRODUCTION)
+    secure_cookie = cookie_secure_for_request(request)
+    response.set_cookie(key="access_token", value=new_access_token, httponly=True, max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60, samesite="strict", secure=secure_cookie)
+    response.set_cookie(key="refresh_token", value=new_refresh_token, httponly=True, max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60, samesite="strict", secure=secure_cookie)
 
     return {'access_token': new_access_token, 'refresh_token': new_refresh_token, 'token_type': 'bearer'}
 
@@ -318,8 +343,8 @@ async def logout(request: Request, response: Response, db: AsyncSession = Depend
         access_token = auth_header.split(" ")[1]
     else:
         cookie_token = request.cookies.get("access_token")
-        if cookie_token and cookie_token.startswith("Bearer "):
-            access_token = cookie_token.split(" ")[1]
+        if cookie_token:
+            access_token = cookie_token.removeprefix("Bearer ").strip()
 
     # 2. Extract Refresh Token
     refresh_token = request.cookies.get("refresh_token")
@@ -345,7 +370,8 @@ async def logout(request: Request, response: Response, db: AsyncSession = Depend
             await db.rollback()
 
     # 🛡️ SECURITY FIX: Explicitly clear the strict cookies on logout
-    response.delete_cookie(key="access_token", httponly=True, samesite="strict", secure=IS_PRODUCTION)
-    response.delete_cookie(key="refresh_token", httponly=True, samesite="strict", secure=IS_PRODUCTION)
+    secure_cookie = cookie_secure_for_request(request)
+    response.delete_cookie(key="access_token", httponly=True, samesite="strict", secure=secure_cookie)
+    response.delete_cookie(key="refresh_token", httponly=True, samesite="strict", secure=secure_cookie)
     
     return {"message": "Logged out and tokens revoked successfully."}

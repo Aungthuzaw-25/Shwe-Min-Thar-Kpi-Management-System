@@ -1,9 +1,11 @@
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy import text
 from datetime import datetime, timedelta
 import pytz
 import logging
+import hashlib
 
 from app.database.connection import AsyncSessionLocal
 from app.modules.kpi.models import KPIRecord, PeriodType 
@@ -17,6 +19,57 @@ from app.core.timezone import APPLICATION_TIMEZONE
 
 logger = logging.getLogger(__name__)
 timezone = APPLICATION_TIMEZONE
+
+
+async def _run_with_lock(job_name, job):
+    """Run a scheduled job only while holding its PostgreSQL advisory lock."""
+    async with AsyncSessionLocal() as db:
+        lock_key = int.from_bytes(
+            hashlib.sha256(job_name.encode("utf-8")).digest()[:8],
+            "big",
+        ) % 2147483647
+        acquired = await db.scalar(
+            text("SELECT pg_try_advisory_lock(:lock_key)"),
+            {"lock_key": lock_key},
+        )
+        if not acquired:
+            logger.warning("Skipping scheduler job already running: %s", job_name)
+            return
+        try:
+            await job()
+        finally:
+            await db.execute(
+                text("SELECT pg_advisory_unlock(:lock_key)"),
+                {"lock_key": lock_key},
+            )
+            await db.commit()
+
+
+async def _locked_weekly_kpi():
+    await _run_with_lock("kpi.weekly_rollup", generate_weekly_kpi)
+
+
+async def _locked_monthly_kpi():
+    await _run_with_lock("kpi.monthly_rollup", generate_monthly_kpi)
+
+
+async def _locked_recurring_tasks():
+    await _run_with_lock("tasks.recurring", run_recurring_tasks_job)
+
+
+async def _locked_escalation():
+    await _run_with_lock("tasks.escalation", run_escalation_job)
+
+
+async def _locked_notifications():
+    await _run_with_lock(
+        "notifications.batch",
+        lambda: _run_sync_notification_job(),
+    )
+
+
+async def _run_sync_notification_job():
+    process_batch_notifications()
 
 # ==============================================================================
 # 1. KPI Rollup Tasks (Weekly & Monthly)
@@ -51,9 +104,9 @@ async def generate_weekly_kpi():
                 
             await db.commit()
             logger.info("✅ Weekly KPI Rollup completed successfully.")
-        except Exception as e:
+        except Exception:
             await db.rollback()
-            logger.error(f"❌ Error in Weekly KPI Rollup: {str(e)}")
+            logger.exception("Error in Weekly KPI Rollup")
 
 async def generate_monthly_kpi():
     """လွန်ခဲ့သော တစ်လစာ KPI များကို ပေါင်းချုပ်၍ Monthly Final KPI အဖြစ် အတည်ပြုခြင်း"""
@@ -85,9 +138,9 @@ async def generate_monthly_kpi():
 
             await db.commit()
             logger.info("✅ Monthly KPI Final Rollup completed successfully.")
-        except Exception as e:
+        except Exception:
             await db.rollback()
-            logger.error(f"❌ Error in Monthly KPI Rollup: {str(e)}")
+            logger.exception("Error in Monthly KPI Rollup")
 
 # ==============================================================================
 # 2. Workflow Tasks Wrappers (Task Scheduler Async Bridge)
@@ -98,8 +151,8 @@ async def run_recurring_tasks_job():
     async with AsyncSessionLocal() as db:
         try:
             await generate_recurring_tasks(db)
-        except Exception as e:
-            logger.error(f"❌ Error in Recurring Tasks Job: {str(e)}")
+        except Exception:
+            logger.exception("Error in Recurring Tasks Job")
 
 async def run_escalation_job():
     """DB Session ဖွင့်၍ Pending ကြာနေသော Task များကို Escalation လုပ်မည့် Wrapper"""
@@ -108,8 +161,8 @@ async def run_escalation_job():
         try:
             await process_task_escalation(db)
             await send_task_reminders(db)
-        except Exception as e:
-            logger.error(f"❌ Error in Task Escalation Job: {str(e)}")
+        except Exception:
+            logger.exception("Error in Task Escalation Job")
 
 # ==============================================================================
 # 3. Main Scheduler Controller
@@ -121,29 +174,36 @@ def start_scheduler():
     # --------------------------------------------------------------------------
     # A. KPI Rollup Schedule (Weekly & Monthly)
     # --------------------------------------------------------------------------
-    scheduler.add_job(generate_weekly_kpi, 'cron', day_of_week='mon', hour=1, minute=0)
-    scheduler.add_job(generate_monthly_kpi, 'cron', day=1, hour=2, minute=0)
+    scheduler.add_job(_locked_weekly_kpi, 'cron', day_of_week='mon', hour=1, minute=0,
+                      id='weekly_kpi_rollup', coalesce=True, max_instances=1)
+    scheduler.add_job(_locked_monthly_kpi, 'cron', day=1, hour=2, minute=0,
+                      id='monthly_kpi_rollup', coalesce=True, max_instances=1)
 
     # --------------------------------------------------------------------------
     # B. Workflow & Task Management Schedule (မူလအတိုင်း အပြည့်အစုံ ပါရှိသည်)
     # --------------------------------------------------------------------------
     # နေ့စဉ် ည ၁၂ နာရီခွဲ (00:30 AM) - နောက်တစ်နေ့အတွက် Recurring Tasks အသစ်မွေးဖွားရန်
-    scheduler.add_job(run_recurring_tasks_job, 'cron', hour=0, minute=30)
+    scheduler.add_job(_locked_recurring_tasks, 'cron', hour=0, minute=30,
+                      id='recurring_tasks', coalesce=True, max_instances=1)
     
     # နေ့စဉ် ညနေ ၆ နာရီ (06:00 PM) - ရုံးဆင်းချိန်တွင် ကြန့်ကြာနေသော Task များကို Escalation စစ်ရန်
-    scheduler.add_job(run_escalation_job, 'cron', hour=18, minute=0)
+    scheduler.add_job(_locked_escalation, 'cron', hour=18, minute=0,
+                      id='task_escalation', coalesce=True, max_instances=1)
 
     # --------------------------------------------------------------------------
     # C. Notifications Schedule
     # --------------------------------------------------------------------------
     # Grouped/Batch Notifications များကို မိနစ် ၃၀ တစ်ခါ ပို့ပေးရန်
     scheduler.add_job(
-        process_batch_notifications, 
+        _locked_notifications,
         'interval', 
         minutes=30, 
         id='batch_notification_job',
-        replace_existing=True
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
     )
 
     scheduler.start()
     logger.info("🚀 System Scheduler (KPI & Workflow Engine & Notifications) started successfully.")
+    return scheduler

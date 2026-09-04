@@ -46,12 +46,20 @@
         .toast-enter { animation: slideIn 0.3s ease-out forwards; }
         .toast-exit { animation: fadeOut 0.3s ease-out forwards; }
         .animate-fade-in-up { animation: fadeInUp 0.4s ease-out forwards; }
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                scroll-behavior: auto !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
     </style>
 </head>
 <body class="flex h-screen overflow-hidden text-slate-800 relative">
 
     <!-- 📱 MOBILE RESPONSIVE FIX: Sidebar Backdrop Overlay -->
-    <div id="sidebarBackdrop" class="fixed inset-0 bg-slate-900/50 z-20 hidden md:hidden transition-opacity" onclick="toggleMobileSidebar()"></div>
+    
 
     <!-- 🌟 SIDEBAR NAVIGATION -->
     <aside id="mainSidebar" class="w-[260px] bg-slate-900 text-white flex-col shrink-0 transition-transform duration-300 absolute md:relative inset-y-0 left-0 z-30 shadow-2xl transform -translate-x-full md:translate-x-0 flex">
@@ -62,7 +70,7 @@
                 KPI <span class="font-normal opacity-70 ml-1">Core</span>
             </h1>
             <!-- Mobile Close Button inside Sidebar -->
-            <button class="md:hidden text-slate-400 hover:text-white focus:outline-none" onclick="toggleMobileSidebar()">
+            <button type="button" class="md:hidden text-slate-400 hover:text-white focus:outline-none" onclick="toggleMobileSidebar()" aria-label="Close navigation menu">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
             </button>
         </div>
@@ -128,7 +136,7 @@
                 </div>
 
                 <!-- Notification Bell (Animated Ping) -->
-                <button onclick="toggleNotifications(event)" id="bellBtn" class="relative p-2 text-slate-400 hover:text-white rounded-xl hover:bg-slate-700 transition focus:outline-none shrink-0 ml-1">
+                <button type="button" onclick="toggleNotifications(event)" id="bellBtn" class="relative p-2 text-slate-400 hover:text-white rounded-xl hover:bg-slate-700 transition focus:outline-none shrink-0 ml-1" aria-label="Notifications" aria-controls="notifDropdown" aria-expanded="false">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
                     <!-- Ping Animation Badge -->
                     <span id="unreadPing" class="hidden absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
@@ -139,18 +147,18 @@
             </div>
 
             <!-- Logout Button -->
-            <button onclick="handleLogout()" class="flex items-center justify-center w-full px-4 py-2.5 text-xs font-bold text-slate-400 bg-transparent hover:bg-red-500/10 rounded-xl hover:text-red-400 transition-all border border-slate-700/50 hover:border-red-500/30 focus:outline-none">
+            <button type="button" onclick="handleLogout()" class="flex items-center justify-center w-full px-4 py-2.5 text-xs font-bold text-slate-400 bg-transparent hover:bg-red-500/10 rounded-xl hover:text-red-400 transition-all border border-slate-700/50 hover:border-red-500/30 focus:outline-none">
                 <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
                 Secure Sign Out
             </button>
 
             <!-- NOTIFICATION DROPDOWN POPUP -->
-            <div id="notifDropdown" class="hidden absolute bottom-full mb-4 right-0 w-72 sm:w-80 bg-white border border-slate-200 rounded-3xl shadow-2xl z-[9999] overflow-hidden flex-col text-slate-800 transform transition-all duration-300">
+            <div id="notifDropdown" role="region" aria-label="Notifications" class="hidden absolute bottom-full mb-4 right-0 w-72 sm:w-80 bg-white border border-slate-200 rounded-3xl shadow-2xl z-[9999] overflow-hidden flex-col text-slate-800 transform transition-all duration-300">
                 <div class="p-4 sm:p-5 bg-slate-50 border-b border-slate-100 flex justify-between items-center shrink-0">
                     <h3 class="text-xs sm:text-sm font-extrabold text-slate-900">Notifications</h3>
                     <button onclick="markAllAsRead()" class="text-[9px] sm:text-[10px] text-blue-600 hover:text-blue-800 font-extrabold uppercase tracking-wide transition focus:outline-none">Mark all read</button>
                 </div>
-                <div id="notifList" class="max-h-[300px] sm:max-h-[350px] overflow-y-auto custom-scrollbar divide-y divide-slate-50 bg-white">
+                <div id="notifList" aria-live="polite" class="max-h-[300px] sm:max-h-[350px] overflow-y-auto custom-scrollbar divide-y divide-slate-50 bg-white">
                     <div class="p-8 text-center text-slate-400 text-xs font-medium">Loading notifications...</div>
                 </div>
                 <div class="p-3 sm:p-4 bg-slate-50 border-t border-slate-100 text-center shrink-0">
@@ -169,7 +177,7 @@
                 <span class="bg-blue-600 text-white p-1.5 rounded-lg mr-2 shadow-sm"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg></span>
                 KPI Core
             </h1>
-            <button class="text-slate-400 hover:text-white focus:outline-none" onclick="toggleMobileSidebar()">
+            <button type="button" class="text-slate-400 hover:text-white focus:outline-none" onclick="toggleMobileSidebar()" aria-label="Open navigation menu" aria-controls="mainSidebar" aria-expanded="false">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
             </button>
         </div>
@@ -221,10 +229,23 @@
         window.fetch = async function() {
             try {
                 let response = await originalFetch.apply(this, arguments);
-                if ((response.status === 401 || response.status === 403) && !window.location.pathname.includes('/login')) {
-                    localStorage.removeItem('user'); // Clear ghost sessions
-                    window.location.href = '/auth/login?session_expired=true';
+                
+                // Only intercept if we are not already on the login page
+                if (!window.location.pathname.includes('/login')) {
+                    
+                    // 401: Token expired or invalid -> Log them out
+                    if (response.status === 401) {
+                        localStorage.removeItem('user'); // Clear ghost sessions
+                        window.location.href = '/auth/login?session_expired=true';
+                    } 
+                    // 403: Permission Denied -> Do NOT log out, just show a warning
+                    else if (response.status === 403) {
+                        if (typeof window.showToast === 'function') {
+                            window.showToast("Permission Denied: You do not have access to this data.", "error");
+                        }
+                    }
                 }
+                
                 return response;
             } catch (err) {
                 throw err;
@@ -236,8 +257,11 @@
             const sidebar = document.getElementById("mainSidebar");
             const backdrop = document.getElementById("sidebarBackdrop");
             if (sidebar && backdrop) {
-                sidebar.classList.toggle("-translate-x-full");
-                backdrop.classList.toggle("hidden");
+                const isOpen = sidebar.classList.toggle("-translate-x-full") === false;
+                backdrop.classList.toggle("hidden", !isOpen);
+                document.querySelectorAll('[aria-controls="mainSidebar"]').forEach(button => {
+                    button.setAttribute("aria-expanded", String(isOpen));
+                });
                 document.body.classList.toggle("overflow-hidden");
             }
         }
@@ -288,11 +312,17 @@
         });
 
         document.addEventListener("click", (event) => {
+            const notification = event.target.closest("[data-notification-id]");
+            if (notification) {
+                markAsRead(notification.dataset.notificationId);
+                return;
+            }
             const dropdown = document.getElementById("notifDropdown");
             const btn = document.getElementById("bellBtn");
             if (dropdown && !dropdown.classList.contains("hidden")) {
-                if (!dropdown.contains(event.target) && !btn.contains(event.target)) {
+                if (!dropdown.contains(event.target) && (!btn || !btn.contains(event.target))) {
                     dropdown.classList.add("hidden");
+                    if (btn) btn.setAttribute("aria-expanded", "false");
                 }
             }
         });
@@ -301,24 +331,30 @@
             if(event) event.stopPropagation();
             const dropdown = document.getElementById("notifDropdown");
             if(dropdown) {
-                if (dropdown.classList.contains("hidden")) {
+                const isOpen = dropdown.classList.contains("hidden");
+                if (isOpen) {
                     dropdown.classList.remove("hidden");
                     dropdown.classList.add("flex");
                 } else {
                     dropdown.classList.add("hidden");
                     dropdown.classList.remove("flex");
                 }
+                const button = document.getElementById("bellBtn");
+                if (button) button.setAttribute("aria-expanded", String(isOpen));
             }
         }
 
         async function fetchNotifications() {
             try {
                 const res = await fetch(`${NOTIF_API_BASE}/?limit=15`);
-                if (res.ok) {
-                    const notifications = await res.json();
-                    renderNotifications(notifications);
-                }
-            } catch (err) { }
+                if (!res.ok) throw new Error(`Notifications request failed (${res.status})`);
+                const notifications = await res.json();
+                renderNotifications(notifications);
+            } catch (err) {
+                const listContainer = document.getElementById("notifList");
+                if (listContainer) listContainer.innerHTML = '<div class="p-6 text-center text-red-600 text-xs font-medium">Unable to load notifications. <button type="button" class="underline font-bold" onclick="fetchNotifications()">Retry</button></div>';
+                console.warn("[NOTIFICATIONS]", err);
+            }
         }
 
         function renderNotifications(notifications) {
@@ -348,13 +384,13 @@
                 const dot = n.is_read ? "" : `<div class="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-blue-600 mt-1 sm:mt-1.5 shrink-0 shadow-sm ring-2 ring-white"></div>`;
                 
                 return `
-                    <div class="p-4 sm:p-5 hover:bg-slate-50 transition cursor-pointer flex gap-3 sm:gap-4 ${bgClass}" onclick="markAsRead('${n.id}')">
+                    <button type="button" data-notification-id="${window.escapeHTML(n.id)}" class="w-full text-left p-4 sm:p-5 hover:bg-slate-50 transition flex gap-3 sm:gap-4 ${bgClass}">
                         ${dot}
                         <div class="flex-1 min-w-0">
                             <p class="text-[11px] sm:text-sm font-extrabold text-slate-800 mb-0.5 sm:mb-1 truncate">${window.escapeHTML(n.title)}</p>
                             <p class="text-[10px] sm:text-[11px] font-medium text-slate-500 leading-relaxed line-clamp-2">${window.escapeHTML(n.message)}</p>
                             <p class="text-[8px] sm:text-[9px] font-bold text-slate-400 mt-2 sm:mt-2.5 uppercase tracking-wider">${formatAppDate(n.created_at)}</p>
-                        </div>
+                        </button>
                     </div>
                 `;
             }).join('');

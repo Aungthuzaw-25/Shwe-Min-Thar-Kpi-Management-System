@@ -7,7 +7,7 @@
 # 🌟 2. Environment Variables & Secrets (လုံခြုံရေးအတွက် မဖြစ်မနေ ဖယ်ထုတ်ရန်)
 .env
 .env.*
-!.env.example
+.env.example
 
 # 🌟 3. Python Virtual Environments & Packages
 venv/
@@ -25,7 +25,9 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .coverage
+coverage.xml
 htmlcov/
+.ruff_cache/
 
 # 🌟 5. Node.js (Tailwind Build အတွက် မလိုသော အမှိုက်များ)
 node_modules/
@@ -33,10 +35,12 @@ npm-debug.log
 yarn-error.log
 
 # 🌟 6. User Uploads & Temporary Media (MinIO / S3 သုံးသဖြင့် Image ထဲ မထည့်ရန်)
-uploads/*
-!uploads/.gitkeep
+uploads/
 downloads/
 logs/
+reports/
+tmp/
+temp/
 *.log
 
 # 🌟 7. IDE & OS Metadata
@@ -51,4 +55,9 @@ Thumbs.db
 tests/
 README.md
 *.md
+AGENTS.md
+agent.md
+sonar-project.properties
 alembic.ini.bak
+*.bak
+*.tmp

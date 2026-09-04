@@ -78,6 +78,11 @@ echo "✅ Migrations completed successfully."
 # ==========================================
 # 3. Server Startup
 # ==========================================
+if [ "${RUN_SCHEDULER:-false}" = "true" ]; then
+    echo "⏰ Starting dedicated scheduler process..."
+    exec python -m app.background_jobs.runner
+fi
+
 echo "🔥 Step 3: Starting Gunicorn / Uvicorn Server..."
 exec gunicorn app.main:app \
     --workers "$WORKERS" \

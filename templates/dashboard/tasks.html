@@ -489,7 +489,7 @@
 
     async function openEvidenceFile(filePath) {
         try {
-            const response = await fetch(`${API_BASE}/evidence/view?file_key=${encodeURIComponent(filePath)}`);
+            const response = await fetch(`${API_BASE}/evidence/view?evidence_id=${encodeURIComponent(filePath)}`);
             // 🛡️ AUTH FIX
             if (response.status === 401 || response.status === 403) { window.location.href = '/auth/login'; return; }
 
@@ -652,7 +652,7 @@
     }
 
     function openSelfTaskModal() { 
-        document.getElementById("selfTaskForm").reset();
+        document.getElementById("taskForm").reset();
         
         if (window.currentUserContext) {
             const deptEl = document.getElementById('modalContextDept');
@@ -1094,7 +1094,7 @@
         const detailsBody = document.getElementById("detailsBody");
         // 🌟 SECURITY FIX: escapeHTML
         const evidenceHtml = (task.evidence && task.evidence.length > 0)
-            ? task.evidence.map(e => `<a href="#" onclick="openEvidenceFile('${escapeHTML(e.file_path)}'); return false;" class="text-[9px] sm:text-[11px] font-bold text-blue-600 underline bg-blue-50 px-2 py-1 rounded border border-blue-100 mb-1.5 flex items-center w-full sm:w-max break-all sm:break-normal"><svg class="w-3 h-3 mr-1 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path></svg><span class="truncate">${escapeHTML(e.file_name)}</span></a>`).join('')
+            ? task.evidence.map(e => `<a href="#" onclick="openEvidenceFile('${escapeHTML(e.id)}'); return false;" class="text-[9px] sm:text-[11px] font-bold text-blue-600 underline bg-blue-50 px-2 py-1 rounded border border-blue-100 mb-1.5 flex items-center w-full sm:w-max break-all sm:break-normal"><svg class="w-3 h-3 mr-1 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path></svg><span class="truncate">${escapeHTML(e.file_name)}</span></a>`).join('')
             : '<span class="text-slate-500 text-xs sm:text-sm font-medium">No evidence attached.</span>';
 
         detailsBody.innerHTML = `
@@ -1146,7 +1146,7 @@
                                 <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path></svg>
                             </div>
                             <div class="flex flex-col min-w-0">
-                                <span class="text-xs sm:text-sm font-black text-slate-800 truncate cursor-pointer hover:text-blue-700 hover:underline transition-colors" onclick="openEvidenceFile('${escapeHTML(ev.file_path)}')">${escapeHTML(ev.file_name || 'Document File')}</span>
+                                <span class="text-xs sm:text-sm font-black text-slate-800 truncate cursor-pointer hover:text-blue-700 hover:underline transition-colors" onclick="openEvidenceFile('${escapeHTML(ev.id)}')">${escapeHTML(ev.file_name || 'Document File')}</span>
                                 <span class="text-[8px] sm:text-[9px] font-bold text-emerald-600 uppercase tracking-wider mt-0.5">Uploaded successfully</span>
                             </div>
                         </div>
@@ -1520,7 +1520,7 @@
                 document.getElementById("reviewTasksList").innerHTML = batchTasks.map(t => {
                     let evLink = `<span class="text-[9px] sm:text-[10px] text-slate-400 font-bold bg-slate-100 px-2 sm:px-2.5 py-1 rounded border border-slate-200 whitespace-nowrap">No Evidence</span>`;
                     if (t.evidence && t.evidence.length > 0) {
-                        evLink = `<button type="button" onclick="openEvidenceFile('${escapeHTML(t.evidence[0].file_path)}')" class="text-[9px] sm:text-[10px] text-blue-700 font-extrabold uppercase bg-blue-50 border border-blue-200 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg hover:bg-blue-100 transition shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400 whitespace-nowrap">View Evidence</button>`;
+                        evLink = `<button type="button" onclick="openEvidenceFile('${escapeHTML(t.evidence[0].id)}')" class="text-[9px] sm:text-[10px] text-blue-700 font-extrabold uppercase bg-blue-50 border border-blue-200 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg hover:bg-blue-100 transition shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400 whitespace-nowrap">View Evidence</button>`;
                     }
                     const v2Tag = t.version > 1 ? `<span class="ml-1.5 sm:ml-2 text-[8px] sm:text-[9px] font-black text-red-600 bg-red-100 px-1 sm:px-1.5 py-0.5 rounded uppercase border border-red-200 shadow-sm shrink-0">V${t.version}</span>` : '';
 

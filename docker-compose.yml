@@ -10,6 +10,24 @@ services:
     environment:
       - PORT=8000
       - REDIS_URL=redis://redis:6379/0
+      - ENABLE_SCHEDULER=true
+      - RUN_SCHEDULER=false
+    depends_on:
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  scheduler:
+    build: .
+    container_name: kpi_scheduler
+    restart: always
+    env_file:
+      - .env
+    environment:
+      - ENABLE_SCHEDULER=true
+      - RUN_SCHEDULER=true
+      - REDIS_URL=redis://redis:6379/0
     depends_on:
       redis:
         condition: service_healthy

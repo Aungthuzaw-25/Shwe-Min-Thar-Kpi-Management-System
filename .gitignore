@@ -12,11 +12,35 @@ __pycache__/
 *$py.class
 .mypy_cache/
 .pytest_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
 
 # Uploads (Production တွင် MinIO သုံးမည်ဖြစ်သော်လည်း Local အတွက်ဖျက်ထားရန်)
 uploads/
 !uploads/evidence/dummy_evidence.txt
+downloads/
+logs/
+reports/
+tmp/
+temp/
+*.log
 
 # IDEs
 .vscode/
 .idea/
+.DS_Store
+Thumbs.db
+node_modules/
+*.bak
+*.tmp
+
+# Local databases and generated exports
+*.db
+*.sqlite
+*.sqlite3
+
+# Local agent instructions/artifacts
+agent.md
+AGENTS.md

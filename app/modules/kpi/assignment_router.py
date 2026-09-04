@@ -6,7 +6,7 @@ from uuid import UUID
 
 from app.database.connection import get_db
 # 🌟 RequireRole အစား RoleChecker သို့ ပြောင်းထားပါသည်
-from app.core.dependencies import RoleChecker, get_current_user, enforce_permission
+from app.core.dependencies import RoleChecker, get_current_user, enforce_permission, enforce_user_scope
 from app.modules.kpi.models import KPIAssignment
 from app.modules.kpi.assignment_schemas import KPIAssignmentCreate, KPIBulkAssignmentCreate
 from app.modules.kpi import assignment_service
@@ -42,16 +42,17 @@ async def bulk_assign_kpi(
 async def get_user_assignments(
     user_id: UUID,
     skip: int = Query(0, ge=0),    # 🌟 FIX: Pagination 
-    limit: int = Query(100, gt=0), # 🌟 FIX: Pagination 
+    limit: int = Query(100, gt=0, le=500), # 🌟 FIX: Pagination 
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """ဝန်ထမ်းတစ်ဦး၏ KPI Assignment များကို ကြည့်ရှုရန်"""
     enforce_permission(current_user, "kpi.view")
+    await enforce_user_scope(db, current_user, user_id)
     stmt = select(KPIAssignment).where(
         KPIAssignment.user_id == user_id, 
         KPIAssignment.is_deleted == False
-    ).offset(skip).limit(limit)
+    ).order_by(KPIAssignment.created_at.desc(), KPIAssignment.id).offset(skip).limit(limit)
     
     result = await db.execute(stmt)
     return result.scalars().all()

@@ -9,6 +9,7 @@ import pytz
 from app.modules.tasks.models.task import Task, TaskStatus
 from app.modules.tasks.models.task_review import TaskReview 
 from app.modules.users.models import User
+from app.modules.departments.models import Department, UserDepartment
 from app.modules.kpi.engine import trigger_kpi_recalculation
 from app.modules.tasks.schemas import TaskCreate, TaskUpdate, TaskReviewInput
 

@@ -114,6 +114,13 @@ class CustomKpiCalculationRequest(BaseModel):
     start_date: datetime
     end_date: datetime
 
+class BulkKpiCalculationRequest(BaseModel):
+    user_ids: Optional[List[UUID]] = None
+    start_date: datetime
+    end_date: datetime
+    run_in_background: bool = False
+    model_config = ConfigDict(from_attributes=True)
+
 # ---------------------------------------------------------
 # 2. KPI Formulas & Deduction Rules (Admin မှ သတ်မှတ်ချက်များ)
 # ---------------------------------------------------------
@@ -154,6 +161,7 @@ class KPIFormulaCreate(BaseModel):
     scope: FormulaScope = FormulaScope.DEPARTMENT
     is_active: bool = True
     effective_month: Optional[str] = Field(None, description="e.g., 2024-11")
+    expression: Optional[str] = None  # New optional expression field
 
     @model_validator(mode='after')
     def validate_formula_rules(self):

@@ -1,14 +1,24 @@
 from sqlalchemy import Column, String, Boolean, Integer, ForeignKey, DateTime, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, backref
 from app.database.base import BaseModel
 import uuid
+
+# ──────────────────────────────────────
+# Constants for repeated string literals
+# ──────────────────────────────────────
+ROLE_TABLE = "roles"
+USER_TABLE = "users"
+ROLE_PERMISSION_TABLE = "role_permissions"
+PERMISSION_TABLE = "permissions"
+PERMISSIONS_ROLES_OVERLAP = "permissions,roles"
+
 
 # ==============================================================================
 # 🌟 Role Model (Permission များနှင့် Many-to-Many ချိတ်ဆက်ထားသည်)
 # ==============================================================================
 class Role(BaseModel):
-    __tablename__ = "roles"
+    __tablename__ = ROLE_TABLE
     
     name = Column(String(100), unique=True, index=True, nullable=False)
     description = Column(String(255), nullable=True)
@@ -17,8 +27,9 @@ class Role(BaseModel):
     permissions = relationship(
         "Permission",
         secondary="role_permissions",
-        backref="roles",
-        lazy="selectin" # Eager loading အတွက် (Query မြန်ဆန်စေရန်)
+        backref=backref("roles", overlaps=PERMISSIONS_ROLES_OVERLAP),
+        lazy="selectin",
+        overlaps=PERMISSIONS_ROLES_OVERLAP
     )
 
 # ==============================================================================
@@ -86,11 +97,20 @@ class RolePermission(BaseModel):
     """Pivot table mapping roles to specific permissions"""
     __tablename__ = "role_permissions"
 
+    # Keep the audit identifier, but make the association keys the ORM identity.
+    id = Column(UUID(as_uuid=True), default=uuid.uuid4, nullable=False, unique=True)
     role_id = Column(UUID(as_uuid=True), ForeignKey("roles.id", ondelete="CASCADE"), primary_key=True)
     permission_id = Column(UUID(as_uuid=True), ForeignKey("permissions.id", ondelete="CASCADE"), primary_key=True)
 
-    role = relationship("Role", backref="role_permissions_link")
-    permission = relationship("Permission")
+    role = relationship(
+        "Role",
+        backref=backref("role_permissions_link", overlaps=PERMISSIONS_ROLES_OVERLAP),
+        overlaps=PERMISSIONS_ROLES_OVERLAP
+    )
+    permission = relationship(
+        "Permission",
+        overlaps=PERMISSIONS_ROLES_OVERLAP
+    )
 
 
 class UserPermissionOverride(BaseModel):

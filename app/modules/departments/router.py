@@ -11,7 +11,7 @@ from sqlalchemy import func
 from app.database.connection import get_db
 from app.modules.departments.schemas import DepartmentCreate, DepartmentUpdate, DepartmentResponse, AssignUserRequest, PositionInDepartment
 from app.modules.departments import repo as department_repo
-from app.core.dependencies import RoleChecker, get_current_user, enforce_permission
+from app.core.dependencies import RoleChecker, get_current_user, enforce_permission, enforce_department_scope
 from app.modules.users.models import User
 from app.modules.departments.models import Department, UserDepartment
 from app.modules.users.models import Position  
@@ -57,9 +57,9 @@ async def get_departments(
 ):
     enforce_permission(current_user, "department.view")
     if is_active:
-        stmt = select(Department).where(Department.is_deleted == False).order_by(Department.priority.desc(), Department.name).offset(skip).limit(limit)
+        stmt = select(Department).where(Department.is_deleted == False).order_by(Department.priority.desc(), Department.name, Department.id).offset(skip).limit(limit)
     else:
-        stmt = select(Department).where(Department.is_deleted == True).order_by(Department.priority.desc(), Department.name).offset(skip).limit(limit)
+        stmt = select(Department).where(Department.is_deleted == True).order_by(Department.priority.desc(), Department.name, Department.id).offset(skip).limit(limit)
         
     result = await db.execute(stmt)
     return result.scalars().all()
@@ -221,6 +221,7 @@ async def assign_user_to_department(
 
 @router.get("/{dept_id}/users")
 async def get_department_users(dept_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    await enforce_department_scope(db, current_user, dept_id)
     dept = await department_repo.get_department_by_id(db, dept_id)
     if not dept: raise HTTPException(status_code=404, detail="Department not found.")
     
@@ -246,6 +247,7 @@ async def get_department_users(dept_id: UUID, db: AsyncSession = Depends(get_db)
 
 @router.delete("/{dept_id}/users/{user_id}")
 async def remove_user_from_department(dept_id: UUID, user_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
+    await enforce_department_scope(db, current_user, dept_id)
     ud = (await db.execute(select(UserDepartment).where(UserDepartment.department_id == dept_id, UserDepartment.user_id == user_id))).scalars().first()
     if not ud: raise HTTPException(status_code=404, detail="User is not found in this department.")
     
@@ -264,6 +266,7 @@ async def remove_user_from_department(dept_id: UUID, user_id: UUID, db: AsyncSes
 
 @router.put("/{dept_id}/users/{user_id}/level")
 async def change_user_level(dept_id: UUID, user_id: UUID, payload: ChangeLevelRequest, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
+    await enforce_department_scope(db, current_user, dept_id)
     ud = (await db.execute(select(UserDepartment).where(UserDepartment.department_id == dept_id, UserDepartment.user_id == user_id))).scalars().first()
     if not ud: raise HTTPException(status_code=404, detail="User is not found in this department.")
     
@@ -293,6 +296,8 @@ async def change_user_level(dept_id: UUID, user_id: UUID, payload: ChangeLevelRe
 
 @router.put("/transfer-user")
 async def transfer_user(payload: TransferUserRequest, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
+    await enforce_department_scope(db, current_user, payload.old_department_id)
+    await enforce_department_scope(db, current_user, payload.new_department_id)
     old_ud = (await db.execute(select(UserDepartment).where(UserDepartment.department_id == payload.old_department_id, UserDepartment.user_id == payload.user_id))).scalars().first()
     if not old_ud: raise HTTPException(status_code=404, detail="User is not found in the old department.")
     
@@ -326,6 +331,7 @@ async def get_department_process_tracking(
     db: AsyncSession = Depends(get_db), 
     current_user: User = Depends(admin_checker)
 ):
+    await enforce_department_scope(db, current_user, dept_id)
     """ဌာနတစ်ခုလုံး၏ Process များ၊ တစ်ဆို့နေမှုများနှင့် Activity Timeline ကို Tracking လိုက်ရန်"""
     
     # 1. ဌာန ရှိ/မရှိ စစ်ဆေးခြင်း

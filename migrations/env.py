@@ -1,5 +1,6 @@
 import asyncio
 from logging.config import fileConfig
+from urllib.parse import urlparse
 
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
@@ -18,6 +19,7 @@ from app.modules.auth.models import TokenBlacklist
 from app.modules.users.models import User, Position, Permission, RolePermission, Role, UserPermissionOverride
 from app.modules.departments.models import Department, UserDepartment
 from app.modules.kpi.models import KPILevelSetting,KPIFormula,KPIRecord,KPIHistory,FormulaAuditLog,KPIPeriod,KPIAssignment,KPIScoringRuleItem,ActionPlan,KpiRule
+from app.modules.kpi.models import KpiCategory  # added for Alembic metadata
 from app.modules.notifications.models import Notification
 from app.modules.targets.models import Target
 from app.modules.tasks.models.activity_timeline import ActivityTimeline
@@ -61,7 +63,11 @@ async def run_async_migrations() -> None:
     configuration["sqlalchemy.url"] = settings.DATABASE_URL
 
     connect_args = {}
-    if settings.DATABASE_URL.startswith("postgresql+asyncpg://"):
+    database_url = urlparse(settings.DATABASE_URL)
+    if (
+        settings.DATABASE_URL.startswith("postgresql+asyncpg://")
+        and database_url.hostname not in {"localhost", "127.0.0.1"}
+    ):
         connect_args["ssl"] = True
 
     connectable = async_engine_from_config(

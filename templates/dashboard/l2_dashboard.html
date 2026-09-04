@@ -103,14 +103,14 @@
 
 <input type="hidden" id="loggedInUserId" value="{{ user_id }}">
 
-<div id="actionPlanModal" class="hidden fixed inset-0 z-[80] items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+<div id="actionPlanModal" role="dialog" aria-modal="true" aria-labelledby="actionPlanModalTitle" class="hidden fixed inset-0 z-[80] items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
     <div class="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden">
         <div class="px-5 sm:px-7 py-4 sm:py-5 border-b border-slate-100 flex justify-between items-center">
             <div>
-                <h3 class="text-lg sm:text-xl font-extrabold text-slate-900">Performance Action Plan</h3>
+                <h3 id="actionPlanModalTitle" class="text-lg sm:text-xl font-extrabold text-slate-900">Performance Action Plan</h3>
                 <p class="text-xs text-slate-500 mt-1">Describe how you will improve this KPI result.</p>
             </div>
-            <button type="button" onclick="closeActionPlan()" class="text-slate-400 hover:text-red-500 text-xl font-bold">×</button>
+            <button type="button" onclick="closeActionPlan()" aria-label="Close action plan dialog" class="text-slate-400 hover:text-red-500 text-xl font-bold">×</button>
         </div>
         <form id="actionPlanForm" class="p-5 sm:p-7 space-y-4">
             <input type="hidden" id="actionPlanRecordId">

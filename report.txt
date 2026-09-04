@@ -1,0 +1,473 @@
+SECOND-PASS PRODUCTION VERIFICATION REPORT
+
+Scope
+Read-only verification only. No application code, database schema, Docker configuration, Neon data, or GitHub state was modified.
+
+Overall result
+Production readiness: NOT READY
+
+1. Evidence IDOR
+Finding
+Evidence URLs can be generated for arbitrary object keys.
+Severity
+P0
+Verification
+CONFIRMED
+Evidence
+app/modules/tasks/router.py:807-814 accepts arbitrary file_key and directly generates a presigned URL without loading TaskEvidence or its parent task. Frontend usage: templates/dashboard/tasks.html:490-493.
+Attack / Failure Scenario
+An authenticated user obtains or guesses another MinIO object key and requests the endpoint to receive a valid download URL.
+Existing Protection
+Authentication and S3 presigning only. No object-level authorization.
+Recommended Fix
+Accept evidence_id, load the evidence and task, then authorize owner, assignee, reviewer, department manager, or administrator before signing.
+Regression Risk
+Existing frontend code using file_path must be migrated to evidence IDs.
+
+2. Evidence Upload Authorization
+Finding
+Users can upload evidence to tasks without verified ownership or assignment authorization.
+Severity
+P1
+Verification
+CONFIRMED
+Evidence
+app/modules/tasks/router.py:755-800 verifies task existence but does not verify owner, assignee, department, reviewer scope, or task state.
+Attack / Failure Scenario
+A user submits an arbitrary task_id and attaches unauthorized evidence to another employee's task.
+Existing Protection
+Authentication, file size, extension, MIME, and hash validation.
+Recommended Fix
+Authorize the task relationship and permitted workflow state before uploading.
+Regression Risk
+Managers and reviewers may require explicit upload permissions.
+
+3. Evidence Deletion Authorization
+Finding
+Evidence deletion is not properly scoped to the uploader, task owner, reviewer, or administrator.
+Severity
+P1
+Verification
+CONFIRMED
+Evidence
+app/modules/tasks/router.py:816-838 queries only TaskEvidence.id before deleting storage/database records. Frontend usage: templates/dashboard/tasks.html:1165-1168.
+Attack / Failure Scenario
+A user who obtains another evidence ID deletes another user's evidence.
+Existing Protection
+Authentication only.
+Recommended Fix
+Load the parent task and enforce ownership or explicit management permission.
+Regression Risk
+Existing manager/reviewer deletion workflows must remain supported.
+
+4. Task, Batch, and Resubmission IDOR
+Finding
+Some task and batch endpoints do not consistently enforce object ownership or department scope.
+Severity
+P1
+Verification
+CONFIRMED
+Evidence
+app/modules/tasks/router.py:556-566 returns tasks for arbitrary batch_id. router.py:572-604 can update requested task IDs after ownership filtering. router.py:843-870 resubmits without verifying caller ownership. workflow_repo.py:22-26 contains some ownership checks, but they are not consistently applied.
+Attack / Failure Scenario
+A user changes a batch or task ID and views, resubmits, or modifies another user's task.
+Existing Protection
+Some individual task GET and reviewer queue checks.
+Recommended Fix
+Centralize authorization in service/repository methods and operate only on authorized rows.
+Regression Risk
+Cross-task manager workflows need explicit reviewer/department scope.
+
+5. KPI IDOR
+Finding
+KPI assignments and records can be accessed or modified using arbitrary user or record IDs.
+Severity
+P1
+Verification
+CONFIRMED
+Evidence
+app/modules/kpi/assignment_router.py:41-57 allows arbitrary user_id with global kpi.view. app/modules/kpi/router.py:331-365 and 399-412 accept arbitrary record IDs for freeze, override, and deduction. router.py:281-295 permits monthly records through broad role/permission checks.
+Attack / Failure Scenario
+A user submits another user's ID and accesses or changes their KPI records.
+Existing Protection
+Role and permission checks; assignment creation performs some consistency validation.
+Recommended Fix
+Authorize target user/record department and ownership after loading the resource.
+Regression Risk
+Admin reporting tools require deliberate global-scope permissions.
+
+6. Department-Scope Authorization
+Finding
+Department mutations and reports do not consistently verify that the caller controls the referenced department.
+Severity
+P1
+Verification
+CONFIRMED
+Evidence
+app/modules/departments/router.py:181-317 relies mainly on admin_checker. app/modules/kpi/router.py:557-573 accepts arbitrary department_id with report permission.
+Attack / Failure Scenario
+An administrator authorized for one department changes membership or views reports for another department.
+Existing Protection
+Admin role checks, permission checks, and membership validation.
+Recommended Fix
+Resolve caller department scope and enforce it for every department query and mutation.
+Regression Risk
+HR, Super Admin, and system-wide administrators need explicit exceptions.
+
+7. Refresh-Token Replay
+Finding
+Refresh tokens are accepted repeatedly until expiry.
+Severity
+P1
+Verification
+CONFIRMED
+Evidence
+app/modules/auth/router.py:261-309 validates the presented token but does not revoke it after issuing a replacement.
+Attack / Failure Scenario
+An attacker reuses a stolen refresh token multiple times to create new access and refresh token pairs.
+Existing Protection
+JWT signature, expiration, token type, blacklist lookup, and HttpOnly cookies.
+Recommended Fix
+Use token jti, rotation families, revoke-on-use, reuse detection, and session binding.
+Regression Risk
+Clients must handle one-time refresh failures and session revocation.
+
+8. Swagger Login Policy Bypass
+Finding
+The Swagger login path does not apply the same lockout and login-history policy as normal login.
+Severity
+P1
+Verification
+CONFIRMED
+Evidence
+app/modules/auth/router.py:196-235 omits locked-account checks, failed-attempt increments, and LoginHistory writes that exist at router.py:92-125.
+Attack / Failure Scenario
+Repeated attempts through /swagger-login avoid account lockout tracking.
+Existing Protection
+Password verification, active/deleted checks, and rate limiting.
+Recommended Fix
+Reuse one authentication service for all login paths.
+Regression Risk
+Swagger clients may depend on current response behavior.
+
+9. Plaintext Password Responses
+Finding
+User creation returns generated or provided passwords in API responses.
+Severity
+P1
+Verification
+CONFIRMED
+Evidence
+app/modules/users/router.py:131-136 returns generated_password. templates/dashboard/users.html:163-172 and 708-710 display temporary/reset passwords.
+Attack / Failure Scenario
+Passwords appear in browser history, screenshots, proxy logs, monitoring systems, or frontend state.
+Existing Protection
+Password strength validation and hashing before persistence.
+Recommended Fix
+Use one-time invitation/reset links and never return plaintext passwords.
+Regression Risk
+Current administrator onboarding UI must change.
+
+10. Predictable Seed Credentials
+Finding
+Seed logic contains reusable predictable credentials and may reset passwords on rerun.
+Severity
+P1
+Verification
+CONFIRMED
+Evidence
+app/database/seed.py:159-181, 398-405, and 449-470.
+Attack / Failure Scenario
+If seed logic runs against a reachable deployment, known credentials allow account takeover.
+Existing Protection
+Passwords are hashed before storage.
+Recommended Fix
+Require deployment-time bootstrap secrets or random one-time credentials; never reset deployed credentials automatically.
+Regression Risk
+Local development setup and seeded test accounts need replacement.
+
+11. Public /uploads Exposure
+Finding
+Uploaded files are directly served as static content.
+Severity
+P0
+Verification
+CONFIRMED
+Evidence
+app/main.py:159-164 mounts StaticFiles(directory="uploads") at /uploads.
+Attack / Failure Scenario
+A user bypasses API authorization by requesting a known upload path directly.
+Existing Protection
+Filesystem/static routing only; no application authorization.
+Recommended Fix
+Remove the public mount and provide an authorization-checked download endpoint or private object storage.
+Regression Risk
+Existing frontend file URLs must be replaced.
+
+12. Backup Secret Exposure
+Finding
+System backup/settings responses may include secret values.
+Severity
+P1
+Verification
+CONFIRMED
+Evidence
+app/modules/system/router.py:83-116 exports setting values without clear redaction. app/modules/system/schemas.py:16-20 exposes value.
+Attack / Failure Scenario
+An authorized administrator or compromised administrative account downloads database, SMTP, storage, or token settings.
+Existing Protection
+Administrative permission requirement.
+Recommended Fix
+Classify sensitive settings and redact passwords, tokens, keys, and connection strings in exports and API responses.
+Regression Risk
+Safe configuration backup and secret handling must be separated.
+
+13. KPI Recalculation After Finalization
+Finding
+Finalized or locked KPI periods can still be recalculated.
+Severity
+P1
+Verification
+CONFIRMED
+Evidence
+app/modules/kpi/engine.py:261-284 calculates and saves without checking period status. app/modules/kpi/period_service.py:50-63 defines check_period_editable(), but no caller was found. app/modules/tasks/service.py:113-123 can trigger recalculation after review activity.
+Attack / Failure Scenario
+A task review after period finalization changes historical KPI results.
+Existing Protection
+Frozen or overridden records may be skipped.
+Recommended Fix
+Check period state inside the calculation/save transaction and provide a separately authorized correction path.
+Regression Risk
+Legitimate administrative corrections require an explicit override workflow.
+
+14. Duplicate KPI Records Under Concurrency
+Finding
+Concurrent calculations can create duplicate KPI records.
+Severity
+P1
+Verification
+CONFIRMED
+Evidence
+app/modules/kpi/engine.py:156-182 performs read-then-insert. migrations/versions/51f24dd3e99c_initial_all_tables.py:416-450 has no matching unique constraint.
+Attack / Failure Scenario
+Two workers calculate the same user and period simultaneously; both see no row and insert.
+Existing Protection
+No database-level record uniqueness or lock.
+Recommended Fix
+Add a reviewed unique constraint and atomic upsert/retry logic.
+Regression Risk
+Existing duplicates must be reconciled before migration.
+
+15. Formula and Target Selection
+Finding
+Formula and target selection is under-scoped and nondeterministic.
+Severity
+P1
+Verification
+CONFIRMED
+Evidence
+app/modules/kpi/engine.py:85-100 does not fully filter user level, position ID, deletion state, or effective month. app/modules/kpi/engine_helpers.py:47-55 ignores target status/deletion and lacks deterministic tie-breaking. Assignment lookup uses .first() without complete precedence rules.
+Attack / Failure Scenario
+An older, deleted, global, or wrong-level formula or target is selected and produces an incorrect score.
+Existing Protection
+Some active-status checks and assignment validation.
+Recommended Fix
+Define deterministic specificity/effective-date precedence and filter active, nondeleted records.
+Regression Risk
+Existing ambiguous data may produce different scores after correction.
+
+16. Deduction Double-Counting
+Finding
+Late penalties and rejection deductions can both apply to the same task/rule.
+Severity
+P1
+Verification
+CONFIRMED
+Evidence
+app/modules/kpi/engine.py:103-153 collects rejection deductions and late-task counts independently. engine.py:67-82 combines values additively.
+Attack / Failure Scenario
+A late task also contains a deduction marker, causing two penalties for one underlying event.
+Existing Protection
+Multiple rules within one group may use the maximum deduction, but source duplication is not prevented.
+Recommended Fix
+Create one canonical deduction event per task/review/rule and deduplicate before scoring.
+Regression Risk
+Some current scores may increase when accidental double penalties are removed.
+
+17. Migration/Model Drift
+Finding
+Database migrations and SQLAlchemy models are not fully aligned.
+Severity
+P2
+Verification
+CONFIRMED
+Evidence
+app/database/base.py:7-12 implies non-null soft-delete fields. migrations/versions/51f24dd3e99c_initial_all_tables.py:391-460 and 515-550 create corresponding fields as nullable. migrations/versions/add_is_deleted_to_kpi_tables.py:24-47 provides only a partial repair and has a no-op downgrade.
+Attack / Failure Scenario
+NULL soft-delete values bypass false filters or clean migration assumptions fail on a fresh database.
+Existing Protection
+Application defaults on newly created objects.
+Recommended Fix
+Backfill NULLs, reconcile metadata, and test clean PostgreSQL upgrade/downgrade paths.
+Regression Risk
+Migration may fail until existing NULL data is normalized.
+
+18. Soft-Delete Inconsistencies
+Finding
+Deleted KPI-related records are not consistently excluded.
+Severity
+P1
+Verification
+CONFIRMED
+Evidence
+app/modules/kpi/service.py:245-258, app/modules/kpi/repo.py:56-79, app/modules/kpi/service.py:122-128, and app/modules/kpi/action_plan_router.py:29-40, 68-90 omit is_deleted filters. app/modules/kpi/router.py:263-275 hard-deletes formulas.
+Attack / Failure Scenario
+Deleted records or formulas remain visible, are reused in calculations, or disappear from audit history.
+Existing Protection
+Some period and assignment paths filter deletion flags.
+Recommended Fix
+Centralize active-row filtering and define one consistent soft-delete policy.
+Regression Risk
+Historical reports may change when deleted rows are correctly excluded.
+
+19. KPI Score/Percentage Inconsistency
+Finding
+Raw score, weighted score, maximum score, and percentage calculations use inconsistent semantics.
+Severity
+P1
+Verification
+CONFIRMED
+Evidence
+app/modules/kpi/engine.py:171-182 does not populate raw_score. engine.py:273-276 assumes a maximum of 5. app/modules/kpi/engine_helpers.py:107-133 allows configurable category max_score. app/modules/kpi/router.py:371-376 also divides by 5.
+Attack / Failure Scenario
+A formula with a maximum other than five produces inaccurate percentages and inconsistent reports.
+Existing Protection
+Percentage is clamped to 0-100.
+Recommended Fix
+Define one score scale, derive the denominator from the formula, persist raw and weighted values consistently, and constrain overrides.
+Regression Risk
+Historical displayed results may change.
+
+20. Action-Plan Authorization and State
+Finding
+Action-plan creation and review do not enforce the full lifecycle.
+Severity
+P1
+Verification
+CONFIRMED
+Evidence
+app/modules/kpi/action_plan_router.py:19-52 does not verify record deletion, period state, frozen state, low-score eligibility, or period ownership. action_plan_router.py:93-114 accepts any enum status without validating current state. action_plan_service.py:7-30 contains a validation helper not used during finalization.
+Attack / Failure Scenario
+A user creates a plan for a finalized or high-scoring record, or a reviewer changes DRAFT directly to COMPLETED.
+Existing Protection
+Reviewer dependency, ownership checks, and unique kpi_record_id.
+Recommended Fix
+Enforce a state-transition matrix and validate record/period eligibility atomically.
+Regression Risk
+Existing clients relying on unrestricted transitions will receive validation errors.
+
+21. Scheduler Duplication
+Finding
+Background jobs execute once per Gunicorn worker when enabled.
+Severity
+P1
+Verification
+CONFIRMED when ENABLE_SCHEDULER=true
+Evidence
+app/main.py:72-75 starts a scheduler during every lifespan. app/background_jobs/scheduler.py:117-148 creates an in-process scheduler. entrypoint.sh:9 and 82-85 default to multiple Gunicorn workers. scheduler.py:124-145 registers KPI rollups, reminders, escalations, and notifications.
+Attack / Failure Scenario
+Each worker performs the same scheduled task, creating duplicate notifications, KPI calculations, or task escalations.
+Existing Protection
+Scheduler is disabled by default. replace_existing=True only prevents duplicate registration inside one process.
+Recommended Fix
+Run a separate singleton scheduler or implement distributed locking and idempotency.
+Regression Risk
+The scheduler process needs the same database, timezone, environment, and shutdown configuration.
+
+22. CI Playwright Startup
+Finding
+CI runs browser tests without starting the application or installing Playwright browsers.
+Severity
+P1
+Verification
+CONFIRMED
+Evidence
+.github/workflows/ci.yml:62-65 runs all tests. tests/test_ui_dashboard.py:4 targets http://localhost:8000 and lines 19-25 call page.goto. No server startup, readiness probe, or playwright install exists. CI uses in-memory SQLite at ci.yml:21.
+Attack / Failure Scenario
+CI has no listener on port 8000; clean runners may also lack browser binaries and seeded UI accounts.
+Existing Protection
+None for browser-test startup.
+Recommended Fix
+Create a controlled UI-test job that installs Chromium, starts the server, waits for /health, and seeds isolated test data.
+Regression Risk
+Server lifecycle, port cleanup, authentication state, and database isolation need careful handling.
+
+VERIFIED PRODUCTION BLOCKERS
+
+1. Evidence URL IDOR.
+2. Public /uploads exposure.
+3. Evidence upload/delete authorization gaps.
+4. Task, batch, and resubmission IDOR.
+5. KPI record and assignment IDOR.
+6. Department-scope authorization bypass.
+7. Refresh-token replay.
+8. Swagger login policy bypass.
+9. Plaintext password responses.
+10. Predictable seed credentials.
+11. Backup secret exposure.
+12. KPI recalculation after finalized periods.
+13. Duplicate KPI records under concurrency.
+14. Incorrect/nondeterministic KPI formula and target selection.
+15. Deduction double-counting.
+16. Soft-delete filtering inconsistencies.
+17. KPI score/percentage inconsistencies.
+18. Action-plan state and authorization bypass.
+19. Scheduler duplication when enabled.
+20. CI pipeline cannot reliably validate UI functionality.
+
+LIKELY ISSUES
+
+No prioritized finding above was downgraded to LIKELY.
+
+The following require environment-level validation even though the underlying code risk is confirmed:
+- Actual exploitability of S3 object-key guessing depends on object-key disclosure or guessability.
+- Actual backup secret exposure depends on which settings are stored in the production database.
+- Actual scheduler duplication occurs only when ENABLE_SCHEDULER=true with multiple workers.
+- Actual migration failure requires a clean PostgreSQL upgrade test.
+- Actual duplicate KPI records require concurrent production-like transactions.
+
+FALSE POSITIVES
+
+No prioritized P0/P1/P2 finding was proven false.
+
+Existing protections do not eliminate the findings:
+- UI hiding does not replace backend authorization.
+- S3 presigning does not validate application ownership.
+- Role checks do not replace object or department scope.
+- replace_existing=True does not coordinate multiple processes.
+- Percentage clamping does not correct an incorrect denominator.
+
+NOT VERIFIED
+
+- Neon production behavior was not tested against live production data.
+- No destructive or write operation was executed against Neon.
+- Clean PostgreSQL migration upgrade/downgrade was not run.
+- A real cross-user attack was not executed against a deployed S3/MinIO environment.
+- Dependency vulnerability status was not rescanned during this pass.
+- Full Playwright execution was not successfully completed in a configured CI-like environment.
+- Actual production backup contents were not inspected.
+
+RECOMMENDED FIX ORDER
+
+1. Remove public /uploads and secure evidence view/upload/delete authorization.
+2. Close task, batch, KPI, assignment, report, and department-scope IDOR paths.
+3. Implement refresh-token rotation, revocation, and reuse detection.
+4. Remove plaintext password responses and predictable seed credentials.
+5. Redact sensitive settings from backup/export APIs.
+6. Enforce finalized-period immutability and action-plan state transitions.
+7. Make KPI calculation deterministic and prevent duplicate records with atomic persistence.
+8. Correct score/percentage and deduction semantics.
+9. Normalize soft-delete behavior and reconcile migration/model drift.
+10. Move scheduler execution to a singleton process or add distributed locking.
+11. Make CI start a test server, install browsers, seed isolated data, and run UI tests reliably.
+12. Perform clean PostgreSQL migration, concurrency, authorization, and production-like integration verification.

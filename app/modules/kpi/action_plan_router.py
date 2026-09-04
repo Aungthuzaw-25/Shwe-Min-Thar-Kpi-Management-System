@@ -1,13 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query # 🌟 FIX: Added Query for Pagination
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy.orm import selectinload
 from typing import List
 from uuid import UUID
 from datetime import datetime, timezone
 
 from app.database.connection import get_db
-from app.core.dependencies import RoleChecker, get_current_user, enforce_permission
-from app.modules.kpi.models import ActionPlan, ActionPlanStatus, KPIRecord
+from app.core.dependencies import RoleChecker, get_current_user, enforce_permission, enforce_user_scope
+from app.modules.kpi.models import ActionPlan, ActionPlanStatus, KPIRecord, KPIStatus, KPIPeriodStatus
 from app.modules.kpi.action_plan_schemas import ActionPlanCreate, ActionPlanReview
 from app.modules.users.models import User
 
@@ -26,12 +27,21 @@ async def submit_action_plan(
     enforce_permission(current_user, "kpi.create")
     
     # 🌟 SECURITY: Check if record exists AND belongs to the user
-    record = await db.get(KPIRecord, payload.kpi_record_id)
+    record = (await db.execute(
+        select(KPIRecord).options(
+            selectinload(KPIRecord.period)
+        ).where(KPIRecord.id == payload.kpi_record_id, KPIRecord.is_deleted == False)
+    )).scalars().first()
     if not record:
         raise HTTPException(status_code=404, detail="KPI Record not found.")
         
-    if str(record.user_id) != str(current_user.id):
-        raise HTTPException(status_code=403, detail="Security Exception: You cannot submit an action plan for another user's record.")
+    await enforce_user_scope(db, current_user, record.user_id)
+    if record.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the KPI owner can submit an action plan.")
+    if record.period and record.period.status in {KPIPeriodStatus.FINALIZED, KPIPeriodStatus.LOCKED, KPIPeriodStatus.CANCELLED}:
+        raise HTTPException(status_code=409, detail="Finalized KPI periods require an explicit correction workflow.")
+    if record.status_bucket not in {KPIStatus.POOR, KPIStatus.FAIR}:
+        raise HTTPException(status_code=400, detail="An action plan is only required for low KPI scores.")
 
     # Action Plan တင်ပြီးသား ရှိ/မရှိ စစ်ဆေးရန်
     stmt = select(ActionPlan).where(ActionPlan.kpi_record_id == payload.kpi_record_id)
@@ -61,7 +71,7 @@ async def get_all_action_plans(
 ):
     """System အတွင်းရှိ Action Plan အားလုံးကို ကြည့်ရှုရန် (Manager/Admin View)"""
     enforce_permission(current_user, "kpi.view")
-    stmt = select(ActionPlan).order_by(ActionPlan.created_at.desc()).offset(skip).limit(limit)
+    stmt = select(ActionPlan).where(ActionPlan.is_deleted == False).order_by(ActionPlan.created_at.desc()).offset(skip).limit(limit)
     result = await db.execute(stmt)
     return result.scalars().all()
 
@@ -82,7 +92,7 @@ async def get_action_plan(
     if str(record.user_id) != str(current_user.id) and current_user.role.name not in ["Super Admin", "Admin", "HR", "Department Head"]:
         raise HTTPException(status_code=403, detail="Security Exception: Unauthorized access to sensitive action plan.")
 
-    stmt = select(ActionPlan).where(ActionPlan.kpi_record_id == kpi_record_id)
+    stmt = select(ActionPlan).where(ActionPlan.kpi_record_id == kpi_record_id, ActionPlan.is_deleted == False)
     result = await db.execute(stmt)
     plan = result.scalars().first()
     
@@ -99,10 +109,29 @@ async def review_action_plan(
 ):
     """Manager သို့မဟုတ် Admin မှ တင်ပြလာသော Action Plan အား Approve/Reject လုပ်ရန်"""
     enforce_permission(current_user, "kpi.edit")
-    plan = await db.get(ActionPlan, plan_id)
+    plan = (await db.execute(
+        select(ActionPlan).options(selectinload(ActionPlan.record)).where(
+            ActionPlan.id == plan_id, ActionPlan.is_deleted == False
+        )
+    )).scalars().first()
     if not plan:
         raise HTTPException(status_code=404, detail="Action Plan not found.")
+    if plan.record and plan.record.period and plan.record.period.status in {
+        KPIPeriodStatus.FINALIZED, KPIPeriodStatus.LOCKED, KPIPeriodStatus.CANCELLED
+    }:
+        raise HTTPException(status_code=409, detail="Finalized KPI periods require an explicit correction workflow.")
 
+    valid_transitions = {
+        ActionPlanStatus.SUBMITTED: {ActionPlanStatus.APPROVED, ActionPlanStatus.REJECTED},
+        ActionPlanStatus.APPROVED: {ActionPlanStatus.COMPLETED},
+        ActionPlanStatus.REJECTED: {ActionPlanStatus.SUBMITTED},
+    }
+    allowed = valid_transitions.get(plan.status, set())
+    if payload.status not in allowed:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid action plan transition: {plan.status.value} -> {payload.status.value}.",
+        )
     plan.status = payload.status
     plan.manager_feedback = payload.manager_feedback
     plan.reviewed_by_id = current_user.id

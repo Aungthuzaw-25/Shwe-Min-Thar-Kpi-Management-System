@@ -69,6 +69,67 @@ def _detect_mime_type(file_bytes: bytes, filename: str | None = None) -> str:
         return "application/pdf"
     return "application/octet-stream"
 
+
+async def _read_upload_dataframe(file: UploadFile) -> pd.DataFrame:
+    file.file.seek(0, 2)
+    file_size = file.file.tell()
+    await file.seek(0)
+    if file_size > MAX_FILE_SIZE:
+        raise ValueError("File too large. Maximum size allowed is 5MB to prevent memory overload.")
+    extension = os.path.splitext(file.filename)[1].lower()
+    if extension not in ALLOWED_EXTENSIONS:
+        raise ValueError("Unsupported file format. Please upload a strictly formatted .csv or .xlsx file.")
+    contents = await file.read()
+    mime_type = _detect_mime_type(contents, file.filename)
+    if not any(mime in mime_type.lower() for mime in ["csv", "excel", "sheet", "zip", "text", "octet-stream"]):
+        raise ValueError(f"Security Alert: File content signature ({mime_type}) does not match a valid spreadsheet.")
+
+    def parse_file():
+        source = io.BytesIO(contents)
+        return pd.read_csv(source) if extension == ".csv" else pd.read_excel(source)
+
+    dataframe = await run_in_threadpool(parse_file)
+    dataframe.columns = dataframe.columns.str.strip()
+    if "Email" not in dataframe.columns:
+        raise ValueError("The uploaded file is missing the strictly required 'Email' column.")
+    return dataframe
+
+
+async def _build_upload_rows(df: pd.DataFrame, db: AsyncSession):
+    emails = df["Email"].dropna().astype(str).str.strip().tolist()
+    statement = select(User.id, User.email).where(
+        User.email.in_(emails), User.is_active == True, User.is_deleted == False
+    )
+    user_records = (await db.execute(statement)).all()
+    email_to_user_id = {email: user_id for user_id, email in user_records}
+    ignored_columns = {"email", "employee name", "name", "department", "id", "no", "no.", "sr", "sr."}
+    errors, valid_rows = [], []
+    for index, row in df.iterrows():
+        email = str(row["Email"]).strip() if pd.notna(row.get("Email")) else ""
+        if not email:
+            continue
+        user_id = email_to_user_id.get(email)
+        if not user_id:
+            errors.append(f"Row {index + 2}: Active user with email '{email}' not found.")
+            continue
+        task_data = {}
+        for column in df.columns:
+            if str(column).strip().lower() in ignored_columns:
+                continue
+            value = row[column]
+            if pd.isna(value) or not str(value).strip():
+                continue
+            value_text = str(value).strip()
+            if value_text in {"-", "N/A", "NA", "None", "null"}:
+                task_data[str(column).strip()] = 0.0
+                continue
+            try:
+                task_data[str(column).strip()] = float(value_text)
+            except ValueError:
+                errors.append(f"Row {index + 2}: Invalid metric number '{value_text}' in column '{column}'.")
+        valid_rows.append({"user_id": user_id, "task_data": task_data})
+    return valid_rows, errors
+
 # ==============================================================================
 # BACKGROUND WORKER FUNCTION (Non-Blocking Heavy Calculation Engine)
 # ==============================================================================
@@ -106,7 +167,11 @@ async def process_kpi_in_background(valid_rows_data: list, period_start: datetim
 # ==============================================================================
 # 1. EXPORT TEMPLATE API (Admin Template )
 # ==============================================================================
-@router.get("/export-template", summary="Download KPI Excel Template with Detailed Attendance & Target")
+@router.get(
+    "/export-template",
+    summary="Download KPI Excel Template with Detailed Attendance & Target",
+    responses={status.HTTP_500_INTERNAL_SERVER_ERROR: {"description": "Template generation error"}},
+)
 @limiter.limit("10/minute") 
 async def export_kpi_template(
     request: Request, # Rate limiter 
@@ -172,7 +237,11 @@ async def export_kpi_template(
 # ==============================================================================
 # 2. IMPORT DATA API (Admin Upload )
 # ==============================================================================
-@router.post("/monthly-data", status_code=status.HTTP_200_OK)
+@router.post(
+    "/monthly-data",
+    status_code=status.HTTP_200_OK,
+    responses={status.HTTP_500_INTERNAL_SERVER_ERROR: {"description": "System processing error"}},
+)
 @limiter.limit("3/minute") # DoS Upload 
 async def upload_monthly_kpi_data(
     request: Request, # Rate limiter 
@@ -184,43 +253,7 @@ async def upload_monthly_kpi_data(
 ):
     enforce_permission(current_user, "kpi.create")
     try:
-        # 1. SECURITY: Prevent Denial of Service (DoS) via huge file memory loads
-        file.file.seek(0, 2)
-        file_size = file.file.tell()
-        await file.seek(0)
-        
-        if file_size > MAX_FILE_SIZE:
-            raise ValueError("File too large. Maximum size allowed is 5MB to prevent memory overload.")
-
-        # 2. SECURITY: Strict Extension Validation (Anti-Malware)
-        ext = os.path.splitext(file.filename)[1].lower()
-        if ext not in ALLOWED_EXTENSIONS:
-            raise ValueError("Unsupported file format. Please upload a strictly formatted .csv or .xlsx file.")
-
-        # Safe to read into memory now
-        contents = await file.read()
-        
-        # SECURITY FIX: File Content (MIME) Type Spoofing Detection
-        mime_type = _detect_mime_type(contents, file.filename)
-        if not any(mime in mime_type.lower() for mime in ["csv", "excel", "sheet", "zip", "text", "octet-stream"]):
-            raise ValueError(f"Security Alert: File content signature ({mime_type}) does not match a valid spreadsheet.")
-        
-        # PERFORMANCE FIX: Offload pandas parsing to threadpool
-        def parse_file(content, extension):
-            if extension == '.csv':
-                return pd.read_csv(io.BytesIO(content))
-            else:
-                return pd.read_excel(io.BytesIO(content))
-                
-        df = await run_in_threadpool(parse_file, contents, ext)
-        
-        # 3. Data Cleaning: Strip trailing whitespaces
-        df.columns = df.columns.str.strip()
-        
-        if 'Email' not in df.columns:
-            raise ValueError("The uploaded file is missing the strictly required 'Email' column.")
-
-        # 4. Time Boundary Calculation (Timezone Aware)
+        df = await _read_upload_dataframe(file)
         try:
             year, month = map(int, target_month.split('-'))
             period_start = datetime(year, month, 1, 0, 0, 0, tzinfo=timezone.utc)
@@ -229,55 +262,7 @@ async def upload_monthly_kpi_data(
         except ValueError:
             raise ValueError("Invalid target_month format. Must be YYYY-MM (e.g., 2026-08).")
 
-        error_logs = []
-        valid_rows = []
-        
-        # 🌟 PERFORMANCE FIX (DBA): N+1 Query Optimization
-        # Extract all emails from the dataframe and query the database exactly once.
-        extracted_emails = df['Email'].dropna().astype(str).str.strip().tolist()
-        
-        stmt = select(User.id, User.email).where(
-            User.email.in_(extracted_emails), 
-            User.is_active == True, 
-            User.is_deleted == False
-        )
-        user_records = (await db.execute(stmt)).all()
-        # Map email to user_id for O(1) memory lookup
-        email_to_user_id = {email: uid for uid, email in user_records}
-
-        ignore_cols = ['email', 'employee name', 'name', 'department', 'id', 'no', 'no.', 'sr', 'sr.']
-        
-        for index, row in df.iterrows():
-            if pd.isna(row.get('Email')) or str(row['Email']).strip() == "":
-                continue
-                
-            email = str(row['Email']).strip()
-            
-            # 🌟 FAST O(1) Memory Lookup instead of awaiting DB on every row
-            user_id = email_to_user_id.get(email)
-            
-            if not user_id:
-                error_logs.append(f"Row {index + 2}: Active user with email '{email}' not found.")
-                continue
-
-            uploaded_task_data = {}
-            for col in df.columns:
-                col_name = str(col).strip()
-                if col_name.lower() not in ignore_cols:
-                    val = row[col]
-                    if pd.notna(val) and str(val).strip() != "":
-                        val_str = str(val).strip()
-                        # Safe parsing: Treat '-', 'N/A' as 0.0
-                        if val_str in ['-', 'N/A', 'NA', 'None', 'null']:
-                            uploaded_task_data[col_name] = 0.0
-                        else:
-                            try:
-                                uploaded_task_data[col_name] = float(val_str)
-                            except ValueError:
-                                error_logs.append(f"Row {index + 2}: Invalid metric number '{val_str}' in column '{col_name}'.")
-
-            # Thread-safe Payload (User Object User ID Pass 
-            valid_rows.append({"user_id": user_id, "task_data": uploaded_task_data})
+        valid_rows, error_logs = await _build_upload_rows(df, db)
 
         if error_logs:
             error_message = " | ".join(error_logs[:5])

@@ -8,8 +8,85 @@
     <link rel="stylesheet" href="/static/css/output.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Inter', sans-serif; }
-        .bg-kpi-cream { background-color: #fcf6f0; }
+        :root {
+            color-scheme: light;
+            --kpi-red: #991b1b;
+            --kpi-red-dark: #7f1d1d;
+            --kpi-cream: #fcf6f0;
+            --kpi-ink: #1f2937;
+            --kpi-muted: #64748b;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background:
+                radial-gradient(circle at 15% 10%, rgba(153, 27, 27, 0.08), transparent 32rem),
+                var(--kpi-cream);
+        }
+
+        .bg-kpi-cream { background-color: transparent; }
+        .login-card {
+            animation: cardEnter 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+            box-shadow: 0 24px 70px rgba(91, 33, 33, 0.12);
+        }
+        .login-input {
+            min-height: 3rem;
+            color: var(--kpi-ink);
+            transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+        }
+        .login-input:focus {
+            transform: translateY(-1px);
+            box-shadow: 0 0 0 4px rgba(153, 27, 27, 0.12);
+        }
+        .password-toggle {
+            min-width: 2.75rem;
+            min-height: 2.75rem;
+            border-radius: 0.5rem;
+        }
+        .password-toggle:focus-visible,
+        .login-submit:focus-visible {
+            outline: 3px solid rgba(153, 27, 27, 0.3);
+            outline-offset: 2px;
+        }
+        .login-submit {
+            min-height: 3rem;
+            background: linear-gradient(135deg, var(--kpi-red), var(--kpi-red-dark));
+            transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+        }
+        .login-submit:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 24px rgba(127, 29, 29, 0.22);
+            filter: brightness(1.05);
+        }
+        .login-submit:disabled { cursor: wait; opacity: 0.75; }
+        .brand-panel { isolation: isolate; }
+        .brand-panel::before,
+        .brand-panel::after {
+            content: "";
+            position: absolute;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.08);
+            pointer-events: none;
+            z-index: -1;
+        }
+        .brand-panel::before { width: 28rem; height: 28rem; right: -12rem; top: -10rem; }
+        .brand-panel::after { width: 20rem; height: 20rem; left: -10rem; bottom: -8rem; }
+        @keyframes cardEnter {
+            from { opacity: 0; transform: translateY(14px) scale(0.98); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        @media (max-width: 640px) {
+            .login-card { border-radius: 1.5rem; padding: 1.5rem; }
+            .toast-container { top: 0.75rem; right: 0.75rem; left: 0.75rem; max-width: none; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                scroll-behavior: auto !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
         
         /* Toast Animation CSS */
         @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
@@ -21,13 +98,13 @@
 <body class="flex flex-col min-h-screen antialiased bg-kpi-cream m-0 p-0 relative">
 
     <!-- GLOBAL TOAST NOTIFICATIONS CONTAINER -->
-    <div id="toastContainer" class="fixed top-5 right-5 z-[9999] flex flex-col space-y-3 max-w-[90%] sm:max-w-md"></div>
+    <div id="toastContainer" class="toast-container fixed top-5 right-5 z-[9999] flex flex-col space-y-3 max-w-[90%] sm:max-w-md"></div>
 
     <!-- MAIN CONTENT AREA -->
     <main class="flex flex-1 w-full min-h-screen">
         
         <!-- LEFT PANEL (Branding) -->
-        <div class="hidden lg:flex lg:w-1/2 bg-red-800 relative overflow-hidden flex-col justify-between p-8 xl:p-12 text-white bg-gradient-to-br from-red-900 to-red-700">
+        <div class="brand-panel hidden lg:flex lg:w-1/2 bg-red-800 relative overflow-hidden flex-col justify-between p-8 xl:p-12 text-white bg-gradient-to-br from-red-900 to-red-700">
             
             <!-- Logo -->
             <div class="flex items-center space-x-3 z-10 relative">
@@ -88,7 +165,7 @@
         <div class="w-full lg:w-1/2 flex flex-col items-center justify-center bg-kpi-cream p-4 sm:p-6 lg:p-8">
             
             <!-- Login Card -->
-            <div class="bg-white rounded-3xl shadow-xl p-6 sm:p-8 md:p-10 w-full max-w-md border border-gray-100">
+            <div class="login-card bg-white rounded-3xl shadow-xl p-6 sm:p-8 md:p-10 w-full max-w-md border border-gray-100">
                 
                 <!-- Lock Icon Header -->
                 <div class="flex justify-center mb-4">
@@ -110,27 +187,33 @@
                     
                     <!-- Email Field -->
                     <div>
-                        <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Email address</label>
+                        <label for="email" class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Email address</label>
                         <div class="relative">
                             <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                                 <svg class="h-4 w-4 sm:h-5 sm:w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
                                 </svg>
                             </div>
-                            <input type="email" id="email" class="block w-full pl-9 sm:pl-10 pr-3 py-2.5 sm:py-3 border border-gray-300 rounded-lg focus:ring-red-800 focus:border-red-800 text-xs sm:text-sm" placeholder="you@example.com" required>
+                            <input type="email" id="email" autocomplete="username" class="login-input block w-full pl-9 sm:pl-10 pr-3 py-2.5 sm:py-3 border border-gray-300 rounded-lg focus:ring-red-800 focus:border-red-800 text-xs sm:text-sm" placeholder="you@example.com" required>
                         </div>
                     </div>
 
                     <!-- Password Field -->
                     <div>
-                        <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Password</label>
+                        <label for="password" class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Password</label>
                         <div class="relative">
                             <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                                 <svg class="h-4 w-4 sm:h-5 sm:w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
                                 </svg>
                             </div>
-                            <input type="password" id="password" class="block w-full pl-9 sm:pl-10 pr-10 py-2.5 sm:py-3 border border-gray-300 rounded-lg focus:ring-red-800 focus:border-red-800 text-xs sm:text-sm" placeholder="Enter your password" required>
+                            <input type="password" id="password" autocomplete="current-password" class="login-input block w-full pl-9 sm:pl-10 pr-12 py-2.5 sm:py-3 border border-gray-300 rounded-lg focus:ring-red-800 focus:border-red-800 text-xs sm:text-sm" placeholder="Enter your password" required>
+                            <button type="button" id="toggleLoginPassword" class="password-toggle absolute inset-y-0 right-1 flex items-center justify-center text-gray-400 hover:text-red-800 focus:outline-none transition-colors" aria-label="Show password" aria-pressed="false">
+                                <svg id="loginPasswordIcon" class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                </svg>
+                            </button>
                         </div>
                     </div>
 
@@ -146,7 +229,7 @@
                     </div>
 
                     <!-- Sign In Button -->
-                    <button type="submit" class="w-full flex justify-center py-2.5 sm:py-3 px-4 border border-transparent rounded-lg shadow-sm text-xs sm:text-sm font-bold text-white bg-red-800 hover:bg-red-900 transition-colors">
+                    <button id="loginSubmitBtn" type="submit" class="login-submit w-full flex justify-center py-2.5 sm:py-3 px-4 border border-transparent rounded-lg shadow-sm text-xs sm:text-sm font-bold text-white bg-red-800 hover:bg-red-900 transition-colors">
                         Sign in
                     </button>
                 </form>
@@ -172,13 +255,13 @@
             
             <form id="forgotPasswordForm" class="space-y-4">
                 <div>
-                    <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Email address</label>
+                    <label for="resetEmail" class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Email address</label>
                     <input type="email" id="resetEmail" class="block w-full px-3 py-2.5 sm:py-3 border border-gray-300 rounded-lg text-xs sm:text-sm" placeholder="you@example.com" required>
                 </div>
                 <div id="resetAlert" class="text-xs sm:text-sm hidden p-3 rounded-lg"></div>
                 <div class="flex space-x-3 mt-6">
                     <button type="button" onclick="closeForgotPasswordModal()" class="w-1/2 py-2.5 sm:py-3 border border-gray-300 rounded-lg text-xs sm:text-sm font-bold text-gray-700 hover:bg-gray-50">Cancel</button>
-                    <button type="submit" id="resetSubmitBtn" class="w-1/2 py-2.5 sm:py-3 bg-red-800 text-white rounded-lg text-xs sm:text-sm font-bold hover:bg-red-900 flex justify-center items-center">Send Reset Link</button>
+                    <button type="button" id="resetSubmitBtn" class="w-1/2 py-2.5 sm:py-3 bg-red-800 text-white rounded-lg text-xs sm:text-sm font-bold hover:bg-red-900 flex justify-center items-center">Send Reset Link</button>
                 </div>
             </form>
         </div>
@@ -241,6 +324,18 @@
             document.getElementById('forgotPasswordForm').reset();
         }
 
+        document.getElementById('toggleLoginPassword').addEventListener('click', function () {
+            const input = document.getElementById('password');
+            const icon = document.getElementById('loginPasswordIcon');
+            const isHidden = input.type === 'password';
+            input.type = isHidden ? 'text' : 'password';
+            this.setAttribute('aria-label', isHidden ? 'Hide password' : 'Show password');
+            this.setAttribute('aria-pressed', String(isHidden));
+            icon.innerHTML = isHidden
+                ? '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3l18 18M10.584 10.587a2 2 0 002.829 2.828M9.88 4.24A10.07 10.07 0 0112 4c4.478 0 8.268 2.943 9.542 7a9.96 9.96 0 01-1.507 2.946M6.228 6.228A9.96 9.96 0 002.458 11c1.274 4.057 5.064 7 9.542 7a10.07 10.07 0 003.607-.665"></path>'
+                : '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>';
+        });
+
         // 🌟 UX FIX: Forgot Password Form Submission Handler
         document.getElementById('forgotPasswordForm').addEventListener('submit', function(e) {
             e.preventDefault();
@@ -269,7 +364,7 @@
 
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
-            const submitBtn = document.querySelector('button[type="submit"]');
+            const submitBtn = document.getElementById('loginSubmitBtn');
             const originalText = submitBtn.innerText;
             
             submitBtn.innerHTML = `<svg class="animate-spin -ml-1 mr-2 sm:mr-3 h-4 w-4 sm:h-5 sm:w-5 text-white inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Signing in...`;
@@ -279,6 +374,7 @@
                 const response = await fetch('/api/v1/auth/login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
                     body: JSON.stringify({ email, password })
                 });
                 
@@ -286,7 +382,7 @@
                     const data = await response.json();
 
                     if (data.must_change_password) {
-                        window.location.href = '/auth/change-password'; 
+                        window.location.href = '/change-password';
                     } else {
                         const userData = data.user;
                         if(userData) {

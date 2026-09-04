@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     ALLOWED_ORIGINS: str = "http://localhost:8000,http://127.0.0.1:8000"
     REDIS_URL: Optional[str] = None
     ENABLE_SCHEDULER: bool = False
+    RUN_SCHEDULER: bool = False
     TIMEZONE: str = "Asia/Yangon"
 
     @field_validator("DATABASE_URL")

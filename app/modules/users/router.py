@@ -10,12 +10,13 @@ from uuid import UUID
 from datetime import datetime
 
 from app.database.connection import get_db
-from app.modules.users.schemas import UserCreate, UserUpdate, UserResponse, RoleResponse, UserDeptResponse, UserLeaveRequest
+from app.modules.users.schemas import UserCreate, UserUpdate, UserResponse, RoleResponse, UserDeptResponse, UserLeaveRequest, SuperAdminCreate, SuperAdminUpdate
 from app.modules.users.password_schemas import PasswordResetAdmin
 from app.modules.users import repo as user_repo
 from app.modules.users import password_repo
 
 from app.core.dependencies import RoleChecker, get_current_user, enforce_permission
+from app.utils.audit import log_audit_trail
 from app.core.security import get_password_hash
 from app.core.password_policy import validate_password_strength
 
@@ -27,6 +28,36 @@ from app.modules.tasks.models.task_history import TaskHistory
 
 router = APIRouter()
 admin_checker = RoleChecker(['Super Admin', 'System Super Admin', 'Admin'])
+SUPER_ADMIN_ROLE_NAMES = {'Super Admin', 'System Super Admin'}
+
+
+def require_super_admin(current_user: User) -> None:
+    if not current_user or not current_user.role or current_user.role.name not in SUPER_ADMIN_ROLE_NAMES:
+        raise HTTPException(status_code=403, detail='You do not have permission to perform this action.')
+
+
+async def get_super_admin_role(db: AsyncSession):
+    role_stmt = select(Role).where(Role.name == 'Super Admin')
+    role_result = await db.execute(role_stmt)
+    role = role_result.scalar_one_or_none()
+    if role is None:
+        role_stmt = select(Role).where(Role.name.in_(list(SUPER_ADMIN_ROLE_NAMES)))
+        role_result = await db.execute(role_stmt)
+        role = role_result.scalars().first()
+    return role
+
+
+async def count_active_super_admins(db: AsyncSession, exclude_user_id: UUID | None = None) -> int:
+    stmt = select(func.count(User.id)).select_from(User).join(Role, User.role_id == Role.id).where(
+        User.is_deleted == False,
+        User.is_active == True,
+        Role.name.in_(list(SUPER_ADMIN_ROLE_NAMES))
+    )
+    if exclude_user_id is not None:
+        stmt = stmt.where(User.id != exclude_user_id)
+    result = await db.execute(stmt)
+    return int(result.scalar_one() or 0)
+
 
 def serialize_user_obj(u: User) -> UserResponse:
     role_data = RoleResponse(id=u.role.id, name=u.role.name) if u.role else None
@@ -54,7 +85,9 @@ def serialize_user_obj(u: User) -> UserResponse:
         region_town=u.region_town,
         is_active=u.is_active,
         role=role_data,
-        departments=departments_data
+        departments=departments_data,
+        created_at=getattr(u, 'created_at', None),
+        last_login=getattr(u, 'last_login', None)
     )
 
 @router.post('/', response_model=UserResponse) 
@@ -132,8 +165,260 @@ async def create_new_user(payload: UserCreate, db: AsyncSession = Depends(get_db
     complete_user = await user_repo.get_user_by_id(db, new_user.id)
     
     resp_data = serialize_user_obj(complete_user).model_dump()
-    resp_data['generated_password'] = provided_password
     return resp_data
+
+
+@router.get('/super-admins', response_model=List[UserResponse])
+async def list_super_admins(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    require_super_admin(current_user)
+    stmt = (
+        select(User)
+        .options(
+            selectinload(User.role),
+            selectinload(User.position),
+            selectinload(User.user_departments).selectinload(UserDepartment.department)
+        )
+        .join(Role, User.role_id == Role.id)
+        .where(User.is_deleted == False, Role.name.in_(list(SUPER_ADMIN_ROLE_NAMES)))
+        .order_by(User.first_name, User.last_name)
+    )
+    result = await db.execute(stmt)
+    return [serialize_user_obj(user) for user in result.scalars().all()]
+
+
+@router.get('/super-admins/{user_id}', response_model=UserResponse)
+async def get_super_admin(
+    user_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    require_super_admin(current_user)
+    stmt = (
+        select(User)
+        .options(
+            selectinload(User.role),
+            selectinload(User.position),
+            selectinload(User.user_departments).selectinload(UserDepartment.department)
+        )
+        .join(Role, User.role_id == Role.id)
+        .where(User.id == user_id, User.is_deleted == False, Role.name.in_(list(SUPER_ADMIN_ROLE_NAMES)))
+    )
+    result = await db.execute(stmt)
+    user = result.scalars().first()
+    if not user:
+        raise HTTPException(status_code=404, detail='Super Admin not found.')
+    return serialize_user_obj(user)
+
+
+@router.post('/super-admins', response_model=UserResponse)
+async def create_super_admin(
+    payload: SuperAdminCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    require_super_admin(current_user)
+
+    if not payload.first_name.strip() or not payload.last_name.strip():
+        raise HTTPException(status_code=400, detail='Full name is required.')
+    if payload.password != payload.confirm_password:
+        raise HTTPException(status_code=400, detail='Passwords do not match.')
+
+    normalized_email = payload.email.lower()
+    stmt_check = select(User).where(User.email == normalized_email)
+    existing_user = (await db.execute(stmt_check)).scalars().first()
+    if existing_user:
+        raise HTTPException(status_code=400, detail='An account with this email already exists.')
+
+    try:
+        validate_password_strength(payload.password)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    super_admin_role = await get_super_admin_role(db)
+    if super_admin_role is None:
+        raise HTTPException(status_code=500, detail='Super Admin role is not configured.')
+
+    user_data = {
+        'first_name': payload.first_name.strip(),
+        'last_name': payload.last_name.strip(),
+        'email': normalized_email,
+        'hashed_password': get_password_hash(payload.password),
+        'role_id': super_admin_role.id,
+        'is_active': payload.is_active,
+        'must_change_password': True,
+    }
+
+    created_user = await user_repo.create_user(db, user_data)
+    await password_repo.add_password_history(db, created_user.id, created_user.hashed_password)
+    await log_audit_trail(
+        db,
+        current_user.id,
+        'CREATE_SUPER_ADMIN',
+        'users',
+        str(created_user.id),
+        None,
+        {'email': normalized_email, 'status': 'active' if payload.is_active else 'inactive'}
+    )
+
+    return serialize_user_obj(await user_repo.get_user_by_id(db, created_user.id))
+
+
+@router.put('/super-admins/{user_id}', response_model=UserResponse)
+async def update_super_admin(
+    user_id: UUID,
+    payload: SuperAdminUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    require_super_admin(current_user)
+    stmt = select(User).options(selectinload(User.role)).where(User.id == user_id, User.is_deleted == False)
+    result = await db.execute(stmt)
+    user = result.scalars().first()
+    if not user:
+        raise HTTPException(status_code=404, detail='Super Admin not found.')
+    if user.role and user.role.name not in SUPER_ADMIN_ROLE_NAMES:
+        raise HTTPException(status_code=403, detail='Only Super Admin accounts can be updated here.')
+    if current_user.id == user.id:
+        raise HTTPException(status_code=403, detail='You cannot edit your own Super Admin account from this screen.')
+
+    if payload.email and payload.email.lower() != user.email.lower():
+        email_check = select(User).where(User.email == payload.email.lower(), User.id != user.id)
+        if (await db.execute(email_check)).scalars().first():
+            raise HTTPException(status_code=400, detail='An account with this email already exists.')
+
+    old_snapshot = {
+        'first_name': user.first_name,
+        'last_name': user.last_name,
+        'email': user.email,
+        'is_active': user.is_active,
+    }
+    if payload.first_name is not None:
+        user.first_name = payload.first_name.strip() or user.first_name
+    if payload.last_name is not None:
+        user.last_name = payload.last_name.strip() or user.last_name
+    if payload.email is not None:
+        user.email = payload.email.lower()
+    if payload.is_active is not None:
+        user.is_active = payload.is_active
+
+    await db.commit()
+    await log_audit_trail(
+        db,
+        current_user.id,
+        'UPDATE_SUPER_ADMIN',
+        'users',
+        str(user.id),
+        old_snapshot,
+        {'first_name': user.first_name, 'last_name': user.last_name, 'email': user.email, 'is_active': user.is_active}
+    )
+    return serialize_user_obj(await user_repo.get_user_by_id(db, user.id))
+
+
+@router.patch('/super-admins/{user_id}/activate')
+async def activate_super_admin(
+    user_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    require_super_admin(current_user)
+    stmt = select(User).options(selectinload(User.role)).where(User.id == user_id, User.is_deleted == False)
+    result = await db.execute(stmt)
+    user = result.scalars().first()
+    if not user:
+        raise HTTPException(status_code=404, detail='Super Admin not found.')
+    if user.role and user.role.name not in SUPER_ADMIN_ROLE_NAMES:
+        raise HTTPException(status_code=403, detail='This user is not a Super Admin account.')
+    if current_user.id == user.id:
+        raise HTTPException(status_code=403, detail='You cannot activate your own Super Admin account.')
+
+    old_snapshot = {'is_active': user.is_active}
+    user.is_active = True
+    await db.commit()
+    await log_audit_trail(
+        db,
+        current_user.id,
+        'ACTIVATE_SUPER_ADMIN',
+        'users',
+        str(user.id),
+        old_snapshot,
+        {'is_active': True}
+    )
+    return {'message': 'Super Admin activated successfully.'}
+
+
+@router.patch('/super-admins/{user_id}/deactivate')
+async def deactivate_super_admin(
+    user_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    require_super_admin(current_user)
+    stmt = select(User).options(selectinload(User.role)).where(User.id == user_id, User.is_deleted == False)
+    result = await db.execute(stmt)
+    user = result.scalars().first()
+    if not user:
+        raise HTTPException(status_code=404, detail='Super Admin not found.')
+    if user.role and user.role.name not in SUPER_ADMIN_ROLE_NAMES:
+        raise HTTPException(status_code=403, detail='This user is not a Super Admin account.')
+    if current_user.id == user.id:
+        raise HTTPException(status_code=403, detail='You cannot deactivate your own Super Admin account.')
+    if user.is_active and (await count_active_super_admins(db, exclude_user_id=None) <= 1):
+        raise HTTPException(status_code=400, detail='Cannot deactivate the last active Super Admin.')
+
+    old_snapshot = {'is_active': user.is_active}
+    user.is_active = False
+    await db.commit()
+    await log_audit_trail(
+        db,
+        current_user.id,
+        'DEACTIVATE_SUPER_ADMIN',
+        'users',
+        str(user.id),
+        old_snapshot,
+        {'is_active': False}
+    )
+    return {'message': 'Super Admin deactivated successfully.'}
+
+
+@router.delete('/super-admins/{user_id}')
+async def delete_super_admin(
+    user_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    require_super_admin(current_user)
+    stmt = select(User).options(selectinload(User.role)).where(User.id == user_id, User.is_deleted == False)
+    result = await db.execute(stmt)
+    user = result.scalars().first()
+    if not user:
+        raise HTTPException(status_code=404, detail='Super Admin not found.')
+    if user.role and user.role.name not in SUPER_ADMIN_ROLE_NAMES:
+        raise HTTPException(status_code=403, detail='This user is not a Super Admin account.')
+    if current_user.id == user.id:
+        raise HTTPException(status_code=403, detail='You cannot delete your own Super Admin account.')
+    if user.is_active and (await count_active_super_admins(db) <= 1):
+        raise HTTPException(status_code=400, detail='Cannot delete the last active Super Admin.')
+
+    old_snapshot = {'email': user.email, 'is_active': user.is_active, 'role': user.role.name if user.role else None}
+    if not user.email.startswith('deleted_'):
+        user.email = f"deleted_{int(datetime.now().timestamp())}_{user.email}"
+    user.is_deleted = True
+    user.is_active = False
+    await db.commit()
+    await log_audit_trail(
+        db,
+        current_user.id,
+        'DELETE_SUPER_ADMIN',
+        'users',
+        str(user.id),
+        old_snapshot,
+        {'deleted': True, 'email': user.email}
+    )
+    return {'message': 'Super Admin deleted successfully.'}
+
 
 @router.get('/roles/list')
 async def get_roles_list(db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
@@ -150,7 +435,7 @@ async def get_roles_list(db: AsyncSession = Depends(get_db), current_user: User 
 @router.get('/deleted/list', response_model=List[UserResponse])
 async def get_deleted_users(
     skip: int = Query(0, ge=0), 
-    limit: int = Query(100, gt=0), 
+    limit: int = Query(100, gt=0, le=500),
     db: AsyncSession = Depends(get_db), 
     current_user: User = Depends(admin_checker)
 ):
@@ -176,7 +461,7 @@ async def get_deleted_users(
 @router.get('/', response_model=List[UserResponse])
 async def get_users(
     skip: int = Query(0, ge=0), 
-    limit: int = Query(100, gt=0), 
+    limit: int = Query(100, gt=0, le=500),
     db: AsyncSession = Depends(get_db), 
     current_user: User = Depends(admin_checker)
 ):

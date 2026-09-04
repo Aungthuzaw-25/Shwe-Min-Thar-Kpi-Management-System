@@ -22,7 +22,13 @@ async def create_formula(db: AsyncSession, formula_data: dict) -> KPIFormula:
 
 # ⚡ PERFORMANCE FIX: Added skip and limit
 async def get_all_formulas(db: AsyncSession, skip: int = 0, limit: int = 100) -> List[KPIFormula]:
-    stmt = select(KPIFormula).order_by(KPIFormula.created_at.desc()).offset(skip).limit(limit)
+    stmt = (
+        select(KPIFormula)
+        .where(KPIFormula.is_deleted == False)
+        .order_by(KPIFormula.created_at.desc(), KPIFormula.id)
+        .offset(skip)
+        .limit(limit)
+    )
     result = await db.execute(stmt)
     return list(result.scalars().all())
 
@@ -69,14 +75,18 @@ async def get_kpi_report_data(
         )
         .join(User, KPIRecord.user_id == User.id)
         .outerjoin(Department, KPIRecord.department_id == Department.id)
-        .where(KPIRecord.period_type == period_type)
+        .where(
+            KPIRecord.period_type == period_type,
+            KPIRecord.is_deleted == False,
+            User.is_deleted == False,
+        )
     )
 
     if department_id:
         stmt = stmt.where(KPIRecord.department_id == department_id)
 
     # ⚡ PERFORMANCE FIX: Pagination applied
-    stmt = stmt.order_by(KPIRecord.weighted_score.desc()).offset(skip).limit(limit)
+    stmt = stmt.order_by(KPIRecord.weighted_score.desc(), KPIRecord.user_id, KPIRecord.id).offset(skip).limit(limit)
     
     result = await db.execute(stmt)
     rows = result.all()
@@ -96,3 +106,9 @@ async def get_kpi_report_data(
         })
         
     return report_data
+
+async def get_active_user_ids(db: AsyncSession) -> List[UUID]:
+    """Return list of UUIDs for users where is_active is True."""
+    stmt = select(User.id).where(User.is_active == True)
+    result = await db.execute(stmt)
+    return [uid for uid in result.scalars().all()]

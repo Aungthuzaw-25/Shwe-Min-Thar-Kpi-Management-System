@@ -2,6 +2,7 @@ from sqlalchemy import Column, String, ForeignKey, Integer
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.database.base import BaseModel
+import uuid
 
 class Department(BaseModel):
     __tablename__ = "departments"
@@ -18,6 +19,9 @@ class Department(BaseModel):
 
 class UserDepartment(BaseModel):
     __tablename__ = "user_departments"
+
+    # Keep the audit identifier, but make the association keys the ORM identity.
+    id = Column(UUID(as_uuid=True), default=uuid.uuid4, nullable=False, unique=True)
     
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
     department_id = Column(UUID(as_uuid=True), ForeignKey("departments.id", ondelete="CASCADE"), primary_key=True)

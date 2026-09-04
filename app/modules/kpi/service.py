@@ -1,24 +1,34 @@
+import logging
+from datetime import datetime
+from typing import List, Optional
+from uuid import UUID
+
+from fastapi import HTTPException, status
+from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import delete # 🌟 ADDED: For updating rules cleanly
-from fastapi import HTTPException, status
-from uuid import UUID
-from typing import Optional
 
-# 🌟 IMPORT: Added KPIScoringRuleItem
-from app.modules.kpi.models import KPILevelSetting, KPIFormula, KPIRecord, PeriodType, FormulaStatus, KPIScoringRuleItem
+# Models and utilities
+from app.modules.kpi.models import (
+    KPILevelSetting,
+    KPIFormula,
+    KPIRecord,
+    PeriodType,
+    FormulaStatus,
+    KPIScoringRuleItem,
+)
+from app.modules.kpi.engine import calculate_custom_period_kpi, KPICalculationEngine
 from app.modules.kpi.schemas import (
-    KPIFormulaCreate, 
-    KPIFormulaUpdate, 
+    KPIFormulaCreate,
+    KPIFormulaUpdate,
     KPILevelSettingUpdate,
     KpiReportSummaryResponse,
-    KpiReportItem
+    KpiReportItem,
 )
+from app.modules.kpi import repo as kpi_repo
 
-from app.modules.kpi import repo as kpi_repo 
-
-# 🌟 FIX: Import KPICalculationEngine to use standardize_key
-from app.modules.kpi.engine import KPICalculationEngine
+# Logger for this module
+logger = logging.getLogger(__name__)
 
 # ==============================================================================
 # 1. KPI Level Settings Logic (L0, L1, L2 အဖွင့်အပိတ် ပြုလုပ်ခြင်း)
@@ -117,6 +127,59 @@ async def get_all_kpi_formulas(db: AsyncSession, department_id: UUID = None):
     result = await db.execute(stmt)
     return result.scalars().all()
 
+def _build_scoring_rule_items(formula_id, categories) -> List[KPIScoringRuleItem]:
+    """Build KPIScoringRuleItem list from formula categories."""
+    rules = []
+    for cat in categories:
+        for ded in cat.deductions:
+            for rule in ded.rules:
+                rules.append(KPIScoringRuleItem(
+                    formula_id=formula_id,
+                    category_name=KPICalculationEngine.standardize_key(cat.name),
+                    rule_name=KPICalculationEngine.standardize_key(ded.name),
+                    measure_type=ded.measure_type,
+                    operator=rule.operator,
+                    target_value=float(rule.value),
+                    deduct_score=float(rule.deduct_score),
+                ))
+    return rules
+
+
+async def _create_new_formula_version(
+    db: AsyncSession, formula: KPIFormula, update_data: dict, formula_in: KPIFormulaUpdate
+) -> KPIFormula:
+    """Create a new DRAFT version of an existing formula."""
+    new_categories = formula.categories
+    if "categories" in update_data:
+        new_categories = list(update_data["categories"])
+
+    new_formula = KPIFormula(
+        name=update_data.get("name", formula.name),
+        description=update_data.get("description", formula.description),
+        region_town=formula.region_town,
+        department_id=formula.department_id,
+        position_name=formula.position_name,
+        user_level=formula.user_level,
+        categories=new_categories,
+        scope=formula.scope,
+        is_active=update_data.get("is_active", True),
+        version=formula.version + 1,            # 🌟 Version 1 ဆင့်တက်မည်
+        status=FormulaStatus.DRAFT,             # 🌟 DRAFT သို့ ပြန်ရောက်မည်
+        parent_formula_id=formula.id,           # 🌟 မူရင်း Formula ကို မှတ်သားထားမည်
+    )
+    db.add(new_formula)
+    await db.flush()
+
+    if formula_in.categories:
+        rules_to_add = _build_scoring_rule_items(new_formula.id, formula_in.categories)
+        if rules_to_add:
+            db.add_all(rules_to_add)
+
+    await db.commit()
+    await db.refresh(new_formula)
+    return new_formula
+
+
 async def update_kpi_formula(db: AsyncSession, formula_id: UUID, formula_in: KPIFormulaUpdate):
     """ရှိပြီးသား Formula အား ပြင်ဆင်မည် (🌟 Versioning & Auto Splitting Logic ပါဝင်သည်)"""
     stmt = select(KPIFormula).where(KPIFormula.id == formula_id)
@@ -127,71 +190,19 @@ async def update_kpi_formula(db: AsyncSession, formula_id: UUID, formula_in: KPI
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="KPI Formula မတွေ့ရှိပါ။")
 
     update_data = formula_in.model_dump(exclude_unset=True)
-    
+
     # 🌟 Formula သည် ACTIVE, APPROVED သို့မဟုတ် ARCHIVED ဖြစ်နေလျှင် အသစ် (Version အသစ်) အဖြစ် DRAFT ပြန်လုပ်မည်
     if formula.status in [FormulaStatus.ACTIVE, FormulaStatus.APPROVED, FormulaStatus.ARCHIVED]:
-        
-        new_categories = formula.categories
-        if "categories" in update_data:
-             new_categories = [cat for cat in update_data["categories"]]
-
-        new_formula = KPIFormula(
-            name=update_data.get("name", formula.name),
-            description=update_data.get("description", formula.description),
-            region_town=formula.region_town, 
-            department_id=formula.department_id, 
-            position_name=formula.position_name, 
-            user_level=formula.user_level, 
-            categories=new_categories,
-            scope=formula.scope,
-            is_active=update_data.get("is_active", True),
-            version=formula.version + 1,            # 🌟 Version 1 ဆင့်တက်မည်
-            status=FormulaStatus.DRAFT,             # 🌟 DRAFT သို့ ပြန်ရောက်မည်
-            parent_formula_id=formula.id            # 🌟 မူရင်း Formula ကို မှတ်သားထားမည်
-        )
-        db.add(new_formula)
-        await db.flush() # Get new ID
-        
-        # သွင်းလိုက်သော Version အသစ်အတွက် Rules အသစ်များကိုပါ kpi_scoring_rule_items ထဲသို့ ထည့်မည်
-        if formula_in.categories:
-            rules_to_add = []
-            for cat in formula_in.categories:
-                for ded in cat.deductions:
-                    for rule in ded.rules:
-                        rules_to_add.append(KPIScoringRuleItem(
-                            formula_id=new_formula.id, 
-                            # 🌟 FIX: Standardize names before saving
-                            category_name=KPICalculationEngine.standardize_key(cat.name), 
-                            rule_name=KPICalculationEngine.standardize_key(ded.name), 
-                            measure_type=ded.measure_type, operator=rule.operator, target_value=float(rule.value), deduct_score=float(rule.deduct_score)
-                        ))
-            if rules_to_add:
-                db.add_all(rules_to_add)
-
-        await db.commit()
-        await db.refresh(new_formula)
-        return new_formula
+        return await _create_new_formula_version(db, formula, update_data, formula_in)
 
     # 🌟 DRAFT သို့မဟုတ် REVIEW အဆင့်ဖြစ်နေလျှင် ထိုနေရာတွင်ပင် တိုက်ရိုက်ပြင်ဆင်မည်
     if "categories" in update_data:
         # ယခင် Rules အဟောင်းများကို ရှင်းလင်းမည်
         await db.execute(delete(KPIScoringRuleItem).where(KPIScoringRuleItem.formula_id == formula_id))
-        
         # Rules အသစ်များကို ပြန်သွင်းမည်
-        rules_to_add = []
-        for cat in formula_in.categories:
-            for ded in cat.deductions:
-                for rule in ded.rules:
-                    rules_to_add.append(KPIScoringRuleItem(
-                        formula_id=formula.id, 
-                        # 🌟 FIX: Standardize names before saving
-                        category_name=KPICalculationEngine.standardize_key(cat.name), 
-                        rule_name=KPICalculationEngine.standardize_key(ded.name), 
-                        measure_type=ded.measure_type, operator=rule.operator, target_value=float(rule.value), deduct_score=float(rule.deduct_score)
-                    ))
+        rules_to_add = _build_scoring_rule_items(formula.id, formula_in.categories)
         if rules_to_add:
             db.add_all(rules_to_add)
-            
         # JSON format ဖြင့် Update လုပ်ရန် dictionary သို့ ပြောင်းလဲခြင်း
         update_data["categories"] = [cat.model_dump() for cat in formula_in.categories]
 
@@ -203,9 +214,34 @@ async def update_kpi_formula(db: AsyncSession, formula_id: UUID, formula_in: KPI
     return formula
 
 
-# ==============================================================================
-# 3. KPI Records Logic 
-# ==============================================================================
+    # ==============================================================================
+    # 5. Bulk KPI Calculation
+    # ==============================================================================
+
+async def bulk_calculate_kpis(
+    db: AsyncSession,
+    user_ids: List[UUID],
+    start_date: datetime,
+    end_date: datetime,
+) -> dict:
+    """Calculate KPI for multiple users over the given date range.
+
+    Returns a summary dict with total, success, failed counts and error details.
+    """
+    success = 0
+    failed = 0
+    errors = []
+    for uid in user_ids:
+        try:
+            await calculate_custom_period_kpi(db, uid, start_date, end_date)
+            success += 1
+        except Exception as e:
+            failed += 1
+            errors.append({"user_id": str(uid), "error": str(e)})
+            # Log the error for debugging
+            logger.exception("Bulk KPI calculation failed for user %s", uid)
+    return {"total": len(user_ids), "success": success, "failed": failed, "errors": errors}
+
 async def get_kpi_records_by_user(db: AsyncSession, user_id: UUID, period_type_str: str = "MONTHLY"):
     """ဝန်ထမ်း၏ လစဉ် KPI မှတ်တမ်းများကို Database မှ ဆွဲထုတ်ရန်"""
     try:

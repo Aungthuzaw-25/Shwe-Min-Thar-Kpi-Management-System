@@ -10,9 +10,58 @@ from app.database.connection import get_db
 from app.core.exceptions import PermissionDeniedException
 # 🌟 FIX: Permission များကို တစ်ပါတည်း ဆွဲထုတ်ရန် Role ကိုပါ Import လုပ်ပါသည်
 from app.modules.users.models import User, Role, Permission, RolePermission, UserPermissionOverride
+from app.modules.departments.models import UserDepartment
 from app.modules.auth.models import TokenBlacklist
 
 SUPER_ADMIN_ROLE = "Super Admin"
+GLOBAL_SCOPE_ROLES = {"Super Admin", "System Super Admin", "HR"}
+
+
+async def enforce_user_scope(db: AsyncSession, current_user: User, target_user_id) -> None:
+    """Allow self access, shared-department access, or explicitly global roles."""
+    if current_user.role and current_user.role.name in GLOBAL_SCOPE_ROLES:
+        return
+    if str(current_user.id) == str(target_user_id):
+        return
+
+    rows = await db.execute(
+        select(UserDepartment.department_id).where(
+            UserDepartment.user_id == current_user.id
+        )
+    )
+    current_departments = {str(department_id) for department_id in rows.scalars().all()}
+    target_rows = await db.execute(
+        select(UserDepartment.department_id).where(
+            UserDepartment.user_id == target_user_id
+        )
+    )
+    target_departments = {str(department_id) for department_id in target_rows.scalars().all()}
+    if (
+        not current_user.role
+        or current_user.role.name not in {"Admin", "Department Head"}
+        or not current_departments.intersection(target_departments)
+    ):
+        raise PermissionDeniedException(
+            detail="Access denied for this user's organizational scope."
+        )
+
+
+async def enforce_department_scope(
+    db: AsyncSession, current_user: User, department_id
+) -> None:
+    """Allow global roles or users explicitly assigned to the department."""
+    if current_user.role and current_user.role.name in GLOBAL_SCOPE_ROLES:
+        return
+    result = await db.execute(
+        select(UserDepartment.id).where(
+            UserDepartment.user_id == current_user.id,
+            UserDepartment.department_id == department_id,
+        )
+    )
+    if result.scalar_one_or_none() is None:
+        raise PermissionDeniedException(
+            detail="Access denied for this department scope."
+        )
 
 
 def has_effective_permission(
@@ -109,8 +158,8 @@ async def get_current_user(
         else:
             # ၂။ မရှိပါက Browser ၏ HttpOnly Cookie မှ access_token ကို ရှာမည်
             cookie_token = request.cookies.get("access_token")
-            if cookie_token and cookie_token.startswith("Bearer "):
-                token = cookie_token.split(" ")[1]
+            if cookie_token:
+                token = cookie_token.removeprefix("Bearer ").strip()
 
     if not token:
         raise HTTPException(

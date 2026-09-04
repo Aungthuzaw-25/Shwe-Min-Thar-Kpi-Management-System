@@ -1,0 +1,269 @@
+{% extends "layouts/base.html" %}
+{% set active_page = "super_admin_management" %}
+
+{% block title %}Super Admin Management{% endblock %}
+
+{% block content %}
+<div class="flex-1 overflow-y-auto bg-slate-50 px-4 py-6 sm:px-6 lg:px-8">
+    <div class="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div>
+            <h1 class="text-2xl font-extrabold tracking-tight text-blue-950">Super Admin Management</h1>
+            <p class="mt-1 text-sm text-slate-500">Create, activate, deactivate, and remove Super Admin accounts with backend enforcement.</p>
+        </div>
+        <button id="openCreateModal" class="rounded-xl bg-blue-950 px-5 py-2.5 text-sm font-bold text-white shadow-md transition hover:bg-blue-900">Add Super Admin</button>
+    </div>
+
+    <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div class="overflow-x-auto">
+            <table class="min-w-full text-left text-sm text-slate-700">
+                <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                    <tr>
+                        <th class="px-4 py-3 font-bold">Name</th>
+                        <th class="px-4 py-3 font-bold">Email</th>
+                        <th class="px-4 py-3 font-bold">Status</th>
+                        <th class="px-4 py-3 font-bold">Created</th>
+                        <th class="px-4 py-3 font-bold">Last Login</th>
+                        <th class="px-4 py-3 font-bold text-right">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="superAdminTableBody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div id="superAdminModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
+    <div class="w-full max-w-xl rounded-3xl bg-white p-6 shadow-2xl">
+        <div class="mb-5 flex items-center justify-between">
+            <div>
+                <h2 id="modalTitle" class="text-xl font-extrabold text-blue-950">Add Super Admin</h2>
+                <p class="text-xs text-slate-500">Use the project’s existing password security rules.</p>
+            </div>
+            <button type="button" id="closeModalBtn" class="rounded-lg border border-slate-200 p-2 text-slate-500 hover:text-red-500">✕</button>
+        </div>
+
+        <form id="superAdminForm" class="space-y-4">
+            <div class="grid gap-4 md:grid-cols-2">
+                <div>
+                    <label for="firstName" class="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-600">First Name</label>
+                    <input id="firstName" name="first_name" type="text" required class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100" />
+                </div>
+                <div>
+                    <label for="lastName" class="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-600">Last Name</label>
+                    <input id="lastName" name="last_name" type="text" required class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100" />
+                </div>
+            </div>
+
+            <div>
+                <label for="email" class="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-600">Email</label>
+                <input id="email" name="email" type="email" required class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100" />
+            </div>
+
+            <div class="grid gap-4 md:grid-cols-2">
+                <div>
+                    <label for="password" class="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-600">Password</label>
+                    <input id="password" name="password" type="password" required class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100" />
+                </div>
+                <div>
+                    <label for="confirmPassword" class="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-600">Confirm Password</label>
+                    <input id="confirmPassword" name="confirm_password" type="password" required class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100" />
+                </div>
+            </div>
+
+            <div>
+                <label for="status" class="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-600">Status</label>
+                <select id="status" name="is_active" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100">
+                    <option value="true">Active</option>
+                    <option value="false">Inactive</option>
+                </select>
+            </div>
+
+            <div class="flex justify-end gap-3 pt-2">
+                <button type="button" id="cancelModalBtn" class="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">Cancel</button>
+                <button type="submit" class="rounded-xl bg-blue-950 px-4 py-2 text-sm font-bold text-white hover:bg-blue-900">Create Super Admin</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+const tableBody = document.getElementById('superAdminTableBody');
+const modal = document.getElementById('superAdminModal');
+const form = document.getElementById('superAdminForm');
+const modalTitle = document.getElementById('modalTitle');
+const submitButton = form.querySelector('button[type="submit"]');
+
+function showToast(message, kind = 'success') {
+    const existing = document.getElementById('globalToast');
+    if (existing) existing.remove();
+    const toast = document.createElement('div');
+    toast.id = 'globalToast';
+    toast.className = `fixed right-5 top-5 z-[100] rounded-xl px-4 py-3 text-sm font-semibold shadow-lg ${kind === 'error' ? 'bg-red-600 text-white' : 'bg-emerald-600 text-white'}`;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 3000);
+}
+
+function openModal() {
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    form.reset();
+    modalTitle.textContent = 'Add Super Admin';
+    submitButton.textContent = 'Create Super Admin';
+}
+
+function closeModal() {
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+    form.reset();
+}
+
+function getStatusBadge(isActive) {
+    return isActive
+        ? '<span class="inline-flex rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-700">Active</span>'
+        : '<span class="inline-flex rounded-full bg-slate-200 px-2.5 py-1 text-xs font-bold text-slate-600">Inactive</span>';
+}
+
+function formatDate(value) {
+    if (!value) return '—';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '—';
+    return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+function renderRow(user) {
+    const fullName = [user.first_name, user.last_name].filter(Boolean).join(' ') || '—';
+    const createdAt = user.created_at || user.createdAt || user.created_date || null;
+    const lastLogin = user.last_login || user.lastLogin || null;
+    const activeLabel = user.is_active ? 'Deactivate' : 'Activate';
+
+    return `
+        <tr class="border-t border-slate-100 hover:bg-slate-50">
+            <td class="px-4 py-3 font-semibold text-slate-800">${fullName}</td>
+            <td class="px-4 py-3">${user.email}</td>
+            <td class="px-4 py-3">${getStatusBadge(user.is_active)}</td>
+            <td class="px-4 py-3">${formatDate(createdAt)}</td>
+            <td class="px-4 py-3">${formatDate(lastLogin)}</td>
+            <td class="px-4 py-3">
+                <div class="flex justify-end gap-2">
+                    <button data-action="toggle" data-id="${user.id}" class="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100">${activeLabel}</button>
+                    <button data-action="delete" data-id="${user.id}" class="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-bold text-red-600 hover:bg-red-100">Delete</button>
+                </div>
+            </td>
+        </tr>
+    `;
+}
+
+async function loadSuperAdmins() {
+    tableBody.innerHTML = '<tr><td colspan="6" class="px-4 py-10 text-center text-slate-500">Loading Super Admins...</td></tr>';
+    try {
+        const response = await fetch('/api/v1/users/super-admins', { credentials: 'same-origin' });
+        if (!response.ok) {
+            throw new Error('Unable to load Super Admin list.');
+        }
+        const users = await response.json();
+        if (!users.length) {
+            tableBody.innerHTML = '<tr><td colspan="6" class="px-4 py-10 text-center text-slate-500">No Super Admin accounts found.</td></tr>';
+            return;
+        }
+        tableBody.innerHTML = users.map(renderRow).join('');
+    } catch (error) {
+        tableBody.innerHTML = `<tr><td colspan="6" class="px-4 py-10 text-center text-red-600">${error.message}</td></tr>`;
+    }
+}
+
+async function submitCreate(event) {
+    event.preventDefault();
+    const formData = new FormData(form);
+    const payload = {
+        first_name: formData.get('first_name').trim(),
+        last_name: formData.get('last_name').trim(),
+        email: formData.get('email').trim(),
+        password: formData.get('password'),
+        confirm_password: formData.get('confirm_password'),
+        is_active: formData.get('is_active') === 'true'
+    };
+
+    if (!payload.first_name || !payload.last_name || !payload.email || !payload.password) {
+        showToast('Please complete all required fields.', 'error');
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/v1/users/super-admins', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify(payload)
+        });
+
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(result.detail || 'Unable to create Super Admin account.');
+        }
+
+        closeModal();
+        showToast('Super Admin account created successfully.');
+        await loadSuperAdmins();
+    } catch (error) {
+        showToast(error.message, 'error');
+    }
+}
+
+async function toggleSuperAdmin(id) {
+    const current = document.querySelector(`button[data-id="${id}"][data-action="toggle"]`);
+    const label = current && current.textContent ? current.textContent.trim() : '';
+    const endpoint = label === 'Deactivate' ? `/api/v1/users/super-admins/${id}/deactivate` : `/api/v1/users/super-admins/${id}/activate`;
+
+    try {
+        const response = await fetch(endpoint, {
+            method: 'PATCH',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(result.detail || 'Unable to update Super Admin status.');
+        }
+        showToast(result.message || 'Status updated successfully.');
+        await loadSuperAdmins();
+    } catch (error) {
+        showToast(error.message, 'error');
+    }
+}
+
+async function deleteSuperAdmin(id) {
+    if (!confirm('Delete this Super Admin account?')) return;
+    try {
+        const response = await fetch(`/api/v1/users/super-admins/${id}`, {
+            method: 'DELETE',
+            credentials: 'same-origin'
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(result.detail || 'Unable to delete Super Admin.');
+        }
+        showToast(result.message || 'Super Admin deleted successfully.');
+        await loadSuperAdmins();
+    } catch (error) {
+        showToast(error.message, 'error');
+    }
+}
+
+form.addEventListener('submit', submitCreate);
+document.getElementById('openCreateModal').addEventListener('click', openModal);
+document.getElementById('closeModalBtn').addEventListener('click', closeModal);
+document.getElementById('cancelModalBtn').addEventListener('click', closeModal);
+
+tableBody.addEventListener('click', (event) => {
+    const button = event.target.closest('button[data-action]');
+    if (!button) return;
+    const id = button.dataset.id;
+    const action = button.dataset.action;
+    if (action === 'toggle') toggleSuperAdmin(id);
+    if (action === 'delete') deleteSuperAdmin(id);
+});
+
+loadSuperAdmins();
+</script>
+{% endblock %}

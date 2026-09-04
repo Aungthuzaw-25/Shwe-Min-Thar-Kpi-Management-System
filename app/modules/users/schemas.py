@@ -27,6 +27,8 @@ class UserResponse(BaseModel):
     is_active: bool
     role: Optional[RoleResponse] = None
     departments: List[UserDeptResponse] = []
+    created_at: Optional[datetime] = None
+    last_login: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -52,6 +54,20 @@ class UserUpdate(BaseModel):
     role_id: Optional[UUID] = None
     is_active: Optional[bool] = None
     department_id: Optional[UUID] = None
+
+class SuperAdminCreate(BaseModel):
+    first_name: str
+    last_name: str
+    email: EmailStr
+    password: str
+    confirm_password: str
+    is_active: bool = True
+
+class SuperAdminUpdate(BaseModel):
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    email: Optional[EmailStr] = None
+    is_active: Optional[bool] = None
 
 # 🌟 SECURITY FIX: Strict schema to prevent Payload Injection / DoS via Date Parsing
 class UserLeaveRequest(BaseModel):

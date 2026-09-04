@@ -1,4 +1,5 @@
 import logging
+from urllib.parse import urlparse
 from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import DeclarativeBase
@@ -22,7 +23,11 @@ engine_options = {
 
 connect_args = {}
 if settings.DATABASE_URL.startswith("postgresql+asyncpg://"):
-    connect_args["ssl"] = True
+    parsed = urlparse(settings.DATABASE_URL)
+    host = (parsed.hostname or "").lower()
+    is_localhost = host in {"localhost", "127.0.0.1", "::1"}
+    if not is_localhost:
+        connect_args["ssl"] = True
 
 # 🌟 FIX: PostgreSQL/MySQL specific optimizations. SQLite doesn't support these pool args.
 if not settings.DATABASE_URL.startswith("sqlite"):
@@ -34,10 +39,13 @@ if not settings.DATABASE_URL.startswith("sqlite"):
     )
 
 # Initialize the async engine
+engine_kwargs = dict(engine_options)
+if connect_args:
+    engine_kwargs["connect_args"] = connect_args
+
 engine = create_async_engine(
     settings.DATABASE_URL,
-    connect_args=connect_args or None,
-    **engine_options,
+    **engine_kwargs,
 )
 
 # Configure the session factory

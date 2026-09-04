@@ -12,6 +12,18 @@ from app.modules.users.models import User
 
 router = APIRouter(prefix="/system", tags=["System Settings & Logs"])
 
+SENSITIVE_SETTING_TERMS = (
+    "password", "secret", "token", "api_key", "apikey", "private_key",
+    "database_url", "access_key", "encryption_key",
+)
+
+
+def _safe_backup_value(key: str, value):
+    normalized = key.lower().replace("-", "_")
+    if any(term in normalized for term in SENSITIVE_SETTING_TERMS):
+        return "[REDACTED]"
+    return value
+
 @router.get("/settings", response_model=List[SystemSettingResponse])
 async def read_all_settings(
     db: AsyncSession = Depends(get_db),
@@ -100,7 +112,7 @@ async def generate_database_backup(
             "system_settings": [
                 {
                     "key": s.key,
-                    "value": s.value,
+                    "value": _safe_backup_value(s.key, s.value),
                     "description": s.description
                 } for s in settings
             ]
