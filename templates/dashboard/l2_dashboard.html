@@ -162,7 +162,7 @@
 
         try {
             const response = await fetch(`/api/v1/kpi/action-plans/record/${recordId}`);
-            if (response.status === 401 || response.status === 403) {
+            if (response.status === 401) {
                 window.location.href = '/auth/login';
                 return;
             }
@@ -196,7 +196,7 @@
                     target_completion_date: new Date(document.getElementById('actionPlanDate').value).toISOString()
                 })
             });
-            if (response.status === 401 || response.status === 403) {
+            if (response.status === 401) {
                 window.location.href = '/auth/login';
                 return;
             }
@@ -231,7 +231,7 @@
             ]);
 
             // 🛡️ AUTH FIX
-            if (recordsRes.status === 401 || chartRes.status === 401 || recordsRes.status === 403) {
+            if (recordsRes.status === 401 || chartRes.status === 401) {
                 window.location.href = '/auth/login';
                 return;
             }

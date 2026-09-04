@@ -41,3 +41,22 @@ def test_department_scope_deny_override_beats_role_grant():
     )
 
     assert has_effective_permission(user, "tasks.approve", department_id="dept-1") is False
+
+
+def test_department_user_level_controls_workflow_permissions():
+    permission = make_permission("tasks.approve")
+    l2 = SimpleNamespace(
+        role=SimpleNamespace(name="Department User", permissions=[permission]),
+        permission_overrides=[],
+        user_departments=[SimpleNamespace(user_level="L2", is_deleted=False)],
+        id="user-1",
+    )
+    l1 = SimpleNamespace(
+        role=SimpleNamespace(name="Department User", permissions=[permission]),
+        permission_overrides=[],
+        user_departments=[SimpleNamespace(user_level="L1", is_deleted=False)],
+        id="user-2",
+    )
+
+    assert has_effective_permission(l2, "tasks.approve") is False
+    assert has_effective_permission(l1, "tasks.approve") is True

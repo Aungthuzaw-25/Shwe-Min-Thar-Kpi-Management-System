@@ -128,14 +128,14 @@ async def render_normal_dashboard_view(
     if role_name in ['Admin', 'System Admin']:
         return RedirectResponse(url="/admin/dashboard")
 
-    if user_level == 'L0' or 'L0' in role_name:
+    if user_level in ('L0', 'Level 0'):
         return templates.TemplateResponse(
             request=request,
             name="dashboard/l0_dashboard.html",
             context={**employee_context}
         )
 
-    if user_level == 'L1' or 'L1' in role_name:
+    if user_level in ('L1', 'Level 1'):
         return templates.TemplateResponse(
             request=request,
             name="dashboard/l1_dashboard.html",

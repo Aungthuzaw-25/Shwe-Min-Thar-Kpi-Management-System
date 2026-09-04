@@ -172,7 +172,7 @@
 
         try {
             const response = await fetch(`/api/v1/kpi/action-plans/record/${recordId}`);
-            if (response.status === 401 || response.status === 403) {
+            if (response.status === 401) {
                 window.location.href = '/auth/login';
                 return;
             }
@@ -206,7 +206,7 @@
                     target_completion_date: new Date(document.getElementById('actionPlanDate').value).toISOString()
                 })
             });
-            if (response.status === 401 || response.status === 403) {
+            if (response.status === 401) {
                 window.location.href = '/auth/login';
                 return;
             }
@@ -241,7 +241,7 @@
             ]);
 
             // 🛡️ AUTH FIX: Auto redirect on session expire
-            if ([recordsRes, queueRes].some(response => response.status === 401 || response.status === 403)) {
+            if ([recordsRes, queueRes].some(response => response.status === 401)) {
                 window.location.href = '/auth/login';
                 return;
             }
@@ -276,7 +276,7 @@
             const departmentId = document.getElementById('departmentId').value;
             if (departmentId) {
                     const summaryRes = await fetch(`/api/v1/kpi/reports/summary?period_type=MONTHLY&department_id=${departmentId}`);
-                    if (summaryRes.status === 401 || summaryRes.status === 403) { window.location.href = '/auth/login'; return; }
+                    if (summaryRes.status === 401) { window.location.href = '/auth/login'; return; }
                     
                     if (summaryRes.ok) {
                         const summary = await summaryRes.json();

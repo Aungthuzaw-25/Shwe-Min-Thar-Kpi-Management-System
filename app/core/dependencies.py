@@ -15,6 +15,7 @@ from app.modules.auth.models import TokenBlacklist
 
 SUPER_ADMIN_ROLE = "Super Admin"
 GLOBAL_SCOPE_ROLES = {"Super Admin", "System Super Admin", "HR"}
+LEVEL_RESTRICTED_TASK_PERMISSIONS = {"tasks.approve", "tasks.reject", "tasks.return"}
 
 
 async def enforce_user_scope(db: AsyncSession, current_user: User, target_user_id) -> None:
@@ -103,8 +104,29 @@ def has_effective_permission(
         return True
 
     role_permissions = getattr(user.role, "permissions", []) if user.role else []
-    return any(getattr(permission, "code", None) == permission_code
-               for permission in role_permissions)
+    has_role_permission = any(
+        getattr(permission, "code", None) == permission_code
+        for permission in role_permissions
+    )
+    if not has_role_permission:
+        return False
+
+    # L0/L1 can review the department workflow; L2 remains a submitter.
+    # Explicit user overrides above still take precedence over this level gate.
+    if (
+        user.role
+        and user.role.name == "Department User"
+        and permission_code in LEVEL_RESTRICTED_TASK_PERMISSIONS
+    ):
+        department_links = getattr(user, "user_departments", []) or []
+        levels = {
+            str(getattr(link, "user_level", "")).upper().replace("LEVEL ", "L")
+            for link in department_links
+            if not getattr(link, "is_deleted", False)
+        }
+        return bool(levels.intersection({"L0", "L1"}))
+
+    return True
 
 
 def enforce_permission(
@@ -194,7 +216,8 @@ async def get_current_user(
     # တစ်ပါတည်း (Eager Load) ဆွဲထုတ်ထားခြင်းဖြင့် RequirePermission တွင် DB ထပ်ခေါ်စရာ မလိုတော့ပါ။
     stmt = select(User).options(
         selectinload(User.role).selectinload(Role.permissions),
-        selectinload(User.permission_overrides).selectinload(UserPermissionOverride.permission)
+        selectinload(User.permission_overrides).selectinload(UserPermissionOverride.permission),
+        selectinload(User.user_departments),
     ).where(
         User.email == email, 
         User.is_deleted == False

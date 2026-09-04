@@ -151,8 +151,9 @@
                 fetch(`/api/v1/tasks/approval-queue`)
             ]);
 
-            // 🛡️ AUTH FIX: Redirect if any request returns 401/403
-            if ([recordsRes, queueRes].some(response => response.status === 401 || response.status === 403)) {
+            // Only an authentication failure ends the session. A 403 is a valid
+            // authorization result and must leave the current session intact.
+            if ([recordsRes, queueRes].some(response => response.status === 401)) {
                 window.location.href = '/auth/login';
                 return;
             }
@@ -187,7 +188,7 @@
             const departmentId = document.getElementById('departmentId').value;
             if (departmentId) {
                     const summaryRes = await fetch(`/api/v1/kpi/reports/summary?period_type=MONTHLY&department_id=${departmentId}`);
-                    if (summaryRes.status === 401 || summaryRes.status === 403) { window.location.href = '/auth/login'; return; }
+                    if (summaryRes.status === 401) { window.location.href = '/auth/login'; return; }
                     
                     if (summaryRes.ok) {
                         const summary = await summaryRes.json();

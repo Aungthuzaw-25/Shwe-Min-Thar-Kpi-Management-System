@@ -166,6 +166,7 @@ async def run_seed():
             "Department User": {
                 "users.view", "tasks.view", "tasks.create", "tasks.edit",
                 "tasks.delete", "tasks.submit", "tasks.resubmit",
+                "tasks.approve", "tasks.reject", "tasks.return",
                 "kpi.view", "report.view", "department.view",
             },
         }

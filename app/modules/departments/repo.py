@@ -20,7 +20,13 @@ async def create_department(db: AsyncSession, dept_data: dict) -> Department:
         raise e
 
 async def get_all_departments(db: AsyncSession, skip: int = 0, limit: int = 100) -> List[Department]:
-    stmt = select(Department).where(Department.is_deleted == False).order_by(Department.name).offset(skip).limit(limit)
+    stmt = (
+        select(Department)
+        .where(Department.is_deleted == False)
+        .order_by(Department.priority.desc(), Department.name, Department.id)
+        .offset(skip)
+        .limit(limit)
+    )
     result = await db.execute(stmt)
     return list(result.scalars().all())
 
