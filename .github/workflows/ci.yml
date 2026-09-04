@@ -1,11 +1,15 @@
 name: KPI System CI Pipeline
 
-on:
+"on":
   push:
-    branches: [main, master]
+    branches:
+      - main
+      - master
 
   pull_request:
-    branches: [main, master]
+    branches:
+      - main
+      - master
 
 jobs:
   test:
@@ -40,41 +44,25 @@ jobs:
       TIMEZONE: "Asia/Yangon"
 
     steps:
-
-      # --------------------------------------------------
-      # Checkout
-      # --------------------------------------------------
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # --------------------------------------------------
-      # Python
-      # --------------------------------------------------
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: pip
 
-      # --------------------------------------------------
-      # System dependencies
-      # --------------------------------------------------
       - name: Install system packages
         run: |
           sudo apt-get update
           sudo apt-get install -y libmagic1 libmagic-dev
 
-      # --------------------------------------------------
-      # Python dependencies
-      # --------------------------------------------------
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip setuptools wheel
           python -m pip install -r requirements-dev.txt
 
-      # --------------------------------------------------
-      # Database configuration validation
-      # --------------------------------------------------
       - name: Validate database configuration
         shell: bash
         run: |
@@ -86,9 +74,6 @@ jobs:
             echo "Using fallback SQLite in-memory database"
           fi
 
-      # --------------------------------------------------
-      # Tests
-      # --------------------------------------------------
       - name: Run tests
         shell: bash
         run: |
@@ -99,30 +84,17 @@ jobs:
             --cov-report=xml \
             -q
 
-      # --------------------------------------------------
-      # Dependency security audit
-      #
-      # PYSEC-2026-1325 is the known ecdsa finding.
-      # ecdsa is installed transitively through python-jose.
-      # The application uses HS256 JWT.
-      # --------------------------------------------------
       - name: Audit dependencies
         shell: bash
         run: |
           python -m pip_audit -r requirements.txt \
             --ignore-vuln PYSEC-2026-1325
 
-      # --------------------------------------------------
-      # Application import validation
-      # --------------------------------------------------
       - name: Validate application import
         shell: bash
         run: |
           python -c "from app.main import app; print(f'Loaded {app.title}')"
 
-      # --------------------------------------------------
-      # Check SonarQube configuration
-      # --------------------------------------------------
       - name: Check SonarQube configuration
         id: sonar_config
         shell: bash
@@ -139,10 +111,6 @@ jobs:
             echo "Skipping SonarQube analysis."
           fi
 
-      # --------------------------------------------------
-      # SonarQube
-      # Runs only when token and URL are configured
-      # --------------------------------------------------
       - name: SonarQube analysis
         if: steps.sonar_config.outputs.enabled == 'true'
         uses: SonarSource/sonarqube-scan-action@v6
@@ -150,9 +118,6 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
 
-      # --------------------------------------------------
-      # Docker build
-      # --------------------------------------------------
       - name: Build production Docker image
         run: |
           docker build \
