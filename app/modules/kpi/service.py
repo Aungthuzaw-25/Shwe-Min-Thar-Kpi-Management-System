@@ -4,7 +4,7 @@ from typing import List, Optional
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import delete, func
+from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
@@ -15,8 +15,8 @@ from app.modules.kpi.models import (
     KPIRecord,
     PeriodType,
     FormulaStatus,
-    KPIScoringRuleItem,
     KpiCategory,
+    KPIScoringRuleItem,
 )
 from app.modules.kpi.engine import calculate_custom_period_kpi, KPICalculationEngine
 from app.modules.kpi.schemas import (
@@ -32,31 +32,43 @@ from app.modules.kpi import repo as kpi_repo
 logger = logging.getLogger(__name__)
 
 
-async def sync_formula_categories(db: AsyncSession, categories) -> None:
-    """Insert formula category names into the global task lookup table once."""
-    names = {
-        category.name.strip()
-        for category in categories
-        if getattr(category, "name", None) and category.name.strip()
-    }
+def _category_name(category) -> str:
+    """Return a trimmed category name from a schema object or JSON mapping."""
+    value = (
+        category.get("name")
+        if isinstance(category, dict)
+        else getattr(category, "name", None)
+    )
+    return value.strip() if isinstance(value, str) else ""
+
+
+async def _sync_formula_categories(db: AsyncSession, categories) -> None:
+    """Upsert formula category names into the shared task category lookup."""
+    names = {_category_name(category) for category in categories}
+    names.discard("")
     if not names:
         return
 
-    existing_result = await db.execute(
-        select(KpiCategory.name).where(func.lower(KpiCategory.name).in_(
-            {name.casefold() for name in names}
-        ))
+    existing_names = set(
+        (
+            await db.execute(
+                select(KpiCategory.name).where(KpiCategory.name.in_(names))
+            )
+        ).scalars().all()
     )
-    existing_names = {
-        name.strip().casefold()
-        for name in existing_result.scalars().all()
-        if name
-    }
-    db.add_all(
-        KpiCategory(name=name)
-        for name in sorted(names)
-        if name.casefold() not in existing_names
-    )
+    missing_names = names - existing_names
+    if missing_names:
+        db.add_all(KpiCategory(name=name) for name in sorted(missing_names))
+        await db.flush()
+
+
+async def sync_existing_formula_categories(db: AsyncSession) -> int:
+    """Backfill the shared category lookup from all stored formula JSON payloads."""
+    formulas = (await db.execute(select(KPIFormula))).scalars().all()
+    for formula in formulas:
+        await _sync_formula_categories(db, formula.categories or [])
+    await db.commit()
+    return len(formulas)
 
 # ==============================================================================
 # 1. KPI Level Settings Logic (L0, L1, L2 အဖွင့်အပိတ် ပြုလုပ်ခြင်း)
@@ -118,7 +130,9 @@ async def create_kpi_formula(db: AsyncSession, formula_in: KPIFormulaCreate):
     
     # 🌟 Transaction Integrity: Commit မလုပ်သေးဘဲ Formula ID ရယူရန် flush အသုံးပြုသည်
     await db.flush()
-    
+
+    await _sync_formula_categories(db, formula_in.categories)
+
     # 🌟 DATA AUTO-SPLITTING: Rule များကို kpi_scoring_rule_items သို့ ခွဲထုတ်ထည့်သွင်းခြင်း
     rules_to_add = []
     for cat in formula_in.categories:
@@ -141,7 +155,6 @@ async def create_kpi_formula(db: AsyncSession, formula_in: KPIFormulaCreate):
                 
     if rules_to_add:
         db.add_all(rules_to_add)
-    await sync_formula_categories(db, formula_in.categories)
 
     # အားလုံးအောင်မြင်မှသာ အပြီးသတ် သိမ်းဆည်းမည်
     await db.commit()
@@ -199,11 +212,12 @@ async def _create_new_formula_version(
     db.add(new_formula)
     await db.flush()
 
+    await _sync_formula_categories(db, formula_in.categories)
+
     if formula_in.categories:
         rules_to_add = _build_scoring_rule_items(new_formula.id, formula_in.categories)
         if rules_to_add:
             db.add_all(rules_to_add)
-        await sync_formula_categories(db, formula_in.categories)
 
     await db.commit()
     await db.refresh(new_formula)
@@ -233,9 +247,9 @@ async def update_kpi_formula(db: AsyncSession, formula_id: UUID, formula_in: KPI
         rules_to_add = _build_scoring_rule_items(formula.id, formula_in.categories)
         if rules_to_add:
             db.add_all(rules_to_add)
-        await sync_formula_categories(db, formula_in.categories)
         # JSON format ဖြင့် Update လုပ်ရန် dictionary သို့ ပြောင်းလဲခြင်း
         update_data["categories"] = [cat.model_dump() for cat in formula_in.categories]
+        await _sync_formula_categories(db, formula_in.categories)
 
     for field, value in update_data.items():
         setattr(formula, field, value)

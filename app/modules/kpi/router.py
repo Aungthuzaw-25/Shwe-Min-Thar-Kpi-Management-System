@@ -1,5 +1,4 @@
 import logging
-import json
 from typing import List, Optional, Any, Dict
 from uuid import UUID
 from datetime import datetime, timedelta
@@ -17,7 +16,7 @@ from app.database.connection import get_db, AsyncSessionLocal
 from app.core.dependencies import get_current_user, enforce_permission, enforce_user_scope, enforce_department_scope
 from app.core.timezone import APPLICATION_TIMEZONE
 
-from app.modules.users.models import Position, User
+from app.modules.users.models import User
 from app.modules.departments.models import Department, UserDepartment
 from app.models.audit_log import AuditLog  
 
@@ -25,7 +24,7 @@ from app.modules.kpi import service as kpi_service
 from app.modules.kpi import repo as kpi_repo 
 from app.modules.kpi.models import (
     KPIRecord, PeriodType, KPIFormula, FormulaStatus, KPIPeriodStatus,
-    KPILevelSetting
+    KPILevelSetting, KpiRule
 )
 from app.modules.kpi.engine import KPICalculationEngine, calculate_custom_period_kpi, formula_max_score
 
@@ -311,51 +310,18 @@ async def get_available_kpi_categories(
         if not ud or not current_user.position_id:
             return {"categories": [], "message": "No organizational context found for your user profile."}
             
-        stmt = select(KPIFormula).where(
-            KPIFormula.department_id == ud.department_id,
-            KPIFormula.user_level == ud.user_level,
-            KPIFormula.is_active == True,
+        stmt = select(KpiRule.category_name).where(
+            KpiRule.department_id == ud.department_id,
+            KpiRule.position_id == current_user.position_id,
+            KpiRule.level == ud.user_level,
+            KpiRule.is_active == True
         )
-        formulas = (await db.execute(stmt)).scalars().all()
-        position = await db.get(Position, current_user.position_id)
-        position_name = position.name.strip().casefold() if position and position.name else ""
-        targeted = [
-            formula
-            for formula in formulas
-            if (
-                formula.position_id
-                and formula.position_id == current_user.position_id
-            )
-            or (
-                formula.position_name
-                and formula.position_name.strip().casefold() == position_name
-            )
-        ]
-        if not targeted:
-            targeted = [
-                formula
-                for formula in formulas
-                if not formula.position_id and not formula.position_name
-            ]
-        category_names = set()
-        for formula in targeted:
-            categories = formula.categories
-            if isinstance(categories, str):
-                categories = json.loads(categories)
-            if not isinstance(categories, list):
-                continue
-            category_names.update(
-                category.get("name", "").strip()
-                for category in categories
-                if isinstance(category, dict)
-                and category.get("name")
-                and category.get("name", "").strip()
-            )
-
-        if not category_names:
+        categories = (await db.execute(stmt)).scalars().all()
+        
+        if not categories:
             return {"categories": [], "message": "No KPI categories are currently assigned."}
             
-        return {"categories": sorted(category_names)}
+        return {"categories": categories}
     except Exception as e:
         logger.error(f"Error fetching categories for {current_user.id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error retrieving available KPI categories.")
