@@ -10,7 +10,7 @@
     <meta name="theme-color" content="#1d4ed8">
 
     <script>
-    // Service Worker ကို Register လုပ်ခြင်း
+        // Service Worker ကို Register လုပ်ခြင်း
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('/static/service-worker.js')
@@ -23,7 +23,7 @@
         }
     </script>
     
-    <!-- ⚡ PERFORMANCE FIX: Removed Tailwind CDN and Replaced with Pre-compiled Local CSS -->
+    <!-- PERFORMANCE FIX: Pre-compiled Local CSS -->
     <link rel="stylesheet" href="/static/css/output.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -58,10 +58,7 @@
 </head>
 <body class="flex h-screen overflow-hidden text-slate-800 relative">
 
-    <!-- 📱 MOBILE RESPONSIVE FIX: Sidebar Backdrop Overlay -->
-    
-
-    <!-- 🌟 SIDEBAR NAVIGATION -->
+    <!-- SIDEBAR NAVIGATION -->
     <aside id="mainSidebar" class="w-[260px] bg-slate-900 text-white flex-col shrink-0 transition-transform duration-300 absolute md:relative inset-y-0 left-0 z-30 shadow-2xl transform -translate-x-full md:translate-x-0 flex">
         <!-- Logo -->
         <div class="h-24 flex items-center justify-between px-6 sm:px-8 border-b border-slate-800 bg-slate-900/90 backdrop-blur-md shrink-0">
@@ -69,14 +66,12 @@
                 <span class="bg-blue-600 text-white p-2 rounded-xl mr-3 shadow-lg"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg></span>
                 KPI <span class="font-normal opacity-70 ml-1">Core</span>
             </h1>
-            <!-- Mobile Close Button inside Sidebar -->
             <button type="button" class="md:hidden text-slate-400 hover:text-white focus:outline-none" onclick="toggleMobileSidebar()" aria-label="Close navigation menu">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
             </button>
         </div>
 
         <nav class="flex-1 py-8 px-5 space-y-2 overflow-y-auto custom-scrollbar">
-            
             <!-- L0 NAVIGATION -->
             {% if user_level in ['L0', 'Level 0'] %}
                 <div class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 px-3">Director Operations</div>
@@ -88,7 +83,6 @@
                     <svg class="w-5 h-5 mr-3 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                     Final Authorizations
                 </a>
-
             <!-- L1 NAVIGATION -->
             {% elif user_level in ['L1', 'Level 1'] %}
                 <div class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 px-3">Team Supervisor</div>
@@ -100,7 +94,6 @@
                     <svg class="w-5 h-5 mr-3 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg>
                     Review Submissions
                 </a>
-
             <!-- L2 NAVIGATION -->
             {% else %}
                 <div class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 px-3">Personal Workspace</div>
@@ -134,11 +127,9 @@
                         <p class="text-[10px] text-slate-400 truncate font-semibold mt-0.5"><span id="sidebarDept">{{ department_name or 'No Dept' }}</span> • <span id="sidebarPos">{{ position_name or 'No Position' }}</span></p>
                     </div>
                 </div>
-
-                <!-- Notification Bell (Animated Ping) -->
+                <!-- Notification Bell -->
                 <button type="button" onclick="toggleNotifications(event)" id="bellBtn" class="relative p-2 text-slate-400 hover:text-white rounded-xl hover:bg-slate-700 transition focus:outline-none shrink-0 ml-1" aria-label="Notifications" aria-controls="notifDropdown" aria-expanded="false">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
-                    <!-- Ping Animation Badge -->
                     <span id="unreadPing" class="hidden absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
                       <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
                       <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500 border border-slate-900"></span>
@@ -170,8 +161,7 @@
 
     <!-- MAIN CONTENT INJECTION -->
     <main class="flex-1 flex flex-col min-w-0 overflow-hidden relative z-10 bg-slate-50/50">
-        
-        <!-- 📱 MOBILE RESPONSIVE FIX: Mobile Header with Menu Toggle -->
+        <!-- Mobile Header with Menu Toggle -->
         <div class="md:hidden flex items-center justify-between bg-slate-900 text-white p-4 sm:p-5 shrink-0 shadow-sm z-10">
             <h1 class="text-lg sm:text-xl font-black tracking-tight flex items-center">
                 <span class="bg-blue-600 text-white p-1.5 rounded-lg mr-2 shadow-sm"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg></span>
@@ -190,9 +180,9 @@
     <!-- GLOBAL TOAST NOTIFICATIONS CONTAINER -->
     <div id="toastContainer" class="fixed top-5 right-5 z-[9999] flex flex-col gap-2 max-w-[90%] sm:max-w-md w-full items-end"></div>
 
-    <!-- 🌟 CORE JAVASCRIPT SYSTEM 🌟 -->
+    <!-- CORE JAVASCRIPT SYSTEM -->
     <script>
-        // 🌟 SECURITY FIX: Global HTML Escape Function to prevent XSS
+        // Global HTML Escape Function to prevent XSS
         window.escapeHTML = function(str) {
             if (!str) return "";
             return str.toString()
@@ -203,7 +193,7 @@
                 .replace(/'/g, "&#039;");
         };
 
-        // 🌟 UX FIX: Universal Centralized Toast Function
+        // Universal Centralized Toast Function
         window.showToast = function(message, type = 'success') {
             let container = document.getElementById('toastContainer');
             if(!container) return;
@@ -224,44 +214,116 @@
             }, 4000);
         };
 
-        // 🛡️ API SECURITY & AUTH FIX: Global Interceptor for 401 Unauthorized
+        // AUTH FIX & TOKEN REFRESH LOGIC
         const originalFetch = window.fetch;
-        window.fetch = async function() {
+        const AUTH_REFRESH_URL = '/api/v1/auth/refresh';
+
+        function isAuthEndpoint(url) {
+            if (!url) return false;
+            const normalized = String(url);
+            return normalized.includes('/api/v1/auth/') || normalized.includes('/auth/login') || normalized.includes('/auth/logout');
+        }
+
+        function safeLogoutFromExpiredSession(reason) {
+            if (window.__authSessionLogoutTriggered) return;
+            window.__authSessionLogoutTriggered = true;
+            try {
+                localStorage.removeItem('user');
+            } catch (error) {
+                console.warn('[AUTH] Could not clear stored session data.', error);
+            }
+            console.warn('[AUTH] Expired session detected:', reason);
+            window.location.href = '/auth/login?session_expired=true';
+        }
+
+        let refreshPromise = null;
+
+        async function refreshAccessTokenOnce() {
+            if (refreshPromise) {
+                return refreshPromise;
+            }
+            refreshPromise = (async () => {
+                try {
+                    const refreshResponse = await originalFetch(AUTH_REFRESH_URL, {
+                        method: 'POST',
+                        credentials: 'include',
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+
+                    if (refreshResponse.ok) {
+                        console.info('[AUTH] Access token refreshed successfully.');
+                        return true;
+                    }
+                    return false;
+                } catch (error) {
+                    console.warn('[AUTH] Refresh request failed:', error);
+                    return false;
+                } finally {
+                    refreshPromise = null;
+                }
+            })();
+            return refreshPromise;
+        }
+
+        function cloneFetchInit(init = {}) {
+            const cloned = { ...init };
+            if (cloned.headers && !(cloned.headers instanceof Headers)) {
+                cloned.headers = { ...cloned.headers };
+            }
+            if (!('credentials' in cloned)) {
+                cloned.credentials = 'include';
+            }
+            return cloned;
+        }
+
+        window.fetch = async function(input, init = {}) {
+            const url = typeof input === 'string' ? input : (input && input.url ? input.url : '');
+            const isLoginPage = window.location.pathname.includes('/login');
+            const isAuthRequest = isAuthEndpoint(url) || isLoginPage;
+
             try {
                 let response = await originalFetch.apply(this, arguments);
-                
-                // Only intercept if we are not already on the login page
-                if (!window.location.pathname.includes('/login')) {
-                    
-                    // 401: Token expired or invalid -> Log them out
+
+                if ((response.status === 401 || response.status === 403) && !isAuthRequest) {
+                    // Token သက်တမ်းကုန်သွားပါက (401)
                     if (response.status === 401) {
-                        localStorage.removeItem('user'); // Clear ghost sessions
-                        window.location.href = '/auth/login?session_expired=true';
+                        console.warn('[AUTH] 401 Unauthorized detected. Attempting token refresh...');
+                        const refreshed = await refreshAccessTokenOnce();
+                        if (refreshed) {
+                            const retryInit = cloneFetchInit(init);
+                            try {
+                                const retryResponse = await originalFetch.apply(this, [input, retryInit]);
+                                if (retryResponse.status !== 401) {
+                                    return retryResponse;
+                                }
+                            } catch (retryError) {
+                                console.warn('[AUTH] Retry failed:', retryError);
+                            }
+                        }
+                        // Refresh လို့မရတော့မှသာ အမှန်တကယ် Login သို့ ပြန်ပို့ပါမည်
+                        safeLogoutFromExpiredSession('401 session expired');
+                        return response;
                     } 
-                    // 403: Permission Denied -> Do NOT log out, just show a warning
+                    // ခွင့်ပြုချက်မရှိသော Data ဖြစ်ပါက (403) - Logout လုံးဝ မလုပ်ပါ
                     else if (response.status === 403) {
                         if (typeof window.showToast === 'function') {
-                            window.showToast("Permission Denied: You do not have access to this data.", "error");
+                            window.showToast("Permission Denied: လုပ်ဆောင်ခွင့် မရှိပါ။", "error");
                         }
+                        return response;
                     }
                 }
-                
+
                 return response;
             } catch (err) {
                 throw err;
             }
         };
 
-        // 📱 MOBILE RESPONSIVE FIX: Sidebar Toggle Logic
+        // Mobile Sidebar Toggle Logic
         function toggleMobileSidebar() {
             const sidebar = document.getElementById("mainSidebar");
-            const backdrop = document.getElementById("sidebarBackdrop");
-            if (sidebar && backdrop) {
+            if (sidebar) {
                 const isOpen = sidebar.classList.toggle("-translate-x-full") === false;
-                backdrop.classList.toggle("hidden", !isOpen);
-                document.querySelectorAll('[aria-controls="mainSidebar"]').forEach(button => {
-                    button.setAttribute("aria-expanded", String(isOpen));
-                });
                 document.body.classList.toggle("overflow-hidden");
             }
         }
@@ -278,11 +340,11 @@
             startSmartPolling();
         });
 
-        // --- LOGOUT LOGIC ---
+        // Logout Logic
         async function handleLogout() {
             if (!confirm('စနစ်မှ ထွက်ခွာရန် (Logout) သေချာပါသလား?')) return;
             try {
-                const response = await fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' });
+                await fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' });
                 localStorage.removeItem('user'); 
                 window.location.href = '/auth/login';
             } catch (error) {
@@ -291,7 +353,7 @@
             }
         }
 
-        // --- NOTIFICATION & SMART POLLING LOGIC ---
+        // Notification System
         const NOTIF_API_BASE = "/api/v1/notifications";
         let notifInterval;
 
@@ -353,7 +415,6 @@
             } catch (err) {
                 const listContainer = document.getElementById("notifList");
                 if (listContainer) listContainer.innerHTML = '<div class="p-6 text-center text-red-600 text-xs font-medium">Unable to load notifications. <button type="button" class="underline font-bold" onclick="fetchNotifications()">Retry</button></div>';
-                console.warn("[NOTIFICATIONS]", err);
             }
         }
 
@@ -390,8 +451,8 @@
                             <p class="text-[11px] sm:text-sm font-extrabold text-slate-800 mb-0.5 sm:mb-1 truncate">${window.escapeHTML(n.title)}</p>
                             <p class="text-[10px] sm:text-[11px] font-medium text-slate-500 leading-relaxed line-clamp-2">${window.escapeHTML(n.message)}</p>
                             <p class="text-[8px] sm:text-[9px] font-bold text-slate-400 mt-2 sm:mt-2.5 uppercase tracking-wider">${formatAppDate(n.created_at)}</p>
-                        </button>
-                    </div>
+                        </div>
+                    </button>
                 `;
             }).join('');
         }
