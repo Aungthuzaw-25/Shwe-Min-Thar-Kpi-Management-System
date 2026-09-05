@@ -27,31 +27,54 @@
 
         <!-- ========== TAB 1: ROLE PERMISSION MATRIX ========== -->
         <section id="rolesPanel">
-            <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div class="mb-5 grid gap-4 rounded-2xl border border-slate-100 bg-slate-50 p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
                 <label class="flex-1 text-xs font-bold uppercase tracking-wide text-slate-600">Select Role
                     <select id="roleSelect" class="mt-2 w-full rounded-xl border border-gray-200 bg-slate-50 p-3 text-sm font-semibold focus:border-blue-500 focus:ring-2 focus:ring-blue-200"></select>
                 </label>
-                <div class="flex gap-2">
-                    <button id="selectAllRole" class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold text-slate-600 hover:bg-slate-100 transition-all">Select All</button>
-                    <button id="deselectAllRole" class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold text-slate-600 hover:bg-slate-100 transition-all">Deselect All</button>
-                    <button id="saveRole" class="rounded-xl bg-blue-950 px-5 py-3 text-sm font-bold text-white hover:bg-blue-900 transition-all">
-                        <svg class="mr-1 inline h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                        Save Role Permissions
-                    </button>
+                <div id="levelSelector" class="hidden">
+                    <p class="text-xs font-bold uppercase tracking-wide text-slate-600">Department User Level</p>
+                    <div class="mt-2 flex gap-2" role="group" aria-label="Department User level">
+                        <button type="button" class="level-btn rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-600" data-level="L0">L0</button>
+                        <button type="button" class="level-btn rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-600" data-level="L1">L1</button>
+                        <button type="button" class="level-btn rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-600" data-level="L2">L2</button>
+                    </div>
                 </div>
+                <div class="flex flex-wrap gap-2 md:justify-end">
+                    <button id="selectAllRole" class="rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-bold text-slate-600 hover:bg-slate-100 transition-all">Select All</button>
+                    <button id="deselectAllRole" class="rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-bold text-slate-600 hover:bg-slate-100 transition-all">Clear All</button>
+                </div>
+            </div>
+            <div id="roleContext" class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3">
+                <div>
+                    <p class="text-xs font-bold uppercase tracking-wide text-blue-700">Current selection</p>
+                    <p id="roleContextText" class="mt-1 text-sm font-extrabold text-blue-950">Loading role...</p>
+                </div>
+                <span id="roleProtectedBadge" class="hidden rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-800">Protected role</span>
             </div>
             <!-- Search bar for role matrix -->
             <div class="mb-4">
                 <input id="roleSearch" type="text" placeholder="🔍 Search permissions..." class="w-full max-w-md rounded-xl border border-gray-200 bg-slate-50 px-4 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
             </div>
-            <div id="roleMatrix" class="overflow-x-auto"></div>
+            <div id="roleMatrix" class="space-y-4"></div>
+            <div class="sticky bottom-3 z-10 mt-6 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-lg backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+                <p id="roleChangeSummary" class="text-sm font-semibold text-slate-500">No unsaved changes</p>
+                <div class="flex gap-2">
+                    <button id="cancelRoleChanges" class="rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-50">Cancel</button>
+                    <button id="saveRole" disabled class="rounded-xl bg-blue-950 px-5 py-2.5 text-sm font-bold text-white opacity-50 transition hover:bg-blue-900 disabled:cursor-not-allowed">
+                        Save Changes
+                    </button>
+                </div>
+            </div>
         </section>
 
         <!-- ========== TAB 2: USER PERMISSION OVERRIDES ========== -->
         <section id="usersPanel" class="hidden">
-            <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div class="mb-5 grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
                 <label class="flex-1 text-xs font-bold uppercase tracking-wide text-slate-600">Select User
                     <select id="userSelect" class="mt-2 w-full rounded-xl border border-gray-200 bg-slate-50 p-3 text-sm font-semibold focus:border-blue-500 focus:ring-2 focus:ring-blue-200"></select>
+                </label>
+                <label class="text-xs font-bold uppercase tracking-wide text-slate-600">Search User
+                    <input id="userSearchInput" type="search" placeholder="Name, email, department..." class="mt-2 w-full rounded-xl border border-gray-200 bg-slate-50 p-3 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
                 </label>
                 <div class="flex gap-2 flex-wrap">
                     <button id="resetUserOverrides" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-bold text-red-700 hover:bg-red-100 transition-all">
@@ -74,7 +97,9 @@
                     </div>
                     <div class="flex flex-wrap gap-2">
                         <span class="rounded-lg bg-blue-100 px-3 py-1.5 text-xs font-bold text-blue-800" id="userInfoRole">—</span>
+                        <span class="rounded-lg bg-violet-100 px-3 py-1.5 text-xs font-bold text-violet-800" id="userInfoLevel">—</span>
                         <span class="rounded-lg bg-emerald-100 px-3 py-1.5 text-xs font-bold text-emerald-800" id="userInfoDept">—</span>
+                        <span class="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-700" id="userInfoPosition">—</span>
                     </div>
                 </div>
             </div>
@@ -144,9 +169,12 @@ const userSelect = document.getElementById("userSelect");
 const roleMatrix = document.getElementById("roleMatrix");
 const userMatrixEl = document.getElementById("userMatrix");
 const message = document.getElementById("message");
-let allPermissions = [], allUsers = [], allDepartments = [];
+let allPermissions = [], allUsers = [];
 let currentEffective = null;
 let auditOffset = 0;
+let roleBaseline = new Set();
+let roleDirty = false;
+let selectedDepartmentLevel = "L2";
 
 const GROUPS = {
     "users": "User Management",
@@ -158,12 +186,24 @@ const GROUPS = {
     "system": "System Management"
 };
 
-const ACTION_COLUMNS = ["view", "create", "edit", "delete", "approve", "reject", "submit", "resubmit", "return", "export", "assign", "calculate", "activate", "deactivate", "password_reset", "view_all", "settings.view", "settings.edit", "audit.view", "permissions.manage"];
-
 // =====================================================================
 // HELPERS
 // =====================================================================
 function esc(v) { return String(v ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[c])); }
+function userDisplayName(user) {
+    return user.name || `${user.first_name || ""} ${user.last_name || ""}`.trim() || "Unnamed user";
+}
+function roleDisplayName(user) {
+    return user.role_name || user.role?.name || "No Role";
+}
+function userSearchText(user) {
+    const department = user.department_name || user.departments?.map(d => d.name).join(" ") || "";
+    return `${userDisplayName(user)} ${user.email || ""} ${department}`.toLowerCase();
+}
+function userOption(user) {
+    const departmentSuffix = user.department_name ? ` - ${user.department_name}` : "";
+    return `<option value="${esc(user.id)}">${esc(userDisplayName(user))} (${esc(roleDisplayName(user))}${esc(departmentSuffix)})</option>`;
+}
 function setMessage(text, good = false) {
     message.textContent = text;
     message.className = `mt-5 text-sm font-semibold ${good ? "text-emerald-600" : "text-red-600"}`;
@@ -176,6 +216,35 @@ function groupFor(code) {
         if (GROUPS[prefix2]) return GROUPS[prefix2];
     }
     return GROUPS[parts[0]] || "Other";
+}
+function selectedRoleName() {
+    return roleSelect.options[roleSelect.selectedIndex]?.text || "—";
+}
+function setRoleDirty(dirty) {
+    roleDirty = dirty;
+    const save = document.getElementById("saveRole");
+    const summary = document.getElementById("roleChangeSummary");
+    const count = [...roleMatrix.querySelectorAll(".role-permission:checked")]
+        .filter(cb => cb.checked !== roleBaseline.has(cb.value)).length;
+    save.disabled = !dirty;
+    save.classList.toggle("opacity-50", !dirty);
+    summary.textContent = dirty ? `Changes detected: ${count} permission${count === 1 ? "" : "s"} modified` : "No unsaved changes";
+    summary.className = `text-sm font-semibold ${dirty ? "text-amber-700" : "text-slate-500"}`;
+}
+function updateRoleContext() {
+    const isDepartmentUser = selectedRoleName() === "Department User";
+    document.getElementById("levelSelector").classList.toggle("hidden", !isDepartmentUser);
+    document.getElementById("roleContextText").textContent = isDepartmentUser
+        ? `Department User / ${selectedDepartmentLevel}`
+        : selectedRoleName();
+    document.getElementById("roleProtectedBadge").classList.toggle(
+        "hidden",
+        !["Super Admin", "System Super Admin"].includes(selectedRoleName())
+    );
+    document.querySelectorAll(".level-btn").forEach(btn => {
+        const active = btn.dataset.level === selectedDepartmentLevel;
+        btn.className = `level-btn rounded-xl border px-5 py-2.5 text-sm font-bold transition ${active ? "border-blue-950 bg-blue-950 text-white" : "border-slate-200 bg-white text-slate-600 hover:bg-blue-50"}`;
+    });
 }
 function actionLabel(action) {
     const map = {
@@ -217,6 +286,8 @@ document.querySelectorAll(".tab-btn").forEach(btn => btn.onclick = () => {
 // =====================================================================
 function renderRoleMatrix(assigned) {
     const checked = new Set(assigned);
+    roleBaseline = new Set(assigned);
+    roleDirty = false;
     const grouped = {};
     allPermissions.forEach(p => {
         const g = groupFor(p.code);
@@ -253,7 +324,8 @@ function renderRoleMatrix(assigned) {
                     </label>
                 </td>
                 <td class="px-4 py-3 text-center">
-                    <span class="status-badge inline-block w-6 h-6 rounded-full text-center leading-6 text-xs font-bold ${isChecked ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-400"}">${isChecked ? "✓" : "✗"}</span>
+                    <span class="status-badge rounded-full px-2 py-1 text-[10px] font-bold ${isChecked ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}">${isChecked ? "Enabled" : "Disabled"}</span>
+                    <span class="mt-1 block text-[10px] font-bold uppercase tracking-wide text-slate-400">Default</span>
                 </td>
                 <td class="px-4 py-3 text-xs text-slate-500">${esc(p.description || "")}</td>
             </tr>`;
@@ -267,13 +339,15 @@ function renderRoleMatrix(assigned) {
         cb.addEventListener("change", () => {
             const badge = cb.closest("tr").querySelector(".status-badge");
             if (cb.checked) {
-                badge.className = "status-badge inline-block w-6 h-6 rounded-full text-center leading-6 text-xs font-bold bg-emerald-100 text-emerald-700";
-                badge.textContent = "✓";
+                badge.className = "status-badge rounded-full px-2 py-1 text-[10px] font-bold bg-emerald-100 text-emerald-700";
+                badge.textContent = "Enabled";
             } else {
-                badge.className = "status-badge inline-block w-6 h-6 rounded-full text-center leading-6 text-xs font-bold bg-slate-100 text-slate-400";
-                badge.textContent = "✗";
+                badge.className = "status-badge rounded-full px-2 py-1 text-[10px] font-bold bg-slate-100 text-slate-500";
+                badge.textContent = "Disabled";
             }
             updateGroupSelectAll(cb.dataset.group);
+            const current = new Set([...roleMatrix.querySelectorAll(".role-permission:checked")].map(c => c.value));
+            setRoleDirty(current.size !== roleBaseline.size || [...current].some(code => !roleBaseline.has(code)));
         });
     });
 
@@ -307,9 +381,12 @@ document.getElementById("roleSearch").addEventListener("input", (e) => {
 });
 
 async function loadRole() {
+    roleDirty = false;
     const response = await fetch(`/api/v1/permissions/role/${roleSelect.value}`);
     if (!response.ok) throw new Error("Unable to load role permissions.");
     renderRoleMatrix((await response.json()).map(p => p.code));
+    updateRoleContext();
+    setRoleDirty(false);
 }
 
 // Select / deselect all buttons
@@ -319,6 +396,16 @@ document.getElementById("selectAllRole").onclick = () => {
 document.getElementById("deselectAllRole").onclick = () => {
     roleMatrix.querySelectorAll(".role-permission").forEach(c => { if (c.checked) { c.checked = false; c.dispatchEvent(new Event("change")); } });
 };
+document.getElementById("cancelRoleChanges").onclick = () => loadRole().catch(e => setMessage(e.message));
+document.querySelectorAll(".level-btn").forEach(btn => {
+    btn.onclick = () => {
+        selectedDepartmentLevel = btn.dataset.level;
+        updateRoleContext();
+        // The existing API stores defaults by role. Reloading prevents stale
+        // permissions while keeping Department User as one conceptual role.
+        loadRole().catch(e => setMessage(e.message));
+    };
+});
 
 // Save role permissions
 document.getElementById("saveRole").onclick = async () => {
@@ -333,7 +420,20 @@ document.getElementById("saveRole").onclick = async () => {
     setMessage("Role permissions saved successfully!", true);
     await loadRole();
 };
-roleSelect.onchange = () => loadRole().catch(e => setMessage(e.message));
+roleSelect.onchange = () => {
+    if (roleDirty) {
+        showConfirm("Unsaved Changes", "You have unsaved permission changes. Leave this selection?").then(ok => {
+            if (ok) loadRole().catch(e => setMessage(e.message));
+        });
+        return;
+    }
+    loadRole().catch(e => setMessage(e.message));
+};
+window.addEventListener("beforeunload", (event) => {
+    if (!roleDirty) return;
+    event.preventDefault();
+    event.returnValue = "You have unsaved permission changes.";
+});
 
 // =====================================================================
 // TAB 2: USER PERMISSION OVERRIDES
@@ -358,6 +458,10 @@ function renderUserInfo(data) {
     document.getElementById("userInfoEmail").textContent = data.user_email || "—";
     document.getElementById("userInfoRole").textContent = data.role_name || "No Role";
     document.getElementById("userInfoDept").textContent = data.department_name || "No Department";
+    const selectedUser = allUsers.find(user => String(user.id) === String(userSelect.value));
+    const selectedDepartment = selectedUser?.departments?.[0];
+    document.getElementById("userInfoLevel").textContent = selectedDepartment?.level || "Level —";
+    document.getElementById("userInfoPosition").textContent = selectedUser?.position?.name || "Position —";
 }
 
 function renderUserMatrix(permissions) {
@@ -524,6 +628,16 @@ document.getElementById("resetUserOverrides").onclick = async () => {
 };
 
 userSelect.onchange = () => loadUserEffective();
+document.getElementById("userSearchInput").addEventListener("input", (event) => {
+    const query = event.target.value.trim().toLowerCase();
+    const selected = userSelect.value;
+    const users = allUsers.filter(user => {
+        return !query || userSearchText(user).includes(query);
+    });
+    userSelect.innerHTML = users.map(userOption).join("");
+    if (users.some(user => String(user.id) === String(selected))) userSelect.value = selected;
+    if (userSelect.value) loadUserEffective();
+});
 
 // =====================================================================
 // TAB 3: AUDIT HISTORY
@@ -641,23 +755,18 @@ document.getElementById("loadMoreAudit").onclick = () => { auditOffset += 100; l
 // =====================================================================
 (async function init() {
     try {
-        const [rolesRes, permRes, usersRes, deptRes] = await Promise.all([
+        const [rolesRes, permRes, usersRes] = await Promise.all([
             fetch("/api/v1/users/roles/list"),
             fetch("/api/v1/permissions/"),
             fetch("/api/v1/permissions/users"),
-            fetch("/api/v1/permissions/departments"),
         ]);
         if (!rolesRes.ok || !permRes.ok || !usersRes.ok) throw new Error("Unable to load permission management data.");
 
         const roles = await rolesRes.json();
         allPermissions = await permRes.json();
         allUsers = await usersRes.json();
-        if (deptRes.ok) allDepartments = await deptRes.json();
-
         roleSelect.innerHTML = roles.map(r => `<option value="${r.id}">${esc(r.name)}</option>`).join("");
-        userSelect.innerHTML = allUsers.map(u =>
-            `<option value="${u.id}">${esc(u.name)} (${esc(u.role_name || "No Role")}${u.department_name ? " - " + esc(u.department_name) : ""})</option>`
-        ).join("");
+        userSelect.innerHTML = allUsers.map(userOption).join("");
 
         await loadRole();
         if (allUsers.length) await loadUserEffective();

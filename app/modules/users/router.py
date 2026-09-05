@@ -14,6 +14,7 @@ from app.modules.users.schemas import UserCreate, UserUpdate, UserResponse, Role
 from app.modules.users.password_schemas import PasswordResetAdmin
 from app.modules.users import repo as user_repo
 from app.modules.users import password_repo
+from app.modules.users import permission_repo
 
 from app.core.dependencies import RoleChecker, get_current_user, enforce_permission
 from app.utils.audit import log_audit_trail
@@ -528,13 +529,33 @@ async def update_existing_user(user_id: UUID, payload: UserUpdate, db: AsyncSess
             raise HTTPException(status_code=400, detail="This email address is already registered to another account (active or deleted).")
 
     try:
-        update_data = payload.model_dump(exclude={"department_id", "user_level"}, exclude_unset=True)
-        updated_user = await user_repo.update_user(db, user, update_data)
-        
         requested_level = normalize_user_level(payload.user_level)
+        existing_ud = (await db.execute(
+            select(UserDepartment).where(UserDepartment.user_id == user_id)
+        )).scalars().first()
+        role_changed = payload.role_id is not None and payload.role_id != user.role_id
+        level_changed = (
+            requested_level is not None
+            and existing_ud is not None
+            and normalize_user_level(existing_ud.user_level) != requested_level
+        )
+
+        update_data = payload.model_dump(
+            exclude={"department_id", "user_level"},
+            exclude_unset=True,
+        )
+        for key, value in update_data.items():
+            setattr(user, key, value)
+        db.add(user)
+
+        # Overrides are explicit grants/denials for the previous baseline.
+        # Flush them in the same transaction as the role/level change so the
+        # next request can only resolve against the new baseline.
+        if role_changed or level_changed:
+            await permission_repo.purge_user_overrides(db, user_id)
+
         if payload.department_id or requested_level:
-            existing_ud = await db.execute(select(UserDepartment).where(UserDepartment.user_id == user_id))
-            ud_record = existing_ud.scalar_one_or_none()
+            ud_record = existing_ud
             
             if ud_record:
                 if payload.department_id and str(ud_record.department_id) != str(payload.department_id):
@@ -548,7 +569,6 @@ async def update_existing_user(user_id: UUID, payload: UserUpdate, db: AsyncSess
                 if requested_level:
                     ud_record.user_level = requested_level
                 db.add(ud_record)
-                await db.commit()
             else:
                 if not payload.department_id:
                     raise HTTPException(status_code=400, detail='A department is required before setting user_level.')
@@ -558,7 +578,11 @@ async def update_existing_user(user_id: UUID, payload: UserUpdate, db: AsyncSess
                     user_level=requested_level or "L2",
                 )
                 db.add(new_ud)
-                await db.commit()
+        await db.commit()
+        updated_user = await user_repo.get_user_by_id(db, user.id)
+    except HTTPException:
+        await db.rollback()
+        raise
     except Exception as e:
         await db.rollback()
         raise HTTPException(status_code=500, detail=f"Database update failed: {str(e)}")

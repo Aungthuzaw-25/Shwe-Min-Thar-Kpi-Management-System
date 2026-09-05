@@ -1,15 +1,15 @@
-from fastapi import APIRouter, Request, Depends
-from fastapi.templating import Jinja2Templates
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
+from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import joinedload
 
-from app.database.connection import get_db
-from app.core.dependencies import get_current_user
-from app.modules.users.models import Position, User
-from app.modules.departments.models import UserDepartment
+from app.core.dependencies import get_current_user, get_permission_map
 from app.core.config import settings
+from app.database.connection import get_db
+from app.modules.departments.models import UserDepartment
+from app.modules.users.models import Position, User
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -51,6 +51,7 @@ async def get_employee_context(db: AsyncSession, current_user: User) -> dict:
             else None
         ),
         "position_name": position_name,
+        "permission_map": get_permission_map(current_user),
     }
 
 # ==============================================================
@@ -146,6 +147,29 @@ async def render_normal_dashboard_view(
         request=request,
         name="dashboard/l2_dashboard.html",
         context={**employee_context}
+    )
+
+
+@router.get("/profile", include_in_schema=False)
+async def render_employee_profile(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if not current_user or not current_user.role:
+        return RedirectResponse(url="/auth/login")
+    context = await get_employee_context(db, current_user)
+    context.update(
+        {
+            "active_page": "profile",
+            "account_status": "Active" if current_user.is_active else "Inactive",
+            "created_at": current_user.created_at,
+        }
+    )
+    return templates.TemplateResponse(
+        request=request,
+        name="dashboard/profile.html",
+        context=context,
     )
 
 # ==============================================================

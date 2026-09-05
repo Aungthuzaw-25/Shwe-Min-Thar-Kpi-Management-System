@@ -78,11 +78,25 @@ async def get_user_effective_permissions(
     # All system permissions
     all_permissions = await get_all_permissions(db)
 
-    # Build override lookup: code -> override
+    # Resolve overrides for the user's current department.  An explicit deny
+    # wins over an allow when legacy data contains multiple scoped rows.
     override_map: Dict[str, UserPermissionOverride] = {}
     for ov in (user.permission_overrides or []):
         perm = getattr(ov, "permission", None)
-        if perm:
+        if not perm:
+            continue
+        scope = (ov.scope or "ALL").upper()
+        applies = scope == "ALL" or (
+            scope == "DEPARTMENT"
+            and dept_id is not None
+            and str(ov.department_id) == str(dept_id)
+        )
+        if not applies:
+            continue
+        current = override_map.get(perm.code)
+        if current is None or (
+            ov.allowed is False and current.allowed is True
+        ):
             override_map[perm.code] = ov
 
     # Build role permission codes set
@@ -206,3 +220,14 @@ async def delete_all_user_overrides(db: AsyncSession, user_id: UUID) -> int:
         await db.delete(row)
     await db.commit()
     return count
+
+
+async def purge_user_overrides(db: AsyncSession, user_id: UUID) -> int:
+    """Delete overrides as part of a caller-owned transaction."""
+    existing = (await db.execute(
+        select(UserPermissionOverride).where(UserPermissionOverride.user_id == user_id)
+    )).scalars().all()
+    for row in existing:
+        await db.delete(row)
+    await db.flush()
+    return len(existing)
