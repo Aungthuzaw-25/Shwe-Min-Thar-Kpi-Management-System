@@ -158,7 +158,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
             "font-src 'self' https://fonts.gstatic.com; "
             "img-src 'self' data: blob: http://localhost:9000 http://minio:9000; "
-            "connect-src 'self' http://localhost:9000 http://minio:9000; "
+            "connect-src 'self' https://cdn.jsdelivr.net http://localhost:9000 http://minio:9000; "
             "frame-ancestors 'none';"
         )
         return response

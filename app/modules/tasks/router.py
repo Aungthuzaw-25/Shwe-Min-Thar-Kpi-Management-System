@@ -154,7 +154,7 @@ async def _get_user_allowed_categories(db: AsyncSession, user_id: UUID):
         if isinstance(raw_cats, str):
             try:
                 raw_cats = json.loads(raw_cats)
-            except Exception:
+            except json.JSONDecodeError:
                 raw_cats = []
         if not isinstance(raw_cats, list):
             continue
@@ -213,55 +213,15 @@ async def get_available_task_categories(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    ud_stmt = select(UserDepartment).where(UserDepartment.user_id == current_user.id)
-    ud = (await db.execute(ud_stmt)).scalars().first()
-    
-    if not ud or not current_user.position_id:
-        return {"categories": [], "message": "No valid position or department assigned to user."}
-
-    pos_obj = await db.get(Position, current_user.position_id)
-    user_pos_name = pos_obj.name.strip().lower() if pos_obj and pos_obj.name else ""
-
-    stmt = select(KPIFormula).where(
-        KPIFormula.department_id == ud.department_id,
-        KPIFormula.user_level == ud.user_level,
-        KPIFormula.is_active == True
-    )
-    formulas = (await db.execute(stmt)).scalars().all()
-    
-    target_formulas = []
-    for f in formulas:
-        f_pos_id = str(f.position_id) if f.position_id else ""
-        f_pos_name = f.position_name.strip().lower() if f.position_name else ""
-        
-        if f_pos_id and f_pos_id == str(current_user.position_id):
-            target_formulas.append(f)
-        elif f_pos_name and user_pos_name and f_pos_name == user_pos_name:
-            target_formulas.append(f)
-            
-    if not target_formulas:
-        target_formulas = [f for f in formulas if not f.position_id and not f.position_name]
-    
-    categories = set()
-    for f in target_formulas:
-        raw_cats = f.categories
-        if isinstance(raw_cats, str):
-            try:
-                raw_cats = json.loads(raw_cats)
-            except Exception:
-                raw_cats = []
-
-        if raw_cats and isinstance(raw_cats, list):
-            for cat in raw_cats:
-                cat_name = cat.get("name", "") if isinstance(cat, dict) else str(cat)
-                if cat_name:
-                    if not any(kw in cat_name.lower() for kw in ADMIN_ONLY_KEYWORDS):
-                        categories.add(cat_name)
-    
+    categories = {
+        category
+        for category in await _get_user_allowed_categories(db, current_user.id)
+        if not any(keyword in category.lower() for keyword in ADMIN_ONLY_KEYWORDS)
+    }
     if not categories:
         return {"categories": [], "message": "No manual KPI categories available for your profile."}
-        
-    return {"categories": sorted(list(categories))}
+
+    return {"categories": sorted(categories)}
 
 
 @router.get('/categories/for-user/{user_id}', tags=["Tasks"])

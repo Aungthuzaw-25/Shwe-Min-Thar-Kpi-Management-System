@@ -609,17 +609,36 @@
     });
 
     async function loadInitialTaskData() {
+        const select = document.getElementById("selfTaskCategory");
+        if (!select) return;
+        select.innerHTML = '<option value="">Loading categories...</option>';
         try {
-            const catRes = await fetch('/api/v1/tasks/categories/available');
-            if (catRes.ok) {
-                const data = await catRes.json();
-                const sel = document.getElementById("selfTaskCategory");
-                sel.innerHTML = '<option value="">-- Select Category --</option>';
-                data.categories.forEach(c => sel.innerHTML += `<option value="${escapeHTML(c)}">${escapeHTML(c)}</option>`);
+            const response = await fetch(`${API_BASE}/categories/available`);
+            if (response.status === 401) return;
+            if (response.status === 403) {
+                select.innerHTML = '<option value="">Permission denied</option>';
+                showToast("Permission Denied: Task categories are unavailable.", "error");
+                return;
             }
-            if (catRes.status === 403) showToast("Permission Denied: Task categories are unavailable.", "error");
-            if (catRes.status === 401) return;
-        } catch(e) { console.error("Error loading task setup:", e); }
+            if (!response.ok) {
+                throw new Error(`Failed to load categories (${response.status})`);
+            }
+            const payload = await response.json();
+            const categories = Array.isArray(payload.categories) ? payload.categories : [];
+            select.innerHTML = '<option value="">-- Select Category --</option>';
+            categories.forEach(category => {
+                const option = document.createElement("option");
+                option.value = category;
+                option.textContent = category;
+                select.appendChild(option);
+            });
+            if (!categories.length) {
+                select.innerHTML = '<option value="">No active categories found</option>';
+            }
+        } catch (error) {
+            console.error("Error loading task categories:", error);
+            select.innerHTML = '<option value="">Error loading categories</option>';
+        }
     }
 
     async function loadTaskAssignees() {
@@ -673,6 +692,7 @@
 
     function openSelfTaskModal() { 
         document.getElementById("taskForm").reset();
+        loadInitialTaskData();
         
         if (window.currentUserContext) {
             const deptEl = document.getElementById('modalContextDept');
