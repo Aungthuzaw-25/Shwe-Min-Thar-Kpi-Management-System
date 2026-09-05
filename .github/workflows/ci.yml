@@ -86,6 +86,10 @@ jobs:
             --cov-report=xml \
             -q
 
+      - name: Validate Python syntax
+        shell: bash
+        run: python -m compileall -q app migrations tests
+
       - name: Audit dependencies
         shell: bash
         run: |
