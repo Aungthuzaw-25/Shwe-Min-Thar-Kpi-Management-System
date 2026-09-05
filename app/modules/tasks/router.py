@@ -529,6 +529,53 @@ async def get_department_managers(db: AsyncSession = Depends(get_db), current_us
     except Exception as e:
         raise HTTPException(status_code=500, detail="Internal Server Error fetching managers.")
 
+
+@router.get('/assignees', tags=["Tasks"])
+async def get_task_assignees(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return only users this caller may assign a task to."""
+    current_link = (
+        await db.execute(
+            select(UserDepartment).where(
+                UserDepartment.user_id == current_user.id,
+                UserDepartment.is_deleted == False,
+            )
+        )
+    ).scalars().first()
+    if not current_link:
+        return []
+
+    current_level = str(current_link.user_level).upper().replace("LEVEL ", "")
+    allowed_levels = {"L0": {"L1", "L2"}, "L1": {"L2"}}.get(current_level, set())
+    if not allowed_levels:
+        return []
+
+    result = await db.execute(
+        select(User, UserDepartment)
+        .join(UserDepartment, User.id == UserDepartment.user_id)
+        .where(
+            UserDepartment.department_id == current_link.department_id,
+            UserDepartment.user_level.in_(allowed_levels),
+            UserDepartment.is_deleted == False,
+            User.id != current_user.id,
+            User.is_active == True,
+            User.is_deleted == False,
+        )
+    )
+    return [
+        {
+            "id": str(user.id),
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "email": user.email,
+            "level": link.user_level,
+        }
+        for user, link in result.all()
+    ]
+
+
 # 🌟 PERFORMANCE FIX: Add Pagination and DB-level filtering to prevent Memory Exhaustion
 @router.get('', response_model=List[TaskResponse])
 async def get_my_tasks(

@@ -490,8 +490,11 @@
     async function openEvidenceFile(filePath) {
         try {
             const response = await fetch(`${API_BASE}/evidence/view?evidence_id=${encodeURIComponent(filePath)}`);
-            // 🛡️ AUTH FIX
-            if (response.status === 401 || response.status === 403) { window.location.href = '/auth/login'; return; }
+            if (response.status === 403) {
+                showToast("Permission Denied: You cannot view this evidence.", "error");
+                return;
+            }
+            if (response.status === 401) return;
 
             if (response.ok) {
                 const data = await response.json();
@@ -605,23 +608,37 @@
 
     async function loadInitialTaskData() {
         try {
-            const [catRes, userRes] = await Promise.all([
-                fetch('/api/v1/tasks/categories/available'),
-                fetch('/api/v1/users/?limit=100')
-            ]);
+            const catRes = await fetch('/api/v1/tasks/categories/available');
             if (catRes.ok) {
                 const data = await catRes.json();
                 const sel = document.getElementById("selfTaskCategory");
                 sel.innerHTML = '<option value="">-- Select Category --</option>';
                 data.categories.forEach(c => sel.innerHTML += `<option value="${escapeHTML(c)}">${escapeHTML(c)}</option>`);
             }
-            if (userRes.ok) {
-                const users = await userRes.json();
-                const sel = document.getElementById("assigneeUser");
-                sel.innerHTML = '<option value="">-- Select Subordinate --</option>';
-                users.forEach(u => sel.innerHTML += `<option value="${u.id}">${escapeHTML(u.first_name)} ${escapeHTML(u.last_name)} (${escapeHTML(u.email)})</option>`);
+            if (catRes.status === 403) showToast("Permission Denied: Task categories are unavailable.", "error");
+            if (catRes.status === 401) return;
+        } catch(e) { console.error("Error loading task setup:", e); }
+    }
+
+    async function loadTaskAssignees() {
+        const select = document.getElementById("assigneeUser");
+        if (!select) return;
+        select.innerHTML = '<option value="">-- Loading Subordinates... --</option>';
+        try {
+            const response = await fetch(`${API_BASE}/assignees`);
+            if (response.status === 401) return;
+            if (response.status === 403) {
+                showToast("Permission Denied: You cannot assign tasks.", "error");
+                return;
             }
-        } catch(e) { console.error(e); }
+            if (!response.ok) throw new Error(`Failed to load assignees (${response.status})`);
+            const users = await response.json();
+            select.innerHTML = '<option value="">-- Select Subordinate --</option>';
+            users.forEach(u => select.innerHTML += `<option value="${u.id}">${escapeHTML(u.first_name)} ${escapeHTML(u.last_name)} (${escapeHTML(u.email)})</option>`);
+        } catch (error) {
+            console.error("Error loading task assignees:", error);
+            select.innerHTML = '<option value="">-- No Subordinates Available --</option>';
+        }
     }
 
     async function loadCategoriesForReceiver(userId) {
@@ -667,6 +684,8 @@
     
     function openAssignTaskModal() { 
         document.getElementById("assignTaskForm").reset();
+        document.getElementById("assigneeUser").innerHTML = '<option value="">-- Select Subordinate --</option>';
+        loadTaskAssignees();
         document.getElementById("assignTaskCategory").innerHTML = '<option value="">-- Select Assignee First --</option>';
         document.getElementById("assignTaskCategory").disabled = true;
         document.getElementById("assignTaskCategory").classList.add("bg-slate-100", "cursor-not-allowed");
@@ -737,8 +756,11 @@
     async function loadMyTasks() {
         try {
             const res = await fetch(API_BASE);
-            // 🛡️ AUTH FIX
-            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+            if (res.status === 403) {
+                showToast("Permission Denied: You cannot view these tasks.", "error");
+                return;
+            }
+            if (res.status === 401) return;
             if (!res.ok) throw new Error("Failed to load tasks");
             
             const data = await res.json();
@@ -1166,7 +1188,8 @@
         try {
             const res = await fetch(`${API_BASE}/evidence/${evidenceId}`, { method: 'DELETE' });
             // 🛡️ AUTH FIX
-            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+            if (res.status === 401) return;
+            if (res.status === 403) { showToast("Permission Denied: this task action is not available.", "error"); return; }
             
             if(res.ok) {
                 showToast("File removed successfully.", "success");
@@ -1216,7 +1239,11 @@
             const results = await Promise.all(uploadPromises);
             
             // 🛡️ AUTH FIX
-            if (results.some(r => r.status === 401 || r.status === 403)) { window.location.href = '/auth/login'; return; }
+            if (results.some(r => r.status === 403)) {
+                showToast("Permission Denied: one or more task actions are not available.", "error");
+                return;
+            }
+            if (results.some(r => r.status === 401)) return;
             
             if(results.every(r => r.ok)) { 
                 showToast("Files attached successfully.", "success"); 
@@ -1250,7 +1277,8 @@
                 body: JSON.stringify({action: 'RESIGNED', comments: comments})
             });
             // 🛡️ AUTH FIX
-            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+            if (res.status === 401) return;
+            if (res.status === 403) { showToast("Permission Denied: this task action is not available.", "error"); return; }
             
             if(res.ok) {
                 showToast("Task resigned to original creator successfully.", "success");
@@ -1330,7 +1358,8 @@
                 method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload)
             });
             // 🛡️ AUTH FIX
-            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+            if (res.status === 401) return;
+            if (res.status === 403) { showToast("Permission Denied: this task action is not available.", "error"); return; }
             
             if(!res.ok) {
                 const err = await res.json();
@@ -1388,7 +1417,8 @@
             const select = document.getElementById("targetManagerId");
             const res = await fetch(`${API_BASE}/department-managers`);
             // 🛡️ AUTH FIX
-            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+            if (res.status === 401) return;
+            if (res.status === 403) { showToast("Permission Denied: this task action is not available.", "error"); return; }
             
             if (res.ok) {
                 const managers = await res.json();
@@ -1413,7 +1443,8 @@
                 body: JSON.stringify({ task_ids: selectedTaskIdsForSubmit, reviewer_id: reviewerId })
             });
             // 🛡️ AUTH FIX
-            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+            if (res.status === 401) return;
+            if (res.status === 403) { showToast("Permission Denied: this task action is not available.", "error"); return; }
             
             if(res.ok) {
                 showToast("Tasks routed for approval successfully.", "success");
@@ -1444,7 +1475,8 @@
         try {
             const res = await fetch(`${API_BASE}/approval-queue`);
             // 🛡️ AUTH FIX
-            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+            if (res.status === 401) return;
+            if (res.status === 403) { showToast("Permission Denied: this task action is not available.", "error"); return; }
             
             if (res.ok) {
                 const queue = await res.json();
@@ -1512,7 +1544,8 @@
         try {
             const res = await fetch(`${API_BASE}/batch/${batchId}/details`);
             // 🛡️ AUTH FIX
-            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+            if (res.status === 401) return;
+            if (res.status === 403) { showToast("Permission Denied: this task action is not available.", "error"); return; }
             
             if (res.ok) {
                 const batchTasks = await res.json();
@@ -1537,7 +1570,8 @@
             const res = await fetch(`${API_BASE}/department-managers`);
             
             // 🛡️ AUTH FIX
-            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+            if (res.status === 401) return;
+            if (res.status === 403) { showToast("Permission Denied: this task action is not available.", "error"); return; }
             
             if (res.ok) {
                 const managers = await res.json();
@@ -1595,7 +1629,8 @@
             });
             
             // 🛡️ AUTH FIX
-            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+            if (res.status === 401) return;
+            if (res.status === 403) { showToast("Permission Denied: this task action is not available.", "error"); return; }
             
             if(res.ok) { 
                 showToast(`Marked as ${action}.`, "success"); closeModals(); loadApprovalQueue(); loadMyTasks(); switchTab('approvals-tab'); 
