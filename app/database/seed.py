@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 # Project Root Directory ကို System Path ထဲထည့်ရန်
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.future import select
 from app.database.connection import AsyncSessionLocal
 from app.modules.users.models import User, Position, Role, Permission, RolePermission
@@ -104,17 +105,41 @@ ATTENDANCE_RULES = [
     ]}
 ]
 
+async def _seed_permissions(db):
+    """Seed the permission catalog without overwriting existing configuration."""
+    bind = db.get_bind()
+    catalog = dict(PERMISSION_CATALOG)
+    if bind.dialect.name == "postgresql":
+        await db.execute(
+            pg_insert(Permission)
+            .values(
+                [
+                    {"code": code, "description": description}
+                    for code, description in catalog.items()
+                ]
+            )
+            .on_conflict_do_nothing(index_elements=["code"])
+        )
+    else:
+        permissions = (
+            await db.execute(
+                select(Permission).where(Permission.code.in_(catalog))
+            )
+        ).scalars().all()
+        existing_codes = {permission.code for permission in permissions}
+        for code, description in catalog.items():
+            if code not in existing_codes:
+                db.add(Permission(code=code, description=description))
+    await db.commit()
+
+
 async def run_seed():
     async with AsyncSessionLocal() as db:
         print("Starting database seed...")
 
-        for code, description in PERMISSION_CATALOG:
-            existing_permission = (await db.execute(select(Permission).where(Permission.code == code))).scalar_one_or_none()
-            if not existing_permission:
-                db.add(Permission(code=code, description=description))
-        await db.commit()
+        await _seed_permissions(db)
         print("Permission catalog seeded!")
-        
+
         # 1. Departments
         departments = [
             {"name": "Human Resources"},
