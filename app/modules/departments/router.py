@@ -269,22 +269,25 @@ async def change_user_level(dept_id: UUID, user_id: UUID, payload: ChangeLevelRe
     await enforce_department_scope(db, current_user, dept_id)
     ud = (await db.execute(select(UserDepartment).where(UserDepartment.department_id == dept_id, UserDepartment.user_id == user_id))).scalars().first()
     if not ud: raise HTTPException(status_code=404, detail="User is not found in this department.")
+    normalized_level = payload.user_level.strip().upper().replace("LEVEL ", "L")
+    if normalized_level not in {"L0", "L1", "L2"}:
+        raise HTTPException(status_code=422, detail="user_level must be L0, L1, or L2.")
     
     try:
-        ud.user_level = payload.user_level
+        ud.user_level = normalized_level
         db.add(ud)
         
         dept = await department_repo.get_department_by_id(db, dept_id)
         
         # 🌟 SECURITY FIX: Handled L0 demotion to prevent ghost heads
-        if payload.user_level == "L0":
+        if normalized_level == "L0":
             if dept.head_id and str(dept.head_id) != str(user_id):
                 old_head_ud = (await db.execute(select(UserDepartment).where(UserDepartment.department_id == dept_id, UserDepartment.user_id == dept.head_id))).scalars().first()
                 if old_head_ud:
                     old_head_ud.user_level = "L1"
                     db.add(old_head_ud)
             dept.head_id = user_id
-        elif str(dept.head_id) == str(user_id) and payload.user_level != "L0":
+        elif str(dept.head_id) == str(user_id) and normalized_level != "L0":
             dept.head_id = None
             
         db.add(dept)

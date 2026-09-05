@@ -54,6 +54,7 @@ class UserUpdate(BaseModel):
     role_id: Optional[UUID] = None
     is_active: Optional[bool] = None
     department_id: Optional[UUID] = None
+    user_level: Optional[str] = None
 
 class SuperAdminCreate(BaseModel):
     first_name: str

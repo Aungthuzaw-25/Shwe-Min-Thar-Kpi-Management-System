@@ -187,6 +187,8 @@ async def _validate_assigned_task_payload(db: AsyncSession, current_user: User, 
 
     if not current_user_department or not assignee_department:
         raise HTTPException(status_code=403, detail="Department configuration error: assignment hierarchy could not be validated.")
+    if current_user_department.department_id != assignee_department.department_id:
+        raise HTTPException(status_code=403, detail="Cross-department task assignment is not allowed.")
 
     current_level = str(current_user_department.user_level).upper().replace("LEVEL ", "")
     target_level = str(assignee_department.user_level).upper().replace("LEVEL ", "")
@@ -260,6 +262,40 @@ async def get_available_task_categories(
         return {"categories": [], "message": "No manual KPI categories available for your profile."}
         
     return {"categories": sorted(list(categories))}
+
+
+@router.get('/categories/for-user/{user_id}', tags=["Tasks"])
+async def get_task_categories_for_user(
+    user_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return only active KPI categories configured for the selected assignee."""
+    assignee_stmt = select(User).where(User.id == user_id, User.is_active == True)
+    assignee = (await db.execute(assignee_stmt)).scalars().first()
+    if not assignee:
+        raise HTTPException(status_code=404, detail="Selected assignee was not found or is inactive.")
+
+    # Reuse the same reporting hierarchy enforced during task creation.
+    current_ud = (await db.execute(
+        select(UserDepartment).where(UserDepartment.user_id == current_user.id)
+    )).scalars().first()
+    assignee_ud = (await db.execute(
+        select(UserDepartment).where(UserDepartment.user_id == user_id)
+    )).scalars().first()
+    if not current_ud or not assignee_ud:
+        raise HTTPException(status_code=403, detail="Department configuration error.")
+    if current_ud.department_id != assignee_ud.department_id:
+        raise HTTPException(status_code=403, detail="Cross-department task assignment is not allowed.")
+
+    current_level = str(current_ud.user_level).upper().replace("LEVEL ", "")
+    target_level = str(assignee_ud.user_level).upper().replace("LEVEL ", "")
+    allowed_hierarchy = {"L0": {"L1", "L2"}, "L1": {"L2"}, "L2": set()}
+    if current_user.role and current_user.role.name not in GLOBAL_SCOPE_ROLES:
+        if target_level not in allowed_hierarchy.get(current_level, set()):
+            raise HTTPException(status_code=403, detail="This assignment is outside the allowed reporting hierarchy.")
+
+    return {"categories": sorted(await _get_user_allowed_categories(db, user_id))}
 
 @router.get('/batch/{batch_id}/deductions', tags=["Tasks"])
 async def get_batch_deductions(

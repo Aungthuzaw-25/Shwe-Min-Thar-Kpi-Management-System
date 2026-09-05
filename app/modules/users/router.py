@@ -29,6 +29,16 @@ from app.modules.tasks.models.task_history import TaskHistory
 router = APIRouter()
 admin_checker = RoleChecker(['Super Admin', 'System Super Admin', 'Admin'])
 SUPER_ADMIN_ROLE_NAMES = {'Super Admin', 'System Super Admin'}
+VALID_USER_LEVELS = {'L0', 'L1', 'L2'}
+
+
+def normalize_user_level(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip().upper().replace('LEVEL ', 'L')
+    if normalized not in VALID_USER_LEVELS:
+        raise HTTPException(status_code=422, detail='user_level must be L0, L1, or L2.')
+    return normalized
 
 
 def require_super_admin(current_user: User) -> None:
@@ -521,12 +531,13 @@ async def update_existing_user(user_id: UUID, payload: UserUpdate, db: AsyncSess
         update_data = payload.model_dump(exclude={"department_id", "user_level"}, exclude_unset=True)
         updated_user = await user_repo.update_user(db, user, update_data)
         
-        if payload.department_id:
+        requested_level = normalize_user_level(payload.user_level)
+        if payload.department_id or requested_level:
             existing_ud = await db.execute(select(UserDepartment).where(UserDepartment.user_id == user_id))
             ud_record = existing_ud.scalar_one_or_none()
             
             if ud_record:
-                if str(ud_record.department_id) != str(payload.department_id):
+                if payload.department_id and str(ud_record.department_id) != str(payload.department_id):
                     old_dept_req = await db.execute(select(Department).where(Department.id == ud_record.department_id))
                     old_dept = old_dept_req.scalar_one_or_none()
                     if old_dept and str(old_dept.head_id) == str(user_id):
@@ -534,10 +545,18 @@ async def update_existing_user(user_id: UUID, payload: UserUpdate, db: AsyncSess
                         db.add(old_dept)
                         
                     ud_record.department_id = payload.department_id
-                    db.add(ud_record)
-                    await db.commit()
+                if requested_level:
+                    ud_record.user_level = requested_level
+                db.add(ud_record)
+                await db.commit()
             else:
-                new_ud = UserDepartment(user_id=user_id, department_id=payload.department_id, user_level="L2")
+                if not payload.department_id:
+                    raise HTTPException(status_code=400, detail='A department is required before setting user_level.')
+                new_ud = UserDepartment(
+                    user_id=user_id,
+                    department_id=payload.department_id,
+                    user_level=requested_level or "L2",
+                )
                 db.add(new_ud)
                 await db.commit()
     except Exception as e:

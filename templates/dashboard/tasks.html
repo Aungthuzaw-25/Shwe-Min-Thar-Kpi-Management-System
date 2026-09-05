@@ -655,11 +655,12 @@
         catSelect.classList.add("bg-white", "cursor-pointer");
         catSelect.innerHTML = '<option value="">Loading categories...</option>';
         try {
-            const res = await fetch(`/api/v1/kpi/formulas/user/${userId}/categories`);
+            const res = await fetch(`/api/v1/tasks/categories/for-user/${userId}`);
             if (res.ok) {
-                const categories = await res.json();
+                const payload = await res.json();
+                const categories = payload.categories || [];
                 catSelect.innerHTML = '<option value="">-- Select Category --</option>';
-                categories.forEach(c => catSelect.innerHTML += `<option value="${escapeHTML(c.name)}">${escapeHTML(c.name)}</option>`);
+                categories.forEach(category => catSelect.innerHTML += `<option value="${escapeHTML(category)}">${escapeHTML(category)}</option>`);
             } else {
                 catSelect.innerHTML = '<option value="">No Active Categories Found</option>';
             }
