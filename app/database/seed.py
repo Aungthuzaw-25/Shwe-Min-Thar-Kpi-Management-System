@@ -366,7 +366,7 @@ async def run_seed():
                     new_f.scope = FormulaScope.DEPARTMENT
                     new_f.is_active = True
                     new_f.version = 1
-                    new_f.created_by_id = sa_user.id
+                    new_f.created_by_id = sa_user.id if sa_user else None
                     
                     # Upsert KPI categories (create if not exists)
                     for cat in f["cats"]:
@@ -567,6 +567,7 @@ async def run_seed():
 
         print("KPI assignment and department user seed complete.")
         print("✅ Database seeding completed successfully! All rules and relations are perfectly configured.")
+
 
 if __name__ == "__main__":
     asyncio.run(run_seed())
