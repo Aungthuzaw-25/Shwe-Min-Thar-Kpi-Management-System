@@ -341,7 +341,9 @@ roleSelect.onchange = () => loadRole().catch(e => setMessage(e.message));
 async function loadUserEffective() {
     const uid = userSelect.value;
     if (!uid) return;
-    const response = await fetch(`/api/v1/permissions/user/${uid}/effective`);
+    const response = await fetch(`/api/v1/permissions/user/${uid}/effective?ts=${Date.now()}`, {
+        cache: "no-store"
+    });
     if (!response.ok) { setMessage("Unable to load user permissions."); return; }
     currentEffective = await response.json();
     renderUserInfo(currentEffective);
@@ -421,7 +423,7 @@ function renderUserMatrix(permissions) {
                     </div>
                 </td>
                 <td class="px-4 py-3 text-center">
-                    <select data-scope-code="${esc(p.code)}" class="scope-select rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-semibold bg-white focus:ring-2 focus:ring-blue-200">
+                    <select data-scope-code="${esc(p.code)}" ${isInherit ? "disabled" : ""} class="scope-select rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-semibold ${isInherit ? "bg-slate-100 text-slate-400 cursor-not-allowed" : "bg-white"} focus:ring-2 focus:ring-blue-200">
                         <option value="ALL" ${p.scope === "ALL" ? "selected" : ""}>All Data</option>
                         <option value="DEPARTMENT" ${p.scope === "DEPARTMENT" ? "selected" : ""}>Department</option>
                         <option value="OWN" ${p.scope === "OWN" ? "selected" : ""}>Own Data</option>
@@ -449,6 +451,14 @@ function renderUserMatrix(permissions) {
             if (action === "allow") { btn.classList.add("bg-emerald-500", "text-white"); btn.classList.remove("bg-white", "text-slate-400"); }
             else if (action === "inherit") { btn.classList.add("bg-blue-500", "text-white"); btn.classList.remove("bg-white", "text-slate-400"); }
             else if (action === "deny") { btn.classList.add("bg-red-500", "text-white"); btn.classList.remove("bg-white", "text-slate-400"); }
+            const scope = row.querySelector(".scope-select");
+            if (scope) {
+                scope.disabled = action === "inherit";
+                scope.classList.toggle("bg-slate-100", scope.disabled);
+                scope.classList.toggle("text-slate-400", scope.disabled);
+                scope.classList.toggle("cursor-not-allowed", scope.disabled);
+                scope.classList.toggle("bg-white", !scope.disabled);
+            }
         };
     });
 }
@@ -503,9 +513,13 @@ document.getElementById("resetUserOverrides").onclick = async () => {
     if (!uid) return;
     const ok = await showConfirm("Reset to Role Defaults?", "This will remove ALL user-specific overrides. The user will inherit all permissions from their role only. Continue?");
     if (!ok) return;
-    const response = await fetch(`/api/v1/permissions/user/${uid}/all-overrides`, { method: "DELETE" });
+    const response = await fetch(`/api/v1/permissions/user/${uid}/all-overrides`, {
+        method: "DELETE",
+        cache: "no-store"
+    });
     if (!response.ok) { const err = await response.json(); setMessage(err.detail || "Failed to reset."); return; }
-    setMessage("User permissions reset to role defaults!", true);
+    const result = await response.json();
+    setMessage(result.message || "User permissions reset to role defaults!", true);
     await loadUserEffective();
 };
 

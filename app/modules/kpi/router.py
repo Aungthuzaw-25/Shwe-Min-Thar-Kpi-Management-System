@@ -708,6 +708,7 @@ async def bulk_calculate_endpoint(
     )
     return result
 
+@router.get('/audit-logs', response_model=List[AuditLogResponse], tags=["Audit Logs"])
 async def get_system_audit_logs(
     limit: int = Query(100, le=1000), 
     db: AsyncSession = Depends(get_db),

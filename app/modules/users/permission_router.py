@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import desc, select
 from sqlalchemy.orm import selectinload
@@ -268,8 +268,13 @@ async def delete_user_override(
 # 5. 🌟 NEW: Effective permissions (merged role + overrides)
 # =====================================================================
 @router.get("/user/{user_id}/effective", dependencies=[Depends(admin_only)])
-async def get_user_effective_permissions(user_id: UUID, db: AsyncSession = Depends(get_db)):
+async def get_user_effective_permissions(
+    user_id: UUID,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+):
     """Return the effective permission matrix for a user, merging role and overrides."""
+    response.headers["Cache-Control"] = "no-store"
     data = await permission_repo.get_user_effective_permissions(db, user_id)
     if data is None:
         raise HTTPException(status_code=404, detail="User not found.")
@@ -353,7 +358,15 @@ async def reset_user_overrides(
             db, current_user.id, "RESET_USER_PERMISSIONS", "users", str(user_id),
             {"overrides": old_data}, {"overrides": []},
         )
-    return {"deleted": count, "message": "User permissions reset to role defaults."}
+    return {
+        "deleted": count,
+        "message": (
+            f"{count} user override(s) removed. "
+            "The user now inherits role defaults."
+            if count
+            else "No user overrides were present; role defaults are already active."
+        ),
+    }
 
 
 # =====================================================================
