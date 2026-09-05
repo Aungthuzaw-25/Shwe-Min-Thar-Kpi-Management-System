@@ -1,25 +1,35 @@
 import asyncio
-import sys
-import os
-import uuid
 import calendar
-from datetime import datetime, timezone
+import os
+import sys
+import uuid
+from datetime import UTC, datetime
+
+from sqlalchemy import text
 
 # Project Root Directory ကို System Path ထဲထည့်ရန်
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.future import select
-from app.database.connection import AsyncSessionLocal
-from app.modules.users.models import User, Position, Role, Permission, RolePermission
+
 from app.core.security import get_password_hash
+from app.database.connection import AsyncSessionLocal
 from app.modules.departments.models import Department, UserDepartment
 
 # 🌟 Import ALL KPI Models correctly for Fully Relational Ecosystem
 from app.modules.kpi.models import (
-    KPIFormula, FormulaStatus, FormulaScope, KPIScoringRuleItem, 
-    KPIPeriod, KPIPeriodStatus, KPIAssignment, KpiCategory, KpiRule
+    FormulaScope,
+    FormulaStatus,
+    KPIAssignment,
+    KpiCategory,
+    KPIFormula,
+    KPIPeriod,
+    KPIPeriodStatus,
+    KpiRule,
+    KPIScoringRuleItem,
 )
+from app.modules.users.models import Permission, Position, Role, RolePermission, User
 
 ROLES = [
     {"name": "Super Admin", "description": "Has full system control"},
@@ -105,6 +115,8 @@ ATTENDANCE_RULES = [
     ]}
 ]
 
+SEED_ADVISORY_LOCK_KEY = 731942
+
 async def _seed_permissions(db):
     """Seed the permission catalog without overwriting existing configuration."""
     bind = db.get_bind()
@@ -133,7 +145,7 @@ async def _seed_permissions(db):
     await db.commit()
 
 
-async def run_seed():
+async def _run_seed():
     async with AsyncSessionLocal() as db:
         print("Starting database seed...")
 
@@ -245,11 +257,11 @@ async def run_seed():
             print("Super Admin already exists; preserving its credential and account state.")
 
         # 🌟 4. KPI Period Setup (Active Cycle) 🌟
-        target_date = datetime.now(timezone.utc)
+        target_date = datetime.now(UTC)
         year, month = target_date.year, target_date.month
-        period_start = datetime(year, month, 1, 0, 0, 0, tzinfo=timezone.utc)
+        period_start = datetime(year, month, 1, 0, 0, 0, tzinfo=UTC)
         last_day = calendar.monthrange(year, month)[1]
-        period_end = datetime(year, month, last_day, 23, 59, 59, tzinfo=timezone.utc)
+        period_end = datetime(year, month, last_day, 23, 59, 59, tzinfo=UTC)
         period_label = target_date.strftime("%B %Y")
         
         stmt = select(KPIPeriod).where(KPIPeriod.label == period_label)
@@ -332,10 +344,7 @@ async def run_seed():
         for f in formulas:
             with db.no_autoflush:
                 # 🌟 Database ဆက်စပ်မှုအတွက် Position ကို သေချာစွာ ရှာဖွေ/တည်ဆောက်မည်
-                stmt_pos = select(Position).where(
-                    Position.name == f["pos"], 
-                    Position.department_id == finance_dept_id
-                )
+                stmt_pos = select(Position).where(Position.name == f["pos"])
                 pos_obj = (await db.execute(stmt_pos)).scalars().first()
                 if not pos_obj:
                     pos_obj = Position(name=f["pos"], department_id=finance_dept_id)
@@ -487,7 +496,7 @@ async def run_seed():
                         KPIAssignment.user_id == test_user.id,
                         KPIAssignment.kpi_formula_id == f_map["formula_id"],
                         KPIAssignment.kpi_period_id == period.id,
-                        KPIAssignment.is_deleted == False,
+                        KPIAssignment.is_deleted.is_(False),
                     )
                 )).scalars().first()
                 if not existing_assignment:
@@ -498,13 +507,13 @@ async def run_seed():
                         kpi_formula_id=f_map["formula_id"],
                         kpi_period_id=period.id,
                         assigned_by_id=sa_user.id,
-                        assigned_at=datetime.now(timezone.utc).replace(tzinfo=None),
+                        assigned_at=datetime.now(UTC).replace(tzinfo=None),
                     ))
                     await db.commit()
 
         position_dict = {}
         finance_positions = (await db.execute(
-            select(Position).where(Position.department_id == finance_dept_id)
+            select(Position).where(Position.name == "Accountant")
         )).scalars().all()
         for position in finance_positions:
             position_dict[position.name] = position
@@ -567,6 +576,25 @@ async def run_seed():
 
         print("KPI assignment and department user seed complete.")
         print("✅ Database seeding completed successfully! All rules and relations are perfectly configured.")
+
+
+async def run_seed():
+    """Run the complete seed safely when multiple workers start together."""
+    async with AsyncSessionLocal() as lock_db:
+        is_postgresql = lock_db.get_bind().dialect.name == "postgresql"
+        if is_postgresql:
+            await lock_db.execute(
+                text("SELECT pg_advisory_lock(:lock_key)"),
+                {"lock_key": SEED_ADVISORY_LOCK_KEY},
+            )
+        try:
+            await _run_seed()
+        finally:
+            if is_postgresql:
+                await lock_db.execute(
+                    text("SELECT pg_advisory_unlock(:lock_key)"),
+                    {"lock_key": SEED_ADVISORY_LOCK_KEY},
+                )
 
 
 if __name__ == "__main__":
