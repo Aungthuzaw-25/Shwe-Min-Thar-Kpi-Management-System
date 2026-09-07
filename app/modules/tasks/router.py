@@ -24,6 +24,7 @@ from app.modules.tasks.models.task import Task, TaskStatus
 from app.modules.users.models import User, Position  
 from app.modules.departments.models import UserDepartment
 from app.modules.kpi.models import KPIFormula  
+from app.modules.kpi.category_service import get_eligible_kpi_categories_for_user
 from app.modules.tasks.models.approval_queue import ApprovalQueue
 from app.modules.tasks.models.task_history import TaskHistory  
 from app.modules.tasks.models.submission_batch import SubmissionBatch 
@@ -128,43 +129,7 @@ def _detect_mime_type(file_bytes: bytes, filename: str | None = None) -> str:
 
 
 async def _get_user_allowed_categories(db: AsyncSession, user_id: UUID):
-    stmt = select(KPIFormula).where(KPIFormula.is_active == True)
-    formulas = (await db.execute(stmt)).scalars().all()
-    user = await db.get(User, user_id)
-    if not user or not user.position_id:
-        return set()
-
-    user_department_stmt = select(UserDepartment).where(UserDepartment.user_id == user_id)
-    user_department = (await db.execute(user_department_stmt)).scalars().first()
-    user_position = await db.get(Position, user.position_id)
-    user_pos_name = user_position.name.strip().lower() if user_position and user_position.name else ""
-
-    permitted_categories = set()
-    for formula in formulas:
-        if user_department and formula.department_id != user_department.department_id:
-            continue
-        if formula.user_level and user_department and formula.user_level != str(user_department.user_level):
-            continue
-        if formula.position_id and str(formula.position_id) != str(user.position_id):
-            continue
-        if formula.position_name and user_pos_name and formula.position_name.strip().lower() != user_pos_name:
-            continue
-
-        raw_cats = formula.categories
-        if isinstance(raw_cats, str):
-            try:
-                raw_cats = json.loads(raw_cats)
-            except json.JSONDecodeError:
-                raw_cats = []
-        if not isinstance(raw_cats, list):
-            continue
-
-        for cat in raw_cats:
-            cat_name = cat.get("name", "") if isinstance(cat, dict) else str(cat)
-            if cat_name:
-                permitted_categories.add(cat_name)
-
-    return permitted_categories
+    return await get_eligible_kpi_categories_for_user(db, user_id)
 
 
 async def _validate_assigned_task_payload(db: AsyncSession, current_user: User, assignee_id: UUID, category: str, due_date, grace_period_days: int):
@@ -201,7 +166,7 @@ async def _validate_assigned_task_payload(db: AsyncSession, current_user: User, 
     if current_level not in allowed_hierarchy or target_level not in allowed_hierarchy[current_level]:
         raise HTTPException(status_code=403, detail="This assignment is outside the allowed reporting hierarchy.")
 
-    allowed_categories = await _get_user_allowed_categories(db, assignee_id)
+    allowed_categories = await get_eligible_kpi_categories_for_user(db, assignee_id)
     if category not in allowed_categories:
         raise HTTPException(status_code=403, detail=f"Selected category '{category}' is not allowed for the chosen assignee.")
 
@@ -255,7 +220,7 @@ async def get_task_categories_for_user(
         if target_level not in allowed_hierarchy.get(current_level, set()):
             raise HTTPException(status_code=403, detail="This assignment is outside the allowed reporting hierarchy.")
 
-    return {"categories": sorted(await _get_user_allowed_categories(db, user_id))}
+    return {"categories": sorted(await get_eligible_kpi_categories_for_user(db, user_id))}
 
 @router.get('/batch/{batch_id}/deductions', tags=["Tasks"])
 async def get_batch_deductions(
@@ -347,54 +312,37 @@ async def create_new_task(payload: TaskCreate, db: AsyncSession = Depends(get_db
         if not ud or not current_user.position_id:
             raise HTTPException(status_code=403, detail="Security Violation: User lacks valid Department or Position configuration.")
 
-        pos_obj = await db.get(Position, current_user.position_id)
-        user_pos_name = pos_obj.name.strip().lower() if pos_obj and pos_obj.name else ""
-
-        stmt = select(KPIFormula).where(
-            KPIFormula.department_id == ud.department_id,
-            KPIFormula.user_level == ud.user_level,
-            KPIFormula.is_active == True
-        )
-        formulas = (await db.execute(stmt)).scalars().all()
-        
-        target_formulas = []
-        for f in formulas:
-            f_pos_id = str(f.position_id) if f.position_id else ""
-            f_pos_name = f.position_name.strip().lower() if f.position_name else ""
-            
-            if f_pos_id and f_pos_id == str(current_user.position_id):
-                target_formulas.append(f)
-            elif f_pos_name and user_pos_name and f_pos_name == user_pos_name:
-                target_formulas.append(f)
-                
-        if not target_formulas:
-            target_formulas = [f for f in formulas if not f.position_id and not f.position_name]
-        
-        valid_categories = set()
-        for f in target_formulas:
-            raw_cats = f.categories
-            if isinstance(raw_cats, str):
-                try: raw_cats = json.loads(raw_cats)
-                except Exception: raw_cats = []
-            if raw_cats and isinstance(raw_cats, list):
-                for c in raw_cats:
-                    cat_name = c.get("name", "") if isinstance(c, dict) else str(c)
-                    if cat_name and not any(kw in cat_name.lower() for kw in ADMIN_ONLY_KEYWORDS):
-                        valid_categories.add(cat_name)
+        target_user_id = payload.owner_id or current_user.id
+        if str(target_user_id) != str(current_user.id):
+            await _validate_assigned_task_payload(
+                db=db,
+                current_user=current_user,
+                assignee_id=target_user_id,
+                category=payload.category,
+                due_date=payload.due_date,
+                grace_period_days=payload.grace_period_days or 0,
+            )
+        valid_categories = await get_eligible_kpi_categories_for_user(db, target_user_id)
+        valid_categories = {
+            category for category in valid_categories
+            if not any(keyword in category.lower() for keyword in ADMIN_ONLY_KEYWORDS)
+        }
 
         if payload.category not in valid_categories:
             raise HTTPException(status_code=403, detail=f"Security Violation: Category '{payload.category}' is not assigned to your specific Position & Level.")
 
         task_data = payload.model_dump(exclude_unset=True)
         task_data['assigner_id'] = current_user.id
-        if 'owner_id' not in task_data or task_data['owner_id'] is None:
-            task_data['owner_id'] = current_user.id
+        task_data['owner_id'] = target_user_id
         task_data['status'] = TaskStatus.DRAFT
         
         task = await task_repo.create_task(db, task_data)
         db.add(TaskHistory(task_id=task.id, changed_by=current_user.id, action="CREATED", old_value="NONE", new_value=TaskStatus.DRAFT.value, remarks="Task အသစ်ဖန်တီးခြင်း"))
         await db.commit()
         return task
+    except HTTPException:
+        await db.rollback()
+        raise
     except Exception as e:
         await db.rollback()
         raise HTTPException(status_code=500, detail=str(e))

@@ -454,6 +454,29 @@ async def _run_seed():
             # Redundant batch insertion removed
         # Redundant rule batch insertion removed – rules already inserted in batches above
 
+        # Backfill the canonical category lookup for formulas created by
+        # earlier seed versions as well as newly-created formulas.
+        all_formulas = (await db.execute(select(KPIFormula))).scalars().all()
+        missing_categories = set()
+        for formula in all_formulas:
+            for category in formula.categories or []:
+                category_name = category.get("name", "").strip() if isinstance(category, dict) else ""
+                if category_name:
+                    missing_categories.add(category_name)
+        if missing_categories:
+            existing_categories = set(
+                (
+                    await db.execute(
+                        select(KpiCategory.name).where(KpiCategory.name.in_(missing_categories))
+                    )
+                ).scalars().all()
+            )
+            db.add_all(
+                KpiCategory(name=name)
+                for name in sorted(missing_categories - existing_categories)
+            )
+            await db.commit()
+
         # 🌟 6. Link Everything Together (User -> Assignment -> Formula -> Period) 🌟
         print("Finalizing KPI Assignments linking...")
         
@@ -514,7 +537,7 @@ async def _run_seed():
 
         position_dict = {}
         finance_positions = (await db.execute(
-            select(Position).where(Position.name == "Accountant")
+            select(Position).where(Position.name.in_(["Accountant", "Senior Accountant"]))
         )).scalars().all()
         for position in finance_positions:
             position_dict[position.name] = position
@@ -525,10 +548,19 @@ async def _run_seed():
             await db.commit()
             await db.refresh(accountant_position)
             position_dict[accountant_position.name] = accountant_position
+        if "Senior Accountant" not in position_dict:
+            senior_accountant_position = Position(
+                name="Senior Accountant", department_id=finance_dept_id
+            )
+            db.add(senior_accountant_position)
+            await db.commit()
+            await db.refresh(senior_accountant_position)
+            position_dict[senior_accountant_position.name] = senior_accountant_position
 
         async def _ensure_finance_user(email: str, last_name: str, user_level: str):
             existing = (await db.execute(select(User).where(User.email == email))).scalars().first()
             password = resolve_user_password(email)
+            position = position_dict["Senior Accountant" if user_level == "L1" else "Accountant"]
 
             if existing:
                 if password:
@@ -538,8 +570,7 @@ async def _run_seed():
                     existing.is_locked = False
                     existing.lockout_until = None
                     existing.must_change_password = False
-                    if not existing.position_id and position_dict.get("Accountant"):
-                        existing.position_id = position_dict["Accountant"].id
+                existing.position_id = position.id
                 dept_link = (await db.execute(
                     select(UserDepartment).where(
                         UserDepartment.user_id == existing.id,
@@ -559,7 +590,7 @@ async def _run_seed():
                 email=email,
                 first_name="Finance",
                 last_name=last_name,
-                position_id=position_dict.get("Accountant").id,
+                position_id=position.id,
                 hashed_password=get_password_hash(password),
                 role_id=role_dict["Department User"].id,
                 is_active=True,
