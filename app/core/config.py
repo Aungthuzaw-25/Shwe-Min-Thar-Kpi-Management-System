@@ -26,11 +26,23 @@ class Settings(BaseSettings):
     ENABLE_SCHEDULER: bool = False
     RUN_SCHEDULER: bool = False
     TIMEZONE: str = "Asia/Yangon"
+    SEED_SUPER_ADMIN_PASSWORD: Optional[str] = None
+    SEED_DEMO_PASSWORD: Optional[str] = None
+    SEED_L2_PASSWORD: Optional[str] = None
+    SEED_L0_PASSWORD: Optional[str] = None
+    SEED_L1_PASSWORD: Optional[str] = None
 
     @field_validator("DATABASE_URL")
     @classmethod
     def fix_neon_url(cls, v: str) -> str:
         v = v.strip()
+
+        # Some hosting dashboards can return a PostgreSQL URL nested inside
+        # another PostgreSQL scheme; unwrap that extra scheme before parsing.
+        for prefix in ("postgresql+asyncpg://postgresql://", "postgresql://postgresql://"):
+            if v.startswith(prefix):
+                v = "postgresql+asyncpg://" + v[len(prefix):]
+                break
 
         if v.startswith("postgres://"):
             v = v.replace("postgres://", "postgresql+asyncpg://", 1)

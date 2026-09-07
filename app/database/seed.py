@@ -13,6 +13,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.future import select
 
+from app.core.config import settings
 from app.core.security import get_password_hash
 from app.database.connection import AsyncSessionLocal
 from app.modules.departments.models import Department, UserDepartment
@@ -42,7 +43,7 @@ ROLES = [
 
 def resolve_seed_password(*candidate_names: str) -> str | None:
     for name in candidate_names:
-        value = os.getenv(name)
+        value = os.getenv(name) or getattr(settings, name, None)
         if value and value.strip():
             return value
     return None
