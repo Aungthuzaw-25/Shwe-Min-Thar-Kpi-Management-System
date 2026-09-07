@@ -11,8 +11,7 @@
         <h1 class="text-2xl sm:text-3xl font-black">{{ user_name }}</h1>
         <p class="text-slate-300 mt-1">{{ user_email }}</p>
         <div class="flex flex-wrap gap-2 mt-3 text-xs font-bold">
-          <span class="px-3 py-1 rounded-full bg-blue-500/20 text-blue-200">{{ user_role }}</span>
-          <span class="px-3 py-1 rounded-full bg-slate-700 text-slate-200">{{ user_level }}</span>
+          <span class="px-3 py-1 rounded-full bg-blue-500/20 text-blue-200">{{ user_display_identity }}</span>
           <span class="px-3 py-1 rounded-full {% if account_status == 'Active' %}bg-emerald-500/20 text-emerald-200{% else %}bg-red-500/20 text-red-200{% endif %}">{{ account_status }}</span>
         </div>
       </div>
@@ -30,10 +29,8 @@
     <section class="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
       <h2 class="font-black text-slate-900 text-lg mb-4">Employment Information</h2>
       <dl class="space-y-3 text-sm">
-        <div class="flex justify-between gap-4"><dt class="text-slate-500">Role</dt><dd class="font-bold text-right">{{ user_role }}</dd></div>
-        <div class="flex justify-between gap-4"><dt class="text-slate-500">Level</dt><dd class="font-bold text-right">{{ user_level }}</dd></div>
-        <div class="flex justify-between gap-4"><dt class="text-slate-500">Department</dt><dd class="font-bold text-right">{{ department_name or 'Not assigned' }}</dd></div>
         <div class="flex justify-between gap-4"><dt class="text-slate-500">Position</dt><dd class="font-bold text-right">{{ position_name or 'Not assigned' }}</dd></div>
+        <div class="flex justify-between gap-4"><dt class="text-slate-500">Department</dt><dd class="font-bold text-right">{{ department_name or 'Not assigned' }}</dd></div>
       </dl>
     </section>
     <section class="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">

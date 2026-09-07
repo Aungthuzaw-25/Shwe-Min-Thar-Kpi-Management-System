@@ -17,7 +17,14 @@ async def check_password_history(db: AsyncSession, user_id: uuid.UUID, raw_passw
             return False # အဟောင်းနှင့် တူနေပါသည်
     return True
 
-async def add_password_history(db: AsyncSession, user_id: uuid.UUID, hashed_password: str):
+async def add_password_history(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    hashed_password: str,
+    *,
+    commit: bool = True,
+):
     new_history = PasswordHistory(user_id=user_id, hashed_password=hashed_password)
     db.add(new_history)
-    await db.commit()
+    if commit:
+        await db.commit()

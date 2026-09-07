@@ -64,6 +64,36 @@ allow_reports = RoleChecker(["Super Admin", "System Super Admin", "Admin", "HR",
 allow_charts = RoleChecker(["Super Admin", "System Super Admin", "Admin", "Level 0", "Level 1"])
 
 
+async def require_report_access(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> User:
+    """Allow report readers by role or by their assigned department level."""
+    allowed_roles = {"Super Admin", "System Super Admin", "Admin", "HR", "Level 0", "Level 1"}
+    if current_user.role and current_user.role.name in allowed_roles:
+        return current_user
+
+    if current_user.role and current_user.role.name == "Department User":
+        levels = (
+            await db.execute(
+                select(UserDepartment.user_level).where(
+                    UserDepartment.user_id == current_user.id,
+                    UserDepartment.is_deleted.is_(False),
+                )
+            )
+        ).scalars().all()
+        normalized_levels = {
+            str(level).upper().replace("LEVEL ", "L") for level in levels
+        }
+        if normalized_levels.intersection({"L0", "L1"}):
+            return current_user
+
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Not authorized to perform this action.",
+    )
+
+
 # ==============================================================================
 # 🌟 3. SCHEMAS (Locally scoped for API responses)
 # ==============================================================================
@@ -586,7 +616,7 @@ async def get_kpi_summary_report(
     period_type: str = Query(..., description="e.g., DAILY, WEEKLY, MONTHLY"),
     department_id: Optional[UUID] = Query(None, description="Filter by Department"),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(allow_reports)
+    current_user: User = Depends(require_report_access)
 ):
     enforce_permission(current_user, "report.view")
     if department_id is not None:

@@ -1,14 +1,15 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
-from app.modules.users.models import User
+from app.modules.users.models import User, Role, UserPermissionOverride
 from app.modules.departments.models import UserDepartment
 import uuid
 
 # 🌟 Reusable Base Query for User with standard Eager Load relations
 def get_user_base_query():
     return select(User).options(
-        selectinload(User.role),
+        selectinload(User.role).selectinload(Role.permissions),
+        selectinload(User.permission_overrides).selectinload(UserPermissionOverride.permission),
         selectinload(User.position), 
         selectinload(User.user_departments).selectinload(UserDepartment.department)
     )
@@ -23,11 +24,18 @@ async def get_user_by_id(db: AsyncSession, user_id: uuid.UUID) -> User | None:
     result = await db.execute(stmt)
     return result.scalar_one_or_none()
 
-async def create_user(db: AsyncSession, user_data: dict) -> User:
+async def create_user(
+    db: AsyncSession,
+    user_data: dict,
+    *,
+    commit: bool = True,
+) -> User:
     new_user = User(**user_data)
     db.add(new_user)
-    await db.commit()
-    await db.refresh(new_user)
+    await db.flush()
+    if commit:
+        await db.commit()
+        await db.refresh(new_user)
     # Reload with relations so position and departments are fully loaded in return object
     return await get_user_by_id(db, new_user.id)
 

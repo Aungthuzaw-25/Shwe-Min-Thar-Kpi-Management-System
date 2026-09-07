@@ -233,7 +233,7 @@ async function toggleSuperAdmin(id) {
 }
 
 async function deleteSuperAdmin(id) {
-    if (!confirm('Delete this Super Admin account?')) return;
+    if (!(await window.appConfirm('Delete this Super Admin account?', { title: 'Delete account?', confirmText: 'Delete' }))) return;
     try {
         const response = await fetch(`/api/v1/users/super-admins/${id}`, {
             method: 'DELETE',

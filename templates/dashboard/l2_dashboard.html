@@ -1,7 +1,7 @@
 {% extends "layouts/employee_base.html" %}
 {% set active_page = "dashboard" %}
 
-{% block title %}My KPI Dashboard - L2 Staff{% endblock %}
+{% block title %}My KPI Dashboard{% endblock %}
 
 {% block content %}
 <style>
@@ -25,7 +25,7 @@
             <p class="text-slate-500 mt-1 sm:mt-1.5 text-xs sm:text-sm font-medium">Welcome to your personal performance dashboard.</p>
         </div>
         <div class="flex flex-wrap items-center gap-3">
-            <span class="bg-purple-50 text-purple-700 px-3 sm:px-4 py-1.5 rounded-full text-[10px] sm:text-xs font-bold ring-1 ring-purple-600/20 uppercase tracking-wide shadow-sm">{{ user_role }}</span>
+            <span class="bg-purple-50 text-purple-700 px-3 sm:px-4 py-1.5 rounded-full text-[10px] sm:text-xs font-bold ring-1 ring-purple-600/20 uppercase tracking-wide shadow-sm">{{ user_display_identity }}</span>
             <div class="bg-white border border-slate-200 px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold text-slate-600 shadow-sm flex items-center">
                 <svg class="w-4 h-4 mr-1.5 sm:mr-2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
                 <span id="currentDateDisplay">Today</span>

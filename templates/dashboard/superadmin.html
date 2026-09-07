@@ -321,7 +321,7 @@
                     }]
                 });
 
-                const trendData = data.trend || { labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], data: [0,0,0,0,0,0,0] };
+                const trendData = data.trend || { labels: [], data: [] };
                 const ctx = document.getElementById('lineChart').getContext('2d');
                 let gradient = ctx.createLinearGradient(0, 0, 0, window.innerWidth < 640 ? 250 : 400);
                 gradient.addColorStop(0, 'rgba(37, 99, 235, 0.2)'); 

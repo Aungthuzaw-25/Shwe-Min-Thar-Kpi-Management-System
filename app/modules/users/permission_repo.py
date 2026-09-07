@@ -20,6 +20,7 @@ async def get_role_permissions(db: AsyncSession, role_id: UUID) -> List[Permissi
 
 
 async def assign_permissions_to_role(db: AsyncSession, role_id: UUID, permission_codes: List[str]):
+    permission_codes = list(dict.fromkeys(permission_codes))
     # 1. ယခင်ရှိပြီးသား Permission များကို အရင်ဖျက်ပါမည် (Clean Slate)
     stmt_delete = select(RolePermission).where(RolePermission.role_id == role_id)
     result = await db.execute(stmt_delete)
@@ -32,6 +33,12 @@ async def assign_permissions_to_role(db: AsyncSession, role_id: UUID, permission
         stmt_perms = select(Permission).where(Permission.code.in_(permission_codes))
         result_perms = await db.execute(stmt_perms)
         valid_permissions = result_perms.scalars().all()
+        valid_codes = {permission.code for permission in valid_permissions}
+        unknown_codes = set(permission_codes) - valid_codes
+        if unknown_codes:
+            raise ValueError(
+                f"Unknown permission codes: {', '.join(sorted(unknown_codes))}"
+            )
 
         # 3. RolePermission Pivot Table သို့ အသစ်ပြန်ထည့်မည်
         for perm in valid_permissions:
@@ -169,6 +176,29 @@ async def bulk_save_user_overrides(
     Only items whose state differs from the role baseline are stored; items
     set to "inherit" (no override) are simply omitted / deleted.
     """
+    normalized = []
+    seen = set()
+    for item in overrides:
+        code = item["permission_code"].strip()
+        scope = item.get("scope", "ALL").upper()
+        department_id = item.get("department_id")
+        if scope not in {"OWN", "DEPARTMENT", "ALL"}:
+            raise ValueError("Scope must be OWN, DEPARTMENT, or ALL.")
+        if scope == "DEPARTMENT" and department_id is None:
+            raise ValueError("Department is required for department scope.")
+        if scope != "DEPARTMENT" and department_id is not None:
+            raise ValueError("Department is only valid with DEPARTMENT scope.")
+        key = (code, str(department_id) if department_id else None)
+        if key in seen:
+            raise ValueError(f"Duplicate permission override: {code}")
+        seen.add(key)
+        normalized.append({
+            "permission_code": code,
+            "allowed": bool(item["allowed"]),
+            "scope": scope,
+            "department_id": department_id,
+        })
+
     # Delete existing overrides for this user
     existing = (await db.execute(
         select(UserPermissionOverride).where(UserPermissionOverride.user_id == user_id)
@@ -177,19 +207,24 @@ async def bulk_save_user_overrides(
         await db.delete(row)
     await db.flush()
 
-    if not overrides:
+    if not normalized:
         await db.commit()
         return []
 
     # Resolve permission codes -> IDs
-    codes = [o["permission_code"] for o in overrides]
+    codes = [o["permission_code"] for o in normalized]
     perm_rows = (await db.execute(
         select(Permission).where(Permission.code.in_(codes))
     )).scalars().all()
     code_to_id = {p.code: p.id for p in perm_rows}
+    unknown_codes = set(codes) - set(code_to_id)
+    if unknown_codes:
+        raise ValueError(
+            f"Unknown permission codes: {', '.join(sorted(unknown_codes))}"
+        )
 
     saved = []
-    for item in overrides:
+    for item in normalized:
         perm_id = code_to_id.get(item["permission_code"])
         if not perm_id:
             continue

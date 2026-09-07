@@ -684,7 +684,7 @@
     }
 
     async function deleteFormula(id) {
-        if(!confirm("Warning: Permanent deletion cannot be undone. Proceed?")) return;
+        if(!(await window.appConfirm("Permanent deletion cannot be undone.", { title: "Delete KPI record?", confirmText: "Delete" }))) return;
         try {
             const res = await fetch(`${API_BASE}/formulas/${id}`, { method: "DELETE" });
             // 🛡️ AUTH FIX
@@ -1237,7 +1237,7 @@
     }
 
     async function freezeRecord(id, freezeState) {
-        if(!confirm(`Proceed with this action on the record?`)) return;
+        if(!(await window.appConfirm(`Proceed with this action on the record?`, { title: "Confirm action" }))) return;
         try {
             const res = await fetch(`${API_BASE}/records/${id}/freeze`, {
                 method: "PUT", headers: { "Content-Type": "application/json" },

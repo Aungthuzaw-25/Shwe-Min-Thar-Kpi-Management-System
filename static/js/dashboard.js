@@ -180,7 +180,9 @@
 
   // ---- Confirm modals for destructive actions ----
   window.confirmAction = function (message, callback) {
-    if (confirm(message)) callback();
+    window.appConfirm(message).then((confirmed) => {
+      if (confirmed) callback();
+    });
   };
 
   // ---- Role to readable name ----

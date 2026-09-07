@@ -347,7 +347,12 @@ async def get_department_process_tracking(
         select(Task.status, func.count(Task.id))
         .join(User, Task.owner_id == User.id)
         .join(UserDepartment, User.id == UserDepartment.user_id)
-        .where(UserDepartment.department_id == dept_id)
+        .where(
+            UserDepartment.department_id == dept_id,
+            UserDepartment.is_deleted == False,
+            User.is_deleted == False,
+            Task.is_deleted == False,
+        )
         .group_by(Task.status)
     )
     metrics_req = await db.execute(metrics_stmt)
@@ -370,7 +375,12 @@ async def get_department_process_tracking(
         .join(Task, TaskHistory.task_id == Task.id)
         .join(UserDepartment, Task.owner_id == UserDepartment.user_id)
         .outerjoin(User, TaskHistory.changed_by == User.id)
-        .where(UserDepartment.department_id == dept_id)
+        .where(
+            UserDepartment.department_id == dept_id,
+            UserDepartment.is_deleted == False,
+            User.is_deleted == False,
+            Task.is_deleted == False,
+        )
         .order_by(TaskHistory.created_at.desc())
         .limit(15)
     )
@@ -387,8 +397,40 @@ async def get_department_process_tracking(
             "timestamp": history.created_at.isoformat()
         })
 
+    trend_stmt = (
+        select(func.date(TaskHistory.created_at).label("day"), TaskHistory.action, func.count(TaskHistory.id))
+        .join(Task, TaskHistory.task_id == Task.id)
+        .join(UserDepartment, Task.owner_id == UserDepartment.user_id)
+        .join(User, Task.owner_id == User.id)
+        .where(
+            UserDepartment.department_id == dept_id,
+            UserDepartment.is_deleted == False,
+            User.is_deleted == False,
+            Task.is_deleted == False,
+        )
+        .group_by(func.date(TaskHistory.created_at), TaskHistory.action)
+        .order_by(func.date(TaskHistory.created_at))
+    )
+    trend_rows = (await db.execute(trend_stmt)).all()
+    trend_by_day = {}
+    for day, action, count in trend_rows:
+        bucket = trend_by_day.setdefault(str(day), {"completed": 0, "in_progress": 0, "draft": 0, "failed": 0})
+        action_name = str(action).upper()
+        if any(value in action_name for value in ("APPROVED", "VERIFIED", "COMPLETED")):
+            bucket["completed"] += int(count)
+        elif "REJECTED" in action_name:
+            bucket["failed"] += int(count)
+        elif any(value in action_name for value in ("SUBMITTED", "PENDING", "REVIEW")):
+            bucket["in_progress"] += int(count)
+        else:
+            bucket["draft"] += int(count)
+
     return {
         "user_name": None, # Department Tracking ဖြစ်၍ User Name ကို Null ထားမည်
         "tracking_metrics": process_metrics,
-        "recent_process_activities": recent_activities
+        "recent_process_activities": recent_activities,
+        "progress_trend": [
+            {"label": day, **values}
+            for day, values in list(trend_by_day.items())[-30:]
+        ],
     }

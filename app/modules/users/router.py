@@ -33,6 +33,34 @@ SUPER_ADMIN_ROLE_NAMES = {'Super Admin', 'System Super Admin'}
 VALID_USER_LEVELS = {'L0', 'L1', 'L2'}
 
 
+async def _get_process_trend(db: AsyncSession, owner_ids):
+    """Return daily process-history counts for the tracking chart."""
+    trend_stmt = (
+        select(func.date(TaskHistory.created_at).label("day"), TaskHistory.action, func.count(TaskHistory.id))
+        .join(Task, TaskHistory.task_id == Task.id)
+        .where(Task.owner_id.in_(owner_ids))
+        .group_by(func.date(TaskHistory.created_at), TaskHistory.action)
+        .order_by(func.date(TaskHistory.created_at))
+    )
+    rows = (await db.execute(trend_stmt)).all()
+    by_day = {}
+    for day, action, count in rows:
+        bucket = by_day.setdefault(str(day), {"completed": 0, "in_progress": 0, "draft": 0, "failed": 0})
+        action_name = str(action).upper()
+        if any(value in action_name for value in ("APPROVED", "VERIFIED", "COMPLETED")):
+            bucket["completed"] += int(count)
+        elif "REJECTED" in action_name:
+            bucket["failed"] += int(count)
+        elif any(value in action_name for value in ("SUBMITTED", "PENDING", "REVIEW")):
+            bucket["in_progress"] += int(count)
+        else:
+            bucket["draft"] += int(count)
+    return [
+        {"label": day, **values}
+        for day, values in list(by_day.items())[-30:]
+    ]
+
+
 def normalize_user_level(value: str | None) -> str | None:
     if value is None:
         return None
@@ -137,7 +165,7 @@ async def create_new_user(payload: UserCreate, db: AsyncSession = Depends(get_db
         raise HTTPException(status_code=400, detail='Password (Temporary Password) is required.')
         
     dept_id = getattr(payload, 'department_id', None)
-    user_level = getattr(payload, 'user_level', 'L2') or 'L2'
+    user_level = normalize_user_level(getattr(payload, 'user_level', 'L2') or 'L2')
     
     try:
         validate_password_strength(provided_password)
@@ -148,26 +176,33 @@ async def create_new_user(payload: UserCreate, db: AsyncSession = Depends(get_db
     user_data['must_change_password'] = True 
     
     try:
-        new_user = await user_repo.create_user(db, user_data)
-        await password_repo.add_password_history(db, new_user.id, new_user.hashed_password)
+        new_user = await user_repo.create_user(db, user_data, commit=False)
+        await password_repo.add_password_history(
+            db, new_user.id, new_user.hashed_password, commit=False
+        )
         
         if dept_id:
             dept_check = await db.execute(select(Department).where(Department.id == dept_id, Department.is_deleted == False))
             target_dept = dept_check.scalar_one_or_none()
             
-            if target_dept:
-                new_ud = UserDepartment(
-                    user_id=new_user.id,
-                    department_id=dept_id,
-                    user_level=user_level
-                )
-                db.add(new_ud)
-                
-                if user_level == "L0":
-                    target_dept.head_id = new_user.id
-                    db.add(target_dept)
+            if not target_dept:
+                raise HTTPException(status_code=404, detail='Department not found.')
+
+            new_ud = UserDepartment(
+                user_id=new_user.id,
+                department_id=dept_id,
+                user_level=user_level
+            )
+            db.add(new_ud)
+
+            if user_level == "L0":
+                target_dept.head_id = new_user.id
+                db.add(target_dept)
                     
-                await db.commit()
+        await db.commit()
+    except HTTPException:
+        await db.rollback()
+        raise
     except Exception as e:
         await db.rollback()
         raise HTTPException(status_code=500, detail=f"Database transaction failed: {str(e)}")
@@ -772,6 +807,7 @@ async def get_user_process_tracking(
     metrics_stmt = (
         select(Task.status, func.count(Task.id))
         .where(Task.owner_id == user_id)
+        .where(Task.is_deleted == False)
         .group_by(Task.status)
     )
     metrics_req = await db.execute(metrics_stmt)
@@ -792,7 +828,7 @@ async def get_user_process_tracking(
         select(TaskHistory, Task.title, User.first_name, User.last_name)
         .join(Task, TaskHistory.task_id == Task.id)
         .outerjoin(User, TaskHistory.changed_by == User.id)
-        .where(Task.owner_id == user_id)
+        .where(Task.owner_id == user_id, Task.is_deleted == False)
         .order_by(TaskHistory.created_at.desc())
         .limit(15)
     )
@@ -812,5 +848,6 @@ async def get_user_process_tracking(
     return {
         "user_name": f"{user_check.first_name} {user_check.last_name}".strip(),
         "tracking_metrics": process_metrics,
-        "recent_process_activities": recent_activities
+        "recent_process_activities": recent_activities,
+        "progress_trend": await _get_process_trend(db, [user_id]),
     }

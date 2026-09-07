@@ -392,8 +392,8 @@
         const id = document.getElementById("deptId").value;
         const name = document.getElementById("deptName").value.trim();
         const priority = Number(document.getElementById("deptPriority").value);
-        if (!name) return alert("Please enter a department name.");
-        if (!Number.isInteger(priority) || priority < 0 || priority > 100) return alert("Priority must be between 0 and 100.");
+        if (!name) return window.showToast("Please enter a department name.", "warning");
+        if (!Number.isInteger(priority) || priority < 0 || priority > 100) return window.showToast("Priority must be between 0 and 100.", "warning");
         
         setButtonLoading('saveDeptBtn', true);
         const method = id ? "PUT" : "POST";
@@ -407,7 +407,7 @@
                 showToast("Department saved successfully.", "success");
             } else { 
                 const err = await response.json(); 
-                alert(err.detail || "Operation failed."); 
+                window.showToast("Unable to save the department.", "error"); 
             }
         } catch (error) { console.error(error); }
         finally { setButtonLoading('saveDeptBtn', false, "Save Department"); }
@@ -415,18 +415,18 @@
 
     // --- Delete / Restore ---
     async function deleteDepartment(deptId) {
-        if (!confirm("Move this department to trash?")) return;
+        if (!(await window.appConfirm("Move this department to trash?", { title: "Delete department?", confirmText: "Move to trash" }))) return;
         toggleLoader('tableLoader', true);
         try {
             const response = await fetch(`${API_BASE_URL}/${deptId}`, { method: "DELETE" });
             if (response.ok) { fetchDepartments(); }
-            else { const err = await response.json(); alert(err.detail); }
+            else { window.showToast("Unable to delete the department.", "error"); }
         } catch (error) { console.error(error); }
         finally { toggleLoader('tableLoader', false); }
     }
 
     async function restoreDepartment(deptId) {
-        if (!confirm("Restore this department?")) return;
+        if (!(await window.appConfirm("Restore this department?", { title: "Restore department?" }))) return;
         toggleLoader('tableLoader', true);
         try {
             const response = await fetch(`${API_BASE_URL}/${deptId}/restore`, { method: "POST" });
@@ -436,12 +436,12 @@
     }
 
     async function hardDeleteDepartment(deptId) {
-        if (!confirm("WARNING: Permanent delete cannot be undone! Are you sure?")) return;
+        if (!(await window.appConfirm("Permanent delete cannot be undone.", { title: "Delete department permanently?", confirmText: "Delete" }))) return;
         toggleLoader('tableLoader', true);
         try {
             const response = await fetch(`${API_BASE_URL}/${deptId}/permanent`, { method: "DELETE" });
             if (response.ok) { fetchDepartments(); }
-            else { const err = await response.json(); alert(err.detail); }
+            else { window.showToast("Unable to permanently delete the department.", "error"); }
         } catch (error) { console.error(error); }
         finally { toggleLoader('tableLoader', false); }
     }
@@ -570,7 +570,7 @@
         const userId = document.getElementById("userSelect").value;
         const userLevel = document.getElementById("userLevelSelect").value;
 
-        if (!userId) return alert("Please select an employee.");
+        if (!userId) return window.showToast("Please select an employee.", "warning");
         
         setButtonLoading('assignUserBtn', true, "+ Assign User");
         try {
@@ -583,14 +583,14 @@
                 fetchDepartments();
                 showToast("User assigned successfully.", "success");
             } else {
-                const err = await response.json(); alert(err.detail);
+                window.showToast("Unable to assign the employee.", "error");
             }
         } catch (error) { console.error(error); }
         finally { setButtonLoading('assignUserBtn', false, "+ Assign User"); }
     }
 
     async function removeUserFromDept(deptId, userId) {
-        if(!confirm("Remove this user from the department?")) return;
+        if(!(await window.appConfirm("Remove this user from the department?", { title: "Remove employee?", confirmText: "Remove" }))) return;
         toggleLoader('userListLoader', true);
         try {
             const response = await fetch(`${API_BASE_URL}/${deptId}/users/${userId}`, { method: "DELETE" });
@@ -666,7 +666,7 @@
                 fetchDepartments();
                 showToast("Level changed successfully.", "success");
             } else {
-                const err = await response.json(); alert(err.detail);
+                window.showToast("Unable to remove the employee.", "error");
             }
         } catch(e) { console.error(e); }
         finally { setButtonLoading('actionBtn', false, "Confirm"); }
@@ -677,7 +677,7 @@
         const currentDeptId = document.getElementById("actionDeptId").value;
         const newDeptId = document.getElementById("actionSelectValue").value;
 
-        if(!newDeptId) return alert("Please select a target department.");
+        if(!newDeptId) return window.showToast("Please select a target department.", "warning");
         
         setButtonLoading('actionBtn', true);
         try {
@@ -691,7 +691,7 @@
                 fetchDepartments();
                 showToast("Transferred successfully.", "success");
             } else {
-                const err = await response.json(); alert(err.detail);
+                window.showToast("Unable to transfer the employee.", "error");
             }
         } catch(e) { console.error(e); }
         finally { setButtonLoading('actionBtn', false, "Confirm"); }

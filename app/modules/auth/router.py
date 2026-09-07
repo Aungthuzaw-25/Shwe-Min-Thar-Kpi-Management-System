@@ -11,7 +11,7 @@ from app.database.connection import get_db
 from app.modules.auth.schemas import LoginRequest, TokenResponse, RefreshTokenRequest, ChangePasswordRequest
 from app.modules.users import repo as user_repo
 from app.modules.users import password_repo
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_user, get_permission_map
 from app.modules.users.models import User
 from app.modules.departments.models import UserDepartment
 from app.core.password_policy import validate_password_strength
@@ -57,19 +57,26 @@ async def get_current_user_context(db: AsyncSession = Depends(get_db), current_u
         selectinload(User.role),
         selectinload(User.position),
         selectinload(User.user_departments).selectinload(UserDepartment.department)
-    ).where(User.id == current_user.id)
+    ).where(User.id == current_user.id, User.is_deleted.is_(False))
     
     result = await db.execute(stmt)
     user = result.scalars().first()
     
     role_value = user.role.name if user.role else 'User'
-    user_level = 'L2'
+    user_level = None
     dept_id = None
     dept_name = 'No Department'
     
-    if user.user_departments and len(user.user_departments) > 0:
-        ud = user.user_departments[0]
-        user_level = ud.user_level
+    ud = next(
+        (
+            link for link in (user.user_departments or [])
+            if not getattr(link, "is_deleted", False)
+        ),
+        None,
+    )
+    if ud:
+        raw_level = (ud.user_level or "").strip().upper().replace("LEVEL ", "L")
+        user_level = raw_level if raw_level in {"L0", "L1", "L2"} else None
         dept_id = str(ud.department_id)
         if ud.department:
             dept_name = ud.department.name
@@ -81,11 +88,14 @@ async def get_current_user_context(db: AsyncSession = Depends(get_db), current_u
         "user_id": str(user.id),
         "full_name": f"{user.first_name} {user.last_name}".strip(),
         "role": role_value,
+        "permissions": sorted(
+            code for code, allowed in get_permission_map(user).items() if allowed
+        ),
         "department_id": dept_id,
         "department_name": dept_name,
         "position_id": pos_id,
         "position_name": pos_name,
-        "kpi_level": user_level
+        "kpi_level": user_level,
     }
 
 # ==============================================================================

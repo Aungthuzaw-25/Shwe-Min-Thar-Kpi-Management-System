@@ -25,6 +25,7 @@
     
     <!-- PERFORMANCE FIX: Pre-compiled Local CSS -->
     <link rel="stylesheet" href="/static/css/output.css">
+    <link rel="stylesheet" href="/static/css/notifications.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     
@@ -348,14 +349,14 @@
 
         // Logout Logic
         async function handleLogout() {
-            if (!confirm('စနစ်မှ ထွက်ခွာရန် (Logout) သေချာပါသလား?')) return;
+            if (!(await window.appConfirm('စနစ်မှ ထွက်ခွာရန် (Logout) သေချာပါသလား?', { title: 'Sign out?' }))) return;
             try {
                 await fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' });
                 localStorage.removeItem('user'); 
                 window.location.href = '/auth/login';
             } catch (error) {
                 console.error('Logout error:', error);
-                alert('ကွန်ရက် ချိတ်ဆက်မှု အမှားအယွင်း ရှိနေပါသည်။');
+                window.showToast('ကွန်ရက် ချိတ်ဆက်မှု အမှားအယွင်း ရှိနေပါသည်။', 'error');
             }
         }
 
@@ -506,6 +507,7 @@
         });
     </script>
     {% block scripts %}{% endblock %}
+    <script src="/static/js/notifications.js"></script>
 
 </body>
 </html>

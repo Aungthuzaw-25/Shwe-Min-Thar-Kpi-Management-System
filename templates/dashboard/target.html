@@ -339,7 +339,7 @@
     }
 
     async function deleteTarget(id) {
-        if (!confirm("Are you sure you want to delete this target? This action cannot be undone.")) return;
+        if (!(await window.appConfirm("This action cannot be undone.", { title: "Delete target?", confirmText: "Delete" }))) return;
         
         try {
             const res = await fetch(`${API_TARGETS}/${id}`, { method: "DELETE" });

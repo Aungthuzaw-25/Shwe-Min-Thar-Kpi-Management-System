@@ -261,7 +261,7 @@ async def fetch_admin_dashboard_summary(
     rejected_tasks = (await db.execute(select(func.count(Task.id)).where(*task_filters, Task.status == TaskStatus.REJECTED))).scalar() or 0
     late_tasks = (await db.execute(select(func.count(Task.id)).where(*task_filters, Task.is_late == True))).scalar() or 0
 
-    kpi_filters = [KPIRecord.percentage.is_not(None)]
+    kpi_filters = [KPIRecord.percentage.is_not(None), KPIRecord.is_deleted == False]
     if department_ids:
         kpi_filters.append(KPIRecord.department_id.in_(department_ids))
     average_kpi = (await db.execute(select(func.avg(KPIRecord.percentage)).where(*kpi_filters))).scalar() or 0.0
@@ -273,7 +273,17 @@ async def fetch_admin_dashboard_summary(
         position_count = (await db.execute(select(func.count(Position.id)).where(Position.department_id.in_(department_ids), Position.is_active == True))).scalar() or 0
 
     users_by_department = []
-    dept_stmt = select(Department.name, func.count(UserDepartment.user_id).label("user_count")).select_from(Department).outerjoin(UserDepartment, UserDepartment.department_id == Department.id).where(Department.is_deleted == False)
+    dept_stmt = (
+        select(Department.name, func.count(UserDepartment.user_id).label("user_count"))
+        .select_from(Department)
+        .outerjoin(
+            UserDepartment,
+            (UserDepartment.department_id == Department.id)
+            & (UserDepartment.is_deleted == False)
+            & (UserDepartment.user_id.in_(select(User.id).where(User.is_deleted == False))),
+        )
+        .where(Department.is_deleted == False)
+    )
     if department_ids:
         dept_stmt = dept_stmt.where(Department.id.in_(department_ids))
     dept_stmt = dept_stmt.group_by(Department.name).order_by(func.count(UserDepartment.user_id).desc())
@@ -292,7 +302,12 @@ async def fetch_admin_dashboard_summary(
     dept_kpi_stmt = select(
         Department.name,
         func.avg(KPIRecord.percentage).label("average_kpi")
-    ).outerjoin(KPIRecord, KPIRecord.department_id == Department.id).where(Department.is_deleted == False)
+    ).outerjoin(
+        KPIRecord,
+        (KPIRecord.department_id == Department.id)
+        & (KPIRecord.is_deleted == False)
+        & (KPIRecord.percentage.is_not(None)),
+    ).where(Department.is_deleted == False)
     if department_ids:
         dept_kpi_stmt = dept_kpi_stmt.where(Department.id.in_(department_ids))
     dept_kpi_stmt = dept_kpi_stmt.group_by(Department.name).order_by(func.avg(KPIRecord.percentage).desc())
@@ -344,11 +359,12 @@ async def fetch_superadmin_dashboard_data(
     active_alerts = alerts_count.scalar() or 0
 
     # 4. Total KPIs Evaluated
-    kpis_count = await db.execute(select(func.count(KPIRecord.id)))
+    kpis_count = await db.execute(select(func.count(KPIRecord.id)).where(KPIRecord.is_deleted == False))
     total_kpis = kpis_count.scalar() or 0
 
     # 5. Completed KPIs
     completed_kpis_stmt = select(func.count(KPIRecord.id)).where(
+        KPIRecord.is_deleted == False,
         KPIRecord.status_bucket.in_([KPIStatus.EXCELLENT, KPIStatus.VERY_GOOD])
     )
     completed_kpis_count = await db.execute(completed_kpis_stmt)
@@ -389,7 +405,8 @@ async def fetch_superadmin_dashboard_data(
             Department.name,
             func.avg(KPIRecord.percentage).label("avg_completion")
         )
-        .join(KPIRecord, Department.id == KPIRecord.department_id)
+        .join(KPIRecord, (Department.id == KPIRecord.department_id) & (KPIRecord.is_deleted == False))
+        .where(Department.is_deleted == False)
         .group_by(Department.name)
         .order_by(func.avg(KPIRecord.percentage).desc())
         .limit(5)
@@ -410,7 +427,7 @@ async def fetch_superadmin_dashboard_data(
             func.date(KPIRecord.period_start).label("period"),
             func.avg(KPIRecord.percentage).label("average")
         )
-        .where(KPIRecord.period_start.is_not(None))
+        .where(KPIRecord.period_start.is_not(None), KPIRecord.is_deleted == False)
         .group_by(func.date(KPIRecord.period_start))
         .order_by(func.date(KPIRecord.period_start).desc())
         .limit(7)

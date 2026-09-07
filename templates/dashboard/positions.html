@@ -252,7 +252,7 @@
     }
 
     async function deletePosition(posId) {
-        if(!confirm("ဤရာထူးကို ဖျက်ရန် သေချာပါသလား?")) return;
+        if(!(await window.appConfirm("ဤရာထူးကို ဖျက်ရန် သေချာပါသလား?", { title: "Delete position?", confirmText: "Delete" }))) return;
         try {
             const res = await fetch(`/api/v1/positions/${posId}`, { method: 'DELETE' });
             // 🌟 SECURITY FIX: Handle 401/403

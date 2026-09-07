@@ -113,11 +113,7 @@ def has_effective_permission(
 
     # L0/L1 can review the department workflow; L2 remains a submitter.
     # Explicit user overrides above still take precedence over this level gate.
-    if (
-        user.role
-        and user.role.name == "Department User"
-        and permission_code in LEVEL_RESTRICTED_TASK_PERMISSIONS
-    ):
+    if permission_code in LEVEL_RESTRICTED_TASK_PERMISSIONS:
         department_links = getattr(user, "user_departments", []) or []
         levels = {
             str(getattr(link, "user_level", "")).upper().replace("LEVEL ", "L")

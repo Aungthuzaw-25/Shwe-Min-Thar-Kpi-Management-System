@@ -60,3 +60,15 @@ def test_department_user_level_controls_workflow_permissions():
 
     assert has_effective_permission(l2, "tasks.approve") is False
     assert has_effective_permission(l1, "tasks.approve") is True
+
+
+def test_department_user_level_normalization_supports_prefixed_levels():
+    permission = make_permission("tasks.approve")
+    l0 = SimpleNamespace(
+        role=SimpleNamespace(name="Department User", permissions=[permission]),
+        permission_overrides=[],
+        user_departments=[SimpleNamespace(user_level="Level 0", is_deleted=False)],
+        id="user-0",
+    )
+
+    assert has_effective_permission(l0, "tasks.approve") is True

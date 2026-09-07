@@ -1207,7 +1207,7 @@
     }
 
     async function deleteDraftEvidence(taskId, evidenceId) {
-        if(!confirm("Permanently remove this attached file?")) return;
+        if(!(await window.appConfirm("Permanently remove this attached file?", { title: "Remove attachment?", confirmText: "Remove" }))) return;
         try {
             const res = await fetch(`${API_BASE}/evidence/${evidenceId}`, { method: 'DELETE' });
             // 🛡️ AUTH FIX

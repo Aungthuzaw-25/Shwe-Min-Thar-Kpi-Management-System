@@ -1,0 +1,77 @@
+.app-toast-container {
+    position: fixed;
+    top: 1.25rem;
+    right: 1.25rem;
+    z-index: 10000;
+    display: flex;
+    flex-direction: column;
+    gap: .75rem;
+    width: min(30rem, calc(100vw - 2rem));
+    pointer-events: none;
+}
+.app-toast {
+    display: flex;
+    align-items: flex-start;
+    gap: .75rem;
+    padding: .9rem 1rem;
+    border-left: 4px solid;
+    border-radius: .75rem;
+    background: #fff;
+    color: #172033;
+    box-shadow: 0 12px 30px rgba(15, 23, 42, .2);
+    pointer-events: auto;
+    animation: app-toast-in .2s ease-out;
+}
+.app-toast-success { border-color: #16a34a; }
+.app-toast-error { border-color: #dc2626; }
+.app-toast-warning { border-color: #d97706; }
+.app-toast-info { border-color: #2563eb; }
+.app-toast-icon {
+    display: grid;
+    place-items: center;
+    width: 1.35rem;
+    height: 1.35rem;
+    flex: 0 0 auto;
+    border-radius: 999px;
+    background: #e2e8f0;
+    font-weight: 800;
+}
+.app-toast-message { flex: 1; font-size: .875rem; line-height: 1.35; }
+.app-toast-close { border: 0; background: transparent; color: #64748b; font-size: 1.25rem; line-height: 1; cursor: pointer; }
+.app-toast-leaving { animation: app-toast-out .2s ease-in forwards; }
+.app-confirm-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10001;
+    display: grid;
+    place-items: center;
+    padding: 1rem;
+    background: rgba(15, 23, 42, .62);
+}
+.app-confirm-dialog {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 1rem;
+    width: min(28rem, 100%);
+    padding: 1.5rem;
+    border-radius: 1rem;
+    background: #fff;
+    color: #172033;
+    box-shadow: 0 24px 60px rgba(15, 23, 42, .3);
+}
+.app-confirm-icon { display: grid; place-items: center; width: 2rem; height: 2rem; border-radius: 999px; background: #fef3c7; color: #b45309; font-weight: 800; }
+.app-confirm-content h2 { margin: 0; font-size: 1.1rem; font-weight: 800; }
+.app-confirm-content p { margin: .5rem 0 0; color: #475569; }
+.app-confirm-content small { display: block; margin-top: .5rem; color: #64748b; }
+.app-confirm-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: .75rem; margin-top: .5rem; }
+.app-confirm-actions button { border: 0; border-radius: .6rem; padding: .65rem 1rem; font-weight: 700; cursor: pointer; }
+.app-confirm-cancel { background: #e2e8f0; color: #334155; }
+.app-confirm-submit { background: #2563eb; color: #fff; }
+.app-prompt-input { width: 100%; margin-top: 1rem; border: 1px solid #cbd5e1; border-radius: .5rem; padding: .65rem; }
+@keyframes app-toast-in { from { opacity: 0; transform: translateY(-.5rem); } to { opacity: 1; transform: translateY(0); } }
+@keyframes app-toast-out { to { opacity: 0; transform: translateY(-.5rem); } }
+@media (prefers-color-scheme: dark) {
+    .app-toast, .app-confirm-dialog { background: #1e293b; color: #f8fafc; }
+    .app-confirm-content p, .app-confirm-content small { color: #cbd5e1; }
+    .app-prompt-input { background: #0f172a; color: #f8fafc; border-color: #475569; }
+}

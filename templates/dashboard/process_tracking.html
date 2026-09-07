@@ -298,6 +298,7 @@
             document.getElementById("statDraft").innerText = draft;
 
             updateDonutChart(comp, inProg, draft, failed);
+            updateProgressChart(data.progress_trend || []);
 
             const activities = Array.isArray(data.recent_process_activities) ? data.recent_process_activities : [];
             if (total === 0 || activities.length === 0) {
@@ -354,7 +355,7 @@
 
     // --- CHART.JS INITIALIZATION ---
     function initMockCharts() {
-        // Line Chart setup (Placeholder 0s since no API data yet for historical trends)
+        // Initialize the chart while the selected target is loading.
         const lineCtx = document.getElementById('lineChart').getContext('2d');
         const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
         
@@ -403,6 +404,17 @@
                 plugins: { legend: { display: false }, tooltip: { enabled: true } }
             }
         });
+    }
+
+    function updateProgressChart(trend) {
+        if (!lineChartInstance) return;
+        const rows = Array.isArray(trend) ? trend : [];
+        lineChartInstance.data.labels = rows.map(row => row.label);
+        lineChartInstance.data.datasets[0].data = rows.map(row => Number(row.completed || 0));
+        lineChartInstance.data.datasets[1].data = rows.map(row => Number(row.in_progress || 0));
+        lineChartInstance.data.datasets[2].data = rows.map(row => Number(row.draft || 0));
+        lineChartInstance.data.datasets[3].data = rows.map(row => Number(row.failed || 0));
+        lineChartInstance.update();
     }
 
     // 🌟 FUNCTION TO UPDATE CHART DYNAMICALLY

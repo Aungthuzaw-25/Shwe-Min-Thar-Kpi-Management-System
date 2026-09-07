@@ -113,7 +113,13 @@ async def update_role_permissions(
             )
 
     before = [p.code for p in role.permissions]
-    result = await permission_repo.assign_permissions_to_role(db, role_id, payload.permission_codes)
+    try:
+        result = await permission_repo.assign_permissions_to_role(
+            db, role_id, payload.permission_codes
+        )
+    except ValueError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     await log_audit_trail(db, current_user.id, "UPDATE_ROLE_PERMISSIONS", "roles", str(role_id),
                           {"permissions": before}, {"permissions": payload.permission_codes})
     return result
@@ -316,9 +322,13 @@ async def bulk_save_user_overrides(
     ]
 
     new_data = [item.model_dump() for item in payload.overrides]
-    saved = await permission_repo.bulk_save_user_overrides(
-        db, user_id, [item.model_dump() for item in payload.overrides]
-    )
+    try:
+        saved = await permission_repo.bulk_save_user_overrides(
+            db, user_id, new_data
+        )
+    except ValueError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     await log_audit_trail(
         db, current_user.id, "BULK_UPDATE_USER_PERMISSIONS", "users", str(user_id),

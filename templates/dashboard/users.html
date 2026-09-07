@@ -647,7 +647,7 @@
     }
 
     async function deleteUser(id) {
-        if (!confirm("Are you sure you want to disable and move this user to trash?")) return;
+        if (!(await window.appConfirm("Are you sure you want to disable and move this user to trash?", { title: "Disable user?" }))) return;
         try {
             const res = await fetch(`/api/v1/users/${id}`, { method: 'DELETE' });
             if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
@@ -658,7 +658,7 @@
     }
 
     async function restoreUser(id) {
-        if (!confirm("Are you sure you want to restore and activate this deleted account?")) return;
+        if (!(await window.appConfirm("Are you sure you want to restore and activate this deleted account?", { title: "Restore user?" }))) return;
         try {
             const res = await fetch(`/api/v1/users/${id}/restore`, { method: 'POST', headers: { 'Content-Type': 'application/json' }});
             if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
@@ -669,7 +669,7 @@
     }
 
     async function permanentDeleteUser(id) {
-        if (!confirm("WARNING: This will permanently delete the user from the database and cannot be undone. Are you sure?")) return;
+        if (!(await window.appConfirm("This will permanently delete the user and cannot be undone.", { title: "Delete user?", warning: "Choose Delete only if you are certain." , confirmText: "Delete" }))) return;
         try {
             const res = await fetch(`/api/v1/users/${id}/permanent`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }});
             if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }

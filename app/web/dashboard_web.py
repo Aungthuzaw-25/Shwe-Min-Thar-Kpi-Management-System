@@ -21,11 +21,21 @@ def verify_role(user: User, allowed_roles: list[str]) -> bool:
     return user.role and user.role.name in allowed_roles
 
 
+def normalize_user_level(value: str | None) -> str | None:
+    if not value:
+        return None
+    normalized = value.strip().upper().replace("LEVEL ", "L")
+    return normalized if normalized in {"L0", "L1", "L2"} else None
+
+
 async def get_employee_context(db: AsyncSession, current_user: User) -> dict:
     result = await db.execute(
         select(UserDepartment)
         .options(joinedload(UserDepartment.department))
-        .where(UserDepartment.user_id == current_user.id)
+        .where(
+            UserDepartment.user_id == current_user.id,
+            UserDepartment.is_deleted.is_(False),
+        )
     )
     user_department = result.scalars().first()
 
@@ -36,12 +46,18 @@ async def get_employee_context(db: AsyncSession, current_user: User) -> dict:
         )
         position_name = position_result.scalar_one_or_none()
 
+    user_level = normalize_user_level(user_department.user_level if user_department else None)
+    display_identity = position_name or (
+        user_department.department.name if user_department and user_department.department else None
+    ) or current_user.role.name
+
     return {
         "user_role": current_user.role.name,
+        "user_display_identity": display_identity,
         "user_name": f"{current_user.first_name} {current_user.last_name}".strip(),
         "user_email": current_user.email,
         "user_id": str(current_user.id),
-        "user_level": user_department.user_level if user_department else "L2",
+        "user_level": user_level,
         "department_id": (
             str(user_department.department_id) if user_department else None
         ),
@@ -129,19 +145,22 @@ async def render_normal_dashboard_view(
     if role_name in ['Admin', 'System Admin']:
         return RedirectResponse(url="/admin/dashboard")
 
-    if user_level in ('L0', 'Level 0'):
+    if user_level == "L0":
         return templates.TemplateResponse(
             request=request,
             name="dashboard/l0_dashboard.html",
             context={**employee_context}
         )
 
-    if user_level in ('L1', 'Level 1'):
+    if user_level == "L1":
         return templates.TemplateResponse(
             request=request,
             name="dashboard/l1_dashboard.html",
             context={**employee_context}
         )
+
+    if user_level != "L2":
+        return RedirectResponse(url="/profile")
 
     return templates.TemplateResponse(
         request=request,
