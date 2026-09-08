@@ -16,6 +16,28 @@
 
   const TOKEN = getAuthToken();
   const CONTEXT = window.KPI_CONTEXT || {};
+  const APPLICATION_TIME_ZONE = 'Asia/Yangon';
+
+  function formatApplicationTime(value) {
+    if (!value) return '';
+    const normalized = /(?:Z|[+-]\d{2}:\d{2})$/.test(value) ? value : `${value}Z`;
+    const date = new Date(normalized);
+    if (Number.isNaN(date.getTime())) return '';
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: APPLICATION_TIME_ZONE,
+      dateStyle: 'medium',
+      timeStyle: 'short'
+    }).format(date);
+  }
+
+  function escapeHTML(value) {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
 
   // ---- Axios-lite fetch wrapper ----
   async function api(url, options = {}) {
@@ -118,12 +140,14 @@
       }
       list.innerHTML = data.map(n => `
         <div class="notification-item ${n.is_read ? '' : 'unread'}" onclick="markNotifRead('${n.id}')">
-          <div class="fw-semibold">${n.title || 'Notification'}</div>
-          <div class="text-muted" style="font-size:0.75rem;">${n.message || ''}</div>
-          <div class="text-muted small">${n.created_at ? new Date(n.created_at).toLocaleString() : ''}</div>
+          <div class="fw-semibold">${escapeHTML(n.title || 'Notification')}</div>
+          <div class="text-muted" style="font-size:0.75rem;">${escapeHTML(n.message || '')}</div>
+          <div class="text-muted small">${formatApplicationTime(n.created_at)}</div>
         </div>
       `).join('');
-    } catch (e) { /* silent */ }
+    } catch (error) {
+      console.error('Unable to load notifications:', error);
+    }
   }
 
   window.markNotifRead = async function (id) {

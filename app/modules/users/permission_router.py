@@ -384,8 +384,8 @@ async def reset_user_overrides(
 # =====================================================================
 @router.get("/audit", response_model=List[dict], dependencies=[Depends(admin_only)])
 async def permission_audit_history(
-    limit: int = 100,
-    offset: int = 0,
+    limit: int = Query(100, gt=0, le=500),
+    offset: int = Query(0, ge=0),
     action: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
 ):

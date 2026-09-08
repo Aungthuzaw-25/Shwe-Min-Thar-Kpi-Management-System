@@ -300,8 +300,15 @@
 
             // 2. POPULATE CHART
             if (typeof Chart !== 'undefined' && chartData && chartData.data_points) {
-                document.getElementById('chartSkeleton').classList.add('hidden');
                 const canvas = document.getElementById('trendChart');
+                const points = chartData.data_points.filter(dp => Number.isFinite(Number(dp.score)));
+                if (!points.length) {
+                    document.getElementById('chartSkeleton').classList.remove('hidden');
+                    document.getElementById('chartSkeleton').innerHTML = '<p class="text-xs sm:text-sm font-bold text-slate-400">No KPI trend data yet.</p>';
+                    canvas.classList.add('opacity-0');
+                    return;
+                }
+                document.getElementById('chartSkeleton').classList.add('hidden');
                 canvas.classList.remove('opacity-0');
                 
                 const ctx = canvas.getContext('2d');
@@ -313,10 +320,10 @@
                     type: 'line',
                     data: {
                         // 🌟 SECURITY FIX: escapeHTML for chart labels
-                        labels: chartData.data_points.length > 0 ? chartData.data_points.map(dp => escapeHTML(dp.date_label)) : ['No Data'],
-                        datasets: [{ 
+                        labels: points.map(dp => escapeHTML(dp.date_label)),
+                        datasets: [{
                             label: 'KPI Score', 
-                            data: chartData.data_points.length > 0 ? chartData.data_points.map(dp => dp.score) : [0], 
+                            data: points.map(dp => Number(dp.score)),
                             borderColor: '#2563eb', 
                             backgroundColor: gradient, 
                             fill: true, 

@@ -16,6 +16,7 @@ from app.modules.tasks.schemas import TaskCreate, TaskUpdate, TaskReviewInput
 # 🌟 FIX: Updated import to use the refactored module-level function
 from app.modules.notifications.repo import create_notification
 from app.core.timezone import APPLICATION_TIMEZONE
+from app.services.activity_service import record_activity
 
 timezone = APPLICATION_TIMEZONE
 
@@ -33,6 +34,16 @@ async def create_task(db: AsyncSession, task_in: TaskCreate, current_user_id: UU
             owner_id=current_user_id
         )
         db.add(new_task)
+        if hasattr(db, "flush"):
+            await db.flush()
+        await record_activity(
+            db,
+            actor_id=current_user_id,
+            action="TASK_CREATED",
+            entity_type="task",
+            entity_id=new_task.id,
+            description=f"Created task '{new_task.title}'",
+        )
         await db.commit()
         await db.refresh(new_task)
         return new_task
@@ -49,6 +60,14 @@ async def submit_task(db: AsyncSession, task_id: UUID, current_user_id: UUID) ->
     
     try:
         task.status = TaskStatus.PENDING_L1
+        await record_activity(
+            db,
+            actor_id=current_user_id,
+            action="TASK_SUBMITTED",
+            entity_type="task",
+            entity_id=task.id,
+            description=f"Submitted task '{getattr(task, 'title', task.id)}' for review",
+        )
         await db.commit()
         await db.refresh(task)
         return task
@@ -96,20 +115,33 @@ async def review_task_l1(db: AsyncSession, task_id: UUID, payload: TaskReviewInp
             comments=final_remarks
         )
         db.add(review)
-        await db.commit()
-
-        # 🌟 TRIGGER: L1 Review Notification (Fixed import)
-        try:
-            status_msg = "Approved" if payload.action == "APPROVED" else "Rejected" if payload.action == "REJECTED" else "Delayed"
-            await create_notification(db, {
+        status_msg = (
+            "Approved"
+            if payload.action == "APPROVED"
+            else "Rejected"
+            if payload.action == "REJECTED"
+            else "Delayed"
+        )
+        await record_activity(
+            db,
+            actor_id=current_user_id,
+            action=f"TASK_L1_{payload.action}",
+            entity_type="task",
+            entity_id=task.id,
+            description=f"{status_msg} task '{task.title}' at L1 review",
+        )
+        await create_notification(
+            db,
+            {
                 "user_id": task.owner_id,
                 "title": f"Task {status_msg} (L1)",
                 "message": f"Your task '{task.title}' has been {status_msg.lower()}.",
                 "notification_type": payload.action,
-                "channel": "DASHBOARD"
-            })
-        except Exception:
-            pass
+                "channel": "DASHBOARD",
+            },
+            commit=False,
+        )
+        await db.commit()
         
         if payload.action in ["APPROVED", "REJECTED"]:
             target_date = task.due_date if task.due_date else datetime.now(timezone)
@@ -196,32 +228,48 @@ async def verify_task_l0(db: AsyncSession, task_id: UUID, payload: TaskReviewInp
             is_verified_by_l0=True
         )
         db.add(review)
-        await db.commit()
-
-        # 🌟 TRIGGER: L0 Review & Penalty Notification (Fixed import)
-        try:
-            status_msg = "Approved" if payload.action == "APPROVED" else "Rejected" if payload.action == "REJECTED" else "Delayed"
-            
-            # 1. ဝန်ထမ်းဆီသို့ အကြောင်းကြားခြင်း
-            await create_notification(db, {
+        status_msg = (
+            "Approved"
+            if payload.action == "APPROVED"
+            else "Rejected"
+            if payload.action == "REJECTED"
+            else "Delayed"
+        )
+        await record_activity(
+            db,
+            actor_id=current_user_id,
+            action=f"TASK_L0_{payload.action}",
+            entity_type="task",
+            entity_id=task.id,
+            description=f"{status_msg} task '{task.title}' at L0 review",
+        )
+        await create_notification(
+            db,
+            {
                 "user_id": task.owner_id,
                 "title": f"Task {status_msg} (L0)",
                 "message": f"Your task '{task.title}' has been {status_msg.lower()} by Top Management.",
                 "notification_type": payload.action,
-                "channel": "DASHBOARD"
-            })
-
-            # 2. L1 Supervisor အား အမှတ်ဖြတ်ခံရလျှင် သတိပေးခြင်း
-            if payload.action == "REJECTED" and target_kpi_level == "L1" and target_kpi_user_id:
-                await create_notification(db, {
+                "channel": "DASHBOARD",
+            },
+            commit=False,
+        )
+        if payload.action == "REJECTED" and target_kpi_level == "L1" and target_kpi_user_id:
+            await create_notification(
+                db,
+                {
                     "user_id": target_kpi_user_id,
                     "title": "L1 Penalty Applied",
-                    "message": f"A task you previously approved ('{task.title}') was rejected by L0. A penalty has been applied to your KPI.",
+                    "message": (
+                        f"A task you previously approved ('{task.title}') was rejected by L0. "
+                        "A penalty has been applied to your KPI."
+                    ),
                     "notification_type": "ESCALATION",
-                    "channel": "DASHBOARD"
-                })
-        except Exception:
-            pass
+                    "channel": "DASHBOARD",
+                },
+                commit=False,
+            )
+        await db.commit()
         
         if target_kpi_user_id and target_kpi_dept:
             target_date = task.due_date if task.due_date else datetime.now(timezone)

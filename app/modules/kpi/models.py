@@ -201,7 +201,7 @@ class KPIAssignment(BaseModel):
     kpi_period_id = Column(UUID(as_uuid=True), ForeignKey("kpi_periods.id", ondelete="CASCADE"), nullable=False, index=True)
     
     assigned_by_id = Column(UUID(as_uuid=True), ForeignKey(USERS_ID, ondelete=SET_NULL), nullable=True)
-    assigned_at = Column(DateTime, nullable=False)
+    assigned_at = Column(DateTime(timezone=True), nullable=False)
     is_deleted = Column(Boolean, default=False, nullable=False, index=True)
 
     # Relationships

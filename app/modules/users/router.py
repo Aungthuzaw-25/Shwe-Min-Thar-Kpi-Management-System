@@ -18,6 +18,7 @@ from app.modules.users import permission_repo
 
 from app.core.dependencies import RoleChecker, get_current_user, enforce_permission
 from app.utils.audit import log_audit_trail
+from app.services.activity_service import record_activity
 from app.core.security import get_password_hash
 from app.core.password_policy import validate_password_strength
 
@@ -198,7 +199,14 @@ async def create_new_user(payload: UserCreate, db: AsyncSession = Depends(get_db
             if user_level == "L0":
                 target_dept.head_id = new_user.id
                 db.add(target_dept)
-                    
+        await record_activity(
+            db,
+            actor_id=current_user.id,
+            action="USER_CREATED",
+            entity_type="user",
+            entity_id=new_user.id,
+            description=f"Created user {new_user.first_name} {new_user.last_name}".strip(),
+        )
         await db.commit()
     except HTTPException:
         await db.rollback()
@@ -216,6 +224,8 @@ async def create_new_user(payload: UserCreate, db: AsyncSession = Depends(get_db
 
 @router.get('/super-admins', response_model=List[UserResponse])
 async def list_super_admins(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, gt=0, le=500),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -230,6 +240,8 @@ async def list_super_admins(
         .join(Role, User.role_id == Role.id)
         .where(User.is_deleted == False, Role.name.in_(list(SUPER_ADMIN_ROLE_NAMES)))
         .order_by(User.first_name, User.last_name)
+        .offset(skip)
+        .limit(limit)
     )
     result = await db.execute(stmt)
     return [serialize_user_obj(user) for user in result.scalars().all()]
@@ -613,6 +625,14 @@ async def update_existing_user(user_id: UUID, payload: UserUpdate, db: AsyncSess
                     user_level=requested_level or "L2",
                 )
                 db.add(new_ud)
+        await record_activity(
+            db,
+            actor_id=current_user.id,
+            action="USER_UPDATED",
+            entity_type="user",
+            entity_id=user.id,
+            description=f"Updated user {user.first_name} {user.last_name}".strip(),
+        )
         await db.commit()
         updated_user = await user_repo.get_user_by_id(db, user.id)
     except HTTPException:
@@ -648,6 +668,15 @@ async def delete_existing_user(user_id: UUID, db: AsyncSession = Depends(get_db)
         
     await db.execute(text("UPDATE departments SET head_id = NULL WHERE head_id = :uid"), {"uid": str(user_id)})
     await user_repo.soft_delete_user(db, user)
+    await record_activity(
+        db,
+        actor_id=current_user.id,
+        action="USER_DELETED",
+        entity_type="user",
+        entity_id=user.id,
+        description=f"Deactivated user {user.first_name} {user.last_name}".strip(),
+    )
+    await db.commit()
     return {'message': 'User disabled and removed from department successfully (Soft Delete).'}
 
 @router.delete('/{user_id}/permanent')

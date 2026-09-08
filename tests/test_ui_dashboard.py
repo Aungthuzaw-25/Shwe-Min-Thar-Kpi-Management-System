@@ -23,7 +23,7 @@ def login(page, email, password):
     page.fill("#email", email)
     page.fill("#password", password)
     page.click('button[type="submit"]')
-    page.wait_for_load_state("networkidle")
+    page.wait_for_load_state("domcontentloaded")
 
     # Allow the app to redirect to the role-specific dashboard while avoiding brittle
     # URL-only waiting for L0/L1 flows that may land on the shared /dashboard route.
@@ -41,7 +41,7 @@ def login(page, email, password):
 def test_superadmin_dashboard_access(playwright_context):
     page = playwright_context.new_page()
     login(page, SUPERADMIN_EMAIL, SUPERADMIN_PASSWORD)
-    page.wait_for_url("**/superadmin/dashboard")
+    assert page.url.endswith("/superadmin/dashboard")
     page.wait_for_selector("#valUsers", timeout=60000)
     assert page.locator("#valUsers").first.is_visible()
     page.close()

@@ -300,7 +300,13 @@
             updateDonutChart(comp, inProg, draft, failed);
             updateProgressChart(data.progress_trend || []);
 
-            const activities = Array.isArray(data.recent_process_activities) ? data.recent_process_activities : [];
+            const activityParam = currentScope === 'department' ? 'department_id' : 'actor_id';
+            const activityResponse = await fetch(`/api/v1/activity/recent?limit=15&${activityParam}=${encodeURIComponent(targetId)}`);
+            if (!activityResponse.ok) {
+                showTrackingErrorState('Unable to load activity timeline.');
+                return;
+            }
+            const activities = await activityResponse.json();
             if (total === 0 || activities.length === 0) {
                 showTrackingEmptyState('No activity yet');
                 return;
@@ -309,21 +315,21 @@
             container.innerHTML = activities.map((act, idx) => {
                 let iconBg = "bg-slate-100 text-slate-500";
                 let iconSvg = `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>`;
-                let actionText = escapeHTML(act.action.toLowerCase());
+                let actionText = escapeHTML((act.action || '').toLowerCase().replaceAll('_', ' '));
 
-                if (act.action.includes("APPROVED") || act.action.includes("VERIFIED") || act.action.includes("COMPLETED")) {
+                if ((act.action || '').includes("APPROVED") || (act.action || '').includes("VERIFIED") || (act.action || '').includes("COMPLETED")) {
                     iconBg = "bg-emerald-100 text-emerald-600";
                     iconSvg = `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>`;
                     actionText = "completed";
-                } else if (act.action.includes("REJECTED")) {
+                } else if ((act.action || '').includes("REJECTED")) {
                     iconBg = "bg-rose-100 text-rose-600";
                     iconSvg = `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12"></path></svg>`;
                     actionText = "failed / rejected";
-                } else if (act.action.includes("SUBMITTED")) {
+                } else if ((act.action || '').includes("SUBMITTED")) {
                     iconBg = "bg-blue-100 text-blue-600";
                     iconSvg = `<svg class="w-3.5 h-3.5 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"></path></svg>`;
                     actionText = "started";
-                } else if (act.action.includes("DELAY") || act.action.includes("RESIGN")) {
+                } else if ((act.action || '').includes("DELAY") || (act.action || '').includes("RESIGN")) {
                     iconBg = "bg-orange-100 text-orange-500";
                     iconSvg = `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6"></path></svg>`;
                     actionText = "paused / returned";
@@ -339,9 +345,8 @@
                                 ${iconSvg}
                             </div>
                             <div class="flex-1 min-w-0 pt-0.5">
-                                <p class="text-[13px] font-bold text-slate-800 leading-tight">Process "${escapeHTML(act.task_title || 'System Task')}" ${actionText}</p>
-                                <p class="text-[11px] text-slate-500 font-medium mt-0.5">${formatMyanmarTime(act.timestamp)} <span class="mx-1">•</span> by <span class="font-semibold text-slate-600">${escapeHTML(act.action_by)}</span></p>
-                                ${act.remarks ? `<div class="mt-1.5 p-2 bg-slate-50 rounded-lg text-[10px] italic text-slate-600 border border-slate-100">"${escapeHTML(act.remarks)}"</div>` : ''}
+                                <p class="text-[13px] font-bold text-slate-800 leading-tight">${escapeHTML(act.description || actionText)}</p>
+                                <p class="text-[11px] text-slate-500 font-medium mt-0.5">${formatMyanmarTime(act.created_at)} <span class="mx-1">•</span> by <span class="font-semibold text-slate-600">${escapeHTML(act.actor_name)}</span></p>
                             </div>
                         </div>
                     </div>

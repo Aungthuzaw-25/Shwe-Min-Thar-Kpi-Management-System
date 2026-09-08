@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -90,7 +90,7 @@ async def _get_dashboard_task_summary(db: AsyncSession, current_user: User) -> D
     overdue_stmt = select(func.count(Task.id)).where(
         *base_filters,
         Task.due_date.is_not(None),
-        Task.due_date < datetime.utcnow(),
+        Task.due_date < datetime.now(timezone.utc),
         Task.status.not_in([TaskStatus.COMPLETED, TaskStatus.APPROVED, TaskStatus.REJECTED])
     )
     overdue_tasks = (await db.execute(overdue_stmt)).scalar() or 0
@@ -168,7 +168,7 @@ async def fetch_process_tracking_summary(
         "ASSIGNED": (await db.execute(select(func.count(Task.id)).where(*filters, Task.status == TaskStatus.DRAFT))).scalar() or 0,
         "IN_PROGRESS": (await db.execute(select(func.count(Task.id)).where(*filters, Task.status.in_([TaskStatus.PENDING_L1, TaskStatus.PENDING_L0])))).scalar() or 0,
         "SUBMITTED": (await db.execute(select(func.count(Task.id)).where(*filters, Task.status.in_([TaskStatus.PENDING_L1, TaskStatus.PENDING_L0])))).scalar() or 0,
-        "OVERDUE": (await db.execute(select(func.count(Task.id)).where(*filters, Task.due_date.is_not(None), Task.due_date < datetime.utcnow(), Task.status.not_in([TaskStatus.COMPLETED, TaskStatus.APPROVED, TaskStatus.REJECTED])))).scalar() or 0,
+        "OVERDUE": (await db.execute(select(func.count(Task.id)).where(*filters, Task.due_date.is_not(None),         Task.due_date < datetime.now(timezone.utc), Task.status.not_in([TaskStatus.COMPLETED, TaskStatus.APPROVED, TaskStatus.REJECTED])))).scalar() or 0,
         "LATE": (await db.execute(select(func.count(Task.id)).where(*filters, Task.is_late == True))).scalar() or 0,
     }
 
@@ -255,7 +255,7 @@ async def fetch_admin_dashboard_summary(
     overdue_tasks = (await db.execute(select(func.count(Task.id)).where(
         *task_filters,
         Task.due_date.is_not(None),
-        Task.due_date < datetime.utcnow(),
+        Task.due_date < datetime.now(timezone.utc),
         Task.status.not_in([TaskStatus.COMPLETED, TaskStatus.APPROVED, TaskStatus.REJECTED]),
     ))).scalar() or 0
     rejected_tasks = (await db.execute(select(func.count(Task.id)).where(*task_filters, Task.status == TaskStatus.REJECTED))).scalar() or 0

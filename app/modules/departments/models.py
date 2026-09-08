@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, ForeignKey, Integer
+from sqlalchemy import Column, ForeignKey, Index, Integer, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.database.base import BaseModel
@@ -26,6 +26,10 @@ class UserDepartment(BaseModel):
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
     department_id = Column(UUID(as_uuid=True), ForeignKey("departments.id", ondelete="CASCADE"), primary_key=True)
     user_level = Column(String(2), nullable=False) # L0, L1, L2
+
+    __table_args__ = (
+        Index("idx_user_departments_department_user_deleted", "department_id", "user_id", "is_deleted"),
+    )
     
     user = relationship("User", back_populates="user_departments")
     department = relationship("Department", back_populates="user_departments")

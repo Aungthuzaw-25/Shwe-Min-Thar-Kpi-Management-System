@@ -10,6 +10,14 @@
     border: 1px solid rgba(148,163,184,0.18);
     box-shadow: 0 8px 20px rgba(15,23,42,0.04);
   }
+  .chart-card {
+    background: linear-gradient(145deg, #ffffff 0%, #f8fafc 100%);
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06);
+  }
+  .chart-frame {
+    min-height: 320px;
+  }
 </style>
 
 <div class="min-h-screen bg-slate-50 text-slate-800 font-sans p-4 sm:p-6 lg:p-8">
@@ -62,20 +70,30 @@
   </div>
 
   <div class="mt-8 grid grid-cols-1 gap-6 xl:grid-cols-2">
-    <div class="glass-card rounded-2xl p-4 sm:p-5">
-      <div class="mb-4 flex items-center justify-between">
-        <h3 class="text-lg font-extrabold text-slate-900">Users by Department</h3>
+    <div class="chart-card rounded-2xl p-4 sm:p-6">
+      <div class="mb-5 flex items-start justify-between gap-4">
+        <div>
+          <p class="text-[10px] font-extrabold uppercase tracking-[0.18em] text-indigo-600">Workforce distribution</p>
+          <h3 class="mt-1 text-lg font-extrabold text-slate-900">Users by department</h3>
+          <p class="mt-1 text-xs text-slate-500">Active population across the organization</p>
+        </div>
+        <span class="rounded-xl bg-indigo-50 px-2.5 py-1.5 text-[10px] font-extrabold uppercase tracking-wide text-indigo-700">Headcount</span>
       </div>
-      <div class="h-72">
+      <div class="chart-frame relative">
         <canvas id="usersByDeptChart"></canvas>
       </div>
     </div>
 
-    <div class="glass-card rounded-2xl p-4 sm:p-5">
-      <div class="mb-4 flex items-center justify-between">
-        <h3 class="text-lg font-extrabold text-slate-900">Task Summary</h3>
+    <div class="chart-card rounded-2xl p-4 sm:p-6">
+      <div class="mb-5 flex items-start justify-between gap-4">
+        <div>
+          <p class="text-[10px] font-extrabold uppercase tracking-[0.18em] text-emerald-600">Delivery health</p>
+          <h3 class="mt-1 text-lg font-extrabold text-slate-900">Task portfolio</h3>
+          <p class="mt-1 text-xs text-slate-500">Current workload by lifecycle status</p>
+        </div>
+        <span id="taskHealthLabel" class="rounded-xl bg-emerald-50 px-2.5 py-1.5 text-[10px] font-extrabold uppercase tracking-wide text-emerald-700">Portfolio</span>
       </div>
-      <div class="h-72">
+      <div class="chart-frame relative">
         <canvas id="taskSummaryChart"></canvas>
       </div>
     </div>
@@ -104,6 +122,26 @@
   let deptChart = null;
   let taskChart = null;
 
+  Chart.defaults.font.family = "'Inter', sans-serif";
+  Chart.defaults.color = '#64748b';
+
+  const noDataPlugin = {
+    id: 'adminNoData',
+    afterDraw(chart) {
+      const values = chart.data.datasets.flatMap(dataset => dataset.data || []);
+      if (values.length && values.some(value => Number(value) > 0)) return;
+      const { ctx, chartArea } = chart;
+      if (!chartArea) return;
+      ctx.save();
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '600 12px Inter, sans-serif';
+      ctx.fillText('No data available yet', (chartArea.left + chartArea.right) / 2, (chartArea.top + chartArea.bottom) / 2);
+      ctx.restore();
+    }
+  };
+
   function renderList(rows, containerId, formatter = (item) => `${item.label}: ${item.value}`) {
     const container = document.getElementById(containerId);
     if (!container) return;
@@ -127,8 +165,9 @@
     if (!ctx) return;
     if (deptChart) deptChart.destroy();
 
-    const labels = (data || []).map(item => item.label || 'Unknown');
-    const values = (data || []).map(item => Number(item.value || 0));
+    const ranked = [...(data || [])].sort((a, b) => Number(b.value || 0) - Number(a.value || 0));
+    const labels = ranked.map(item => item.label || 'Unknown');
+    const values = ranked.map(item => Number(item.value || 0));
 
     deptChart = new Chart(ctx, {
       type: 'bar',
@@ -137,16 +176,33 @@
         datasets: [{
           label: 'Users',
           data: values,
-          backgroundColor: '#4f46e5',
-          borderRadius: 8,
+          backgroundColor: 'rgba(79, 70, 229, 0.82)',
+          hoverBackgroundColor: '#4338ca',
+          borderRadius: 7,
+          borderSkipped: false,
+          barThickness: 22,
         }]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
-        scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
-      }
+        indexAxis: 'y',
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#0f172a',
+            padding: 12,
+            displayColors: false,
+            callbacks: { label: context => ` ${context.parsed.x.toLocaleString()} users` }
+          }
+        },
+        scales: {
+          x: { beginAtZero: true, border: { display: false }, grid: { color: '#e2e8f0', drawTicks: false }, ticks: { precision: 0, padding: 8 } },
+          y: { border: { display: false }, grid: { display: false }, ticks: { padding: 8, font: { weight: '600' } } }
+        }
+      },
+      plugins: [noDataPlugin]
     });
   }
 
@@ -156,13 +212,38 @@
     if (taskChart) taskChart.destroy();
 
     const entries = [
-      { label: 'Assigned', value: Number(summary.assigned || 0) },
-      { label: 'Pending', value: Number(summary.pending || 0) },
+      { label: 'Draft', value: Number(summary.assigned || 0) },
+      { label: 'Pending L1/L0', value: Math.max(Number(summary.pending || 0) - Number(summary.assigned || 0), 0) },
       { label: 'Completed', value: Number(summary.completed || 0) },
       { label: 'Rejected', value: Number(summary.rejected || 0) },
       { label: 'Overdue', value: Number(summary.overdue || 0) },
       { label: 'Late', value: Number(summary.late || 0) }
     ];
+
+    const total = entries.reduce((sum, entry) => sum + entry.value, 0);
+    const completed = Number(summary.completed || 0);
+    const completionRate = total ? Math.round((completed / total) * 100) : 0;
+    document.getElementById('taskHealthLabel').textContent = `${completionRate}% complete`;
+
+    const centerTextPlugin = {
+      id: 'taskCenterText',
+      afterDraw(chart) {
+        const { ctx, chartArea } = chart;
+        if (!chartArea || !total) return;
+        const centerX = (chartArea.left + chartArea.right) / 2;
+        const centerY = (chartArea.top + chartArea.bottom) / 2;
+        ctx.save();
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#0f172a';
+        ctx.font = '800 26px Inter, sans-serif';
+        ctx.fillText(total.toLocaleString(), centerX, centerY - 8);
+        ctx.fillStyle = '#64748b';
+        ctx.font = '600 11px Inter, sans-serif';
+        ctx.fillText('total tasks', centerX, centerY + 14);
+        ctx.restore();
+      }
+    };
 
     taskChart = new Chart(ctx, {
       type: 'doughnut',
@@ -170,14 +251,34 @@
         labels: entries.map(e => e.label),
         datasets: [{
           data: entries.map(e => e.value),
-          backgroundColor: ['#8b5cf6', '#f59e0b', '#10b981', '#ef4444', '#f97316', '#e11d48']
+          backgroundColor: ['#6366f1', '#f59e0b', '#10b981', '#ef4444', '#f97316', '#e11d48'],
+          borderColor: '#ffffff',
+          borderWidth: 4,
+          hoverOffset: 8
         }]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: { legend: { position: 'bottom' } }
-      }
+        cutout: '70%',
+        plugins: {
+          legend: {
+            position: 'bottom',
+            labels: { usePointStyle: true, pointStyle: 'circle', padding: 18, font: { weight: '600', size: 11 } }
+          },
+          tooltip: {
+            backgroundColor: '#0f172a',
+            padding: 12,
+            callbacks: {
+              label: context => {
+                const percentage = total ? Math.round((context.raw / total) * 100) : 0;
+                return ` ${context.label}: ${Number(context.raw).toLocaleString()} (${percentage}%)`;
+              }
+            }
+          }
+        }
+      },
+      plugins: [noDataPlugin, centerTextPlugin]
     });
   }
 

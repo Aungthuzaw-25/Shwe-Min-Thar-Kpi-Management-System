@@ -11,11 +11,20 @@ from app.modules.notifications.schemas import NotificationResponse
 from app.modules.notifications.repo import (
     get_notifications_by_user,
     mark_all_notifications_as_read,
-    mark_notification_as_read
+    mark_notification_as_read,
+    count_unread_notifications,
 )
 
 # 🌟 Swagger UI တွင် သပ်ရပ်စွာပေါ်ရန် Tag ထည့်ပေးခြင်း
 router = APIRouter(tags=["Notifications"])
+
+
+@router.get("/unread-count")
+async def get_unread_count(
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    return {"count": await count_unread_notifications(db, current_user.id)}
 
 @router.get("", response_model=List[NotificationResponse])
 async def get_my_notifications(

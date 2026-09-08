@@ -36,6 +36,8 @@ from app.modules.kpi.engine import trigger_kpi_recalculation
 from app.core.dependencies import get_current_user, enforce_permission, GLOBAL_SCOPE_ROLES
 from app.services.storage_service import storage_service
 from app.core.timezone import APPLICATION_TIMEZONE
+from app.services.activity_service import record_activity
+from app.modules.notifications.repo import create_notification
 
 router = APIRouter()
 app_timezone = APPLICATION_TIMEZONE
@@ -338,6 +340,26 @@ async def create_new_task(payload: TaskCreate, db: AsyncSession = Depends(get_db
         
         task = await task_repo.create_task(db, task_data)
         db.add(TaskHistory(task_id=task.id, changed_by=current_user.id, action="CREATED", old_value="NONE", new_value=TaskStatus.DRAFT.value, remarks="Task အသစ်ဖန်တီးခြင်း"))
+        await record_activity(
+            db,
+            actor_id=current_user.id,
+            action="TASK_ASSIGNED" if target_user_id != current_user.id else "TASK_CREATED",
+            entity_type="task",
+            entity_id=task.id,
+            description=f"Created task '{task.title}'",
+        )
+        if target_user_id != current_user.id:
+            await create_notification(
+                db,
+                {
+                    "user_id": target_user_id,
+                    "title": "New task assigned",
+                    "message": f"You have been assigned the task '{task.title}'.",
+                    "notification_type": "TASK_ASSIGNED",
+                    "channel": "DASHBOARD",
+                },
+                commit=False,
+            )
         await db.commit()
         return task
     except HTTPException:
@@ -391,6 +413,26 @@ async def create_bulk_tasks(payload: BulkTaskCreate, db: AsyncSession = Depends(
 
             new_task = await task_repo.create_task(db, task_data)
             db.add(TaskHistory(task_id=new_task.id, changed_by=current_user.id, action="ASSIGNED", old_value="NONE", new_value=TaskStatus.DRAFT.value, remarks=f"[{payload.category}] Category ဖြင့် Bulk ဖန်တီးထားပါသည်"))
+            await record_activity(
+                db,
+                actor_id=current_user.id,
+                action="TASK_ASSIGNED",
+                entity_type="task",
+                entity_id=new_task.id,
+                description=f"Assigned task '{new_task.title}'",
+            )
+            if owner_id != current_user.id:
+                await create_notification(
+                    db,
+                    {
+                        "user_id": owner_id,
+                        "title": "New task assigned",
+                        "message": f"You have been assigned the task '{new_task.title}'.",
+                        "notification_type": "TASK_ASSIGNED",
+                        "channel": "DASHBOARD",
+                    },
+                    commit=False,
+                )
             created_tasks.append(new_task)
 
         await db.commit()
@@ -645,6 +687,25 @@ async def submit_task_batch(payload: BatchSubmitRequest, db: AsyncSession = Depe
                 old_value=TaskStatus.DRAFT.value, new_value=TaskStatus.PENDING_L1.value, 
                 remarks=f"Batch ဖြင့် တင်ပြလိုက်ပါသည် (Late: {t.is_late})"
             ))
+            await record_activity(
+                db,
+                actor_id=current_user.id,
+                action="TASK_SUBMITTED",
+                entity_type="task",
+                entity_id=t.id,
+                description=f"Submitted task '{t.title}' for review",
+            )
+            await create_notification(
+                db,
+                {
+                    "user_id": payload.reviewer_id,
+                    "title": "Task submitted for review",
+                    "message": f"Task '{t.title}' is waiting for your review.",
+                    "notification_type": "TASK_SUBMITTED",
+                    "channel": "DASHBOARD",
+                },
+                commit=False,
+            )
             
         await db.commit()
         return BatchSubmitResponse(
@@ -839,6 +900,14 @@ async def upload_task_evidence(task_id: UUID, file: UploadFile = File(...), db: 
         
         new_evidence = TaskEvidence(**evidence_data)
         db.add(new_evidence)
+        await record_activity(
+            db,
+            actor_id=current_user.id,
+            action="EVIDENCE_UPLOADED",
+            entity_type="task",
+            entity_id=task.id,
+            description=f"Uploaded evidence for task '{task.title}'",
+        )
         await db.commit()
         await db.refresh(new_evidence)
         
@@ -940,6 +1009,14 @@ async def resubmit_task(task_id: UUID, payload: TaskCreate, db: AsyncSession = D
             old_value="REJECTED", new_value=TaskStatus.DRAFT.value, 
             remarks="မူကွဲအသစ်ဖြင့် ပြန်လည်တင်ပြရန် အသင့်ဖြစ်နေပါပြီ။"
         ))
+        await record_activity(
+            db,
+            actor_id=current_user.id,
+            action="TASK_RESUBMITTED",
+            entity_type="task",
+            entity_id=new_task.id,
+            description=f"Resubmitted task '{new_task.title}'",
+        )
         
         await db.commit()
         

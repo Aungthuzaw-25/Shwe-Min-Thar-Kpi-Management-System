@@ -51,7 +51,7 @@ async def create_department(payload: DepartmentCreate, db: AsyncSession = Depend
 async def get_departments(
     is_active: Optional[bool] = Query(True), 
     skip: int = Query(0, ge=0),
-    limit: int = Query(100, gt=0),
+    limit: int = Query(100, gt=0, le=500),
     db: AsyncSession = Depends(get_db), 
     current_user: User = Depends(get_current_user)
 ):
@@ -73,13 +73,19 @@ async def get_department(dept_id: UUID, db: AsyncSession = Depends(get_db), curr
     return dept
 
 @router.get("/{dept_id}/positions", response_model=List[PositionInDepartment])
-async def get_department_positions(dept_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def get_department_positions(
+    dept_id: UUID,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, gt=0, le=500),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     enforce_permission(current_user, "department.view")
     dept = await department_repo.get_department_by_id(db, dept_id)
     if not dept:
         raise HTTPException(status_code=404, detail="Department not found.")
     
-    stmt = select(Position).where(Position.department_id == dept_id)
+    stmt = select(Position).where(Position.department_id == dept_id).offset(skip).limit(limit)
     result = await db.execute(stmt)
     return result.scalars().all()
 
@@ -220,7 +226,13 @@ async def assign_user_to_department(
         raise HTTPException(status_code=500, detail=f"Database transaction failed: {str(e)}")
 
 @router.get("/{dept_id}/users")
-async def get_department_users(dept_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def get_department_users(
+    dept_id: UUID,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, gt=0, le=500),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     await enforce_department_scope(db, current_user, dept_id)
     dept = await department_repo.get_department_by_id(db, dept_id)
     if not dept: raise HTTPException(status_code=404, detail="Department not found.")
@@ -230,7 +242,7 @@ async def get_department_users(dept_id: UUID, db: AsyncSession = Depends(get_db)
         User.is_deleted == False
     ).options(
         selectinload(User.position)
-    ).order_by(UserDepartment.user_level)
+    ).order_by(UserDepartment.user_level).offset(skip).limit(limit)
     
     result = await db.execute(stmt)
     rows = result.all()

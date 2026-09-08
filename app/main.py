@@ -35,11 +35,13 @@ from app.modules.kpi.dashboard_router import (
     superadmin_router as superadmin_dashboard_api_router,
 )
 from app.modules.notifications.router import router as notifications_router
+from app.modules.activity_router import router as activity_router
 from app.modules.system.router import router as system_router
 
 # Frontend Web Routers (UI Pages)
 from app.web.auth_web import router as auth_web_router
 from app.web.dashboard_web import router as dashboard_web_router
+from app.modules.activity_web import router as activity_web_router
 
 # Background Jobs & Scheduler
 from app.background_jobs.scheduler import start_scheduler
@@ -188,6 +190,7 @@ app.include_router(targets_router, prefix="/api/v1/targets", tags=["Targets"])
 app.include_router(superadmin_dashboard_api_router, prefix="/api/v1/superadmin/dashboard", tags=["Super Admin Dashboard"])
 app.include_router(admin_dashboard_api_router, prefix="/api/v1/admin/dashboard", tags=["Admin Dashboard"])
 app.include_router(notifications_router, prefix="/api/v1/notifications", tags=["Notifications"])
+app.include_router(activity_router, prefix="/api/v1")
 app.include_router(system_router, prefix="/api/v1", tags=["System Settings"])
 
 # ==============================================================================
@@ -195,6 +198,7 @@ app.include_router(system_router, prefix="/api/v1", tags=["System Settings"])
 # ==============================================================================
 app.include_router(auth_web_router, prefix="/auth", tags=["Web Auth"])
 app.include_router(dashboard_web_router, tags=["Web Dashboard UI"])
+app.include_router(activity_web_router, tags=["Web Notifications UI"])
 
 # ==============================================================================
 # 🌐 8. ROOT & HEALTH CHECK ENDPOINTS

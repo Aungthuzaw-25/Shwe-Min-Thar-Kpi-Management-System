@@ -1,190 +1,262 @@
 {% extends "layouts/base.html" %}
 {% set active_page = "audit_logs" %}
 
-{% block title %}System Audit Logs - KPI Platform{% endblock %}
+{% block title %}Audit Logs - KPI Platform{% endblock %}
 
 {% block content %}
 <style>
-    @keyframes fadeInUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-    .animate-fade-in-up { animation: fadeInUp 0.4s ease-out forwards; }
+    .audit-shell {
+        background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+    }
+    .audit-stat {
+        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+    }
+    .audit-table-row {
+        transition: background-color 160ms ease, box-shadow 160ms ease;
+    }
+    .audit-table-row:hover {
+        background: #f8fafc;
+        box-shadow: inset 3px 0 0 #9b1c1c;
+    }
+    .audit-table-row td {
+        vertical-align: top;
+    }
+    .audit-detail summary {
+        cursor: pointer;
+        list-style: none;
+    }
+    .audit-detail summary::-webkit-details-marker {
+        display: none;
+    }
+    .audit-detail[open] summary .audit-chevron {
+        transform: rotate(180deg);
+    }
+    .audit-chevron {
+        transition: transform 160ms ease;
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .audit-table-row,
+        .audit-chevron {
+            transition: none;
+        }
+    }
 </style>
 
-<!-- 🌟 RESPONSIVE FIX: Adjusted padding for mobile -->
-<div class="min-h-screen bg-slate-50 text-slate-800 p-4 sm:p-6 flex flex-col items-center overflow-x-hidden">
-    
-    <!-- HEADER -->
-    <!-- 🌟 RESPONSIVE FIX: Header layout changed to flex-col on small screens -->
-    <header class="w-full max-w-6xl mb-4 sm:mb-6 animate-fade-in-up flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-        <div>
-            <h2 class="text-2xl sm:text-3xl font-extrabold text-blue-950 tracking-tight flex items-center">
-                <svg class="w-6 h-6 sm:w-8 sm:h-8 mr-2 sm:mr-3 text-blue-800 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
-                System Audit & Activity Logs
-            </h2>
-            <p class="text-slate-500 mt-1 sm:mt-1.5 text-xs sm:text-sm">Monitor system-wide data changes, admin interventions, and security tracking securely.</p>
-        </div>
-        <!-- 🌟 RESPONSIVE FIX: Search and button full width on mobile -->
-        <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto">
-            <div class="relative w-full sm:w-auto group">
-                <input type="text" id="searchInput" placeholder="Search logs by action or admin..." class="pl-10 pr-4 py-2.5 sm:py-2 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-blue-500 w-full sm:w-64 md:w-72 shadow-sm">
-                <svg class="w-4 h-4 sm:w-5 sm:h-5 text-gray-400 absolute left-3 top-3 sm:top-2.5 group-hover:text-blue-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+<main class="audit-shell min-h-full overflow-y-auto px-4 py-5 sm:px-6 lg:px-8">
+    <div class="mx-auto max-w-7xl">
+        <header class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+                <div class="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-red-800">
+                    <span class="h-2 w-2 rounded-full bg-red-700"></span>
+                    Governance &amp; security
+                </div>
+                <h1 class="text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">Audit logs</h1>
+                <p class="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+                    Review administrative changes and security-sensitive actions captured by the platform.
+                </p>
             </div>
-            <button onclick="fetchAuditLogs()" class="justify-center bg-white border border-gray-200 text-slate-600 hover:text-blue-800 px-5 sm:px-4 py-2.5 sm:py-2 rounded-xl text-sm font-bold shadow-sm transition flex items-center shrink-0">
-                <svg class="w-4 h-4 mr-1.5 sm:mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg> Refresh
+            <button id="refreshLogsButton" type="button" onclick="fetchAuditLogs()"
+                    class="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 shadow-sm transition hover:border-red-200 hover:text-red-800 focus:outline-none focus:ring-2 focus:ring-red-200">
+                <svg id="refreshIcon" class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                </svg>
+                Refresh logs
             </button>
-        </div>
-    </header>
+        </header>
 
-    <!-- 🌟 RESPONSIVE FIX: Horizontal scroll wrapper and min-width added to table -->
-    <!-- LOGS TABLE -->
-    <div class="w-full max-w-6xl bg-white rounded-2xl sm:rounded-3xl shadow-sm border border-gray-100 overflow-hidden flex flex-col flex-1 sm:h-[75vh] animate-fade-in-up" style="animation-delay: 0.1s;">
-        <div class="overflow-y-auto overflow-x-auto custom-scrollbar flex-1 w-full">
-            <table class="w-full text-left text-xs sm:text-sm border-collapse min-w-[800px]"> <!-- min-w ensures table doesn't crush -->
-                <thead class="bg-slate-50 border-b border-gray-200 text-[10px] sm:text-xs uppercase text-slate-500 font-bold sticky top-0 z-10 shadow-sm">
-                    <tr>
-                        <th class="p-4 sm:p-5 w-32 sm:w-44">Timestamp</th>
-                        <th class="p-4 sm:p-5">Actor (Admin)</th>
-                        <th class="p-4 sm:p-5">Action Type</th>
-                        <th class="p-4 sm:p-5">Target Table</th>
-                        <th class="p-4 sm:p-5 w-1/3">Change summary</th>
-                        <th class="p-4 sm:p-5 text-right">IP Address</th>
-                    </tr>
-                </thead>
-                <tbody id="logsTableBody" class="divide-y divide-gray-50">
-                    <tr><td colspan="6" class="p-10 sm:p-12 text-center text-slate-400 font-medium text-xs sm:text-sm">Loading audit logs...</td></tr>
-                </tbody>
-            </table>
-        </div>
+        <section class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3" aria-label="Audit log summary">
+            <div class="audit-stat rounded-2xl border border-slate-200 bg-white p-5">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Records loaded</span>
+                    <span class="rounded-lg bg-slate-100 p-2 text-slate-600">
+                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414A1 1 0 0119 9.707V19a2 2 0 01-2 2z"/></svg>
+                    </span>
+                </div>
+                <p id="totalCount" class="mt-3 text-2xl font-extrabold text-slate-900">—</p>
+                <p class="mt-1 text-xs text-slate-500">Most recent 150 records</p>
+            </div>
+            <div class="audit-stat rounded-2xl border border-slate-200 bg-white p-5">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Visible results</span>
+                    <span class="rounded-lg bg-blue-50 p-2 text-blue-700">
+                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h18M6 8h12M9 12h6M11 16h2M10 20h4"/></svg>
+                    </span>
+                </div>
+                <p id="visibleCount" class="mt-3 text-2xl font-extrabold text-slate-900">—</p>
+                <p class="mt-1 text-xs text-slate-500">After search and filters</p>
+            </div>
+            <div class="audit-stat rounded-2xl border border-slate-200 bg-white p-5">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Latest activity</span>
+                    <span class="rounded-lg bg-emerald-50 p-2 text-emerald-700">
+                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 2m6-2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    </span>
+                </div>
+                <p id="latestActivity" class="mt-3 truncate text-base font-extrabold text-slate-900">—</p>
+                <p class="mt-1 text-xs text-slate-500">Based on the newest record</p>
+            </div>
+        </section>
+
+        <section class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div class="border-b border-slate-200 px-4 py-4 sm:px-6">
+                <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                        <h2 class="text-base font-extrabold text-slate-900">System activity</h2>
+                        <p class="mt-1 text-xs text-slate-500">Changes are shown newest first.</p>
+                    </div>
+                    <div class="flex flex-col gap-2 sm:flex-row">
+                        <label class="relative block">
+                            <span class="sr-only">Search audit logs</span>
+                            <svg class="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m21 21-6-6m2-5a7 7 0 1 0-2 2l6 6"/></svg>
+                            <input id="searchInput" type="search" placeholder="Search actor, action, table..."
+                                   class="w-full rounded-xl border border-slate-200 py-2.5 pl-9 pr-3 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-red-400 focus:ring-2 focus:ring-red-100 sm:w-64">
+                        </label>
+                        <label>
+                            <span class="sr-only">Filter by action</span>
+                            <select id="actionFilter" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-600 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100 sm:w-40">
+                                <option value="">All actions</option>
+                            </select>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <div id="logsStatus" class="hidden border-b border-slate-100 px-4 py-2.5 text-xs font-semibold sm:px-6" role="status"></div>
+            <div class="custom-scrollbar overflow-x-auto">
+                <table class="w-full min-w-[920px] text-left">
+                    <thead class="bg-slate-50 text-[11px] font-extrabold uppercase tracking-wider text-slate-500">
+                        <tr>
+                            <th scope="col" class="px-6 py-4">When</th>
+                            <th scope="col" class="px-6 py-4">Actor</th>
+                            <th scope="col" class="px-6 py-4">Action</th>
+                            <th scope="col" class="px-6 py-4">Affected resource</th>
+                            <th scope="col" class="px-6 py-4">Change summary</th>
+                            <th scope="col" class="px-6 py-4 text-right">Source</th>
+                        </tr>
+                    </thead>
+                    <tbody id="logsTableBody" class="divide-y divide-slate-100">
+                        <tr><td colspan="6" class="px-6 py-16 text-center text-sm text-slate-500">Loading audit logs...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+        <p class="mt-4 text-xs text-slate-400">Audit records are read-only and restricted to authorized administrators.</p>
     </div>
-</div>
+</main>
 {% endblock %}
 
 {% block scripts %}
 <script>
     let allLogs = [];
-
-    // 🌟 SECURITY FIX: Global HTML Escape Function
-    function escapeHTML(str) {
-        if (str === null || str === undefined) return "";
-        return str.toString()
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/"/g, "&quot;")
-            .replace(/'/g, "&#039;");
-    }
-
     const displayTimeZone = "{{ timezone or 'Asia/Yangon' }}";
+
+    function escapeHTML(value) {
+        if (value === null || value === undefined) return "";
+        return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+    }
 
     function formatAuditValue(value) {
         if (value === null || value === undefined) return "None";
         if (typeof value === "string") return value.trim() ? value : "(empty)";
         if (typeof value === "number" || typeof value === "boolean") return String(value);
-        if (Array.isArray(value)) {
-            if (value.length === 0) return "(empty list)";
-            return value.map((item, index) => `${index + 1}. ${formatAuditValue(item)}`).join("; ");
-        }
-        if (typeof value === "object") return "(structured value)";
-        return String(value);
+        if (Array.isArray(value)) return value.length ? value.map(formatAuditValue).join(", ") : "(empty list)";
+        return "(structured value)";
     }
 
     function formatTimestamp(timestamp) {
-        if (!timestamp) return "Unknown time";
         const date = new Date(timestamp);
-        if (Number.isNaN(date.getTime())) return "Unknown time";
-        return new Intl.DateTimeFormat(undefined, {
-            timeZone: displayTimeZone,
-            dateStyle: "medium",
-            timeStyle: "short"
-        }).format(date);
+        if (Number.isNaN(date.getTime())) return { date: "Unknown time", relative: "" };
+        const dateText = new Intl.DateTimeFormat(undefined, { timeZone: displayTimeZone, dateStyle: "medium", timeStyle: "short" }).format(date);
+        const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+        const relative = seconds < 60 ? "Just now" : seconds < 3600 ? `${Math.floor(seconds / 60)}m ago` : seconds < 86400 ? `${Math.floor(seconds / 3600)}h ago` : `${Math.floor(seconds / 86400)}d ago`;
+        return { date: dateText, relative };
+    }
+
+    function actionClass(action) {
+        const value = (action || "").toUpperCase();
+        if (value.includes("DELETE") || value.includes("FAIL")) return "bg-red-50 text-red-700 ring-red-100";
+        if (value.includes("CREATE") || value.includes("LOGIN")) return "bg-emerald-50 text-emerald-700 ring-emerald-100";
+        if (value.includes("UPDATE") || value.includes("CHANGE")) return "bg-amber-50 text-amber-700 ring-amber-100";
+        return "bg-blue-50 text-blue-700 ring-blue-100";
     }
 
     function renderChanges(oldValue, newValue) {
         const oldObject = oldValue && typeof oldValue === "object" && !Array.isArray(oldValue) ? oldValue : {};
         const newObject = newValue && typeof newValue === "object" && !Array.isArray(newValue) ? newValue : {};
         const keys = [...new Set([...Object.keys(oldObject), ...Object.keys(newObject)])];
-        if (!keys.length) {
-            return `<div class="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-xs text-slate-500">${escapeHTML(formatAuditValue(newValue || oldValue))}</div>`;
-        }
-        return `<div class="space-y-2">${keys.map(key => `
-            <div class="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
-                <div class="mb-1 text-[10px] font-extrabold uppercase tracking-wide text-slate-400">${escapeHTML(key)}</div>
-                <div class="grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-xs">
-                    <span class="break-words text-slate-500">${escapeHTML(formatAuditValue(oldObject[key]))}</span>
-                    <span class="text-slate-300">→</span>
-                    <span class="break-words font-semibold text-blue-900">${escapeHTML(formatAuditValue(newObject[key]))}</span>
-                </div>
-            </div>`).join("")}</div>`;
+        if (!keys.length) return `<span class="text-xs text-slate-500">${escapeHTML(formatAuditValue(newValue || oldValue))}</span>`;
+        return `<details class="audit-detail max-w-sm"><summary class="flex items-center justify-between gap-2 text-xs font-semibold text-slate-600 hover:text-red-800"><span>${keys.length} field${keys.length === 1 ? "" : "s"} changed</span><svg class="audit-chevron h-4 w-4 shrink-0 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m6 9 6 6 6-6"/></svg></summary><div class="mt-3 space-y-2">${keys.map(key => `<div class="rounded-lg bg-slate-50 px-3 py-2"><div class="mb-1 text-[10px] font-extrabold uppercase tracking-wide text-slate-400">${escapeHTML(key)}</div><div class="grid grid-cols-[1fr_auto_1fr] gap-2 text-xs"><span class="break-words text-slate-500">${escapeHTML(formatAuditValue(oldObject[key]))}</span><span class="text-slate-300">→</span><span class="break-words font-semibold text-slate-800">${escapeHTML(formatAuditValue(newObject[key]))}</span></div></div>`).join("")}</div></details>`;
     }
 
-    document.addEventListener("DOMContentLoaded", () => {
-        fetchAuditLogs();
-
-        document.getElementById('searchInput').addEventListener('input', function(e) {
-            const term = e.target.value.toLowerCase();
-            const filtered = allLogs.filter(log => 
-                (log.admin_name || '').toLowerCase().includes(term) || 
-                (log.action || '').toLowerCase().includes(term) || 
-                (log.table_name || '').toLowerCase().includes(term) ||
-                formatAuditValue(log.new_value).toLowerCase().includes(term)
-            );
-            renderLogs(filtered);
-        });
-    });
-
-    async function fetchAuditLogs() {
-        const tbody = document.getElementById("logsTableBody");
-        tbody.innerHTML = '<tr><td colspan="6" class="p-10 sm:p-12 text-center text-slate-400 font-medium text-xs sm:text-sm"><svg class="animate-spin h-6 w-6 text-blue-900 mx-auto mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>Loading audit records...</td></tr>';
-        
-        try {
-            const response = await fetch('/api/v1/kpi/audit-logs?limit=150');
-            if (response.ok) {
-                allLogs = await response.json();
-                renderLogs(allLogs);
-            } else {
-                tbody.innerHTML = `<tr><td colspan="6" class="p-10 sm:p-12 text-center text-red-500 font-bold text-xs sm:text-sm">Unauthorized access or failed to fetch logs.</td></tr>`;
-            }
-        } catch (error) {
-            tbody.innerHTML = `<tr><td colspan="6" class="p-10 sm:p-12 text-center text-red-500 font-bold text-xs sm:text-sm">Network error occurred.</td></tr>`;
-        }
+    function updateSummary(logs) {
+        document.getElementById("totalCount").textContent = allLogs.length;
+        document.getElementById("visibleCount").textContent = logs.length;
+        const latest = allLogs[0];
+        document.getElementById("latestActivity").textContent = latest ? formatTimestamp(latest.timestamp).relative : "No activity yet";
     }
 
     function renderLogs(logs) {
         const tbody = document.getElementById("logsTableBody");
-        if (logs.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" class="p-10 sm:p-12 text-center text-slate-400 font-medium text-xs sm:text-sm">No audit logs found.</td></tr>';
+        updateSummary(logs);
+        if (!logs.length) {
+            tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-16 text-center"><div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400"><svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 01.586-1.414l4-4A2 2 0 0113 3h4a2 2 0 012 2v14a2 2 0 01-2 2z"/></svg></div><p class="mt-3 text-sm font-bold text-slate-700">No audit activity found</p><p class="mt-1 text-xs text-slate-500">Try changing your search or filter.</p></td></tr>`;
             return;
         }
-
-        // 🌟 RESPONSIVE FIX: Table cell padding adjustments
-        tbody.innerHTML = logs.map((log) => {
-            let badgeColor = 'bg-blue-50 text-blue-700 border-blue-200';
-            if (log.action.includes('DELETE')) badgeColor = 'bg-red-50 text-red-700 border-red-200';
-            if (log.action.includes('CREATE')) badgeColor = 'bg-emerald-50 text-emerald-700 border-emerald-200';
-            if (log.action.includes('UPDATE')) badgeColor = 'bg-amber-50 text-amber-700 border-amber-200';
-
-            const actionBadge = `<span class="${badgeColor} border px-2 sm:px-2.5 py-1 rounded-md text-[9px] sm:text-[10px] font-extrabold uppercase whitespace-nowrap">${escapeHTML(log.action)}</span>`;
-            
-            // Format values for readability, then escape the resulting text for safe HTML output.
-            let detailsHtml = '';
-            try {
-                detailsHtml = renderChanges(log.old_value, log.new_value);
-            } catch(e) {
-                detailsHtml = `<span class="text-[10px] sm:text-xs text-slate-500">Complex Data</span>`;
-            }
-
-            return `
-                <tr class="hover:bg-slate-50 transition-colors group">
-                    <td class="p-4 sm:p-5 whitespace-nowrap">
-                        <div class="text-xs font-bold text-slate-700">${escapeHTML(formatTimestamp(log.timestamp))}</div>
-                    </td>
-                    <td class="p-4 sm:p-5 font-bold text-blue-950 truncate max-w-[150px]" title="${escapeHTML(log.admin_name)}">${escapeHTML(log.admin_name)}</td>
-                    <td class="p-4 sm:p-5">${actionBadge}</td>
-                    <td class="p-4 sm:p-5 font-mono text-[10px] sm:text-xs text-slate-600 font-bold whitespace-nowrap">${escapeHTML(log.table_name || 'N/A')}</td>
-                    <td class="p-4 sm:p-5 min-w-[250px] sm:min-w-[300px]">${detailsHtml}</td>
-                    <td class="p-4 sm:p-5 text-right font-mono text-[10px] sm:text-xs text-slate-500 whitespace-nowrap">${escapeHTML(log.ip_address)}</td>
-                </tr>
-            `;
-        }).join('');
+        tbody.innerHTML = logs.map(log => {
+            const time = formatTimestamp(log.timestamp);
+            const action = escapeHTML(log.action || "UNKNOWN");
+            return `<tr class="audit-table-row"><td class="whitespace-nowrap px-6 py-4"><div class="text-sm font-bold text-slate-700">${escapeHTML(time.date)}</div><div class="mt-1 text-xs text-slate-400">${escapeHTML(time.relative)}</div></td><td class="px-6 py-4"><div class="font-semibold text-slate-800">${escapeHTML(log.admin_name || "System")}</div><div class="mt-1 text-xs text-slate-400">Actor</div></td><td class="px-6 py-4"><span class="inline-flex rounded-full px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wide ring-1 ring-inset ${actionClass(log.action)}">${action}</span></td><td class="px-6 py-4"><div class="font-mono text-xs font-bold text-slate-700">${escapeHTML(log.table_name || "—")}</div><div class="mt-1 text-xs text-slate-400">${log.record_id ? `Record ${escapeHTML(log.record_id)}` : "No record reference"}</div></td><td class="px-6 py-4">${renderChanges(log.old_value, log.new_value)}</td><td class="whitespace-nowrap px-6 py-4 text-right font-mono text-xs text-slate-500">${escapeHTML(log.ip_address || "Unknown")}</td></tr>`;
+        }).join("");
     }
+
+    function applyFilters() {
+        const term = document.getElementById("searchInput").value.trim().toLowerCase();
+        const action = document.getElementById("actionFilter").value;
+        const filtered = allLogs.filter(log => {
+            const searchable = [log.admin_name, log.action, log.table_name, log.ip_address, formatAuditValue(log.new_value)].join(" ").toLowerCase();
+            return (!term || searchable.includes(term)) && (!action || log.action === action);
+        });
+        renderLogs(filtered);
+    }
+
+    function populateActionFilter() {
+        const actions = [...new Set(allLogs.map(log => log.action).filter(Boolean))].sort();
+        document.getElementById("actionFilter").innerHTML = `<option value="">All actions</option>${actions.map(action => `<option value="${escapeHTML(action)}">${escapeHTML(action)}</option>`).join("")}`;
+    }
+
+    async function fetchAuditLogs() {
+        const tbody = document.getElementById("logsTableBody");
+        const button = document.getElementById("refreshLogsButton");
+        button.disabled = true;
+        document.getElementById("refreshIcon").classList.add("animate-spin");
+        tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-16 text-center text-sm text-slate-500">Loading audit logs...</td></tr>';
+        try {
+            const response = await fetch("/api/v1/kpi/audit-logs?limit=150");
+            if (!response.ok) throw new Error(`Audit log request failed with status ${response.status}`);
+            allLogs = await response.json();
+            populateActionFilter();
+            applyFilters();
+            document.getElementById("logsStatus").className = "border-b border-emerald-100 bg-emerald-50 px-4 py-2.5 text-xs font-semibold text-emerald-700 sm:px-6";
+            document.getElementById("logsStatus").textContent = `Loaded ${allLogs.length} audit record${allLogs.length === 1 ? "" : "s"}.`;
+        } catch (error) {
+            document.getElementById("totalCount").textContent = "—";
+            document.getElementById("visibleCount").textContent = "—";
+            document.getElementById("latestActivity").textContent = "Unavailable";
+            document.getElementById("logsStatus").className = "border-b border-red-100 bg-red-50 px-4 py-2.5 text-xs font-semibold text-red-700 sm:px-6";
+            document.getElementById("logsStatus").textContent = "Unable to load audit records. Please try again.";
+            tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-16 text-center"><p class="text-sm font-bold text-red-700">Audit logs are unavailable</p><p class="mt-1 text-xs text-slate-500">Your session may have expired or you may not have permission to view this page.</p></td></tr>';
+            console.error(error);
+        } finally {
+            button.disabled = false;
+            document.getElementById("refreshIcon").classList.remove("animate-spin");
+        }
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+        document.getElementById("searchInput").addEventListener("input", applyFilters);
+        document.getElementById("actionFilter").addEventListener("change", applyFilters);
+        fetchAuditLogs();
+    });
 </script>
 {% endblock %}

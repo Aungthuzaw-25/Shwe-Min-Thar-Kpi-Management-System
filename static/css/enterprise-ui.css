@@ -1,0 +1,162 @@
+/*
+ * KPI Core enterprise interaction layer.
+ * Motion is intentionally subtle: it establishes hierarchy without delaying work.
+ */
+:root {
+    --enterprise-ink: #0f172a;
+    --enterprise-muted: #64748b;
+    --enterprise-border: #e2e8f0;
+    --enterprise-primary: #1d4ed8;
+    --enterprise-primary-dark: #1e3a8a;
+    --enterprise-focus: rgba(37, 99, 235, 0.16);
+    --enterprise-shadow: 0 18px 45px rgba(15, 23, 42, 0.08);
+    --enterprise-shadow-hover: 0 24px 55px rgba(15, 23, 42, 0.13);
+}
+
+@keyframes enterprise-page-enter {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes enterprise-sheen {
+    from { transform: translateX(-120%); }
+    to { transform: translateX(120%); }
+}
+
+@keyframes enterprise-modal-enter {
+    from { opacity: 0; transform: translateY(12px) scale(0.985); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+body {
+    background:
+        radial-gradient(circle at 100% 0, rgba(37, 99, 235, 0.045), transparent 28rem),
+        #f8fafc;
+}
+
+main {
+    isolation: isolate;
+}
+
+main > * {
+    animation: enterprise-page-enter 480ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+main > *:nth-child(2) { animation-delay: 60ms; }
+main > *:nth-child(3) { animation-delay: 120ms; }
+main > *:nth-child(4) { animation-delay: 180ms; }
+
+/* Shared surfaces used by the existing Tailwind templates. */
+main .bg-white.rounded-2xl,
+main .bg-white.rounded-3xl,
+main .glass-card {
+    border-color: rgba(203, 213, 225, 0.72);
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.045);
+    transition: box-shadow 220ms ease, border-color 220ms ease, transform 220ms ease;
+}
+
+main .bg-white.rounded-2xl:hover,
+main .bg-white.rounded-3xl:hover,
+main .glass-card:hover {
+    border-color: rgba(148, 163, 184, 0.9);
+    box-shadow: var(--enterprise-shadow-hover);
+}
+
+/* Form controls: preserve existing colors while making interaction states consistent. */
+main input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
+main select,
+main textarea {
+    min-height: 2.75rem;
+    border-color: var(--enterprise-border);
+    color: var(--enterprise-ink);
+    transition: border-color 180ms ease, box-shadow 180ms ease, background-color 180ms ease, transform 180ms ease;
+}
+
+main input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):hover,
+main select:hover,
+main textarea:hover {
+    border-color: #94a3b8;
+}
+
+main input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):focus,
+main select:focus,
+main textarea:focus {
+    border-color: var(--enterprise-primary) !important;
+    background-color: #fff;
+    box-shadow: 0 0 0 4px var(--enterprise-focus) !important;
+    outline: none;
+}
+
+main input::placeholder,
+main textarea::placeholder {
+    color: #94a3b8;
+}
+
+main label {
+    color: #334155;
+}
+
+main button:not(:disabled),
+main a[class*="bg-"] {
+    transition: transform 180ms ease, box-shadow 180ms ease, filter 180ms ease, background-color 180ms ease;
+}
+
+main button:not(:disabled):hover,
+main a[class*="bg-"]:hover {
+    filter: brightness(1.025);
+}
+
+main button:not(:disabled):active,
+main a[class*="bg-"]:active {
+    transform: translateY(1px);
+}
+
+main button:focus-visible,
+main a:focus-visible,
+main input:focus-visible,
+main select:focus-visible,
+main textarea:focus-visible {
+    outline: 3px solid var(--enterprise-focus);
+    outline-offset: 2px;
+}
+
+/* Loading states feel intentional instead of abrupt. */
+main .animate-spin {
+    will-change: transform;
+}
+
+main [role="dialog"]:not(.hidden) > div,
+main [aria-modal="true"]:not(.hidden) > div {
+    animation: enterprise-modal-enter 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+main thead th {
+    letter-spacing: 0.08em;
+}
+
+main tbody tr {
+    transition: background-color 160ms ease, box-shadow 160ms ease;
+}
+
+main tbody tr:hover {
+    background-color: #f8fafc;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    main > *,
+    main [role="dialog"]:not(.hidden) > div,
+    main [aria-modal="true"]:not(.hidden) > div {
+        animation: none !important;
+    }
+
+    main .bg-white.rounded-2xl,
+    main .bg-white.rounded-3xl,
+    main .glass-card,
+    main input,
+    main select,
+    main textarea,
+    main button,
+    main a {
+        transition: none !important;
+    }
+}

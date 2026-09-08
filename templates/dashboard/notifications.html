@@ -1,0 +1,45 @@
+{% extends "layouts/employee_base.html" %}
+{% block title %}Notifications{% endblock %}
+{% block content %}
+<section class="p-6 sm:p-10 max-w-4xl mx-auto">
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h1 class="text-2xl font-black text-slate-900">Notifications</h1>
+            <p class="text-sm text-slate-500 mt-1">Updates relevant to your work.</p>
+        </div>
+        <button type="button" onclick="markAllAsRead(); loadNotificationHistory()"
+                class="text-xs font-bold text-blue-600 hover:text-blue-800">Mark all read</button>
+    </div>
+    <div id="notificationHistory" class="bg-white rounded-2xl border border-slate-200 divide-y divide-slate-100">
+        <div class="p-10 text-center text-slate-400 text-sm">Loading notifications...</div>
+    </div>
+</section>
+{% endblock %}
+{% block scripts %}
+<script>
+async function loadNotificationHistory() {
+    const container = document.getElementById("notificationHistory");
+    try {
+        const response = await fetch("/api/v1/notifications/?limit=100");
+        if (!response.ok) throw new Error("Unable to load notifications");
+        const items = await response.json();
+        if (!items.length) {
+            container.innerHTML = '<div class="p-10 text-center text-slate-400 text-sm">You\'re all caught up.</div>';
+            return;
+        }
+        container.innerHTML = items.map(item => `
+            <button type="button" class="w-full text-left p-5 hover:bg-slate-50 ${item.is_read ? '' : 'bg-blue-50/50'}"
+                    onclick="markNotifRead('${item.id}'); this.classList.remove('bg-blue-50/50')">
+                <div class="flex justify-between gap-4">
+                    <strong class="text-sm text-slate-900">${escapeHTML(item.title)}</strong>
+                    <time class="text-xs text-slate-400">${item.created_at ? new Date(item.created_at).toLocaleString() : ''}</time>
+                </div>
+                <p class="text-sm text-slate-600 mt-1">${escapeHTML(item.message)}</p>
+            </button>`).join("");
+    } catch (error) {
+        container.innerHTML = '<div class="p-10 text-center text-rose-500 text-sm">Unable to load notifications. Please try again.</div>';
+    }
+}
+document.addEventListener("DOMContentLoaded", loadNotificationHistory);
+</script>
+{% endblock %}

@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import field_validator, model_validator
+from pathlib import Path
 from typing import Optional
 
 class Settings(BaseSettings):
@@ -84,6 +85,12 @@ class Settings(BaseSettings):
 
         return self
 
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    # Resolve the project dotenv file from the source tree so startup does not
+    # depend on the process working directory. Hosted environments can still
+    # provide values through their injected environment variables.
+    model_config = SettingsConfigDict(
+        env_file=Path(__file__).resolve().parents[2] / ".env",
+        extra="ignore",
+    )
 
 settings = Settings()

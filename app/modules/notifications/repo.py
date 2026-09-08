@@ -1,5 +1,5 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from app.modules.notifications.models import Notification
 from uuid import UUID
 from typing import List, Dict, Any, Sequence
@@ -7,18 +7,30 @@ from typing import List, Dict, Any, Sequence
 # 🌟 ARCHITECTURE FIX: Class နှင့် @staticmethod များ ဖယ်ရှားပြီး 
 # အခြား Repo ဖိုင်များနှင့် တပြေးညီတည်းဖြစ်အောင် Module-level Function များအဖြစ် ပြောင်းလဲထားပါသည်။
 
-async def create_notification(db: AsyncSession, obj_in: Dict[str, Any]) -> Notification:
+async def create_notification(
+    db: AsyncSession, obj_in: Dict[str, Any], *, commit: bool = True
+) -> Notification:
     """Notification အသစ်ဖန်တီးရန်"""
     try:
         # 💡 Tip: Enterprise Level တွင် Dict အစား Pydantic Schema ကို သုံးခြင်းက ပိုလုံခြုံပါသည်။
         db_obj = Notification(**obj_in)
         db.add(db_obj)
-        await db.commit()
-        await db.refresh(db_obj)
+        if commit:
+            await db.commit()
+            await db.refresh(db_obj)
         return db_obj
     except Exception as e:
         await db.rollback()
         raise e
+
+
+async def count_unread_notifications(db: AsyncSession, user_id: UUID) -> int:
+    stmt = select(func.count(Notification.id)).where(
+        Notification.user_id == user_id,
+        Notification.is_read.is_(False),
+        Notification.is_deleted.is_(False),
+    )
+    return int((await db.execute(stmt)).scalar_one())
 
 async def get_notifications_by_user(db: AsyncSession, user_id: UUID, skip: int = 0, limit: int = 50) -> Sequence[Notification]:
     """User တစ်ယောက်ချင်းစီ၏ Notification များကို ဆွဲထုတ်ရန် (Pagination ပါဝင်သည်)"""

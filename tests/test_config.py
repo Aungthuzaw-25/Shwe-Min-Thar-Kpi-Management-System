@@ -32,6 +32,11 @@ def test_fix_neon_url_unwraps_nested_postgresql_scheme():
     assert fixed == "postgresql+asyncpg://neondb_owner:password@host.neon.tech/neondb"
  
 
-def test_seed_passwords_are_loaded_from_dotenv():
-    assert settings.SEED_SUPER_ADMIN_PASSWORD
-    assert settings.SEED_DEMO_PASSWORD
+def test_seed_passwords_are_loaded_from_environment(monkeypatch):
+    monkeypatch.setenv("SEED_SUPER_ADMIN_PASSWORD", "test-super-admin")
+    monkeypatch.setenv("SEED_DEMO_PASSWORD", "test-demo")
+
+    configured = Settings()
+
+    assert configured.SEED_SUPER_ADMIN_PASSWORD == "test-super-admin"
+    assert configured.SEED_DEMO_PASSWORD == "test-demo"
