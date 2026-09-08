@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy import func
 from typing import List
 from uuid import UUID
@@ -288,7 +289,7 @@ async def create_super_admin(
     stmt_check = select(User).where(User.email == normalized_email)
     existing_user = (await db.execute(stmt_check)).scalars().first()
     if existing_user:
-        raise HTTPException(status_code=400, detail='An account with this email already exists.')
+        raise HTTPException(status_code=409, detail='An account with this email already exists.')
 
     try:
         validate_password_strength(payload.password)
@@ -309,17 +310,33 @@ async def create_super_admin(
         'must_change_password': True,
     }
 
-    created_user = await user_repo.create_user(db, user_data)
-    await password_repo.add_password_history(db, created_user.id, created_user.hashed_password)
-    await log_audit_trail(
-        db,
-        current_user.id,
-        'CREATE_SUPER_ADMIN',
-        'users',
-        str(created_user.id),
-        None,
-        {'email': normalized_email, 'status': 'active' if payload.is_active else 'inactive'}
-    )
+    try:
+        created_user = await user_repo.create_user(db, user_data, commit=False)
+        await password_repo.add_password_history(
+            db, created_user.id, created_user.hashed_password, commit=False
+        )
+        audit_entry = await log_audit_trail(
+            db,
+            current_user.id,
+            'CREATE_SUPER_ADMIN',
+            'users',
+            str(created_user.id),
+            None,
+            {'email': normalized_email, 'status': 'active' if payload.is_active else 'inactive'},
+            commit=False,
+        )
+        if audit_entry is None:
+            raise HTTPException(status_code=500, detail='Unable to record Super Admin creation.')
+        await db.commit()
+    except HTTPException:
+        await db.rollback()
+        raise
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail='An account with this email already exists.') from exc
+    except Exception as exc:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail='Super Admin creation failed.') from exc
 
     return serialize_user_obj(await user_repo.get_user_by_id(db, created_user.id))
 

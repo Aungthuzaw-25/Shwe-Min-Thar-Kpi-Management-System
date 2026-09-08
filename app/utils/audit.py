@@ -17,7 +17,9 @@ async def log_audit_trail(
     record_id: Optional[str] = None,
     old_value: Optional[Dict[str, Any]] = None,
     new_value: Optional[Dict[str, Any]] = None,
-    ip_address: Optional[str] = "127.0.0.1"
+    ip_address: Optional[str] = "127.0.0.1",
+    *,
+    commit: bool = True,
 ) -> Optional[AuditLog]:
     """စနစ်တွင်း အပြောင်းအလဲများကို audit_logs table တွင် တပြေးညီ မှတ်တမ်းတင်ရန်"""
     try:
@@ -31,8 +33,9 @@ async def log_audit_trail(
             ip_address=ip_address
         )
         db.add(log_entry)
-        await db.commit()
-        await db.refresh(log_entry)
+        if commit:
+            await db.commit()
+            await db.refresh(log_entry)
         return log_entry
     except Exception as e:
         await db.rollback()

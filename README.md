@@ -23,6 +23,23 @@ A highly scalable, secure, and asynchronous Key Performance Indicator (KPI) Mana
 
 ---
 
+## Initial Super Admin provisioning
+
+Application startup never runs the database seed. For a local or test database,
+configure `SEED_SUPERADMIN_EMAIL` and `SEED_SUPERADMIN_PASSWORD` in the
+environment and run the seed explicitly:
+
+```bash
+python -m app.database.seed
+```
+
+The Super Admin portion of the seed is create-only. If a Super Admin already
+exists, the seed preserves its password and account state. Do not configure
+seed credentials in a production runtime. For production, run the explicit
+command once as a controlled provisioning job using secret-manager-injected
+environment variables, then remove those variables from the application
+runtime.
+
 ## 🛠️ Tech Stack
 
 *   **Backend:** Python 3.11+, FastAPI, Uvicorn

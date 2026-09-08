@@ -9,6 +9,7 @@ services:
       - .env
     environment:
       - PORT=8000
+      - ENV=production
       - REDIS_URL=redis://redis:6379/0
       - ENABLE_SCHEDULER=true
       - RUN_SCHEDULER=false
@@ -25,6 +26,7 @@ services:
     env_file:
       - .env
     environment:
+      - ENV=production
       - ENABLE_SCHEDULER=true
       - RUN_SCHEDULER=true
       - REDIS_URL=redis://redis:6379/0

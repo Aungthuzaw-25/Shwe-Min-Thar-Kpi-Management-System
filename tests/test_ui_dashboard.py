@@ -5,7 +5,13 @@ from playwright.sync_api import sync_playwright
 
 BASE_URL = "http://localhost:8000"
 SUPERADMIN_EMAIL = os.getenv("UI_TEST_SUPERADMIN_EMAIL", "superadmin@kpi.com")
-SUPERADMIN_PASSWORD = os.getenv("UI_TEST_SUPERADMIN_PASSWORD", "SuperSecret123!")
+
+
+def required_ui_password(name):
+    password = os.getenv(name)
+    if not password:
+        pytest.skip(f"{name} is not configured")
+    return password
 
 
 @pytest.fixture(scope="function")
@@ -40,7 +46,7 @@ def login(page, email, password):
 
 def test_superadmin_dashboard_access(playwright_context):
     page = playwright_context.new_page()
-    login(page, SUPERADMIN_EMAIL, SUPERADMIN_PASSWORD)
+    login(page, SUPERADMIN_EMAIL, required_ui_password("UI_TEST_SUPERADMIN_PASSWORD"))
     assert page.url.endswith("/superadmin/dashboard")
     page.wait_for_selector("#valUsers", timeout=60000)
     assert page.locator("#valUsers").first.is_visible()
@@ -49,7 +55,11 @@ def test_superadmin_dashboard_access(playwright_context):
 
 def test_l2_user_dashboard_flow(playwright_context):
     page = playwright_context.new_page()
-    login(page, os.getenv("UI_TEST_L2_EMAIL", "cashier.mdy@kpi.com"), os.getenv("UI_TEST_L2_PASSWORD", "user@12345AmZm"))
+    login(
+        page,
+        os.getenv("UI_TEST_L2_EMAIL", "cashier.mdy@kpi.com"),
+        required_ui_password("UI_TEST_L2_PASSWORD"),
+    )
     page.wait_for_selector("#currentScore", timeout=60000)
     assert page.locator("text=My Performance Trend").first.is_visible()
     page.goto(f"{BASE_URL}/tasks")
@@ -61,7 +71,11 @@ def test_l2_user_dashboard_flow(playwright_context):
 
 def test_l0_user_dashboard_flow(playwright_context):
     page = playwright_context.new_page()
-    login(page, os.getenv("UI_TEST_L0_EMAIL", "finance.l0@kpi.com"), os.getenv("UI_TEST_L0_PASSWORD", "user@12345AmZm"))
+    login(
+        page,
+        os.getenv("UI_TEST_L0_EMAIL", "finance.l0@kpi.com"),
+        required_ui_password("UI_TEST_L0_PASSWORD"),
+    )
     page.wait_for_selector("#currentScore", timeout=60000)
     assert page.locator("#currentScore").first.is_visible()
     page.close()
@@ -69,7 +83,11 @@ def test_l0_user_dashboard_flow(playwright_context):
 
 def test_l1_user_dashboard_flow(playwright_context):
     page = playwright_context.new_page()
-    login(page, os.getenv("UI_TEST_L1_EMAIL", "finance.l1@kpi.com"), os.getenv("UI_TEST_L1_PASSWORD", "Secret123!"))
+    login(
+        page,
+        os.getenv("UI_TEST_L1_EMAIL", "finance.l1@kpi.com"),
+        required_ui_password("UI_TEST_L1_PASSWORD"),
+    )
     page.wait_for_selector("#currentScore", timeout=60000)
     assert page.locator("#currentScore").first.is_visible()
     page.close()

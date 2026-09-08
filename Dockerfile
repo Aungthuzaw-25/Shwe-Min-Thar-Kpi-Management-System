@@ -24,6 +24,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/code \
     PIP_NO_CACHE_DIR=1 \
+    ENV=production \
     FASTAPI_ENV=production
 
 WORKDIR /code

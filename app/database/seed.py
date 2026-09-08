@@ -146,6 +146,50 @@ async def _seed_permissions(db):
     await db.commit()
 
 
+async def _ensure_super_admin(db, role_id):
+    """Create the first Super Admin without changing an existing account."""
+    existing_super_admin = (
+        await db.execute(
+            select(User)
+            .join(Role, User.role_id == Role.id)
+            .where(Role.name.in_(("Super Admin", "System Super Admin")))
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if existing_super_admin:
+        print("Super Admin already exists; preserving its credential and account state.")
+        return existing_super_admin
+
+    sa_email = (
+        os.getenv("SEED_SUPERADMIN_EMAIL")
+        or getattr(settings, "SEED_SUPERADMIN_EMAIL", None)
+        or ""
+    ).strip()
+    bootstrap_password = resolve_seed_password(
+        "SEED_SUPERADMIN_PASSWORD",
+        "SEED_SUPER_ADMIN_PASSWORD",
+    )
+    if not sa_email or not bootstrap_password:
+        raise RuntimeError(
+            "Super Admin is missing. Set SEED_SUPERADMIN_EMAIL and "
+            "SEED_SUPERADMIN_PASSWORD before running the explicit seed."
+        )
+
+    sa_user = User(
+        email=sa_email,
+        first_name="System",
+        last_name="Super Admin",
+        hashed_password=get_password_hash(bootstrap_password),
+        role_id=role_id,
+        is_active=True,
+        must_change_password=False,
+    )
+    db.add(sa_user)
+    await db.commit()
+    print("Super Admin created.")
+    return sa_user
+
+
 async def _run_seed():
     async with AsyncSessionLocal() as db:
         print("Starting database seed...")
@@ -223,39 +267,8 @@ async def _run_seed():
                     ))
         await db.commit()
 
-        # 3. Super Admin
-        sa_email = "superadmin@kpi.com"
-        stmt = select(User).where(User.email == sa_email)
-        sa_user = (await db.execute(stmt)).scalar_one_or_none()
-        
-        bootstrap_password = resolve_seed_password(
-            "SEED_SUPER_ADMIN_PASSWORD",
-            "UI_TEST_SUPERADMIN_PASSWORD",
-        )
-        if not sa_user:
-            if bootstrap_password:
-                sa_user = User(
-                    email=sa_email, first_name="System", last_name="Super Admin",
-                    hashed_password=get_password_hash(bootstrap_password),
-                    role_id=role_dict["Super Admin"].id, is_active=True, must_change_password=False
-                )
-                db.add(sa_user)
-                await db.commit()
-                await db.refresh(sa_user)
-                print("Super Admin created!")
-            else:
-                print("Skipping Super Admin bootstrap: no seed password was configured.")
-        elif bootstrap_password:
-            sa_user.hashed_password = get_password_hash(bootstrap_password)
-            sa_user.is_active = True
-            sa_user.failed_login_attempts = 0
-            sa_user.is_locked = False
-            sa_user.lockout_until = None
-            sa_user.must_change_password = False
-            await db.commit()
-            print("Super Admin credentials refreshed from seed configuration.")
-        else:
-            print("Super Admin already exists; preserving its credential and account state.")
+        # 3. Super Admin bootstrap (explicit seed only; create-only).
+        sa_user = await _ensure_super_admin(db, role_dict["Super Admin"].id)
 
         # 🌟 4. KPI Period Setup (Active Cycle) 🌟
         target_date = datetime.now(UTC)
@@ -505,14 +518,7 @@ async def _run_seed():
 
                 db.add(UserDepartment(user_id=test_user.id, department_id=finance_dept_id, user_level="L2"))
                 await db.commit()
-            elif test_user and demo_password:
-                test_user.hashed_password = get_password_hash(demo_password)
-                test_user.is_active = True
-                test_user.failed_login_attempts = 0
-                test_user.is_locked = False
-                test_user.lockout_until = None
-                test_user.must_change_password = False
-                await db.commit()
+            # Existing demo accounts are never reset by the seed.
 
             if test_user and period and sa_user:
                 existing_assignment = (await db.execute(
@@ -563,13 +569,6 @@ async def _run_seed():
             position = position_dict["Senior Accountant" if user_level == "L1" else "Accountant"]
 
             if existing:
-                if password:
-                    existing.hashed_password = get_password_hash(password)
-                    existing.is_active = True
-                    existing.failed_login_attempts = 0
-                    existing.is_locked = False
-                    existing.lockout_until = None
-                    existing.must_change_password = False
                 existing.position_id = position.id
                 dept_link = (await db.execute(
                     select(UserDepartment).where(

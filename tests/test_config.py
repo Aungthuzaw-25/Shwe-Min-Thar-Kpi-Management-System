@@ -33,10 +33,12 @@ def test_fix_neon_url_unwraps_nested_postgresql_scheme():
  
 
 def test_seed_passwords_are_loaded_from_environment(monkeypatch):
-    monkeypatch.setenv("SEED_SUPER_ADMIN_PASSWORD", "test-super-admin")
+    monkeypatch.setenv("SEED_SUPERADMIN_EMAIL", "superadmin@example.com")
+    monkeypatch.setenv("SEED_SUPERADMIN_PASSWORD", "test-super-admin")
     monkeypatch.setenv("SEED_DEMO_PASSWORD", "test-demo")
 
     configured = Settings()
 
-    assert configured.SEED_SUPER_ADMIN_PASSWORD == "test-super-admin"
+    assert configured.SEED_SUPERADMIN_EMAIL == "superadmin@example.com"
+    assert configured.SEED_SUPERADMIN_PASSWORD == "test-super-admin"
     assert configured.SEED_DEMO_PASSWORD == "test-demo"

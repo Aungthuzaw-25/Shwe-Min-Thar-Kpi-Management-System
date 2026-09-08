@@ -15,7 +15,6 @@ from slowapi.errors import RateLimitExceeded
 
 from app.core.config import settings
 from app.database.connection import engine
-from app.database.seed import run_seed
 
 # Backend API Routers (DDD Modules)
 from app.modules.auth.router import router as auth_router
@@ -72,14 +71,6 @@ async def lifespan(app: FastAPI):
     os.makedirs("static/css", exist_ok=True)
     os.makedirs("uploads", exist_ok=True)
 
-    environment_name = (getattr(settings, "ENV", "development") or "development").lower()
-    if environment_name in {"development", "test"}:
-        try:
-            await run_seed()
-            logger.info("✅ Demo/test seed state refreshed for local and CI startup.")
-        except Exception:
-            logger.exception("Demo/test seed refresh failed during startup; continuing without violating app availability.")
-    
     scheduler = None
     if settings.ENABLE_SCHEDULER and settings.RUN_SCHEDULER:
         scheduler = start_scheduler()

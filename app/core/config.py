@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     ENABLE_SCHEDULER: bool = False
     RUN_SCHEDULER: bool = False
     TIMEZONE: str = "Asia/Yangon"
+    SEED_SUPERADMIN_EMAIL: Optional[str] = None
+    SEED_SUPERADMIN_PASSWORD: Optional[str] = None
+    # Backward-compatible read of the former variable name for local setups.
     SEED_SUPER_ADMIN_PASSWORD: Optional[str] = None
     SEED_DEMO_PASSWORD: Optional[str] = None
     SEED_L2_PASSWORD: Optional[str] = None
