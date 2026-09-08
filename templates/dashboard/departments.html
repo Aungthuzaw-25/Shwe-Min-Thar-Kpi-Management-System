@@ -403,13 +403,13 @@
             const response = await fetch(url, { method: method, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: name, priority: priority }) });
             if (response.ok) { 
                 closeDepartmentModal(); 
-                fetchDepartments(); 
                 showToast("Department saved successfully.", "success");
+                await fetchDepartments();
             } else { 
-                const err = await response.json(); 
-                window.showToast("Unable to save the department.", "error"); 
+                const err = await response.json().catch(() => ({}));
+                window.showToast(`Unable to save the department (HTTP ${response.status}): ${err.detail || "Please try again."}`, "error");
             }
-        } catch (error) { console.error(error); }
+        } catch (error) { console.error(error); window.showToast("Network error while saving the department.", "error"); }
         finally { setButtonLoading('saveDeptBtn', false, "Save Department"); }
     }
 
@@ -419,9 +419,9 @@
         toggleLoader('tableLoader', true);
         try {
             const response = await fetch(`${API_BASE_URL}/${deptId}`, { method: "DELETE" });
-            if (response.ok) { fetchDepartments(); }
-            else { window.showToast("Unable to delete the department.", "error"); }
-        } catch (error) { console.error(error); }
+            if (response.ok) { window.showToast("Department moved to trash.", "success"); await fetchDepartments(); }
+            else { window.showToast(`Unable to delete the department (HTTP ${response.status}).`, "error"); }
+        } catch (error) { console.error(error); window.showToast("Network error while deleting the department.", "error"); }
         finally { toggleLoader('tableLoader', false); }
     }
 
@@ -430,8 +430,9 @@
         toggleLoader('tableLoader', true);
         try {
             const response = await fetch(`${API_BASE_URL}/${deptId}/restore`, { method: "POST" });
-            if (response.ok) { fetchDepartments(); }
-        } catch (error) { console.error(error); }
+            if (response.ok) { window.showToast("Department restored.", "success"); await fetchDepartments(); }
+            else { window.showToast(`Unable to restore the department (HTTP ${response.status}).`, "error"); }
+        } catch (error) { console.error(error); window.showToast("Network error while restoring the department.", "error"); }
         finally { toggleLoader('tableLoader', false); }
     }
 
@@ -440,9 +441,9 @@
         toggleLoader('tableLoader', true);
         try {
             const response = await fetch(`${API_BASE_URL}/${deptId}/permanent`, { method: "DELETE" });
-            if (response.ok) { fetchDepartments(); }
-            else { window.showToast("Unable to permanently delete the department.", "error"); }
-        } catch (error) { console.error(error); }
+            if (response.ok) { window.showToast("Department permanently deleted.", "success"); await fetchDepartments(); }
+            else { window.showToast(`Unable to permanently delete the department (HTTP ${response.status}).`, "error"); }
+        } catch (error) { console.error(error); window.showToast("Network error while permanently deleting the department.", "error"); }
         finally { toggleLoader('tableLoader', false); }
     }
 

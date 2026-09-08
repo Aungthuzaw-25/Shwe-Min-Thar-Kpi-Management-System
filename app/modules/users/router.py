@@ -39,7 +39,7 @@ async def _get_process_trend(db: AsyncSession, owner_ids):
     trend_stmt = (
         select(func.date(TaskHistory.created_at).label("day"), TaskHistory.action, func.count(TaskHistory.id))
         .join(Task, TaskHistory.task_id == Task.id)
-        .where(Task.owner_id.in_(owner_ids))
+        .where(Task.owner_id.in_(owner_ids), Task.is_deleted == False, TaskHistory.is_deleted == False)
         .group_by(func.date(TaskHistory.created_at), TaskHistory.action)
         .order_by(func.date(TaskHistory.created_at))
     )
@@ -518,6 +518,7 @@ async def get_deleted_users(
 # 🌟 PERFORMANCE FIX: Added skip and limit for pagination to avoid memory overload
 @router.get('/', response_model=List[UserResponse])
 async def get_users(
+    is_active: bool | None = Query(True),
     skip: int = Query(0, ge=0), 
     limit: int = Query(100, gt=0, le=500),
     db: AsyncSession = Depends(get_db), 
@@ -528,7 +529,10 @@ async def get_users(
         selectinload(User.role),
         selectinload(User.user_departments).selectinload(UserDepartment.department)
     )
-    stmt = stmt.where(User.is_deleted == False).offset(skip).limit(limit)
+    stmt = stmt.where(User.is_deleted == False)
+    if is_active is not None:
+        stmt = stmt.where(User.is_active == is_active)
+    stmt = stmt.offset(skip).limit(limit)
     
     result = await db.execute(stmt)
     users = result.scalars().all()

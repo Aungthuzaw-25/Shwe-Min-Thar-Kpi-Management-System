@@ -229,8 +229,16 @@ async def fetch_admin_dashboard_summary(
             )
         ))
 
-    active_users = (await db.execute(select(func.count(User.id)).where(*user_filters, User.is_active == True))).scalar() or 0
-    total_users = (await db.execute(select(func.count(User.id)).where(*user_filters))).scalar() or 0
+    user_counts = (
+        await db.execute(
+            select(
+                func.count(User.id).label("total_users"),
+                func.count(User.id).filter(User.is_active == True).label("active_users"),
+            ).where(*user_filters)
+        )
+    ).one()
+    total_users = int(user_counts.total_users or 0)
+    active_users = int(user_counts.active_users or 0)
 
     if department_ids is None:
         department_count = (await db.execute(select(func.count(Department.id)).where(Department.is_deleted == False))).scalar() or 0
@@ -246,20 +254,42 @@ async def fetch_admin_dashboard_summary(
             )
         ))
 
-    total_tasks = (await db.execute(select(func.count(Task.id)).where(*task_filters))).scalar() or 0
-    pending_approvals = (await db.execute(select(func.count(Task.id)).where(
-        *task_filters,
-        Task.status.in_([TaskStatus.PENDING_L1, TaskStatus.PENDING_L0]),
-    ))).scalar() or 0
-    completed_tasks = (await db.execute(select(func.count(Task.id)).where(*task_filters, Task.status == TaskStatus.COMPLETED))).scalar() or 0
-    overdue_tasks = (await db.execute(select(func.count(Task.id)).where(
-        *task_filters,
-        Task.due_date.is_not(None),
-        Task.due_date < datetime.now(timezone.utc),
-        Task.status.not_in([TaskStatus.COMPLETED, TaskStatus.APPROVED, TaskStatus.REJECTED]),
-    ))).scalar() or 0
-    rejected_tasks = (await db.execute(select(func.count(Task.id)).where(*task_filters, Task.status == TaskStatus.REJECTED))).scalar() or 0
-    late_tasks = (await db.execute(select(func.count(Task.id)).where(*task_filters, Task.is_late == True))).scalar() or 0
+    task_counts = (
+        await db.execute(
+            select(
+                func.count(Task.id).label("total_tasks"),
+                func.count(Task.id)
+                .filter(Task.status.in_([TaskStatus.PENDING_L1, TaskStatus.PENDING_L0]))
+                .label("pending_approvals"),
+                func.count(Task.id).filter(Task.status == TaskStatus.COMPLETED).label("completed_tasks"),
+                func.count(Task.id).filter(Task.status == TaskStatus.REJECTED).label("rejected_tasks"),
+                func.count(Task.id)
+                .filter(
+                    Task.due_date.is_not(None),
+                    Task.due_date < datetime.now(timezone.utc),
+                    Task.status.not_in(
+                        [TaskStatus.COMPLETED, TaskStatus.APPROVED, TaskStatus.REJECTED]
+                    ),
+                )
+                .label("overdue_tasks"),
+                func.count(Task.id).filter(Task.is_late == True).label("late_tasks"),
+                func.count(Task.id).filter(Task.status == TaskStatus.DRAFT).label("assigned_tasks"),
+                func.count(Task.id)
+                .filter(
+                    Task.status.in_(
+                        [TaskStatus.DRAFT, TaskStatus.PENDING_L1, TaskStatus.PENDING_L0]
+                    )
+                )
+                .label("pending_tasks"),
+            ).where(*task_filters)
+        )
+    ).one()
+    total_tasks = int(task_counts.total_tasks or 0)
+    pending_approvals = int(task_counts.pending_approvals or 0)
+    completed_tasks = int(task_counts.completed_tasks or 0)
+    rejected_tasks = int(task_counts.rejected_tasks or 0)
+    overdue_tasks = int(task_counts.overdue_tasks or 0)
+    late_tasks = int(task_counts.late_tasks or 0)
 
     kpi_filters = [KPIRecord.percentage.is_not(None), KPIRecord.is_deleted == False]
     if department_ids:
@@ -291,8 +321,8 @@ async def fetch_admin_dashboard_summary(
         users_by_department.append({"label": name, "value": int(count or 0)})
 
     task_summary = {
-        "assigned": (await db.execute(select(func.count(Task.id)).where(*task_filters, Task.status == TaskStatus.DRAFT))).scalar() or 0,
-        "pending": (await db.execute(select(func.count(Task.id)).where(*task_filters, Task.status.in_([TaskStatus.DRAFT, TaskStatus.PENDING_L1, TaskStatus.PENDING_L0])))).scalar() or 0,
+        "assigned": int(task_counts.assigned_tasks or 0),
+        "pending": int(task_counts.pending_tasks or 0),
         "completed": completed_tasks,
         "rejected": rejected_tasks,
         "overdue": overdue_tasks,

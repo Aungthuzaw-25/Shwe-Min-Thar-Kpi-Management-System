@@ -364,6 +364,7 @@ async def get_department_process_tracking(
             UserDepartment.is_deleted == False,
             User.is_deleted == False,
             Task.is_deleted == False,
+            TaskHistory.is_deleted == False,
         )
         .group_by(Task.status)
     )
@@ -392,6 +393,7 @@ async def get_department_process_tracking(
             UserDepartment.is_deleted == False,
             User.is_deleted == False,
             Task.is_deleted == False,
+            TaskHistory.is_deleted == False,
         )
         .order_by(TaskHistory.created_at.desc())
         .limit(15)

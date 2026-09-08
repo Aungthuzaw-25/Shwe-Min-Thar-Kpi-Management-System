@@ -172,6 +172,7 @@
 
 <script>
     let currentScope = 'department';
+    let trackingRequestId = 0;
     let lineChartInstance = null;
     let donutChartInstance = null;
 
@@ -277,6 +278,7 @@
             : `/api/v1/users/${targetId}/process-tracking`;
 
         try {
+            const requestId = ++trackingRequestId;
             const res = await fetch(endpoint);
             if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
             if (!res.ok) {
@@ -285,6 +287,7 @@
             }
 
             const data = await res.json();
+            if (requestId !== trackingRequestId) return;
             const metrics = data.tracking_metrics || {};
             const draft = Number(metrics.DRAFT ?? metrics['Draft'] ?? 0);
             const comp = Number(metrics.COMPLETED ?? metrics['Completed'] ?? 0);
@@ -303,7 +306,7 @@
             const activityParam = currentScope === 'department' ? 'department_id' : 'actor_id';
             const activityResponse = await fetch(`/api/v1/activity/recent?limit=15&${activityParam}=${encodeURIComponent(targetId)}`);
             if (!activityResponse.ok) {
-                showTrackingErrorState('Unable to load activity timeline.');
+                container.innerHTML = `<div class="text-center py-10 text-rose-500 text-xs font-bold">Unable to load activity timeline (HTTP ${activityResponse.status}).</div>`;
                 return;
             }
             const activities = await activityResponse.json();
@@ -354,7 +357,8 @@
             }).join('');
 
         } catch (e) {
-            showTrackingErrorState('Unable to load process tracking data.');
+            console.error('Unable to load process tracking data', { api: endpoint, error: e });
+            showTrackingErrorState(`Unable to load process tracking data. ${e.message || 'Network error.'}`);
         }
     }
 

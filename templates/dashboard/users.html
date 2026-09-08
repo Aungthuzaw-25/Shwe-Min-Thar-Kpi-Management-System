@@ -233,6 +233,7 @@
 
     let allUsers = [];
     let currentTab = 'active';
+    const pendingUserMutations = new Set();
 
     // 🌟 SECURITY FIX: Global HTML Escape Function to prevent XSS
     function escapeHTML(str) {
@@ -392,14 +393,16 @@
 
     async function loadUsers() {
         try {
-            const res = await fetch('/api/v1/users/');
+            const res = await fetch('/api/v1/users/?is_active=true');
             if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
             
             if (res.ok) {
                 allUsers = await res.json();
                 renderUsersTable(allUsers);
             } else {
-                document.getElementById('usersTableBody').innerHTML = `<tr><td colspan="6" class="px-6 py-12 text-center text-red-500 font-bold bg-white text-xs sm:text-sm">Failed to load users data.</td></tr>`;
+                const detail = await res.text();
+                document.getElementById('usersTableBody').innerHTML = `<tr><td colspan="6" class="px-6 py-12 text-center text-red-500 font-bold bg-white text-xs sm:text-sm">Failed to load active users (HTTP ${res.status}).</td></tr>`;
+                console.error('Failed to load active users', { status: res.status, api: '/api/v1/users/?is_active=true', detail });
             }
         } catch (error) {
             document.getElementById('usersTableBody').innerHTML = `<tr><td colspan="6" class="px-6 py-12 text-center text-red-500 font-bold bg-white text-xs sm:text-sm">Network Error. Please check your connection.</td></tr>`;
@@ -631,9 +634,8 @@
             if (res.ok) {
                 const savedData = await res.json();
                 closeUserModal();
-                await loadUsers();
-                
                 showToast(isEdit ? "User updated successfully." : "User created successfully. The user must set a password before signing in.", "success");
+                await loadUsers();
             } else {
                 const err = await res.json();
                 showToast(`Error: ${err.detail || 'Validation failed'}`, "error");
@@ -648,6 +650,8 @@
 
     async function deleteUser(id) {
         if (!(await window.appConfirm("Are you sure you want to disable and move this user to trash?", { title: "Disable user?" }))) return;
+        if (pendingUserMutations.has(id)) return;
+        pendingUserMutations.add(id);
         try {
             const res = await fetch(`/api/v1/users/${id}`, { method: 'DELETE' });
             if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
@@ -655,6 +659,7 @@
             if (res.ok) { showToast("User disabled and moved to trash.", "success"); await loadUsers(); } 
             else { const err = await res.json(); showToast(`Error: ${err.detail}`, "error"); }
         } catch (err) { showToast("Network error while deleting user.", "error"); }
+        finally { pendingUserMutations.delete(id); }
     }
 
     async function restoreUser(id) {

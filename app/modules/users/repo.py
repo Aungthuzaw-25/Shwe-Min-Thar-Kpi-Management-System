@@ -62,8 +62,11 @@ async def update_user(db: AsyncSession, user: User, update_data: dict) -> User:
     await db.refresh(user)
     return await get_user_by_id(db, user.id)
 
-async def soft_delete_user(db: AsyncSession, user: User) -> User:
+async def soft_delete_user(
+    db: AsyncSession, user: User, *, commit: bool = False
+) -> User:
     user.is_deleted = True
     user.is_active = False  # လုံခြုံရေးအရ Account ကိုပါ ပိတ်ပါမည်
-    await db.commit()
+    if commit:
+        await db.commit()
     return user
