@@ -3,6 +3,7 @@ import uuid
 import logging
 import time
 import os
+import re
 from botocore.exceptions import ClientError, EndpointConnectionError
 from fastapi import UploadFile, HTTPException
 from fastapi.concurrency import run_in_threadpool # 🌟 ADDED: For Non-Blocking I/O
@@ -11,6 +12,21 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 MAX_UPLOAD_SIZE = 10 * 1024 * 1024
+_SAFE_EXTENSION = re.compile(r"^[a-z0-9]{1,10}$")
+
+
+def _validate_storage_key(key: str) -> str:
+    """Reject path-like keys so object storage cannot be used for traversal."""
+    if (
+        not key
+        or len(key) > 1024
+        or "\x00" in key
+        or "\\" in key
+        or key.startswith("/")
+        or any(part in {"", ".", ".."} for part in key.split("/"))
+    ):
+        raise HTTPException(status_code=400, detail="Invalid storage object path.")
+    return key
 
 class StorageService:
     def __init__(self):
@@ -90,9 +106,13 @@ class StorageService:
 
         try:
             # Handle files with no extension gracefully
-            parts = file.filename.split('.')
-            file_extension = parts[-1] if len(parts) > 1 else "bin"
-            object_name = f"{folder}/{uuid.uuid4()}.{file_extension}"
+            safe_folder = _validate_storage_key(folder)
+            file_extension = os.path.splitext(os.path.basename(file.filename))[1].lower().lstrip(".")
+            if not _SAFE_EXTENSION.fullmatch(file_extension):
+                file_extension = "bin"
+            object_name = _validate_storage_key(
+                f"{safe_folder}/{uuid.uuid4()}.{file_extension}"
+            )
 
             # 🌟 PERFORMANCE & BUG FIX: Offload synchronous boto3 call to a separate thread
             # This prevents the FastAPI event loop from being blocked, ensuring large files upload successfully.
@@ -131,7 +151,8 @@ class StorageService:
         """
         Database ထဲရှိ Object Name ကိုယူ၍ ကြည့်ရှုခွင့် Presigned URL ထုတ်ပေးမည်။
         """
-        if not object_name or not self.s3_client:
+        safe_object_name = _validate_storage_key(object_name)
+        if not self.s3_client:
             return ""
 
         try:
@@ -139,7 +160,7 @@ class StorageService:
                 'get_object',
                 Params={
                     'Bucket': self.bucket_name,
-                    'Key': object_name
+                    'Key': safe_object_name
                 },
                 ExpiresIn=expiration
             )
@@ -155,10 +176,11 @@ class StorageService:
             return
 
         try:
+            safe_object_name = _validate_storage_key(object_name)
             await run_in_threadpool(
                 self.s3_client.delete_object,
                 Bucket=self.bucket_name,
-                Key=object_name
+                Key=safe_object_name
             )
         except Exception as e:
             logger.error(f"Failed to delete file {object_name}: {str(e)}")

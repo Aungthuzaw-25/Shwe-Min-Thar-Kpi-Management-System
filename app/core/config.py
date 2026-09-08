@@ -2,6 +2,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import field_validator, model_validator
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlparse
 
 class Settings(BaseSettings):
     PROJECT_NAME: str
@@ -27,6 +28,8 @@ class Settings(BaseSettings):
     ENABLE_SCHEDULER: bool = False
     RUN_SCHEDULER: bool = False
     TIMEZONE: str = "Asia/Yangon"
+    BOOTSTRAP_SUPERADMIN_EMAIL: Optional[str] = None
+    BOOTSTRAP_SUPERADMIN_PASSWORD: Optional[str] = None
     SEED_SUPERADMIN_EMAIL: Optional[str] = None
     SEED_SUPERADMIN_PASSWORD: Optional[str] = None
     # Backward-compatible read of the former variable name for local setups.
@@ -85,6 +88,10 @@ class Settings(BaseSettings):
                 raise ValueError("SECRET_KEY must be changed in production.")
             if not self.ALLOWED_ORIGINS.strip():
                 raise ValueError("ALLOWED_ORIGINS must be configured in production.")
+            if self.USE_S3:
+                storage_scheme = urlparse(self.S3_ENDPOINT or "").scheme.lower()
+                if storage_scheme != "https":
+                    raise ValueError("S3_ENDPOINT must use HTTPS in production.")
 
         return self
 

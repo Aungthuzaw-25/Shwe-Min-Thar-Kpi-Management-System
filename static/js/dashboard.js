@@ -213,7 +213,6 @@
   window.roleLabel = function (role) {
     const map = {
       'Super Admin': 'Super Admin',
-      'System Super Admin': 'Super Admin',
       'Admin': 'Admin',
       'Level 0': 'L0 — Dept Supervisor',
       'Level 1': 'L1 — Team Leader',

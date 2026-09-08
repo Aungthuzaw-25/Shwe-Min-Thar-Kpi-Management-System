@@ -4,8 +4,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy import text
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from typing import List
 from uuid import UUID
 from datetime import datetime
@@ -30,8 +30,8 @@ from app.modules.tasks.models.task import Task
 from app.modules.tasks.models.task_history import TaskHistory
 
 router = APIRouter()
-admin_checker = RoleChecker(['Super Admin', 'System Super Admin', 'Admin'])
-SUPER_ADMIN_ROLE_NAMES = {'Super Admin', 'System Super Admin'}
+admin_checker = RoleChecker(['Super Admin', 'Admin'])
+SUPER_ADMIN_ROLE_NAMES = {'Super Admin'}
 VALID_USER_LEVELS = {'L0', 'L1', 'L2'}
 
 
@@ -313,7 +313,10 @@ async def create_super_admin(
     try:
         created_user = await user_repo.create_user(db, user_data, commit=False)
         await password_repo.add_password_history(
-            db, created_user.id, created_user.hashed_password, commit=False
+            db,
+            created_user.id,
+            created_user.hashed_password,
+            commit=False,
         )
         audit_entry = await log_audit_trail(
             db,
@@ -326,14 +329,14 @@ async def create_super_admin(
             commit=False,
         )
         if audit_entry is None:
-            raise HTTPException(status_code=500, detail='Unable to record Super Admin creation.')
+            raise RuntimeError('Unable to record Super Admin creation audit event.')
         await db.commit()
-    except HTTPException:
-        await db.rollback()
-        raise
     except IntegrityError as exc:
         await db.rollback()
-        raise HTTPException(status_code=409, detail='An account with this email already exists.') from exc
+        raise HTTPException(
+            status_code=409,
+            detail='An account with this email already exists.',
+        ) from exc
     except Exception as exc:
         await db.rollback()
         raise HTTPException(status_code=500, detail='Super Admin creation failed.') from exc
@@ -703,7 +706,7 @@ async def delete_existing_user(user_id: UUID, db: AsyncSession = Depends(get_db)
 @router.delete('/{user_id}/permanent')
 async def permanent_delete_user(user_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     enforce_permission(current_user, "users.delete")
-    if current_user.role.name not in ['Super Admin', 'System Super Admin']:
+    if current_user.role.name not in ['Super Admin']:
         raise HTTPException(status_code=403, detail='Only Super Admins can permanently delete accounts.')
         
     stmt = select(User).where(User.id == user_id)
@@ -788,7 +791,7 @@ async def reset_user_password(user_id: UUID, payload: PasswordResetAdmin, db: As
 @router.post('/{user_id}/restore', response_model=UserResponse)
 async def restore_user(user_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     enforce_permission(current_user, "users.edit")
-    if current_user.role.name not in ['Super Admin', 'System Super Admin']:
+    if current_user.role.name not in ['Super Admin']:
         raise HTTPException(status_code=403, detail='Only Super Admins can restore accounts.')
         
     stmt = select(User).where(User.id == user_id)

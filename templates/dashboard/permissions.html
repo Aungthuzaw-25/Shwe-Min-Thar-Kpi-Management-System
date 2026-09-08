@@ -239,7 +239,7 @@ function updateRoleContext() {
         : selectedRoleName();
     document.getElementById("roleProtectedBadge").classList.toggle(
         "hidden",
-        !["Super Admin", "System Super Admin"].includes(selectedRoleName())
+        !["Super Admin"].includes(selectedRoleName())
     );
     document.querySelectorAll(".level-btn").forEach(btn => {
         const active = btn.dataset.level === selectedDepartmentLevel;

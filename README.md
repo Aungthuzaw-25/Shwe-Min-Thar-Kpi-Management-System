@@ -12,7 +12,7 @@ A highly scalable, secure, and asynchronous Key Performance Indicator (KPI) Mana
 
 ## ✨ Key Features
 
-*   **🔐 Granular RBAC (Role-Based Access Control):** Multi-tier organizational hierarchy support including Super Admin, System Super Admin, Admin, HR, Department Head (L0), Supervisor (L1), and Staff (L2).
+*   **🔐 Granular RBAC (Role-Based Access Control):** Multi-tier organizational hierarchy support including Super Admin, Admin, HR, Department Head (L0), Supervisor (L1), and Staff (L2).
 *   **📊 Dynamic KPI Engine:** Configurable KPI formulas, weighted categories, and natural language deduction rules.
 *   **✅ Multi-Stage Approval Workflow:** Task submissions with evidence upload. Requires sequential verification (L2 → L1 → L0) with features like Resubmit (V2), Delay, and Penalties.
 *   **📂 Secure Evidence Management:** Integrated with **MinIO/AWS S3** for secure file storage. Built-in Anti-Malware protection (strict MIME type checking via `python-magic`) and max file size limits.
@@ -25,20 +25,28 @@ A highly scalable, secure, and asynchronous Key Performance Indicator (KPI) Mana
 
 ## Initial Super Admin provisioning
 
-Application startup never runs the database seed. For a local or test database,
-configure `SEED_SUPERADMIN_EMAIL` and `SEED_SUPERADMIN_PASSWORD` in the
-environment and run the seed explicitly:
+Application startup never runs the development database seed. For a local or
+test database, configure `SEED_SUPERADMIN_EMAIL` and
+`SEED_SUPERADMIN_PASSWORD` and run the seed explicitly:
 
 ```bash
 python -m app.database.seed
 ```
 
 The Super Admin portion of the seed is create-only. If a Super Admin already
-exists, the seed preserves its password and account state. Do not configure
-seed credentials in a production runtime. For production, run the explicit
-command once as a controlled provisioning job using secret-manager-injected
-environment variables, then remove those variables from the application
-runtime.
+exists, the seed preserves its password and account state. Production
+initialization uses `BOOTSTRAP_SUPERADMIN_EMAIL` and
+`BOOTSTRAP_SUPERADMIN_PASSWORD` as standard environment variables. The
+application checks the database during startup, creates the first Super Admin
+only when none exists, and then ignores those variables on later restarts.
+Remove the bootstrap variables after the first successful creation if desired.
+
+## Production transport requirements
+
+Do not expose the API or object storage directly over plain HTTP on the public
+internet. Put the API behind an HTTPS/TLS reverse proxy or load balancer. When
+`ENV=production` and `USE_S3=true`, configure `S3_ENDPOINT` with an `https://`
+URL so presigned evidence links cannot expose storage credentials over plaintext.
 
 ## 🛠️ Tech Stack
 

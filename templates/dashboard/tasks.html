@@ -47,7 +47,7 @@
             {% endif %}
             
             <!-- 🌟 Admin / Manager Assign Task Button -->
-            {% if permission_map.get('tasks.create', False) and (user_level in ['L1', 'L0', 'Level 1', 'Level 0'] or user_role in ['Super Admin', 'System Super Admin', 'Admin']) %}
+            {% if permission_map.get('tasks.create', False) and (user_level in ['L1', 'L0', 'Level 1', 'Level 0'] or user_role in ['Super Admin', 'Admin']) %}
             <button onclick="openAssignTaskModal()" class="w-full sm:w-auto justify-center bg-blue-700 hover:bg-blue-800 text-white px-5 sm:px-6 py-2.5 sm:py-3 rounded-xl text-sm font-bold shadow-md transition-all active:scale-95 flex items-center gap-2">
                 <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
                 Assign Delegation Task

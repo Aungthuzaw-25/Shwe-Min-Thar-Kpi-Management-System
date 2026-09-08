@@ -1,7 +1,8 @@
 import os
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, status
+from urllib.parse import urlparse
+from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, RedirectResponse
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -14,6 +15,7 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
 from app.core.config import settings
+from app.database.bootstrap import bootstrap_initial_super_admin
 from app.database.connection import engine
 
 # Backend API Routers (DDD Modules)
@@ -71,6 +73,8 @@ async def lifespan(app: FastAPI):
     os.makedirs("static/css", exist_ok=True)
     os.makedirs("uploads", exist_ok=True)
 
+    await bootstrap_initial_super_admin()
+
     scheduler = None
     if settings.ENABLE_SCHEDULER and settings.RUN_SCHEDULER:
         scheduler = start_scheduler()
@@ -114,6 +118,26 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+
+async def _http_exception_handler(request: Request, exc: HTTPException):
+    """Keep internal exception details out of production HTTP responses."""
+    if exc.status_code >= status.HTTP_500_INTERNAL_SERVER_ERROR:
+        logger.error(
+            "HTTP %s while handling %s %s: %s",
+            exc.status_code,
+            request.method,
+            request.url.path,
+            exc.detail,
+        )
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": "Internal server error."},
+        )
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+
+
+app.add_exception_handler(HTTPException, _http_exception_handler)
+
 # ==============================================================================
 # 🛡️ 4. SECURITY & PERFORMANCE MIDDLEWARES
 # ==============================================================================
@@ -145,13 +169,23 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
+        storage_origins = ""
+        if settings.S3_ENDPOINT:
+            parsed_storage_endpoint = urlparse(settings.S3_ENDPOINT)
+            if parsed_storage_endpoint.scheme and parsed_storage_endpoint.hostname:
+                storage_origin = f"{parsed_storage_endpoint.scheme}://{parsed_storage_endpoint.hostname}"
+                if parsed_storage_endpoint.port:
+                    storage_origin += f":{parsed_storage_endpoint.port}"
+                storage_origins += f" {storage_origin}"
+        if not IS_PRODUCTION:
+            storage_origins += " http://localhost:9000 http://minio:9000"
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
             "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; "
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
             "font-src 'self' https://fonts.gstatic.com; "
-            "img-src 'self' data: blob: http://localhost:9000 http://minio:9000; "
-            "connect-src 'self' https://cdn.jsdelivr.net http://localhost:9000 http://minio:9000; "
+            f"img-src 'self' data: blob:{storage_origins}; "
+            f"connect-src 'self' https://cdn.jsdelivr.net{storage_origins}; "
             "frame-ancestors 'none';"
         )
         return response

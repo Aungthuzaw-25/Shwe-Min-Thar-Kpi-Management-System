@@ -58,10 +58,10 @@ class RoleChecker:
             )
         return user
 
-allow_admins = RoleChecker(["Super Admin", "System Super Admin", "Admin"])
-allow_super_admins = RoleChecker(["Super Admin", "System Super Admin"])
-allow_reports = RoleChecker(["Super Admin", "System Super Admin", "Admin", "HR", "Level 0", "Level 1"])
-allow_charts = RoleChecker(["Super Admin", "System Super Admin", "Admin", "Level 0", "Level 1"])
+allow_admins = RoleChecker(["Super Admin", "Admin"])
+allow_super_admins = RoleChecker(["Super Admin"])
+allow_reports = RoleChecker(["Super Admin", "Admin", "HR", "Level 0", "Level 1"])
+allow_charts = RoleChecker(["Super Admin", "Admin", "Level 0", "Level 1"])
 
 
 async def require_report_access(
@@ -69,7 +69,7 @@ async def require_report_access(
     current_user: User = Depends(get_current_user),
 ) -> User:
     """Allow report readers by role or by their assigned department level."""
-    allowed_roles = {"Super Admin", "System Super Admin", "Admin", "HR", "Level 0", "Level 1"}
+    allowed_roles = {"Super Admin", "Admin", "HR", "Level 0", "Level 1"}
     if current_user.role and current_user.role.name in allowed_roles:
         return current_user
 

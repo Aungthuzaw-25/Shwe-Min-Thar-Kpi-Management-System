@@ -188,7 +188,17 @@ async function submitCreate(event) {
         showToast('Please complete all required fields.', 'error');
         return;
     }
+    if (payload.password !== payload.confirm_password) {
+        showToast('Passwords do not match.', 'error');
+        return;
+    }
+    if (payload.password.length < 12) {
+        showToast('Password must be at least 12 characters long.', 'error');
+        return;
+    }
 
+    submitButton.disabled = true;
+    submitButton.classList.add('opacity-60', 'cursor-not-allowed');
     try {
         const response = await fetch('/api/v1/users/super-admins', {
             method: 'POST',
@@ -207,6 +217,9 @@ async function submitCreate(event) {
         await loadSuperAdmins();
     } catch (error) {
         showToast(error.message, 'error');
+    } finally {
+        submitButton.disabled = false;
+        submitButton.classList.remove('opacity-60', 'cursor-not-allowed');
     }
 }
 

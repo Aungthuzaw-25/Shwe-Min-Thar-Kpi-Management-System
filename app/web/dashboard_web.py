@@ -81,7 +81,7 @@ async def render_superadmin_dashboard_view(
     if not current_user or not current_user.role:
         return RedirectResponse(url="/auth/login")
 
-    if not verify_role(current_user, ['Super Admin', 'System Super Admin']):
+    if not verify_role(current_user, ['Super Admin']):
         return RedirectResponse(url="/dashboard")
 
     return templates.TemplateResponse(
@@ -139,7 +139,7 @@ async def render_normal_dashboard_view(
     employee_context = await get_employee_context(db, current_user)
     user_level = employee_context["user_level"]
 
-    if role_name in ['Super Admin', 'System Super Admin']:
+    if role_name in ['Super Admin']:
         return RedirectResponse(url="/superadmin/dashboard")
 
     if role_name in ['Admin', 'System Admin']:
@@ -226,7 +226,7 @@ async def render_super_admin_management_view(
 ):
     if not current_user or not current_user.role:
         return RedirectResponse(url="/auth/login")
-    if not verify_role(current_user, ['Super Admin', 'System Super Admin']):
+    if not verify_role(current_user, ['Super Admin']):
         return RedirectResponse(url="/dashboard")
 
     return templates.TemplateResponse(
@@ -267,7 +267,7 @@ async def render_permissions_view(
 ):
     if not current_user or not current_user.role:
         return RedirectResponse(url="/auth/login")
-    if not verify_role(current_user, ['Super Admin', 'System Super Admin', 'Admin']):
+    if not verify_role(current_user, ['Super Admin', 'Admin']):
         return RedirectResponse(url="/dashboard")
     return templates.TemplateResponse(
         request=request,

@@ -29,7 +29,7 @@ from slowapi.util import get_remote_address
 
 limiter = Limiter(key_func=get_remote_address)
 router = APIRouter(prefix="/kpi-uploads", tags=["KPI Excel Uploads"])
-admin_hr_checker = RoleChecker(['Super Admin', 'System Super Admin', 'Admin', 'HR'])
+admin_hr_checker = RoleChecker(['Super Admin', 'Admin', 'HR'])
 
 # SECURITY: Anti-Malware & Anti-DoS Constants
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB Limit for Spreadsheets

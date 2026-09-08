@@ -13,7 +13,7 @@ from app.modules.targets.models import Target, TargetStatus
 from app.modules.targets.schemas import TargetCreate, TargetResponse
 
 router = APIRouter()
-admin_checker = RoleChecker(['Super Admin', 'System Super Admin', 'Admin'])
+admin_checker = RoleChecker(['Super Admin', 'Admin'])
 
 @router.post("/", response_model=TargetResponse, status_code=status.HTTP_201_CREATED)
 async def create_target(

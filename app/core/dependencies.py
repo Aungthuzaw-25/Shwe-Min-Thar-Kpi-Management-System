@@ -14,7 +14,7 @@ from app.modules.departments.models import UserDepartment
 from app.modules.auth.models import TokenBlacklist
 
 SUPER_ADMIN_ROLE = "Super Admin"
-GLOBAL_SCOPE_ROLES = {"Super Admin", "System Super Admin", "HR"}
+GLOBAL_SCOPE_ROLES = {"Super Admin", "HR"}
 LEVEL_RESTRICTED_TASK_PERMISSIONS = {"tasks.approve", "tasks.reject", "tasks.return"}
 
 
@@ -188,6 +188,11 @@ async def get_current_user(
     # 🌟 SECURITY & PERFORMANCE FIX: Hacker မှ Token အမှားများဖြင့် DB ကို DoS မလုပ်နိုင်ရန် JWT ကို အရင် Decode လုပ်မည်
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        if payload.get("type") != "access":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token type.",
+            )
         email: str = payload.get("sub")
         if email is None:
             raise HTTPException(

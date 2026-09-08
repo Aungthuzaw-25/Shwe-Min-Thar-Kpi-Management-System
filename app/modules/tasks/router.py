@@ -238,7 +238,7 @@ async def get_batch_deductions(
     if not target_user:
         raise HTTPException(status_code=404, detail="Batch submitter not found.")
 
-    allowed_roles = {"Super Admin", "System Super Admin", "Admin", "HR", "Department Head"}
+    allowed_roles = {"Super Admin", "Admin", "HR", "Department Head"}
     if target_user.id != current_user.id and current_user.role.name not in allowed_roles:
         raise HTTPException(status_code=403, detail="Not authorized to view batch deductions.")
 
@@ -374,7 +374,7 @@ async def create_bulk_tasks(payload: BulkTaskCreate, db: AsyncSession = Depends(
     """ 🌟 Manager/Admin များမှ Task ကို Assign ချပေးသော Endpoint """
     enforce_permission(current_user, "tasks.create")
     try:
-        if current_user.role.name not in ['Super Admin', 'System Super Admin', 'Admin']:
+        if current_user.role.name not in ['Super Admin', 'Admin']:
             ud_stmt = select(UserDepartment).where(UserDepartment.user_id == current_user.id)
             ud = (await db.execute(ud_stmt)).scalars().first()
             if not ud or str(ud.user_level).upper().replace('LEVEL ', '') not in ['L0', 'L1']:
@@ -591,7 +591,7 @@ async def get_my_tasks(
         is_l2 = ud.user_level in ['L2', 'Level 2'] if ud else True
         
         # 🌟 PERFORMANCE FIX: Database-Level Filtering instead of Python Loop Filtering
-        if current_user.role.name not in ['Super Admin', 'System Super Admin', 'Admin', 'Level 0']: 
+        if current_user.role.name not in ['Super Admin', 'Admin', 'Level 0']:
             stmt = stmt.where(
                 or_(
                     Task.owner_id == current_user.id,
@@ -610,7 +610,7 @@ async def get_my_tasks(
         tasks = result.scalars().all()
         
         # Preserve the UI/UX logic for L2 users (Masking L0 rejection comments)
-        if current_user.role.name not in ['Super Admin', 'System Super Admin', 'Admin', 'Level 0']: 
+        if current_user.role.name not in ['Super Admin', 'Admin', 'Level 0']:
             my_tasks = []
             for t in tasks:
                 task_dict = TaskResponse.model_validate(t)
@@ -932,7 +932,6 @@ async def get_evidence_url(
             raise HTTPException(status_code=404, detail="Evidence file not found.")
         await _authorized_task(db, evidence.task_id, current_user)
         presigned_url = storage_service.get_presigned_url(object_name=evidence.file_path, expiration=3600)
-        presigned_url = presigned_url.replace("http://minio:9000", "http://localhost:9000")
         return {"view_url": presigned_url, "expires_in_seconds": 3600}
     except HTTPException:
         raise
@@ -1046,7 +1045,7 @@ async def get_single_task(task_id: UUID, db: AsyncSession = Depends(get_db), cur
         raise HTTPException(status_code=404, detail='Task not found')
 
     # Security Validation: Verify ownership/authorization before disclosing the task
-    if current_user.role.name not in ['Super Admin', 'System Super Admin', 'Admin', 'Level 0']:
+    if current_user.role.name not in ['Super Admin', 'Admin', 'Level 0']:
         is_owner = str(task.owner_id) == str(current_user.id)
         is_assigner = str(task.assigner_id) == str(current_user.id)
         is_reviewer = any(str(r.reviewer_id) == str(current_user.id) for r in task.reviews)

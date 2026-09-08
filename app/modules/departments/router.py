@@ -20,7 +20,7 @@ from app.modules.tasks.models.task_history import TaskHistory
 
 router = APIRouter()
 
-admin_checker = RoleChecker(['Super Admin', 'System Super Admin', 'Admin'])
+admin_checker = RoleChecker(['Super Admin', 'Admin'])
 
 class ChangeLevelRequest(BaseModel):
     user_level: str

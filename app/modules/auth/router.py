@@ -36,6 +36,9 @@ IS_PRODUCTION = getattr(settings, "ENV", "development").lower() == "production"
 
 
 def cookie_secure_for_request(request: Request) -> bool:
+    if IS_PRODUCTION:
+        return True
+
     forwarded_proto = request.headers.get("x-forwarded-proto")
     if forwarded_proto:
         proto = forwarded_proto.split(",")[0].strip().lower()
@@ -265,7 +268,13 @@ async def login_for_swagger(
     }
 
 @router.post('/change-password')
-async def self_change_password(payload: ChangePasswordRequest, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+@limiter.limit("5/minute")
+async def self_change_password(
+    request: Request,
+    payload: ChangePasswordRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     # ⚡ PERFORMANCE FIX: Offload password verification
     is_valid_old_password = await run_in_threadpool(security.verify_password, payload.old_password, user.hashed_password)
     if not is_valid_old_password:
@@ -289,6 +298,7 @@ async def self_change_password(payload: ChangePasswordRequest, user: User = Depe
     return {'message': 'Password changed successfully.'}
 
 @router.post('/refresh', response_model=TokenResponse)
+@limiter.limit("10/minute")
 async def refresh_token(request: Request, response: Response, payload: RefreshTokenRequest = None, db: AsyncSession = Depends(get_db)):
     token_to_verify = None
     if payload and payload.refresh_token:

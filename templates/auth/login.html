@@ -389,7 +389,7 @@
                             localStorage.setItem("user", JSON.stringify(userData));
                             const roleName = userData.role ? userData.role.name : '';
                             
-                            if (roleName === 'Super Admin' || roleName === 'System Super Admin') {
+                            if (roleName === 'Super Admin') {
                                 window.location.href = '/superadmin/dashboard';
                             } else if (roleName === 'Admin' || roleName === 'HR') {
                                 window.location.href = '/admin/dashboard';
@@ -400,7 +400,7 @@
                             const userRole = data.access_token ? JSON.parse(atob(data.access_token.split('.')[1])).role : '';
                             const roleLower = userRole.toLowerCase();
                             
-                            if (roleLower === 'super admin' || roleLower === 'system super admin' || roleLower === 'admin') {
+                            if (roleLower === 'super admin' || roleLower === 'admin') {
                                 window.location.href = '/superadmin/dashboard';
                             } else {
                                 window.location.href = '/dashboard'; 

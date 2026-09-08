@@ -68,7 +68,7 @@
 </head>
 <body class="flex h-screen overflow-hidden text-gray-800 relative">
 
-    {% if user_role in ['Super Admin', 'System Super Admin', 'Admin'] %}
+    {% if user_role in ['Super Admin', 'Admin'] %}
     
     <!-- 📱 MOBILE RESPONSIVE FIX: Sidebar Backdrop Overlay -->
     <button id="sidebarBackdrop" class="fixed inset-0 bg-slate-900/50 z-20 hidden md:hidden transition-opacity" type="button" onclick="toggleMobileSidebar()" aria-label="Close mobile sidebar" onkeypress="if(event.key==='Enter' || event.key===' ') toggleMobileSidebar()" onkeydown="if(event.key==='Enter' || event.key===' ') toggleMobileSidebar()" onkeyup="if(event.key==='Enter' || event.key===' ') toggleMobileSidebar()"></button>
@@ -110,7 +110,7 @@
                 <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a3 3 0 11-6 0 3 3 0 016 0zm3 14H6v-2a6 6 0 0112 0v2zm-3-9h6m-3-3v6"></path></svg> Permissions
             </a>
 
-            {% if user_role in ['Super Admin', 'System Super Admin'] %}
+            {% if user_role in ['Super Admin'] %}
             <a href="/superadmin/super-admins" class="{% if active_page == 'super_admin_management' %}sidebar-item-active{% else %}sidebar-item text-red-100{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
                 <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0A5.002 5.002 0 0112 16a5.002 5.002 0 014.644 3.143M12 7a3 3 0 110 6 3 3 0 010-6z"></path></svg> Super Admin Management
             </a>
@@ -221,7 +221,7 @@
     <main class="flex-1 flex flex-col h-full overflow-hidden min-w-0 bg-gray-50/50 relative z-10">
         
         <!-- 📱 MOBILE RESPONSIVE FIX: Functional Mobile Menu Toggle -->
-        {% if user_role in ['Super Admin', 'System Super Admin', 'Admin'] %}
+        {% if user_role in ['Super Admin', 'Admin'] %}
         <div class="md:hidden flex items-center justify-between bg-kpi-red text-white p-4 shrink-0 shadow-md z-10">
             <h1 class="text-lg font-bold tracking-wide">KPI Platform</h1>
             <button type="button" class="text-white hover:text-red-200 focus:outline-none" onclick="toggleMobileSidebar()" aria-label="Open navigation menu" aria-controls="mainSidebar" aria-expanded="false">
