@@ -382,7 +382,7 @@
                     const data = await response.json();
 
                     if (data.must_change_password) {
-                        window.location.href = '/change-password';
+                        window.location.href = '/auth/change-password';
                     } else {
                         const userData = data.user;
                         if(userData) {

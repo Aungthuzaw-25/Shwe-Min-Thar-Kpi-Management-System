@@ -5,6 +5,7 @@
 venv/
 env/
 .venv/
+.vscode/
 
 # Caches & Bytecode
 __pycache__/
