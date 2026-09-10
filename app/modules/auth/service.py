@@ -12,11 +12,11 @@ from typing import Optional, Dict, Any
 
 from app.modules.users.models import User
 from app.modules.departments.models import UserDepartment
-from app.modules.auth.models import LoginHistory, TokenBlacklist, AuthSession
+from app.modules.auth.models import LoginHistory, TokenBlacklist, AuthSession, PasswordHistory
 from app.modules.users import password_repo
 from app.core import security
 from app.core.config import settings
-from app.core.password_policy import validate_password_strength
+from app.core.password_policy import get_password_expiry_days
 from app.models.audit_log import AuditLog
 
 DUMMY_PASSWORD_HASH = "$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjIQ6VSAca"
@@ -78,6 +78,19 @@ class AuthService:
         user.failed_login_attempts = 0
         user.is_locked = False
         user.lockout_until = None
+        expiry_days = await get_password_expiry_days(db)
+        if expiry_days:
+            latest_password = (await db.execute(
+                select(PasswordHistory)
+                .where(PasswordHistory.user_id == user.id)
+                .order_by(PasswordHistory.created_at.desc())
+                .limit(1)
+            )).scalars().first()
+            password_changed_at = getattr(latest_password, "created_at", None)
+            if password_changed_at:
+                age = now - password_changed_at
+                if age >= timedelta(days=expiry_days):
+                    user.must_change_password = True
         
         success_history = LoginHistory(user_id=user.id, ip_address=ip_address, user_agent=user_agent, is_success=True, attempted_at=now)
         db.add(success_history)

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict, field_validator # 🌟 FIX: Imported ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator, Field, StrictBool, StrictInt
 from typing import Optional, Any, Dict
 from datetime import datetime
 from uuid import UUID
@@ -13,13 +13,19 @@ class SystemSettingUpdate(BaseModel):
     value: Optional[Dict[str, Any]] = None
     description: Optional[str] = None
 
+
+class PasswordPolicyValue(BaseModel):
+    minimum_password_length: StrictInt = Field(ge=8, le=128)
+    require_complexity: StrictBool
+    force_password_change_days: StrictInt = Field(ge=0, le=3650)
+
 class SystemSettingResponse(BaseModel):
     id: UUID
     key: str
     value: Dict[str, Any]
     description: Optional[str] = None
     created_at: datetime
-    updated_at: datetime
+    updated_at: Optional[datetime] = None
 
     # 🌟 FIX: Updated to Pydantic V2 syntax
     model_config = ConfigDict(from_attributes=True)
@@ -41,3 +47,14 @@ class SystemEventLogResponse(BaseModel):
 
     # 🌟 FIX: Updated to Pydantic V2 syntax
     model_config = ConfigDict(from_attributes=True)
+
+
+class SystemEventLogDetailResponse(SystemEventLogResponse):
+    pass
+
+
+class SystemEventLogPage(BaseModel):
+    items: list[SystemEventLogResponse]
+    total: int
+    page: int
+    page_size: int

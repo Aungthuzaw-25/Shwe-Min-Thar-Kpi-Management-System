@@ -134,7 +134,7 @@
                         <div class="space-y-4 sm:space-y-6">
                             <div>
                                 <label class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">Minimum Password Length</label>
-                                <input type="number" id="set_pwd_length" value="8" min="6" max="32" class="w-full bg-slate-50 border border-gray-200 p-3 rounded-xl text-sm font-semibold focus:outline-none focus:bg-white focus:border-blue-900 transition-all shadow-inner">
+                                <input type="number" id="set_pwd_length" value="8" min="8" max="128" class="w-full bg-slate-50 border border-gray-200 p-3 rounded-xl text-sm font-semibold focus:outline-none focus:bg-white focus:border-blue-900 transition-all shadow-inner">
                             </div>
                             <div class="space-y-3 sm:space-y-4">
                                 <label class="flex items-center cursor-pointer group">
@@ -260,9 +260,10 @@
                         if(data.use_tls !== undefined) document.getElementById('set_smtp_tls').checked = data.use_tls;
                     } 
                     else if (setting.key === 'security') {
-                        if(data.min_length) document.getElementById('set_pwd_length').value = data.min_length;
+                        if(data.minimum_password_length || data.min_length) document.getElementById('set_pwd_length').value = data.minimum_password_length || data.min_length;
                         if(data.require_complexity !== undefined) document.getElementById('set_pwd_complex').checked = data.require_complexity;
                         if(data.password_expiry !== undefined) document.getElementById('set_pwd_expire').checked = data.password_expiry;
+                        else if(data.force_password_change_days !== undefined) document.getElementById('set_pwd_expire').checked = Number(data.force_password_change_days) > 0;
                         if(data.session_timeout) document.getElementById('set_session_timeout').value = data.session_timeout;
                     }
                 });
@@ -281,7 +282,15 @@
                 body: JSON.stringify({ value: valueObj })
             });
             // 🛡️ AUTH FIX
-            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return false; }
+            if (res.status === 401) {
+                showToast("Your session has expired. Please sign in again.", "error");
+                window.location.href = '/auth/login';
+                return false;
+            }
+            if (res.status === 403) {
+                showToast("You do not have permission to edit system settings.", "error");
+                return false;
+            }
             
             if (res.status === 404) {
                 res = await fetch('/api/v1/system/settings', {
@@ -289,6 +298,21 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ key: key, value: valueObj })
                 });
+            }
+            if (!res.ok) {
+                let detail = `HTTP ${res.status}`;
+                try {
+                    const error = await res.json();
+                    detail = error.detail || detail;
+                } catch (_) {}
+                console.error(`Failed to save ${key}:`, res.status, detail);
+                if (res.status === 422 || res.status === 400) {
+                    showToast("Please check the security policy values and try again.", "error");
+                } else if (res.status === 404) {
+                    showToast(`The ${key} settings endpoint was not found.`, "error");
+                } else if (res.status >= 500) {
+                    showToast("The server could not save the settings. Please try again.", "error");
+                }
             }
             return res.ok;
         } catch (e) {
@@ -317,10 +341,12 @@
             use_tls: document.getElementById('set_smtp_tls').checked
         };
         const securityVal = {
-            min_length: document.getElementById('set_pwd_length').value,
+            minimum_password_length: Number(document.getElementById('set_pwd_length').value),
+            min_length: Number(document.getElementById('set_pwd_length').value),
             require_complexity: document.getElementById('set_pwd_complex').checked,
             password_expiry: document.getElementById('set_pwd_expire').checked,
-            session_timeout: document.getElementById('set_session_timeout').value
+            force_password_change_days: document.getElementById('set_pwd_expire').checked ? 90 : 0,
+            session_timeout: Number(document.getElementById('set_session_timeout').value)
         };
 
         try {
@@ -333,7 +359,7 @@
             if (results.every(r => r === true)) {
                 showToast("System settings updated successfully.", "success");
             } else {
-                showToast("Some settings failed to save.", "error");
+                showToast("Some settings failed to save. Check your permissions and field values.", "error");
             }
         } catch(e) {
             showToast("Network error. Failed to save settings.", "error");

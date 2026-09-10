@@ -21,7 +21,7 @@ from app.core.dependencies import RoleChecker, get_current_user, enforce_permiss
 from app.utils.audit import log_audit_trail
 from app.services.activity_service import record_activity
 from app.core.security import get_password_hash
-from app.core.password_policy import validate_password_strength
+from app.core.password_policy import get_password_policy, validate_password_strength
 
 # 🌟 BUG FIX: Role Model ကို models.py မှ တိုက်ရိုက်ယူပါမည် (roles.py အဟောင်းကို မသုံးပါ)
 from app.modules.users.models import User, Role
@@ -170,7 +170,7 @@ async def create_new_user(payload: UserCreate, db: AsyncSession = Depends(get_db
     user_level = normalize_user_level(getattr(payload, 'user_level', 'L2') or 'L2')
     
     try:
-        validate_password_strength(provided_password)
+        validate_password_strength(provided_password, **(await get_password_policy(db)))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
         
@@ -292,7 +292,7 @@ async def create_super_admin(
         raise HTTPException(status_code=409, detail='An account with this email already exists.')
 
     try:
-        validate_password_strength(payload.password)
+        validate_password_strength(payload.password, **(await get_password_policy(db)))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -774,7 +774,7 @@ async def reset_user_password(user_id: UUID, payload: PasswordResetAdmin, db: As
         raise HTTPException(status_code=403, detail='You do not have permission to reset a Super Admin account password.')
         
     try:
-        validate_password_strength(payload.new_password)
+        validate_password_strength(payload.new_password, **(await get_password_policy(db)))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
         

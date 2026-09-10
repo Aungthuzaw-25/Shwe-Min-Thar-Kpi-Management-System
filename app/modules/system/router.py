@@ -1,13 +1,19 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import JSONResponse
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
+from uuid import UUID
 from datetime import datetime
 
 from app.database.connection import get_db
 from app.core.dependencies import get_current_user, enforce_permission
 from app.modules.system import repo
-from app.modules.system.schemas import SystemSettingCreate, SystemSettingUpdate, SystemSettingResponse, SystemEventLogResponse
+from app.modules.system.schemas import (
+    SystemSettingCreate, SystemSettingUpdate, SystemSettingResponse,
+    SystemEventLogResponse, SystemEventLogPage, SystemEventLogDetailResponse, PasswordPolicyValue,
+)
+from app.models.system import LogLevel
 from app.modules.users.models import User
 from app.models.audit_log import AuditLog
 
@@ -23,6 +29,28 @@ def _sanitize_setting_value(key: str, value: dict) -> dict:
     sanitized = dict(value)
     if key.lower() == "email":
         sanitized.pop("password", None)
+    elif key.lower() == "security":
+        try:
+            policy = PasswordPolicyValue.model_validate({
+                "minimum_password_length": sanitized.get(
+                    "minimum_password_length", sanitized.get("min_length")
+                ),
+                "require_complexity": sanitized.get("require_complexity"),
+                "force_password_change_days": sanitized.get(
+                    "force_password_change_days",
+                    90 if sanitized.get("password_expiry", False) else 0,
+                ),
+            })
+        except ValidationError as exc:
+            raise HTTPException(status_code=422, detail=exc.errors()) from exc
+        sanitized = {
+            **sanitized,
+            "minimum_password_length": policy.minimum_password_length,
+            "min_length": policy.minimum_password_length,
+            "require_complexity": policy.require_complexity,
+            "force_password_change_days": policy.force_password_change_days,
+            "password_expiry": policy.force_password_change_days > 0,
+        }
     return sanitized
 
 
@@ -80,16 +108,52 @@ async def update_existing_setting(
     await db.commit()
     return updated
 
-@router.get("/logs", response_model=List[SystemEventLogResponse])
+@router.get("/logs", response_model=SystemEventLogPage)
 async def read_system_logs(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(50, gt=0, le=500, description="Maximum number of logs to fetch (capped at 500)"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, gt=0, le=500),
+    skip: int | None = Query(None, ge=0, include_in_schema=False),
+    limit: int | None = Query(None, gt=0, le=500, include_in_schema=False),
+    level: LogLevel | None = None,
+    event_type: str | None = Query(None, max_length=100),
+    service: str | None = Query(None, max_length=100),
+    search: str | None = Query(None, max_length=200),
+    start: datetime | None = None,
+    end: datetime | None = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Background Jobs နှင့် System Event များကို ကြည့်ရန်"""
     enforce_permission(current_user, "system.settings.view")
-    return await repo.get_recent_logs(db, skip=skip, limit=limit)
+    effective_size = limit or page_size
+    effective_skip = skip if skip is not None else (page - 1) * effective_size
+    event_filter = event_type or service
+    items = await repo.get_recent_logs(
+        db, skip=effective_skip, limit=effective_size, level=level,
+        event_type=event_filter, search=search, start=start, end=end,
+    )
+    total = await repo.count_system_logs(
+        db, level=level, event_type=event_filter, search=search, start=start, end=end,
+    )
+    return {
+        "items": items,
+        "total": total,
+        "page": (effective_skip // effective_size) + 1,
+        "page_size": effective_size,
+    }
+
+
+@router.get("/logs/{log_id}", response_model=SystemEventLogDetailResponse)
+async def read_system_log_detail(
+    log_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    enforce_permission(current_user, "system.settings.view")
+    log = await repo.get_system_log(db, log_id)
+    if not log:
+        raise HTTPException(status_code=404, detail="System log not found.")
+    return log
 
 
 # =================================================================================

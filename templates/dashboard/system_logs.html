@@ -15,6 +15,14 @@
 
     <div class="w-full max-w-6xl bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex-1">
         <div class="overflow-auto custom-scrollbar max-h-[75vh]">
+            <div class="p-4 border-b border-gray-100 flex flex-wrap gap-2">
+                <input id="logSearch" class="border rounded-lg px-3 py-2 text-sm" placeholder="Search logs">
+                <select id="logLevel" class="border rounded-lg px-3 py-2 text-sm">
+                    <option value="">All levels</option><option>DEBUG</option><option>INFO</option>
+                    <option>WARNING</option><option>ERROR</option><option>CRITICAL</option>
+                </select>
+                <button type="button" onclick="loadSystemLogs(1)" class="bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-bold">Filter</button>
+            </div>
             <table class="w-full min-w-[760px] text-left text-xs sm:text-sm">
                 <thead class="bg-slate-50 border-b border-gray-200 text-[10px] sm:text-xs uppercase text-slate-500 font-bold sticky top-0">
                     <tr>
@@ -29,6 +37,10 @@
                     <tr><td colspan="5" class="p-10 text-center text-slate-400">Loading system logs...</td></tr>
                 </tbody>
             </table>
+        </div>
+        <div class="p-4 border-t border-gray-100 flex items-center justify-between text-sm">
+            <span id="logSummary" class="text-slate-500"></span>
+            <div class="flex gap-2"><button id="prevLogs" onclick="loadSystemLogs(currentPage - 1)" class="border px-3 py-1 rounded-lg">Previous</button><button id="nextLogs" onclick="loadSystemLogs(currentPage + 1)" class="border px-3 py-1 rounded-lg">Next</button></div>
         </div>
     </div>
 </div>
@@ -65,23 +77,36 @@
         }).format(date);
     }
 
-    async function loadSystemLogs() {
+    let currentPage = 1;
+    const pageSize = 50;
+    async function loadSystemLogs(page = 1) {
+        if (page < 1) return;
+        currentPage = page;
         const body = document.getElementById('systemLogsBody');
         body.innerHTML = '<tr><td colspan="5" class="p-10 text-center text-slate-400">Loading system logs...</td></tr>';
         try {
-            const response = await fetch('/api/v1/system/logs?limit=200');
+            const params = new URLSearchParams({page, page_size: pageSize});
+            const search = document.getElementById('logSearch').value.trim();
+            const level = document.getElementById('logLevel').value;
+            if (search) params.set('search', search);
+            if (level) params.set('level', level);
+            const response = await fetch(`/api/v1/system/logs?${params}`);
             if (response.status === 401 || response.status === 403) {
                 window.location.href = '/auth/login';
                 return;
             }
             if (!response.ok) throw new Error('Unable to load system logs.');
-            const logs = await response.json();
+            const result = await response.json();
+            const logs = result.items || [];
+            document.getElementById('logSummary').textContent = `${result.total} log${result.total === 1 ? '' : 's'}`;
+            document.getElementById('prevLogs').disabled = page <= 1;
+            document.getElementById('nextLogs').disabled = page * pageSize >= result.total;
             if (!logs.length) {
                 body.innerHTML = '<tr><td colspan="5" class="p-10 text-center text-slate-400">No system logs found.</td></tr>';
                 return;
             }
             body.innerHTML = logs.map(log => `
-                <tr class="border-b border-slate-50 hover:bg-slate-50">
+                <tr class="border-b border-slate-50 hover:bg-slate-50 cursor-pointer" onclick="viewSystemLog('${escapeHTML(log.id)}')">
                     <td class="p-4 whitespace-nowrap text-slate-500">${escapeHTML(formatTimestamp(log.created_at))}</td>
                     <td class="p-4 font-bold text-slate-700">${escapeHTML(log.event_type)}</td>
                     <td class="p-4"><span class="px-2 py-1 rounded-md text-[10px] font-bold ${levelClass(log.level)}">${escapeHTML(log.level)}</span></td>
@@ -91,6 +116,13 @@
         } catch (error) {
             console.error('System log loading failed:', error);
             body.innerHTML = '<tr><td colspan="5" class="p-10 text-center text-red-500 font-bold">Unable to load system logs.</td></tr>';
+        }
+
+        async function viewSystemLog(id) {
+            const response = await fetch(`/api/v1/system/logs/${encodeURIComponent(id)}`);
+            if (!response.ok) return;
+            const log = await response.json();
+            alert(`${log.level} - ${log.event_type}\n${formatTimestamp(log.created_at)}\n\n${log.message}\n\n${JSON.stringify(log.details || {}, null, 2)}`);
         }
     }
 

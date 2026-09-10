@@ -14,7 +14,7 @@ from app.modules.users import password_repo
 from app.core.dependencies import get_current_user, get_permission_map
 from app.modules.users.models import User
 from app.modules.departments.models import UserDepartment
-from app.core.password_policy import validate_password_strength
+from app.core.password_policy import get_password_policy, validate_password_strength
 from app.core import security
 from app.core.config import settings
 
@@ -170,7 +170,7 @@ async def self_change_password(
     if not is_valid_old_password:
         raise HTTPException(status_code=400, detail='The current password provided is incorrect.')
 
-    validate_password_strength(payload.new_password)
+    validate_password_strength(payload.new_password, **(await get_password_policy(db)))
     
     is_valid_history = await password_repo.check_password_history(db, user.id, payload.new_password)
     if not is_valid_history:

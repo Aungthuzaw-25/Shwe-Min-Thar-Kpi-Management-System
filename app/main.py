@@ -46,6 +46,9 @@ from app.modules.activity_web import router as activity_web_router
 
 # Background Jobs & Scheduler
 from app.background_jobs.scheduler import start_scheduler
+from app.middleware.logging_middleware import RequestLoggingMiddleware
+from app.models.system import LogLevel
+from app.services.system_log_service import record_system_log
 
 logger = logging.getLogger("app.main")
 
@@ -68,6 +71,7 @@ os.makedirs("uploads", exist_ok=True)
 async def lifespan(app: FastAPI):
     # --- STARTUP LOGIC ---
     logger.info(f"🚀 Initializing {settings.PROJECT_NAME} (v{settings.VERSION})...")
+    await record_system_log(LogLevel.INFO, "APPLICATION_STARTUP", "Application startup initiated")
     
     # Static & Upload Folders တည်ဆောက်ခြင်း
     os.makedirs("static/css", exist_ok=True)
@@ -86,6 +90,7 @@ async def lifespan(app: FastAPI):
     
     # --- SHUTDOWN LOGIC ---
     logger.info("🛑 Shutting down application...")
+    await record_system_log(LogLevel.INFO, "APPLICATION_SHUTDOWN", "Application shutdown initiated")
     if scheduler:
         scheduler.shutdown(wait=False)
     await engine.dispose()
@@ -144,6 +149,7 @@ app.add_exception_handler(HTTPException, _http_exception_handler)
 
 # A. GZip Compression (API Response Payload ကို ချုံ့ပေး၍ Speed မြန်စေသည်)
 app.add_middleware(GZipMiddleware, minimum_size=1000)
+app.add_middleware(RequestLoggingMiddleware)
 
 # B. Strict CORS Policy
 ALLOWED_ORIGINS = [

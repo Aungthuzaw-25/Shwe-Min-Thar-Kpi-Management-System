@@ -1,9 +1,11 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy import func, or_
 from typing import List, Optional
 from uuid import UUID
+from datetime import datetime
 
-from app.models.system import SystemSetting, SystemEventLog
+from app.models.system import SystemSetting, SystemEventLog, LogLevel
 from app.modules.system.schemas import SystemSettingCreate, SystemSettingUpdate
 
 async def get_all_settings(db: AsyncSession) -> List[SystemSetting]:
@@ -43,11 +45,59 @@ async def update_setting(db: AsyncSession, db_obj: SystemSetting, obj_in: System
         raise e
 
 # ⚡ PERFORMANCE FIX: Added skip (offset) for proper pagination
-async def get_recent_logs(db: AsyncSession, skip: int = 0, limit: int = 50) -> List[SystemEventLog]:
-    """System Audit Log များကို ဆွဲထုတ်ရန် (Pagination ပါဝင်သည်)"""
-    stmt = select(SystemEventLog).order_by(SystemEventLog.created_at.desc()).offset(skip).limit(limit)
+async def get_recent_logs(
+    db: AsyncSession, skip: int = 0, limit: int = 50,
+    level: LogLevel | None = None, event_type: str | None = None,
+    search: str | None = None, start: datetime | None = None,
+    end: datetime | None = None,
+) -> List[SystemEventLog]:
+    stmt = select(SystemEventLog).where(SystemEventLog.is_deleted.is_(False))
+    if level:
+        stmt = stmt.where(SystemEventLog.level == level)
+    if event_type:
+        stmt = stmt.where(SystemEventLog.event_type.ilike(f"%{event_type}%"))
+    if search:
+        stmt = stmt.where(or_(
+            SystemEventLog.message.ilike(f"%{search}%"),
+            SystemEventLog.event_type.ilike(f"%{search}%"),
+        ))
+    if start:
+        stmt = stmt.where(SystemEventLog.created_at >= start)
+    if end:
+        stmt = stmt.where(SystemEventLog.created_at < end)
+    stmt = stmt.order_by(SystemEventLog.created_at.desc()).offset(skip).limit(limit)
     result = await db.execute(stmt)
     return result.scalars().all()
+
+
+async def count_system_logs(
+    db: AsyncSession, level: LogLevel | None = None,
+    event_type: str | None = None, search: str | None = None,
+    start: datetime | None = None, end: datetime | None = None,
+) -> int:
+    stmt = select(func.count(SystemEventLog.id)).where(SystemEventLog.is_deleted.is_(False))
+    if level:
+        stmt = stmt.where(SystemEventLog.level == level)
+    if event_type:
+        stmt = stmt.where(SystemEventLog.event_type.ilike(f"%{event_type}%"))
+    if search:
+        stmt = stmt.where(or_(
+            SystemEventLog.message.ilike(f"%{search}%"),
+            SystemEventLog.event_type.ilike(f"%{search}%"),
+        ))
+    if start:
+        stmt = stmt.where(SystemEventLog.created_at >= start)
+    if end:
+        stmt = stmt.where(SystemEventLog.created_at < end)
+    return int((await db.execute(stmt)).scalar_one())
+
+
+async def get_system_log(db: AsyncSession, log_id: UUID) -> Optional[SystemEventLog]:
+    result = await db.execute(select(SystemEventLog).where(
+        SystemEventLog.id == log_id,
+        SystemEventLog.is_deleted.is_(False),
+    ))
+    return result.scalar_one_or_none()
 
 # 🌟 ARCHITECTURE FIX: Added missing function to create event logs
 async def create_system_log(db: AsyncSession, log_data: dict) -> SystemEventLog:

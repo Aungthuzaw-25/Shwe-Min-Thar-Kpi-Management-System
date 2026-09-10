@@ -3,6 +3,7 @@ import enum
 from app.database.base import BaseModel
 
 class LogLevel(enum.Enum):
+    DEBUG = "DEBUG"
     INFO = "INFO"
     WARNING = "WARNING"
     ERROR = "ERROR"
