@@ -9,6 +9,7 @@ from app.main import app
 import app.modules.auth.router as auth_router
 import app.modules.kpi.dashboard_router as dashboard_router
 import app.modules.notifications.router as notifications_router
+import app.modules.system.router as system_router
 
 
 class FakeResult:
@@ -143,6 +144,54 @@ def test_dashboards_have_distinct_summary_routes():
 
     assert "/summary" in super_paths
     assert "/summary" in admin_paths
+
+
+@pytest.mark.asyncio
+async def test_system_logs_page_contract_supports_filters_and_nullable_timestamps(monkeypatch):
+    from app.models.system import LogLevel
+    from app.modules.system.schemas import SystemEventLogPage
+
+    user = SimpleNamespace(id=uuid4())
+    log = SimpleNamespace(
+        id=uuid4(),
+        event_type="SYSTEM_TEST",
+        level=LogLevel.INFO,
+        message="System logging pipeline verification event",
+        details={"safe": True},
+        created_at=None,
+    )
+
+    async def fake_logs(db, **kwargs):
+        assert kwargs["level"] == LogLevel.INFO
+        assert kwargs["skip"] == 0
+        return [log]
+
+    async def fake_count(db, **kwargs):
+        return 1
+
+    monkeypatch.setattr(system_router, "enforce_permission", lambda *args: None)
+    monkeypatch.setattr(system_router.repo, "get_recent_logs", fake_logs)
+    monkeypatch.setattr(system_router.repo, "count_system_logs", fake_count)
+
+    payload = await system_router.read_system_logs(
+        page=1,
+        page_size=25,
+        skip=None,
+        limit=None,
+        level=LogLevel.INFO,
+        event_type=None,
+        service=None,
+        search=None,
+        start=None,
+        end=None,
+        db=SimpleNamespace(),
+        current_user=user,
+    )
+
+    validated = SystemEventLogPage.model_validate(payload)
+    assert validated.total == 1
+    assert validated.items[0].event_type == "SYSTEM_TEST"
+    assert validated.items[0].created_at is None
 
 
 @pytest.mark.asyncio

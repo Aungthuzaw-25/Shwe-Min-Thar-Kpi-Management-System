@@ -90,13 +90,21 @@
             const level = document.getElementById('logLevel').value;
             if (search) params.set('search', search);
             if (level) params.set('level', level);
-            const response = await fetch(`/api/v1/system/logs?${params}`);
+            const response = await fetch(`/api/v1/system/logs?${params}`, {
+                credentials: 'same-origin',
+                headers: { 'Accept': 'application/json' }
+            });
             if (response.status === 401 || response.status === 403) {
                 window.location.href = '/auth/login';
                 return;
             }
-            if (!response.ok) throw new Error('Unable to load system logs.');
+            if (!response.ok) {
+                throw new Error(`System logs request failed (${response.status})`);
+            }
             const result = await response.json();
+            if (!result || !Array.isArray(result.items)) {
+                throw new Error('Invalid system logs response.');
+            }
             const logs = result.items || [];
             document.getElementById('logSummary').textContent = `${result.total} log${result.total === 1 ? '' : 's'}`;
             document.getElementById('prevLogs').disabled = page <= 1;
@@ -111,19 +119,25 @@
                     <td class="p-4 font-bold text-slate-700">${escapeHTML(log.event_type)}</td>
                     <td class="p-4"><span class="px-2 py-1 rounded-md text-[10px] font-bold ${levelClass(log.level)}">${escapeHTML(log.level)}</span></td>
                     <td class="p-4 text-slate-700">${escapeHTML(log.message)}</td>
-                    <td class="p-4 text-slate-500">${escapeHTML(log.details ? JSON.stringify(log.details) : '')}</td>
+                    <td class="p-4 text-slate-500">${escapeHTML(log.details ? JSON.stringify(log.details) : '—')}</td>
                 </tr>`).join('');
         } catch (error) {
             console.error('System log loading failed:', error);
             body.innerHTML = '<tr><td colspan="5" class="p-10 text-center text-red-500 font-bold">Unable to load system logs.</td></tr>';
         }
+    }
 
-        async function viewSystemLog(id) {
-            const response = await fetch(`/api/v1/system/logs/${encodeURIComponent(id)}`);
-            if (!response.ok) return;
-            const log = await response.json();
-            alert(`${log.level} - ${log.event_type}\n${formatTimestamp(log.created_at)}\n\n${log.message}\n\n${JSON.stringify(log.details || {}, null, 2)}`);
+    async function viewSystemLog(id) {
+        const response = await fetch(`/api/v1/system/logs/${encodeURIComponent(id)}`, {
+            credentials: 'same-origin',
+            headers: { 'Accept': 'application/json' }
+        });
+        if (!response.ok) {
+            showToast(response.status === 404 ? 'System log not found.' : 'Unable to load system log detail.', 'error');
+            return;
         }
+        const log = await response.json();
+        alert(`${log.level} - ${log.event_type}\n${formatTimestamp(log.created_at)}\n\n${log.message}\n\n${JSON.stringify(log.details || {}, null, 2)}`);
     }
 
     document.addEventListener('DOMContentLoaded', loadSystemLogs);

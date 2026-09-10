@@ -43,7 +43,7 @@ class SystemEventLogResponse(BaseModel):
     level: LogLevel
     message: str
     details: Optional[Dict[str, Any]] = None
-    created_at: datetime
+    created_at: Optional[datetime] = None
 
     # 🌟 FIX: Updated to Pydantic V2 syntax
     model_config = ConfigDict(from_attributes=True)
