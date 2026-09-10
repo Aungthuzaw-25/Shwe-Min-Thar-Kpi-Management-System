@@ -33,6 +33,11 @@ async def record_system_log(
     details: dict[str, Any] | None = None,
 ) -> None:
     safe_details = _safe_metadata(details or {})
+    if not safe_details:
+        safe_details = {
+            "component": event_type.split("_", 1)[0].lower(),
+            "event": event_type.lower(),
+        }
     getattr(logger, level.value.lower(), logger.info)(message)
     try:
         async with AsyncSessionLocal() as db:

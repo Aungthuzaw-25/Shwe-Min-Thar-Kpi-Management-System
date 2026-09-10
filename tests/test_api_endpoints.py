@@ -10,6 +10,7 @@ import app.modules.auth.router as auth_router
 import app.modules.kpi.dashboard_router as dashboard_router
 import app.modules.notifications.router as notifications_router
 import app.modules.system.router as system_router
+import app.modules.activity_web as activity_web
 
 
 class FakeResult:
@@ -147,6 +148,36 @@ def test_dashboards_have_distinct_summary_routes():
 
 
 @pytest.mark.asyncio
+async def test_notifications_choose_role_compatible_layout(monkeypatch):
+    request = SimpleNamespace()
+    db = SimpleNamespace()
+    user = SimpleNamespace(
+        id=uuid4(),
+        role=SimpleNamespace(name="Super Admin"),
+        first_name="Super",
+        last_name="Admin",
+        email="admin@example.com",
+    )
+
+    async def fake_context(db_arg, user_arg):
+        return {}
+
+    captured = {}
+
+    class TemplateStub:
+        def TemplateResponse(self, **kwargs):
+            captured.update(kwargs["context"])
+            return kwargs["context"]
+
+    monkeypatch.setattr(activity_web, "get_employee_context", fake_context)
+    monkeypatch.setattr(activity_web, "templates", TemplateStub())
+    result = await activity_web.notifications_page(request, db, user)
+
+    assert result["layout_template"] == "layouts/base.html"
+    assert result["active_page"] == "notifications"
+
+
+@pytest.mark.asyncio
 async def test_system_logs_page_contract_supports_filters_and_nullable_timestamps(monkeypatch):
     from app.models.system import LogLevel
     from app.modules.system.schemas import SystemEventLogPage
@@ -192,6 +223,39 @@ async def test_system_logs_page_contract_supports_filters_and_nullable_timestamp
     assert validated.total == 1
     assert validated.items[0].event_type == "SYSTEM_TEST"
     assert validated.items[0].created_at is None
+
+
+@pytest.mark.asyncio
+async def test_system_logs_database_failure_returns_safe_error(monkeypatch):
+    from sqlalchemy.exc import SQLAlchemyError
+
+    async def fail(*args, **kwargs):
+        raise SQLAlchemyError("database details must not reach the client")
+
+    monkeypatch.setattr(system_router, "enforce_permission", lambda *args: None)
+    monkeypatch.setattr(system_router.repo, "get_recent_logs", fail)
+
+    with pytest.raises(system_router.HTTPException) as exc_info:
+        await system_router.read_system_logs(
+            page=1, page_size=25, skip=None, limit=None, level=None,
+            event_type=None, service=None, search=None, start=None, end=None,
+            db=SimpleNamespace(), current_user=SimpleNamespace(id=uuid4()),
+        )
+
+    assert exc_info.value.status_code == 503
+    assert exc_info.value.detail == "System logs are temporarily unavailable."
+
+
+@pytest.mark.asyncio
+async def test_system_log_detail_rejects_invalid_id(monkeypatch):
+    monkeypatch.setattr(system_router, "enforce_permission", lambda *args: None)
+    with pytest.raises(system_router.HTTPException) as exc_info:
+        await system_router.read_system_log_detail(
+            "not-a-uuid",
+            SimpleNamespace(),
+            SimpleNamespace(id=uuid4()),
+        )
+    assert exc_info.value.status_code == 404
 
 
 @pytest.mark.asyncio

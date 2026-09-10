@@ -71,7 +71,12 @@ os.makedirs("uploads", exist_ok=True)
 async def lifespan(app: FastAPI):
     # --- STARTUP LOGIC ---
     logger.info(f"🚀 Initializing {settings.PROJECT_NAME} (v{settings.VERSION})...")
-    await record_system_log(LogLevel.INFO, "APPLICATION_STARTUP", "Application startup initiated")
+    await record_system_log(
+        LogLevel.INFO,
+        "APPLICATION_STARTUP",
+        "Application startup initiated",
+        {"component": "application", "event": "startup"},
+    )
     
     # Static & Upload Folders တည်ဆောက်ခြင်း
     os.makedirs("static/css", exist_ok=True)
@@ -90,7 +95,12 @@ async def lifespan(app: FastAPI):
     
     # --- SHUTDOWN LOGIC ---
     logger.info("🛑 Shutting down application...")
-    await record_system_log(LogLevel.INFO, "APPLICATION_SHUTDOWN", "Application shutdown initiated")
+    await record_system_log(
+        LogLevel.INFO,
+        "APPLICATION_SHUTDOWN",
+        "Application shutdown initiated",
+        {"component": "application", "event": "shutdown"},
+    )
     if scheduler:
         scheduler.shutdown(wait=False)
     await engine.dispose()

@@ -77,6 +77,17 @@
         }).format(date);
     }
 
+    function formatDetails(details) {
+        if (!details || typeof details !== 'object' || Array.isArray(details)) {
+            return '—';
+        }
+        const entries = Object.entries(details);
+        if (!entries.length) return '—';
+        return entries.map(([key, value]) =>
+            `<div><span class="font-semibold text-slate-600">${escapeHTML(key)}:</span> ${escapeHTML(typeof value === 'object' ? JSON.stringify(value) : value)}</div>`
+        ).join('');
+    }
+
     let currentPage = 1;
     const pageSize = 50;
     async function loadSystemLogs(page = 1) {
@@ -119,7 +130,7 @@
                     <td class="p-4 font-bold text-slate-700">${escapeHTML(log.event_type)}</td>
                     <td class="p-4"><span class="px-2 py-1 rounded-md text-[10px] font-bold ${levelClass(log.level)}">${escapeHTML(log.level)}</span></td>
                     <td class="p-4 text-slate-700">${escapeHTML(log.message)}</td>
-                    <td class="p-4 text-slate-500">${escapeHTML(log.details ? JSON.stringify(log.details) : '—')}</td>
+                    <td class="p-4 text-slate-500 max-w-[320px] break-words">${formatDetails(log.details)}</td>
                 </tr>`).join('');
         } catch (error) {
             console.error('System log loading failed:', error);

@@ -20,6 +20,11 @@ async def notifications_page(
         return RedirectResponse(url="/auth/login")
     context = await get_employee_context(db, current_user)
     context["active_page"] = "notifications"
+    context["layout_template"] = (
+        "layouts/employee_base.html"
+        if current_user.role.name not in {"Super Admin", "Admin", "System Admin"}
+        else "layouts/base.html"
+    )
     return templates.TemplateResponse(
         request=request,
         name="dashboard/notifications.html",

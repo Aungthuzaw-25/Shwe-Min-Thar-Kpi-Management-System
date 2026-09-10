@@ -1,7 +1,9 @@
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import SQLAlchemyError
 from typing import List
 from uuid import UUID
 from datetime import datetime
@@ -18,6 +20,7 @@ from app.modules.users.models import User
 from app.models.audit_log import AuditLog
 
 router = APIRouter(prefix="/system", tags=["System Settings & Logs"])
+logger = logging.getLogger(__name__)
 
 SENSITIVE_SETTING_TERMS = (
     "password", "secret", "token", "api_key", "apikey", "private_key",
@@ -128,13 +131,20 @@ async def read_system_logs(
     effective_size = limit or page_size
     effective_skip = skip if skip is not None else (page - 1) * effective_size
     event_filter = event_type or service
-    items = await repo.get_recent_logs(
-        db, skip=effective_skip, limit=effective_size, level=level,
-        event_type=event_filter, search=search, start=start, end=end,
-    )
-    total = await repo.count_system_logs(
-        db, level=level, event_type=event_filter, search=search, start=start, end=end,
-    )
+    try:
+        items = await repo.get_recent_logs(
+            db, skip=effective_skip, limit=effective_size, level=level,
+            event_type=event_filter, search=search, start=start, end=end,
+        )
+        total = await repo.count_system_logs(
+            db, level=level, event_type=event_filter, search=search, start=start, end=end,
+        )
+    except SQLAlchemyError as exc:
+        logger.exception("System logs query failed")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="System logs are temporarily unavailable.",
+        ) from exc
     return {
         "items": items,
         "total": total,
@@ -145,12 +155,16 @@ async def read_system_logs(
 
 @router.get("/logs/{log_id}", response_model=SystemEventLogDetailResponse)
 async def read_system_log_detail(
-    log_id: UUID,
+    log_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     enforce_permission(current_user, "system.settings.view")
-    log = await repo.get_system_log(db, log_id)
+    try:
+        parsed_log_id = UUID(log_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="System log not found.") from exc
+    log = await repo.get_system_log(db, parsed_log_id)
     if not log:
         raise HTTPException(status_code=404, detail="System log not found.")
     return log
