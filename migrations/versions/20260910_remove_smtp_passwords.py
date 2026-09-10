@@ -14,10 +14,14 @@ depends_on = None
 
 
 def upgrade():
+    # `system_settings.value` is PostgreSQL JSON (not JSONB). Cast only for
+    # the JSONB object operation, then store the result back as JSON.
     op.execute(
         "UPDATE system_settings "
-        "SET value = value - 'password' "
-        "WHERE key = 'email' AND value ? 'password'"
+        "SET value = ((value::jsonb - 'password')::json) "
+        "WHERE key = 'email' "
+        "AND jsonb_typeof(value::jsonb) = 'object' "
+        "AND value::jsonb ? 'password'"
     )
 
 
