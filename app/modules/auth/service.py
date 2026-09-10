@@ -12,11 +12,12 @@ from typing import Optional, Dict, Any
 
 from app.modules.users.models import User
 from app.modules.departments.models import UserDepartment
-from app.modules.auth.models import LoginHistory, TokenBlacklist
+from app.modules.auth.models import LoginHistory, TokenBlacklist, AuthSession
 from app.modules.users import password_repo
 from app.core import security
 from app.core.config import settings
 from app.core.password_policy import validate_password_strength
+from app.models.audit_log import AuditLog
 
 DUMMY_PASSWORD_HASH = "$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjIQ6VSAca"
 
@@ -27,7 +28,8 @@ class AuthService:
         email: str, 
         password: str, 
         ip_address: str = "Unknown", 
-        user_agent: str = "Unknown"
+        user_agent: str = "Unknown",
+        remember_me: bool = False,
     ) -> Dict[str, Any]:
         now = datetime.now(timezone.utc).replace(tzinfo=None)
 
@@ -35,7 +37,7 @@ class AuthService:
             selectinload(User.role),
             selectinload(User.position),
             selectinload(User.user_departments).selectinload(UserDepartment.department)
-        ).where(User.email == email)
+        ).where(User.email == email).with_for_update()
         
         result = await db.execute(stmt)
         user = result.scalars().first()
@@ -79,6 +81,10 @@ class AuthService:
         
         success_history = LoginHistory(user_id=user.id, ip_address=ip_address, user_agent=user_agent, is_success=True, attempted_at=now)
         db.add(success_history)
+        db.add(AuditLog(
+            user_id=user.id, action="LOGIN", table_name="auth_sessions",
+            ip_address=ip_address, new_value={"success": True, "remember_me": remember_me},
+        ))
         await db.commit()
 
         role_value = user.role.name if user.role else str(user.role_id)
@@ -93,9 +99,63 @@ class AuthService:
             if ud.department:
                 dept_name = ud.department.name
 
+        # Older callers/tests may provide a light-weight fake DB.  Real
+        # sessions are always persisted when using SQLAlchemy.
+        session = None
+        if hasattr(db, "bind"):
+            import hashlib
+            device_id = hashlib.sha256(
+                f"{user_agent}|{ip_address}".encode("utf-8")
+            ).hexdigest()[:32]
+            active = (await db.execute(
+                select(AuthSession).where(
+                    AuthSession.user_id == user.id,
+                    AuthSession.revoked_at.is_(None),
+                    AuthSession.expires_at > now,
+                ).order_by(AuthSession.last_used_at.asc()).with_for_update()
+            )).scalars().all()
+            # A new login from the same device replaces its old session.
+            for existing in active:
+                if existing.device_id == device_id:
+                    existing.revoked_at = now
+                    db.add(AuditLog(
+                        user_id=user.id, action="SESSION_REVOKED",
+                        table_name="auth_sessions",
+                        new_value={"reason": "new_login_same_device"},
+                        ip_address=ip_address,
+                    ))
+            remaining = [item for item in active if item.device_id != device_id]
+            for existing in remaining[:max(0, len(remaining) - 1)]:
+                existing.revoked_at = now
+                db.add(AuditLog(
+                    user_id=user.id, action="SESSION_REVOKED",
+                    table_name="auth_sessions",
+                    new_value={"reason": "device_limit"},
+                    ip_address=ip_address,
+                ))
+            session = AuthSession(
+                user_id=user.id, device_id=device_id, user_agent=user_agent,
+                ip_address=ip_address, remember_me=remember_me,
+                expires_at=now + timedelta(
+                    days=settings.REFRESH_TOKEN_EXPIRE_DAYS if remember_me else 1
+                ),
+                last_used_at=now, refresh_token_hash="pending",
+            )
+            db.add(session)
+            await db.flush()
+
         token_data = {"sub": user.email, "user_id": str(user.id), "role": role_value, "level": user_level}
+        if session is not None:
+            token_data["sid"] = str(session.id)
         access_token = security.create_access_token(data=token_data)
-        refresh_token = security.create_refresh_token(data=token_data)
+        refresh_token = (
+            security.create_refresh_token(data=token_data, remember_me=remember_me)
+            if session is not None
+            else security.create_refresh_token(data=token_data)
+        )
+        if session is not None:
+            session.refresh_token_hash = security.token_digest(refresh_token)
+            await db.commit()
 
         return {
             "access_token": access_token,

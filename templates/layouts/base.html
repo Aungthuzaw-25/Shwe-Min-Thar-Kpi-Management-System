@@ -515,7 +515,7 @@
                 
                 // 🌟 SECURITY FIX: Applied window.escapeHTML
                 return `
-                    <button type="button" data-notification-id="${window.escapeHTML(n.id)}" class="w-full text-left p-4 hover:bg-slate-50 transition flex gap-3 ${bgClass}">
+                    <button type="button" data-notification-id="${window.escapeHTML(n.id)}" onclick="viewNotificationDetail('${window.escapeHTML(n.id)}')" class="w-full text-left p-4 hover:bg-slate-50 transition flex gap-3 ${bgClass}">
                         ${dot}
                         <div class="flex-1 min-w-0">
                             <p class="text-[13px] font-extrabold text-blue-950 mb-0.5 truncate">${window.escapeHTML(n.title)}</p>

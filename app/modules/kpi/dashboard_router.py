@@ -385,7 +385,12 @@ async def fetch_superadmin_dashboard_data(
     total_depts = depts_count.scalar() or 0
 
     # 3. Active Alerts (Unread Notifications)
-    alerts_count = await db.execute(select(func.count(Notification.id)).where(Notification.is_read == False))
+    alerts_count = await db.execute(
+        select(func.count(Notification.id)).where(
+            Notification.is_read.is_(False),
+            Notification.is_deleted.is_(False),
+        )
+    )
     active_alerts = alerts_count.scalar() or 0
 
     # 4. Total KPIs Evaluated
@@ -406,7 +411,7 @@ async def fetch_superadmin_dashboard_data(
     recent_alerts_stmt = (
         select(Notification, User)
         .outerjoin(User, Notification.user_id == User.id)
-        .where(Notification.is_read == False)
+        .where(Notification.is_read.is_(False), Notification.is_deleted.is_(False))
         .order_by(Notification.created_at.desc())
         .limit(6)
     )

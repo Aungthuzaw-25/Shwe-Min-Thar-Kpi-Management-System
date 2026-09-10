@@ -13,6 +13,7 @@ from app.modules.notifications.repo import (
     mark_all_notifications_as_read,
     mark_notification_as_read,
     count_unread_notifications,
+    get_notification_by_user,
 )
 
 # 🌟 Swagger UI တွင် သပ်ရပ်စွာပေါ်ရန် Tag ထည့်ပေးခြင်း
@@ -37,6 +38,26 @@ async def get_my_notifications(
     """မိမိ၏ Notification History များအားလုံးကို ကြည့်ရှုရန်"""
     # 🌟 FIX: Call the function directly
     return await get_notifications_by_user(db, current_user.id, skip=skip, limit=limit)
+
+@router.get("/{notification_id}", response_model=NotificationResponse)
+async def get_my_notification(
+    notification_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """Return one notification only when it belongs to the authenticated user."""
+    try:
+        parsed_notification_id = UUID(notification_id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notification not found")
+    notification = await get_notification_by_user(db, parsed_notification_id, current_user.id)
+    if notification is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notification not found")
+    if not notification.is_read:
+        notification.is_read = True
+        await db.commit()
+        await db.refresh(notification)
+    return notification
 
 # 🌟 အရေးကြီး: /read-all ကို UUID အထက်တွင် ရေးရပါမည်
 @router.put("/read-all", status_code=status.HTTP_200_OK)

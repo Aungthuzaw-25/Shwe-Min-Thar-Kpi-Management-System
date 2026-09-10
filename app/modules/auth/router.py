@@ -19,7 +19,7 @@ from app.core import security
 from app.core.config import settings
 
 # 🌟 MODIFIED: Imported TokenBlacklist from unified models
-from app.modules.auth.models import LoginHistory, TokenBlacklist
+from app.modules.auth.models import LoginHistory, TokenBlacklist, AuthSession
 from app.modules.auth.service import AuthService
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -113,131 +113,21 @@ async def login(request: Request, response: Response, payload: LoginRequest, db:
 
     # Keep JSON login and Swagger login on the same authentication policy.
     auth_result = await AuthService.authenticate_user(
-        db, payload.email, payload.password, client_ip, user_agent
+        db, payload.email, payload.password, client_ip, user_agent,
+        remember_me=payload.remember_me,
     )
     secure_cookie = cookie_secure_for_request(request)
     response.set_cookie(
         key="access_token", value=auth_result["access_token"], httponly=True,
-        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        max_age=(settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60 if payload.remember_me else None),
         samesite="strict", secure=secure_cookie,
     )
     response.set_cookie(
         key="refresh_token", value=auth_result["refresh_token"], httponly=True,
-        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
+        max_age=(settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60 if payload.remember_me else None),
         samesite="strict", secure=secure_cookie,
     )
     return auth_result
-
-    stmt = select(User).options(
-        selectinload(User.role),
-        selectinload(User.position),
-        selectinload(User.user_departments).selectinload(UserDepartment.department)
-    ).where(User.email == payload.email)
-    
-    result = await db.execute(stmt)
-    user = result.scalars().first()
-
-    if not user:
-        # ⚡ PERFORMANCE FIX: Offload CPU-bound dummy hash check to threadpool
-        await run_in_threadpool(security.verify_password, payload.password, DUMMY_PASSWORD_HASH)
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid email or password.')
-
-    if not user.is_active or user.is_deleted:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Account disabled. Please contact the administrator.')
-
-    if user.is_locked:
-        if user.lockout_until and user.lockout_until > now:
-            remaining = int((user.lockout_until - now).total_seconds() / 60)
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f'Account locked. Try again in {remaining} minutes.')
-        else:
-            user.is_locked = False
-            user.failed_login_attempts = 0
-            user.lockout_until = None
-            await db.commit()
-
-    # ⚡ PERFORMANCE FIX: Offload actual password verification to threadpool
-    is_valid_password = await run_in_threadpool(security.verify_password, payload.password, user.hashed_password)
-
-    if not is_valid_password:
-        user.failed_login_attempts += 1
-        if user.failed_login_attempts >= 5:
-            user.is_locked = True
-            user.lockout_until = now + timedelta(minutes=30)
-            
-        failed_history = LoginHistory(user_id=user.id, ip_address=client_ip, user_agent=user_agent, is_success=False, attempted_at=now)
-        db.add(failed_history)
-        await db.commit()
-        
-        if user.is_locked:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Account locked due to multiple failed login attempts.')
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid email or password.')
-
-    user.failed_login_attempts = 0
-    user.is_locked = False
-    user.lockout_until = None
-    
-    success_history = LoginHistory(user_id=user.id, ip_address=client_ip, user_agent=user_agent, is_success=True, attempted_at=now)
-    db.add(success_history)
-    await db.commit()
-
-    role_value = user.role.name if user.role else str(user.role_id)
-    
-    user_level = 'L2'
-    dept_name = 'No Department'
-    dept_id = None
-    if user.user_departments and len(user.user_departments) > 0:
-        ud = user.user_departments[0]
-        user_level = ud.user_level
-        dept_id = str(ud.department_id)
-        if ud.department:
-            dept_name = ud.department.name
-
-    pos_name = user.position.name if user.position else 'No Position'
-
-    token_data = {'sub': user.email, 'user_id': str(user.id), 'role': role_value, 'level': user_level}
-    access_token = security.create_access_token(data=token_data)
-    refresh_token = security.create_refresh_token(data=token_data)
-
-    secure_cookie = cookie_secure_for_request(request)
-    response.set_cookie(
-        key="access_token",
-        value=access_token,
-        httponly=True,
-        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-        samesite="strict",
-        secure=secure_cookie,
-    )
-
-    response.set_cookie(
-        key="refresh_token",
-        value=refresh_token,
-        httponly=True,
-        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
-        samesite="strict",
-        secure=secure_cookie
-    )
-
-
-    user_dict = {
-        "id": str(user.id),
-        "first_name": user.first_name,
-        "last_name": user.last_name,
-        "full_name": f"{user.first_name} {user.last_name}".strip(),
-        "email": user.email,
-        "role": {"name": role_value},
-        "level": user_level,
-        "department_id": dept_id,
-        "department_name": dept_name,
-        "position_name": pos_name
-    }
-
-    return {
-        'access_token': access_token, 
-        'refresh_token': refresh_token, 
-        'token_type': 'bearer',
-        'must_change_password': bool(user.must_change_password),
-        'user': user_dict 
-    }
 
 # ==============================================================================
 # 🌟 NEW: SWAGGER UI LOGIN API (Swagger Button မှ ဝင်ရောက်ရန်)
@@ -310,7 +200,8 @@ async def refresh_token(request: Request, response: Response, payload: RefreshTo
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Refresh token is missing.')
 
     # 🛡️ SECURITY FIX: Check if refresh token is blacklisted (Logged out)
-    is_blacklisted = await db.execute(select(TokenBlacklist).where(TokenBlacklist.token == token_to_verify))
+    token_hash = security.token_digest(token_to_verify)
+    is_blacklisted = await db.execute(select(TokenBlacklist).where(TokenBlacklist.token_hash == token_hash))
     if is_blacklisted.scalars().first():
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Refresh token has been revoked. Please log in again.')
 
@@ -333,9 +224,22 @@ async def refresh_token(request: Request, response: Response, payload: RefreshTo
     if not user or user.is_deleted or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='User not found or account is inactive.')
 
+    session_id = decoded.get("sid")
+    auth_session = None
+    if session_id:
+        auth_session = (await db.execute(select(AuthSession).where(
+            AuthSession.id == session_id,
+            AuthSession.user_id == user.id,
+            AuthSession.refresh_token_hash == token_hash,
+            AuthSession.revoked_at.is_(None),
+            AuthSession.expires_at > datetime.now(timezone.utc).replace(tzinfo=None),
+        ).with_for_update())).scalars().first()
+        if not auth_session:
+            raise HTTPException(status_code=401, detail="Refresh session has been revoked.")
+
     # Rotation makes a refresh token single-use. A second presentation is
     # rejected by the blacklist check above.
-    db.add(TokenBlacklist(token=token_to_verify))
+    db.add(TokenBlacklist(token_hash=token_hash))
     await db.commit()
 
     role_value = user.role.name if user.role else str(user.role_id)
@@ -345,12 +249,19 @@ async def refresh_token(request: Request, response: Response, payload: RefreshTo
 
     token_data = {'sub': user.email, 'user_id': str(user.id), 'role': role_value, 'level': user_level}
     new_access_token = security.create_access_token(data=token_data)
-    new_refresh_token = security.create_refresh_token(data=token_data)
+    new_refresh_token = security.create_refresh_token(
+        data=token_data, remember_me=bool(auth_session.remember_me) if auth_session else True
+    )
+    if auth_session:
+        auth_session.refresh_token_hash = security.token_digest(new_refresh_token)
+        auth_session.last_used_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        await db.commit()
 
     # 🛡️ SECURITY FIX: Upgraded to Strict CSRF Protection via samesite="strict"
     secure_cookie = cookie_secure_for_request(request)
-    response.set_cookie(key="access_token", value=new_access_token, httponly=True, max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60, samesite="strict", secure=secure_cookie)
-    response.set_cookie(key="refresh_token", value=new_refresh_token, httponly=True, max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60, samesite="strict", secure=secure_cookie)
+    persistent = bool(auth_session.remember_me) if auth_session else True
+    response.set_cookie(key="access_token", value=new_access_token, httponly=True, max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60 if persistent else None, samesite="strict", secure=secure_cookie)
+    response.set_cookie(key="refresh_token", value=new_refresh_token, httponly=True, max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60 if persistent else None, samesite="strict", secure=secure_cookie)
 
     return {'access_token': new_access_token, 'refresh_token': new_refresh_token, 'token_type': 'bearer'}
 
@@ -373,21 +284,28 @@ async def logout(request: Request, response: Response, db: AsyncSession = Depend
     tokens_to_revoke = [t for t in [access_token, refresh_token] if t]
     
     if tokens_to_revoke:
+        # ⚡ PERFORMANCE FIX: Check all presented credentials in one query.
+        token_hashes = [security.token_digest(token) for token in tokens_to_revoke]
+        stmt = select(TokenBlacklist.token_hash).where(TokenBlacklist.token_hash.in_(token_hashes))
+        existing_tokens = (await db.execute(stmt)).scalars().all()
+        for token_hash in set(token_hashes) - set(existing_tokens):
+            db.add(TokenBlacklist(token_hash=token_hash))
+
+        # Revoke the server-side session as well as its credentials.
         try:
-            # ⚡ PERFORMANCE FIX: Database ကို Loop ပတ်ပြီး အကြိမ်ကြိမ် မခေါ်တော့ဘဲ တစ်ခါတည်း (IN clause ဖြင့်) စစ်ဆေးမည်
-            stmt = select(TokenBlacklist.token).where(TokenBlacklist.token.in_(tokens_to_revoke))
-            existing_tokens = (await db.execute(stmt)).scalars().all()
-            
-            # မရှိသေးသော (အသစ်) Token များကိုသာ Blacklist သို့ ထည့်မည်
-            new_tokens_to_add = set(tokens_to_revoke) - set(existing_tokens)
-            
-            for t in new_tokens_to_add:
-                db.add(TokenBlacklist(token=t))
-                
-            if new_tokens_to_add:
-                await db.commit()
-        except Exception:
-            await db.rollback()
+            session_payload = jwt.decode(
+                refresh_token or access_token, settings.SECRET_KEY,
+                algorithms=[settings.ALGORITHM],
+                options={"verify_exp": False},
+            )
+        except JWTError:
+            session_payload = {}
+        sid = session_payload.get("sid")
+        if sid:
+            session = await db.get(AuthSession, sid)
+            if session:
+                session.revoked_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        await db.commit()
 
     # 🛡️ SECURITY FIX: Explicitly clear the strict cookies on logout
     secure_cookie = cookie_secure_for_request(request)

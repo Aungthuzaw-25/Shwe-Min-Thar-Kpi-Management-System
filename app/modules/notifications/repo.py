@@ -44,6 +44,16 @@ async def get_notifications_by_user(db: AsyncSession, user_id: UUID, skip: int =
     result = await db.execute(stmt)
     return result.scalars().all()
 
+async def get_notification_by_user(
+    db: AsyncSession, notification_id: UUID, user_id: UUID
+) -> Notification | None:
+    stmt = select(Notification).where(
+        Notification.id == notification_id,
+        Notification.user_id == user_id,
+        Notification.is_deleted.is_(False),
+    )
+    return (await db.execute(stmt)).scalar_one_or_none()
+
 async def mark_notification_as_read(db: AsyncSession, notification_id: UUID, user_id: UUID) -> bool:
     """သက်ဆိုင်ရာ Notification တစ်ခုတည်းကို 'ဖတ်ပြီး' (Read) ဟု ပြောင်းရန်"""
     try:

@@ -9,6 +9,7 @@ from app.core.dependencies import get_current_user, enforce_permission
 from app.modules.system import repo
 from app.modules.system.schemas import SystemSettingCreate, SystemSettingUpdate, SystemSettingResponse, SystemEventLogResponse
 from app.modules.users.models import User
+from app.models.audit_log import AuditLog
 
 router = APIRouter(prefix="/system", tags=["System Settings & Logs"])
 
@@ -16,6 +17,13 @@ SENSITIVE_SETTING_TERMS = (
     "password", "secret", "token", "api_key", "apikey", "private_key",
     "database_url", "access_key", "encryption_key",
 )
+
+
+def _sanitize_setting_value(key: str, value: dict) -> dict:
+    sanitized = dict(value)
+    if key.lower() == "email":
+        sanitized.pop("password", None)
+    return sanitized
 
 
 def _safe_backup_value(key: str, value):
@@ -44,6 +52,7 @@ async def create_new_setting(
     existing = await repo.get_setting_by_key(db, payload.key)
     if existing:
         raise HTTPException(status_code=400, detail="Setting key already exists.")
+    payload.value = _sanitize_setting_value(payload.key, payload.value)
     return await repo.create_setting(db, payload)
 
 @router.put("/settings/{key}", response_model=SystemSettingResponse)
@@ -58,7 +67,18 @@ async def update_existing_setting(
     setting = await repo.get_setting_by_key(db, key)
     if not setting:
         raise HTTPException(status_code=404, detail="Setting not found.")
-    return await repo.update_setting(db, setting, payload)
+    if payload.value is not None:
+        payload.value = _sanitize_setting_value(key, payload.value)
+    updated = await repo.update_setting(db, setting, payload)
+    db.add(AuditLog(
+        user_id=current_user.id,
+        action="UPDATE",
+        table_name="system_settings",
+        record_id=str(updated.id),
+        new_value={"key": updated.key, "value": _safe_backup_value(updated.key, updated.value)},
+    ))
+    await db.commit()
+    return updated
 
 @router.get("/logs", response_model=List[SystemEventLogResponse])
 async def read_system_logs(

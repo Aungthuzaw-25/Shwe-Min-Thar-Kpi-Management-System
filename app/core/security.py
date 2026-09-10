@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone # 🌟 IMPORT FIX: Added timezone
 import uuid
+import hashlib
 from passlib.context import CryptContext
 from jose import jwt
 from app.core.config import settings
@@ -34,9 +35,15 @@ def create_access_token(data: dict) -> str:
     to_encode.update({'exp': expire, 'type': 'access', 'jti': str(uuid.uuid4())})
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
-def create_refresh_token(data: dict) -> str:
+def create_refresh_token(data: dict, remember_me: bool = True) -> str:
     to_encode = data.copy()
     # 🌟 FUTURE-PROOF FIX: datetime.utcnow() is deprecated in Python 3.12+
-    expire = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    days = settings.REFRESH_TOKEN_EXPIRE_DAYS if remember_me else 1
+    expire = datetime.now(timezone.utc) + timedelta(days=days)
     to_encode.update({'exp': expire, 'type': 'refresh', 'jti': str(uuid.uuid4())})
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+
+
+def token_digest(token: str) -> str:
+    """Return a non-reversible digest suitable for revocation/session lookup."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()

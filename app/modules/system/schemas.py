@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict # 🌟 FIX: Imported ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator # 🌟 FIX: Imported ConfigDict
 from typing import Optional, Any, Dict
 from datetime import datetime
 from uuid import UUID
@@ -23,6 +23,13 @@ class SystemSettingResponse(BaseModel):
 
     # 🌟 FIX: Updated to Pydantic V2 syntax
     model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("value", mode="before")
+    @classmethod
+    def redact_mail_password(cls, value):
+        if isinstance(value, dict) and "password" in value:
+            return {key: item for key, item in value.items() if key != "password"}
+        return value
 
 class SystemEventLogResponse(BaseModel):
     id: UUID

@@ -453,7 +453,7 @@
                 const dot = n.is_read ? "" : `<div class="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-blue-600 mt-1 sm:mt-1.5 shrink-0 shadow-sm ring-2 ring-white"></div>`;
                 
                 return `
-                    <button type="button" data-notification-id="${window.escapeHTML(n.id)}" class="w-full text-left p-4 sm:p-5 hover:bg-slate-50 transition flex gap-3 sm:gap-4 ${bgClass}">
+                    <button type="button" data-notification-id="${window.escapeHTML(n.id)}" onclick="viewNotificationDetail('${window.escapeHTML(n.id)}')" class="w-full text-left p-4 sm:p-5 hover:bg-slate-50 transition flex gap-3 sm:gap-4 ${bgClass}">
                         ${dot}
                         <div class="flex-1 min-w-0">
                             <p class="text-[11px] sm:text-sm font-extrabold text-slate-800 mb-0.5 sm:mb-1 truncate">${window.escapeHTML(n.title)}</p>

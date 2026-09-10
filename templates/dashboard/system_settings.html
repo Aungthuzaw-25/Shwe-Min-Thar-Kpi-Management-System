@@ -321,9 +321,6 @@
             username: document.getElementById('set_smtp_user').value,
             use_tls: document.getElementById('set_smtp_tls').checked
         };
-        const pwd = document.getElementById('set_smtp_pass').value;
-        if(pwd) emailVal.password = pwd;
-
         const securityVal = {
             min_length: document.getElementById('set_pwd_length').value,
             require_complexity: document.getElementById('set_pwd_complex').checked,

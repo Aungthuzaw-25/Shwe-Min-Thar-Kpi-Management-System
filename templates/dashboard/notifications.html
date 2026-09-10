@@ -29,7 +29,7 @@ async function loadNotificationHistory() {
         }
         container.innerHTML = items.map(item => `
             <button type="button" class="w-full text-left p-5 hover:bg-slate-50 ${item.is_read ? '' : 'bg-blue-50/50'}"
-                    onclick="markNotifRead('${item.id}'); this.classList.remove('bg-blue-50/50')">
+                    onclick="viewNotificationDetail('${item.id}'); this.classList.remove('bg-blue-50/50')">
                 <div class="flex justify-between gap-4">
                     <strong class="text-sm text-slate-900">${escapeHTML(item.title)}</strong>
                     <time class="text-xs text-slate-400">${item.created_at ? new Date(item.created_at).toLocaleString() : ''}</time>

@@ -28,6 +28,14 @@ class Settings(BaseSettings):
     ENABLE_SCHEDULER: bool = False
     RUN_SCHEDULER: bool = False
     TIMEZONE: str = "Asia/Yangon"
+    MAIL_ENABLED: bool = False
+    MAIL_HOST: Optional[str] = None
+    MAIL_PORT: int = 587
+    MAIL_USERNAME: Optional[str] = None
+    MAIL_PASSWORD: Optional[str] = None
+    MAIL_FROM: Optional[str] = None
+    MAIL_FROM_NAME: str = "Enterprise KPI Platform"
+    MAIL_USE_TLS: bool = True
     BOOTSTRAP_SUPERADMIN_EMAIL: Optional[str] = None
     BOOTSTRAP_SUPERADMIN_PASSWORD: Optional[str] = None
     SEED_SUPERADMIN_EMAIL: Optional[str] = None

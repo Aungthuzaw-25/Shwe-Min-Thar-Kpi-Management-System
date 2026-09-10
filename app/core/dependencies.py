@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
@@ -6,12 +7,13 @@ from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
+from app.core import security
 from app.database.connection import get_db
 from app.core.exceptions import PermissionDeniedException
 # 🌟 FIX: Permission များကို တစ်ပါတည်း ဆွဲထုတ်ရန် Role ကိုပါ Import လုပ်ပါသည်
 from app.modules.users.models import User, Role, Permission, RolePermission, UserPermissionOverride
 from app.modules.departments.models import UserDepartment
-from app.modules.auth.models import TokenBlacklist
+from app.modules.auth.models import TokenBlacklist, AuthSession
 
 SUPER_ADMIN_ROLE = "Super Admin"
 GLOBAL_SCOPE_ROLES = {"Super Admin", "HR"}
@@ -206,12 +208,32 @@ async def get_current_user(
         )
 
     # Decode အောင်မြင်မှသာ Blacklist ဝင်နေသလား စစ်ဆေးမည်
-    is_blacklisted = await db.execute(select(TokenBlacklist).where(TokenBlacklist.token == token))
+    is_blacklisted = await db.execute(
+        select(TokenBlacklist).where(
+            TokenBlacklist.token_hash == security.token_digest(token)
+        )
+    )
     if is_blacklisted.scalars().first():
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, 
             detail="Token has been revoked. Please log in again."
         )
+
+    session_id = payload.get("sid")
+    if session_id:
+        session_result = await db.execute(
+            select(AuthSession).where(
+                AuthSession.id == session_id,
+                AuthSession.user_id == payload.get("user_id"),
+                AuthSession.revoked_at.is_(None),
+                AuthSession.expires_at > datetime.now(timezone.utc).replace(tzinfo=None),
+            )
+        )
+        if session_result.scalars().first() is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Session has been revoked or expired.",
+            )
 
     # 🌟 PERFORMANCE FIX (DBA): User ကို ဆွဲထုတ်စဉ် Role နှင့် ၎င်း၏ Permissions များကို 
     # တစ်ပါတည်း (Eager Load) ဆွဲထုတ်ထားခြင်းဖြင့် RequirePermission တွင် DB ထပ်ခေါ်စရာ မလိုတော့ပါ။

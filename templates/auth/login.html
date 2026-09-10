@@ -359,11 +359,18 @@
             }, 1000);
         });
 
+        const rememberedEmail = localStorage.getItem('remembered_email');
+        if (rememberedEmail) {
+            document.getElementById('email').value = rememberedEmail;
+            document.getElementById('remember-me').checked = true;
+        }
+
         document.getElementById('loginForm').addEventListener('submit', async (e) => {
             e.preventDefault();
 
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
+            const rememberMe = document.getElementById('remember-me').checked;
             const submitBtn = document.getElementById('loginSubmitBtn');
             const originalText = submitBtn.innerText;
             
@@ -375,12 +382,17 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     credentials: 'same-origin',
-                    body: JSON.stringify({ email, password })
+                    body: JSON.stringify({ email, password, remember_me: rememberMe })
                 });
                 
                 if (response.ok) {
                     const data = await response.json();
 
+                    if (rememberMe) {
+                        localStorage.setItem("remembered_email", email);
+                    } else {
+                        localStorage.removeItem("remembered_email");
+                    }
                     if (data.must_change_password) {
                         window.location.href = '/auth/change-password';
                     } else {

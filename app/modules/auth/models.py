@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, DateTime, ForeignKey, Boolean
+from sqlalchemy import Column, String, DateTime, ForeignKey, Boolean, Index
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
 from datetime import datetime, timezone
@@ -25,8 +25,31 @@ class TokenBlacklist(Base):
     __tablename__ = 'token_blacklist'
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    token = Column(String, unique=True, index=True, nullable=False)
+    # Only a digest is persisted.  Bearer/refresh tokens are credentials and
+    # must never be recoverable from the database.
+    token_hash = Column(String(64), unique=True, index=True, nullable=False)
     blacklisted_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+
+
+class AuthSession(Base):
+    """One login/device session; refresh-token rotation is anchored here."""
+    __tablename__ = "auth_sessions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"),
+                     nullable=False, index=True)
+    refresh_token_hash = Column(String(64), unique=True, nullable=False, index=True)
+    device_id = Column(String(128), nullable=True)
+    user_agent = Column(String(255), nullable=True)
+    ip_address = Column(String(50), nullable=True)
+    remember_me = Column(Boolean, nullable=False, default=False, server_default="false")
+    expires_at = Column(DateTime, nullable=False, index=True)
+    last_used_at = Column(DateTime, nullable=False)
+    revoked_at = Column(DateTime, nullable=True, index=True)
+
+    __table_args__ = (
+        Index("idx_auth_sessions_active_user", "user_id", "revoked_at", "expires_at"),
+    )
 
 
 class PasswordHistory(Base):

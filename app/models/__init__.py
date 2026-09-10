@@ -29,7 +29,7 @@ from app.modules.notifications.models import Notification
 
 # 🌟 6. Audit & Auth Logs
 from app.models.audit_log import AuditLog
-from app.modules.auth.models import PasswordHistory, LoginHistory, TokenBlacklist
+from app.modules.auth.models import PasswordHistory, LoginHistory, TokenBlacklist, AuthSession
 
 # 🌟 7. System Settings & Logs
 from app.models.system import SystemSetting, SystemEventLog

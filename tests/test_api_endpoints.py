@@ -1,10 +1,14 @@
 from types import SimpleNamespace
+from uuid import uuid4
+
+import pytest
 
 from fastapi.testclient import TestClient
 
 from app.main import app
 import app.modules.auth.router as auth_router
 import app.modules.kpi.dashboard_router as dashboard_router
+import app.modules.notifications.router as notifications_router
 
 
 class FakeResult:
@@ -139,3 +143,51 @@ def test_dashboards_have_distinct_summary_routes():
 
     assert "/summary" in super_paths
     assert "/summary" in admin_paths
+
+
+@pytest.mark.asyncio
+async def test_notification_detail_rejects_invalid_id():
+    with pytest.raises(notifications_router.HTTPException) as exc_info:
+        await notifications_router.get_my_notification(
+            "not-a-uuid", SimpleNamespace(), SimpleNamespace(id=uuid4())
+        )
+    assert exc_info.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_notification_detail_is_user_scoped_and_marks_read(monkeypatch):
+    from datetime import datetime, timezone
+
+    user_id = uuid4()
+    notification = SimpleNamespace(
+        id=uuid4(),
+        user_id=user_id,
+        title="Test",
+        message="Details",
+        notification_type="INFO",
+        is_read=False,
+        channel="DASHBOARD",
+        group_key=None,
+        created_at=datetime.now(timezone.utc),
+    )
+    db = SimpleNamespace()
+
+    async def fake_get(db_arg, notification_id, requested_user_id):
+        assert requested_user_id == user_id
+        return notification
+
+    async def fake_commit():
+        return None
+
+    async def fake_refresh(obj):
+        return None
+
+    db.commit = fake_commit
+    db.refresh = fake_refresh
+    monkeypatch.setattr(notifications_router, "get_notification_by_user", fake_get)
+
+    result = await notifications_router.get_my_notification(
+        str(notification.id), db, SimpleNamespace(id=user_id)
+    )
+    assert result is notification
+    assert notification.is_read is True

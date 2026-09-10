@@ -125,7 +125,39 @@
         return div.innerHTML;
     }
 
+    async function viewNotificationDetail(notificationId) {
+        const response = await fetch(`/api/v1/notifications/${encodeURIComponent(notificationId)}`);
+        if (!response.ok) {
+            showToast(response.status === 404 ? "Notification not found." : "Unable to load notification.", "error");
+            return;
+        }
+        const notification = await response.json();
+        const overlay = document.createElement("div");
+        overlay.className = "app-confirm-overlay";
+        overlay.setAttribute("role", "dialog");
+        overlay.setAttribute("aria-modal", "true");
+        overlay.innerHTML = `
+            <div class="app-confirm-dialog">
+                <div class="app-confirm-content">
+                    <h2>${escapeHtml(notification.title || "Notification")}</h2>
+                    <p>${escapeHtml(notification.message || "")}</p>
+                    <small>${escapeHtml(notification.created_at ? new Date(notification.created_at).toLocaleString() : "")}</small>
+                </div>
+                <div class="app-confirm-actions">
+                    <button type="button" class="app-confirm-submit">Close</button>
+                </div>
+            </div>`;
+        const close = () => overlay.remove();
+        overlay.querySelector(".app-confirm-submit").addEventListener("click", close);
+        overlay.addEventListener("click", (event) => {
+            if (event.target === overlay) close();
+        });
+        document.body.appendChild(overlay);
+        overlay.querySelector(".app-confirm-submit").focus();
+    }
+
     window.showToast = showToast;
     window.appConfirm = appConfirm;
     window.appPrompt = appPrompt;
+    window.viewNotificationDetail = viewNotificationDetail;
 })();
