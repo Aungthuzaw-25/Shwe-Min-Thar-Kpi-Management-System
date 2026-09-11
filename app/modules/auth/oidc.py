@@ -64,6 +64,14 @@ class OIDCProvider:
             response.raise_for_status()
             return response.json()
 
+    async def validate_callback_issuer(self, callback_issuer: str | None) -> None:
+        if callback_issuer is None:
+            return
+        metadata = await self.metadata()
+        expected_issuer = metadata.get("issuer")
+        if not expected_issuer or callback_issuer != expected_issuer:
+            raise OIDCValidationError("Authorization response issuer validation failed.")
+
     async def authorization_url(self, state: str, nonce: str, verifier: str) -> str:
         metadata = await self.metadata()
         params = {

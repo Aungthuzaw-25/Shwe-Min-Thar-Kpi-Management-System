@@ -239,15 +239,31 @@ async def _complete_oauth_login(
     code: str | None,
     state: str | None,
     error: str | None,
+    callback_issuer: str | None = None,
 ):
     if error:
         return _oauth_error_redirect("Provider sign-in was cancelled.")
     try:
         redis = get_oauth_redis(request)
         state_data = await consume_oauth_state(redis, state or "")
-        if state_data.get("provider") != provider_name or state_data.get("flow_type") != "LOGIN":
+        if state_data.get("provider") != provider_name:
             raise HTTPException(status_code=400, detail="Invalid OAuth state.")
         provider = _provider(provider_name)
+        await provider.validate_callback_issuer(callback_issuer)
+        if state_data.get("flow_type") == "LINK":
+            return await _complete_link(
+                request,
+                db,
+                provider_name,
+                code,
+                state,
+                error,
+                None,
+                state_data=state_data,
+                provider=provider,
+            )
+        if state_data.get("flow_type") != "LOGIN":
+            raise HTTPException(status_code=400, detail="Invalid OAuth state.")
         token_response = await provider.exchange_code(code or "", state_data["pkce_verifier"])
         identity = await provider.validate_identity(token_response, state_data["nonce"])
         user, identity_row = await _resolve_oauth_user(db, identity)
@@ -284,8 +300,9 @@ async def google_start(request: Request, remember_me: bool = False, redis=Depend
 
 @router.get("/google/callback")
 async def google_callback(request: Request, code: str | None = None, state: str | None = None,
-                          error: str | None = None, db: AsyncSession = Depends(get_db)):
-    return await _complete_oauth_login(request, db, "google", code, state, error)
+                          error: str | None = None, iss: str | None = None,
+                          db: AsyncSession = Depends(get_db)):
+    return await _complete_oauth_login(request, db, "google", code, state, error, iss)
 
 
 @router.get("/microsoft/start")
@@ -298,8 +315,9 @@ async def microsoft_start(request: Request, remember_me: bool = False, redis=Dep
 
 @router.get("/microsoft/callback")
 async def microsoft_callback(request: Request, code: str | None = None, state: str | None = None,
-                             error: str | None = None, db: AsyncSession = Depends(get_db)):
-    return await _complete_oauth_login(request, db, "microsoft", code, state, error)
+                             error: str | None = None, iss: str | None = None,
+                             db: AsyncSession = Depends(get_db)):
+    return await _complete_oauth_login(request, db, "microsoft", code, state, error, iss)
 
 
 async def _recent_authentication(db: AsyncSession, user_id) -> bool:
@@ -336,19 +354,22 @@ async def microsoft_link_start(request: Request, user: User = Depends(get_curren
 
 async def _complete_link(request: Request, db: AsyncSession, provider_name: str,
                          code: str | None, state: str | None, error: str | None,
-                         current_user: User):
+                         current_user: User | None, state_data: dict | None = None,
+                         provider: OIDCProvider | None = None):
     if error:
         return _oauth_error_redirect("Provider sign-in was cancelled.")
     try:
-        state_data = await consume_oauth_state(get_oauth_redis(request), state or "")
+        if state_data is None:
+            state_data = await consume_oauth_state(get_oauth_redis(request), state or "")
         if state_data.get("provider") != provider_name or state_data.get("flow_type") != "LINK":
             raise HTTPException(status_code=400, detail="Invalid OAuth state.")
-        provider = _provider(provider_name)
+        provider = provider or _provider(provider_name)
+        await provider.validate_callback_issuer(request.query_params.get("iss"))
         identity = await provider.validate_identity(
             await provider.exchange_code(code or "", state_data["pkce_verifier"]), state_data["nonce"]
         )
         user_id = state_data.get("user_id")
-        if not user_id or str(current_user.id) != str(user_id):
+        if not user_id or (current_user is not None and str(current_user.id) != str(user_id)):
             raise HTTPException(status_code=403, detail="Authenticated user does not match OAuth link state.")
         duplicate = (await db.execute(select(OAuthAccount).where(
             OAuthAccount.provider == provider_name,
@@ -362,7 +383,7 @@ async def _complete_link(request: Request, db: AsyncSession, provider_name: str,
             await db.commit()
             return _oauth_error_redirect("This provider account is already linked to another user.")
         user = (await db.execute(select(User).where(
-            User.id == current_user.id,
+            User.id == user_id,
             User.is_deleted.is_(False),
         ))).scalars().first()
         if not user:
