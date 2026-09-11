@@ -291,6 +291,26 @@ async def _run_seed():
 
         # 3. Super Admin bootstrap (explicit seed only; create-only).
         await _ensure_super_admin(db, role_dict["Super Admin"].id)
+        # KPI formulas and assignments are authored by the existing internal
+        # Super Admin, not by the demo employee used for assignment coverage.
+        sa_user = (
+            await db.execute(
+                select(User)
+                .join(Role, User.role_id == Role.id)
+                .where(
+                    Role.name == "Super Admin",
+                    User.is_deleted.is_(False),
+                    User.is_active.is_(True),
+                )
+                .order_by(User.created_at.asc())
+                .limit(1)
+            )
+        ).scalars().first()
+        if sa_user is None:
+            raise RuntimeError(
+                "KPI seeding requires an active Super Admin creator. "
+                "Configure the seed/bootstrap Super Admin credentials."
+            )
 
         # 🌟 4. KPI Period Setup (Active Cycle) 🌟
         target_date = datetime.now(UTC)
