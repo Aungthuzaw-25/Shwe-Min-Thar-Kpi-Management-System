@@ -119,6 +119,47 @@
         });
     }
 
+    function appDialog(message, options = {}) {
+        return new Promise((resolve) => {
+            const overlay = document.createElement("div");
+            overlay.className = "app-confirm-overlay";
+            overlay.setAttribute("role", "dialog");
+            overlay.setAttribute("aria-modal", "true");
+
+            const dialog = document.createElement("div");
+            dialog.className = "app-confirm-dialog app-message-dialog";
+            const content = document.createElement("div");
+            content.className = "app-confirm-content";
+            const title = document.createElement("h2");
+            title.textContent = options.title || "Details";
+            const text = document.createElement("p");
+            text.className = "app-message-dialog-text";
+            text.textContent = message;
+            const actions = document.createElement("div");
+            actions.className = "app-confirm-actions";
+            const close = document.createElement("button");
+            close.type = "button";
+            close.className = "app-confirm-submit";
+            close.textContent = options.closeText || "Close";
+
+            content.append(title, text);
+            actions.appendChild(close);
+            dialog.append(content, actions);
+            overlay.appendChild(dialog);
+
+            const finish = () => {
+                overlay.remove();
+                resolve();
+            };
+            close.addEventListener("click", finish);
+            overlay.addEventListener("click", (event) => {
+                if (event.target === overlay) finish();
+            });
+            document.body.appendChild(overlay);
+            close.focus();
+        });
+    }
+
     function escapeHtml(value) {
         const div = document.createElement("div");
         div.textContent = String(value || "");
@@ -159,5 +200,6 @@
     window.showToast = showToast;
     window.appConfirm = appConfirm;
     window.appPrompt = appPrompt;
+    window.appDialog = appDialog;
     window.viewNotificationDetail = viewNotificationDetail;
 })();

@@ -102,15 +102,20 @@
 <script>
 document.querySelectorAll('[data-unlink-provider]').forEach((button) => {
   button.addEventListener('click', async () => {
-    if (!window.confirm('Unlink this account? You must keep at least one sign-in method connected.')) return;
+    if (!(await window.appConfirm(
+      'Unlink this account? You must keep at least one sign-in method connected.',
+      { title: 'Unlink account?', confirmText: 'Unlink', cancelText: 'Keep connected' }
+    ))) return;
     const message = document.getElementById('connectedAccountsMessage');
     const response = await fetch(`/api/v1/auth/${button.dataset.unlinkProvider}/link`, {
       method: 'DELETE',
       credentials: 'same-origin',
     });
     const data = await response.json().catch(() => ({}));
-    message.className = `mt-4 rounded-xl px-4 py-3 text-sm ${response.ok ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`;
-    message.textContent = data.detail || data.status || (response.ok ? 'Account unlinked.' : 'Unable to unlink account.');
+    const messageText = data.detail || data.status || (response.ok ? 'Account unlinked.' : 'Unable to unlink account.');
+    window.showToast(messageText, response.ok ? 'success' : 'error');
+    message.className = 'hidden';
+    message.textContent = messageText;
     if (response.ok) window.setTimeout(() => window.location.reload(), 500);
   });
 });

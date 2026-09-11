@@ -148,7 +148,13 @@
             return;
         }
         const log = await response.json();
-        alert(`${log.level} - ${log.event_type}\n${formatTimestamp(log.created_at)}\n\n${log.message}\n\n${JSON.stringify(log.details || {}, null, 2)}`);
+        const details = log.details && typeof log.details === 'object'
+            ? JSON.stringify(log.details, null, 2)
+            : String(log.details || '');
+        await window.appDialog(
+            `${log.level} - ${log.event_type}\n${formatTimestamp(log.created_at)}\n\n${log.message}\n\n${details}`,
+            { title: 'System log details' }
+        );
     }
 
     document.addEventListener('DOMContentLoaded', loadSystemLogs);
