@@ -49,6 +49,7 @@ from app.background_jobs.scheduler import start_scheduler
 from app.middleware.logging_middleware import RequestLoggingMiddleware
 from app.models.system import LogLevel
 from app.services.system_log_service import record_system_log
+from redis.asyncio import from_url as redis_from_url
 
 logger = logging.getLogger("app.main")
 
@@ -83,6 +84,16 @@ async def lifespan(app: FastAPI):
     os.makedirs("uploads", exist_ok=True)
 
     await bootstrap_initial_super_admin()
+    oauth_redis = None
+    if settings.OAUTH_ENABLED and settings.REDIS_URL:
+        oauth_redis = redis_from_url(settings.REDIS_URL, decode_responses=True)
+        try:
+            await oauth_redis.ping()
+        except Exception:
+            await oauth_redis.aclose()
+            oauth_redis = None
+            logger.warning("OAuth Redis is unavailable; OAuth flows will fail closed.")
+    app.state.oauth_redis = oauth_redis
 
     scheduler = None
     if settings.ENABLE_SCHEDULER and settings.RUN_SCHEDULER:
@@ -103,6 +114,8 @@ async def lifespan(app: FastAPI):
     )
     if scheduler:
         scheduler.shutdown(wait=False)
+    if oauth_redis is not None:
+        await oauth_redis.aclose()
     await engine.dispose()
     logger.info("✅ Database connections closed cleanly.")
 

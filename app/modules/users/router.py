@@ -77,6 +77,32 @@ def require_super_admin(current_user: User) -> None:
         raise HTTPException(status_code=403, detail='You do not have permission to perform this action.')
 
 
+def ensure_user_deletion_allowed(target_user: User, current_user: User) -> None:
+    if target_user.id == current_user.id:
+        raise HTTPException(status_code=400, detail='You cannot delete your own account.')
+    if getattr(target_user.role, 'name', '') in SUPER_ADMIN_ROLE_NAMES:
+        raise HTTPException(status_code=403, detail='Super Admin accounts cannot be deleted.')
+
+
+async def revoke_user_authentication(db: AsyncSession, user_id: UUID) -> None:
+    """Disable every authentication path without deleting business history."""
+    now = datetime.utcnow()
+    await db.execute(
+        text(
+            "UPDATE auth_sessions SET revoked_at = :now "
+            "WHERE user_id = :uid AND revoked_at IS NULL"
+        ),
+        {"now": now, "uid": str(user_id)},
+    )
+    await db.execute(
+        text(
+            "UPDATE user_identities SET revoked_at = :now "
+            "WHERE user_id = :uid AND revoked_at IS NULL"
+        ),
+        {"now": now, "uid": str(user_id)},
+    )
+
+
 async def get_super_admin_role(db: AsyncSession):
     role_stmt = select(Role).where(Role.name == 'Super Admin')
     role_result = await db.execute(role_stmt)
@@ -175,6 +201,7 @@ async def create_new_user(payload: UserCreate, db: AsyncSession = Depends(get_db
         raise HTTPException(status_code=400, detail=str(e))
         
     user_data['hashed_password'] = get_password_hash(provided_password)
+    user_data['local_password_enabled'] = True
     user_data['must_change_password'] = True 
     
     try:
@@ -305,6 +332,7 @@ async def create_super_admin(
         'last_name': payload.last_name.strip(),
         'email': normalized_email,
         'hashed_password': get_password_hash(payload.password),
+        'local_password_enabled': True,
         'role_id': super_admin_role.id,
         'is_active': payload.is_active,
         'must_change_password': True,
@@ -448,6 +476,7 @@ async def deactivate_super_admin(
 
     old_snapshot = {'is_active': user.is_active}
     user.is_active = False
+    await revoke_user_authentication(db, user.id)
     await db.commit()
     await log_audit_trail(
         db,
@@ -485,6 +514,7 @@ async def delete_super_admin(
         user.email = f"deleted_{int(datetime.now().timestamp())}_{user.email}"
     user.is_deleted = True
     user.is_active = False
+    await revoke_user_authentication(db, user.id)
     await db.commit()
     await log_audit_trail(
         db,
@@ -683,14 +713,14 @@ async def delete_existing_user(user_id: UUID, db: AsyncSession = Depends(get_db)
     if getattr(user, 'is_deleted', False):
         return {'message': 'User is already soft deleted.'}
         
-    if current_user.role.name != 'Super Admin' and getattr(user.role, 'name', '') == 'Super Admin':
-        raise HTTPException(status_code=403, detail='You do not have permission to delete a Super Admin account.')
+    ensure_user_deletion_allowed(user, current_user)
 
     # 🌟 SECURITY FIX: Email ကို Timestamp တပ်၍ ပြောင်းလဲလိုက်မည် (Unique Constraint မငြိစေရန်)
     if not user.email.startswith("deleted_"):
         user.email = f"deleted_{int(datetime.now().timestamp())}_{user.email}"
         
     await db.execute(text("UPDATE departments SET head_id = NULL WHERE head_id = :uid"), {"uid": str(user_id)})
+    await revoke_user_authentication(db, user.id)
     await user_repo.soft_delete_user(db, user)
     await record_activity(
         db,
@@ -708,16 +738,17 @@ async def permanent_delete_user(user_id: UUID, db: AsyncSession = Depends(get_db
     enforce_permission(current_user, "users.delete")
     if current_user.role.name not in ['Super Admin']:
         raise HTTPException(status_code=403, detail='Only Super Admins can permanently delete accounts.')
-        
     stmt = select(User).where(User.id == user_id)
     result = await db.execute(stmt)
     user = result.scalars().first()
     
     if not user:
         raise HTTPException(status_code=404, detail='User not found.')
+    ensure_user_deletion_allowed(user, current_user)
         
     try:
         uid_param = {"uid": str(user_id)}
+        await revoke_user_authentication(db, user.id)
         
         await db.execute(text("UPDATE departments SET head_id = NULL WHERE head_id = :uid"), uid_param)
         await db.execute(text("UPDATE tasks SET assigner_id = NULL WHERE assigner_id = :uid"), uid_param)
@@ -783,7 +814,11 @@ async def reset_user_password(user_id: UUID, payload: PasswordResetAdmin, db: As
         raise HTTPException(status_code=400, detail='Cannot reuse any of the last 5 passwords.')
         
     hashed_pass = get_password_hash(payload.new_password)
-    await user_repo.update_user(db, user, {'hashed_password': hashed_pass, 'must_change_password': True})
+    await user_repo.update_user(db, user, {
+        'hashed_password': hashed_pass,
+        'local_password_enabled': True,
+        'must_change_password': True,
+    })
     await password_repo.add_password_history(db, user.id, hashed_pass)
     
     return {'message': 'Password has been reset successfully.'}

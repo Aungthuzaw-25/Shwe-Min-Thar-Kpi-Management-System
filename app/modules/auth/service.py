@@ -59,6 +59,9 @@ class AuthService:
                 user.lockout_until = None
                 await db.commit()
 
+        if not getattr(user, "local_password_enabled", True) or not user.hashed_password:
+            await run_in_threadpool(security.verify_password, password, DUMMY_PASSWORD_HASH)
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password.")
         is_valid_password = await run_in_threadpool(security.verify_password, password, user.hashed_password)
 
         if not is_valid_password:
@@ -100,6 +103,26 @@ class AuthService:
         ))
         await db.commit()
 
+        return await AuthService.issue_authenticated_session(
+            db, user, ip_address, user_agent, remember_me, audit_action="LOGIN"
+        )
+
+    @staticmethod
+    async def issue_authenticated_session(
+        db: AsyncSession,
+        user: User,
+        ip_address: str = "Unknown",
+        user_agent: str = "Unknown",
+        remember_me: bool = False,
+        audit_action: str = "OAUTH_LOGIN",
+    ) -> Dict[str, Any]:
+        """Issue the existing AuthSession/JWT pair for any trusted identity."""
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        if audit_action != "LOGIN":
+            db.add(AuditLog(
+                user_id=user.id, action=audit_action, table_name="auth_sessions",
+                ip_address=ip_address, new_value={"success": True},
+            ))
         role_value = user.role.name if user.role else str(user.role_id)
         user_level = "L2"
         dept_name = "No Department"
@@ -174,7 +197,9 @@ class AuthService:
             "access_token": access_token,
             "refresh_token": refresh_token,
             "token_type": "bearer",
-            "must_change_password": bool(user.must_change_password),
+            "must_change_password": bool(
+                user.must_change_password and getattr(user, "local_password_enabled", True)
+            ),
             "user": {
                 "id": str(user.id),
                 "first_name": user.first_name,

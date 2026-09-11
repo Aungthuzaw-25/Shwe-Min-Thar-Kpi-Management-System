@@ -22,4 +22,5 @@ python-docx>=1.1.0  # Word (.docx) ဖိုင်များအတွက်
 pandas>=2.1.0   
 python-magic    # CSV နှင့် Data Processing များအတွက်
 redis>=5.0.1
+httpx>=0.27.0
 gunicorn>=21.2.0

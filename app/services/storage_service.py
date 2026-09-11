@@ -184,6 +184,6 @@ class StorageService:
             )
         except Exception as e:
             logger.error(f"Failed to delete file {object_name}: {str(e)}")
-            # Do not raise exception here; let the workflow continue even if deletion fails
+            raise RuntimeError("Storage deletion failed") from e
 
 storage_service = StorageService()

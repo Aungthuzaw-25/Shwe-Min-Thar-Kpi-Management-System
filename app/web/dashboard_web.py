@@ -9,7 +9,7 @@ from app.core.dependencies import get_current_user, get_permission_map
 from app.core.config import settings
 from app.database.connection import get_db
 from app.modules.departments.models import UserDepartment
-from app.modules.users.models import Position, User
+from app.modules.users.models import Position, User, UserIdentity
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -178,11 +178,28 @@ async def render_employee_profile(
     if not current_user or not current_user.role:
         return RedirectResponse(url="/auth/login")
     context = await get_employee_context(db, current_user)
+    identity_rows = (await db.execute(
+        select(UserIdentity).where(
+            UserIdentity.user_id == current_user.id,
+            UserIdentity.revoked_at.is_(None),
+        ).order_by(UserIdentity.provider)
+    )).scalars().all()
+    connected_accounts = {
+        row.provider: {
+            "email": row.provider_email,
+            "connected_at": row.linked_at or row.created_at,
+        }
+        for row in identity_rows
+    }
     context.update(
         {
             "active_page": "profile",
             "account_status": "Active" if current_user.is_active else "Inactive",
             "created_at": current_user.created_at,
+            "connected_accounts": connected_accounts,
+            "local_password_enabled": bool(
+                getattr(current_user, "local_password_enabled", True)
+            ),
         }
     )
     return templates.TemplateResponse(

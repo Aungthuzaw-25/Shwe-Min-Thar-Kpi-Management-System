@@ -16,6 +16,7 @@ from app.core.security import get_password_hash
 from app.database.connection import AsyncSessionLocal
 from app.models.audit_log import AuditLog
 from app.modules.users.models import Role, User
+from app.database.seed import ensure_roles_and_permissions
 
 logger = logging.getLogger(__name__)
 
@@ -24,8 +25,26 @@ BOOTSTRAP_ADVISORY_LOCK_KEY = 731943
 email_adapter = TypeAdapter(EmailStr)
 
 
-def _configured_value(name: str) -> str:
-    return (os.getenv(name) or getattr(settings, name, None) or "").strip()
+def _configured_bootstrap_values() -> tuple[str, str]:
+    email = (os.getenv("BOOTSTRAP_SUPERADMIN_EMAIL")
+             or getattr(settings, "BOOTSTRAP_SUPERADMIN_EMAIL", None) or "").strip()
+    password = (os.getenv("BOOTSTRAP_SUPERADMIN_PASSWORD")
+                or getattr(settings, "BOOTSTRAP_SUPERADMIN_PASSWORD", None) or "").strip()
+    if email and password:
+        return email, password
+
+    seed_email = (os.getenv("SEED_SUPERADMIN_EMAIL")
+                  or getattr(settings, "SEED_SUPERADMIN_EMAIL", None) or "").strip()
+    seed_password = (
+        os.getenv("SEED_SUPERADMIN_PASSWORD")
+        or os.getenv("SEED_SUPER_ADMIN_PASSWORD")
+        or getattr(settings, "SEED_SUPERADMIN_PASSWORD", None)
+        or getattr(settings, "SEED_SUPER_ADMIN_PASSWORD", None)
+        or ""
+    ).strip()
+    if seed_email and seed_password:
+        return seed_email, seed_password
+    return email, password
 
 
 def _validate_bootstrap_configuration(email: str, password: str) -> tuple[str, str]:
@@ -57,10 +76,8 @@ async def _ensure_initial_super_admin(
     )
     super_admin_role = role_result.scalars().first()
     if super_admin_role is None:
-        raise RuntimeError(
-            "The Super Admin role is not configured. Run the explicit seed "
-            "or provision the role before enabling initial bootstrap."
-        )
+        roles = await ensure_roles_and_permissions(db)
+        super_admin_role = roles["Super Admin"]
 
     existing_result = await db.execute(
         select(User.id)
@@ -88,7 +105,9 @@ async def _ensure_initial_super_admin(
         first_name="Super",
         last_name="Admin",
         hashed_password=get_password_hash(password),
+        local_password_enabled=True,
         role_id=super_admin_role.id,
+        must_change_password=True,
     )
     db.add(user)
     await db.flush()
@@ -117,9 +136,8 @@ async def _ensure_initial_super_admin(
 async def bootstrap_initial_super_admin(
     session_factory: Callable[[], AsyncSession] = AsyncSessionLocal,
 ) -> bool:
-    """Create the first Super Admin once, using a PostgreSQL transaction lock."""
-    configured_email = _configured_value("BOOTSTRAP_SUPERADMIN_EMAIL")
-    configured_password = _configured_value("BOOTSTRAP_SUPERADMIN_PASSWORD")
+    """Ensure core RBAC and the configured Super Admin under a DB lock."""
+    configured_email, configured_password = _configured_bootstrap_values()
     if not configured_email and not configured_password:
         logger.info(
             "Initial Super Admin bootstrap is not configured; continuing without account creation."
@@ -138,4 +156,7 @@ async def bootstrap_initial_super_admin(
             configured_email,
             configured_password,
         )
-        return await _ensure_initial_super_admin(db, email, password)
+        await ensure_roles_and_permissions(db)
+        created = await _ensure_initial_super_admin(db, email, password)
+        await db.commit()
+        return created

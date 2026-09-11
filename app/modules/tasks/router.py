@@ -948,13 +948,10 @@ async def delete_task_evidence(evidence_id: UUID, db: AsyncSession = Depends(get
             raise HTTPException(status_code=404, detail="Evidence file not found.")
         await _authorized_task(db, evidence.task_id, current_user)
             
-        try:
-            if hasattr(storage_service, 'delete_file'):
-                await storage_service.delete_file(evidence.file_path)
-            elif hasattr(storage_service, 'remove_file'):
-                await storage_service.remove_file(evidence.file_path)
-        except Exception:
-            pass 
+        if hasattr(storage_service, 'delete_file'):
+            await storage_service.delete_file(evidence.file_path)
+        elif hasattr(storage_service, 'remove_file'):
+            await storage_service.remove_file(evidence.file_path)
             
         await db.delete(evidence)
         await db.commit()

@@ -1,6 +1,9 @@
 import pytest
+from types import SimpleNamespace
+from fastapi import HTTPException
 
 from app.database.seed import PERMISSION_CATALOG, _ensure_super_admin, _seed_permissions
+from app.modules.users.router import ensure_user_deletion_allowed
 
 
 class _Bind:
@@ -82,3 +85,20 @@ async def test_permission_seed_reuses_existing_rows_and_adds_only_missing_rows()
     ]
     assert existing[0].description == "Custom description"
     assert db.commits == 1
+
+
+@pytest.mark.parametrize(
+    ("target_role", "same_user", "status_code"),
+    [("Super Admin", False, 403), ("Admin", True, 400)],
+)
+def test_protected_user_deletion_is_rejected(target_role, same_user, status_code):
+    actor = SimpleNamespace(id="actor-id", role=SimpleNamespace(name="Super Admin"))
+    target = SimpleNamespace(
+        id=actor.id if same_user else "target-id",
+        role=SimpleNamespace(name=target_role),
+    )
+
+    with pytest.raises(HTTPException) as error:
+        ensure_user_deletion_allowed(target, actor)
+
+    assert error.value.status_code == status_code

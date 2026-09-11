@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Boolean, Integer, ForeignKey, DateTime, UniqueConstraint
+from sqlalchemy import CheckConstraint, Column, String, Boolean, Integer, ForeignKey, DateTime, UniqueConstraint, Index
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship, backref
 from app.database.base import BaseModel
@@ -39,7 +39,8 @@ class User(BaseModel):
     __tablename__ = "users"
     
     email = Column(String(255), unique=True, index=True, nullable=False)
-    hashed_password = Column(String(255), nullable=False)
+    hashed_password = Column(String(255), nullable=True)
+    local_password_enabled = Column(Boolean, nullable=False, default=True, server_default="true")
     
     first_name = Column(String(100), nullable=False)
     last_name = Column(String(100), nullable=False)
@@ -64,6 +65,15 @@ class User(BaseModel):
     role = relationship("Role")
     position = relationship("Position", back_populates="users")
     user_departments = relationship("UserDepartment", back_populates="user", cascade="all, delete-orphan")
+    identities = relationship("UserIdentity", back_populates="user", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        CheckConstraint(
+            "(local_password_enabled = TRUE AND hashed_password IS NOT NULL) "
+            "OR (local_password_enabled = FALSE AND hashed_password IS NULL)",
+            name="ck_users_local_password_consistency",
+        ),
+    )
 
 # ==============================================================================
 # မူလ Position Model (မည်သည့် Code မှ မဖျက်ထားပါ)
@@ -129,4 +139,34 @@ class UserPermissionOverride(BaseModel):
 
     __table_args__ = (
         UniqueConstraint("user_id", "permission_id", "department_id", name="uq_user_permission_scope"),
+    )
+
+
+class UserIdentity(BaseModel):
+    """An immutable external identity linked to one internal user."""
+
+    __tablename__ = "user_identities"
+
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    provider = Column(String(32), nullable=False)
+    issuer = Column(String(255), nullable=False)
+    tenant_id = Column(String(128), nullable=False, default="")
+    provider_subject = Column(String(255), nullable=False)
+    provider_email = Column(String(255), nullable=True, index=True)
+    email_verified = Column(Boolean, nullable=False, default=False, server_default="false")
+    linked_at = Column(DateTime, nullable=False)
+    last_login_at = Column(DateTime, nullable=True)
+    revoked_at = Column(DateTime, nullable=True, index=True)
+
+    user = relationship("User", back_populates="identities")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "provider",
+            "issuer",
+            "tenant_id",
+            "provider_subject",
+            name="uq_user_identity_provider_subject",
+        ),
+        Index("ix_user_identities_provider_lookup", "provider", "issuer", "tenant_id"),
     )

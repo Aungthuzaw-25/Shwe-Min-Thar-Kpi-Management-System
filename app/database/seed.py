@@ -39,7 +39,6 @@ ROLES = [
     {"name": "Department User", "description": "Operational users (L0, L1, L2)"}
 ]
 
-
 def resolve_seed_password(*candidate_names: str) -> str | None:
     for name in candidate_names:
         value = os.getenv(name) or getattr(settings, name, None)
@@ -87,6 +86,24 @@ PERMISSION_CATALOG = [
     ("system.audit.view", "View audit history"),
     ("system.permissions.manage", "Manage role permissions and user overrides"),
 ]
+
+ROLE_DEFAULTS = {
+    "Super Admin": {code for code, _ in PERMISSION_CATALOG},
+    "Admin": {code for code, _ in PERMISSION_CATALOG}
+    - {"system.settings.edit", "system.audit.view"},
+    "HR": {
+        "users.view", "users.create", "users.edit", "users.activate",
+        "users.deactivate", "users.password_reset", "department.view",
+        "kpi.view", "report.view", "report.view_all",
+        "system.permissions.manage",
+    },
+    "Department User": {
+        "users.view", "tasks.view", "tasks.create", "tasks.edit",
+        "tasks.delete", "tasks.submit", "tasks.resubmit",
+        "tasks.approve", "tasks.reject", "tasks.return",
+        "kpi.view", "report.view", "department.view",
+    },
+}
 
 # Common Deduction Rules
 STANDARD_ERROR_RULES = [
@@ -145,6 +162,51 @@ async def _seed_permissions(db):
     await db.commit()
 
 
+async def ensure_roles_and_permissions(db):
+    """Ensure the canonical RBAC catalog exists without overwriting custom grants."""
+    await db.flush()
+    permission_rows = (
+        await db.execute(
+            select(Permission).where(
+                Permission.code.in_([code for code, _ in PERMISSION_CATALOG])
+            )
+        )
+    ).scalars().all()
+    permissions_by_code = {permission.code: permission for permission in permission_rows}
+    for code, description in PERMISSION_CATALOG:
+        if code not in permissions_by_code:
+            permission = Permission(code=code, description=description)
+            db.add(permission)
+            await db.flush()
+            permissions_by_code[code] = permission
+
+    roles_by_name = {}
+    for role_data in ROLES:
+        role = (
+            await db.execute(select(Role).where(Role.name == role_data["name"]))
+        ).scalar_one_or_none()
+        if role is None:
+            role = Role(**role_data)
+            db.add(role)
+            await db.flush()
+        roles_by_name[role.name] = role
+
+    for role_name, codes in ROLE_DEFAULTS.items():
+        role = roles_by_name[role_name]
+        links = (
+            await db.execute(
+                select(RolePermission).where(RolePermission.role_id == role.id)
+            )
+        ).scalars().all()
+        existing_permission_ids = {link.permission_id for link in links}
+        for code in codes:
+            permission = permissions_by_code[code]
+            if permission.id not in existing_permission_ids:
+                db.add(RolePermission(role_id=role.id, permission_id=permission.id))
+    await db.flush()
+    return roles_by_name
+
+
 async def _ensure_super_admin(db, role_id):
     """Create the first Super Admin without changing an existing account."""
     existing_super_admin = (
@@ -162,11 +224,14 @@ async def _ensure_super_admin(db, role_id):
     sa_email = (
         os.getenv("SEED_SUPERADMIN_EMAIL")
         or getattr(settings, "SEED_SUPERADMIN_EMAIL", None)
+        or os.getenv("BOOTSTRAP_SUPERADMIN_EMAIL")
+        or getattr(settings, "BOOTSTRAP_SUPERADMIN_EMAIL", None)
         or ""
     ).strip()
     bootstrap_password = resolve_seed_password(
         "SEED_SUPERADMIN_PASSWORD",
         "SEED_SUPER_ADMIN_PASSWORD",
+        "BOOTSTRAP_SUPERADMIN_PASSWORD",
     )
     if not sa_email or not bootstrap_password:
         raise RuntimeError(
@@ -220,50 +285,8 @@ async def _run_seed():
                 
         print("Departments seeded!")
 
-        # 2. Roles
-        role_dict = {}
-        for role_data in ROLES:
-            stmt = select(Role).where(Role.name == role_data["name"])
-            role = (await db.execute(stmt)).scalar_one_or_none()
-            if not role:
-                role = Role(**role_data)
-                db.add(role)
-                await db.commit()
-                await db.refresh(role)
-            role_dict[role.name] = role
-
-        # Seed safe, useful defaults only for roles that have no customized
-        # matrix yet.  Existing role assignments are never overwritten.
-        all_codes = {code for code, _ in PERMISSION_CATALOG}
-        role_defaults = {
-            "Super Admin": all_codes,
-            "Admin": all_codes - {"system.settings.edit", "system.audit.view"},
-            "HR": {
-                "users.view", "users.create", "users.edit", "users.activate",
-                "users.deactivate", "users.password_reset", "department.view",
-                "kpi.view", "report.view", "report.view_all",
-                "system.permissions.manage",
-            },
-            "Department User": {
-                "users.view", "tasks.view", "tasks.create", "tasks.edit",
-                "tasks.delete", "tasks.submit", "tasks.resubmit",
-                "tasks.approve", "tasks.reject", "tasks.return",
-                "kpi.view", "report.view", "department.view",
-            },
-        }
-        for role_name, codes in role_defaults.items():
-            role = role_dict[role_name]
-            link_count = (await db.execute(
-                select(RolePermission).where(RolePermission.role_id == role.id)
-            )).scalars().all()
-            if not link_count:
-                permission_rows = (await db.execute(
-                    select(Permission).where(Permission.code.in_(codes))
-                )).scalars().all()
-                for permission in permission_rows:
-                    db.add(RolePermission(
-                        role_id=role.id, permission_id=permission.id
-                    ))
+        # 2. Roles and permissions
+        role_dict = await ensure_roles_and_permissions(db)
         await db.commit()
 
         # 3. Super Admin bootstrap (explicit seed only; create-only).
@@ -575,13 +598,6 @@ async def _run_seed():
             position = position_dict["Senior Accountant" if user_level == "L1" else "Accountant"]
 
             if existing:
-                if password:
-                    existing.hashed_password = get_password_hash(password)
-                    existing.is_active = True
-                    existing.failed_login_attempts = 0
-                    existing.is_locked = False
-                    existing.lockout_until = None
-                    existing.must_change_password = False
                 existing.position_id = position.id
                 dept_link = (await db.execute(
                     select(UserDepartment).where(

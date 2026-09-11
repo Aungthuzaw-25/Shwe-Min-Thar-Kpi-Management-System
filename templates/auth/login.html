@@ -233,6 +233,22 @@
                         Sign in
                     </button>
                 </form>
+
+                <div class="flex items-center gap-3 my-5" aria-hidden="true">
+                    <div class="h-px bg-gray-200 flex-1"></div>
+                    <span class="text-xs text-gray-400">or continue with</span>
+                    <div class="h-px bg-gray-200 flex-1"></div>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <button type="button" data-oauth-provider="google"
+                            class="oauth-provider-btn w-full flex justify-center items-center py-2.5 px-4 border border-gray-300 rounded-lg text-xs sm:text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors">
+                        Continue with Google
+                    </button>
+                    <button type="button" data-oauth-provider="microsoft"
+                            class="oauth-provider-btn w-full flex justify-center items-center py-2.5 px-4 border border-gray-300 rounded-lg text-xs sm:text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors">
+                        Continue with Microsoft
+                    </button>
+                </div>
             </div>
         </div>
     </main>
@@ -363,6 +379,24 @@
         if (rememberedEmail) {
             document.getElementById('email').value = rememberedEmail;
             document.getElementById('remember-me').checked = true;
+        }
+
+        document.querySelectorAll('.oauth-provider-btn').forEach((button) => {
+            button.addEventListener('click', () => {
+                document.querySelectorAll('.oauth-provider-btn').forEach((item) => {
+                    item.disabled = true;
+                    item.classList.add('opacity-60', 'cursor-wait');
+                });
+                button.textContent = 'Redirecting...';
+                const remember = document.getElementById('remember-me').checked ? '?remember_me=true' : '';
+                window.location.assign(`/api/v1/auth/${button.dataset.oauthProvider}/start${remember}`);
+            });
+        });
+
+        const oauthError = new URLSearchParams(window.location.search).get('oauth_error');
+        if (oauthError) {
+            showToast(oauthError, 'error');
+            window.history.replaceState({}, document.title, window.location.pathname);
         }
 
         document.getElementById('loginForm').addEventListener('submit', async (e) => {
