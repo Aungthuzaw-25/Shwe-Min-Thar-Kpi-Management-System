@@ -78,13 +78,14 @@ def _set_auth_cookies(response: Response, request: Request, auth_result: dict[st
     secure_cookie = cookie_secure_for_request(request)
     response.set_cookie(key="access_token", value=str(auth_result["access_token"]), httponly=True,
                         max_age=(settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60 if remember_me else None),
-                        samesite="strict", secure=secure_cookie)
+                        samesite=AUTH_COOKIE_SAMESITE, secure=secure_cookie)
     response.set_cookie(key="refresh_token", value=str(auth_result["refresh_token"]), httponly=True,
                         max_age=(settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60 if remember_me else None),
-                        samesite="strict", secure=secure_cookie)
+                        samesite=AUTH_COOKIE_SAMESITE, secure=secure_cookie)
 
 # 🌟 SECURITY: Ensure cookies are sent securely only on HTTPS, including local HTTP testing
 IS_PRODUCTION = getattr(settings, "ENV", "development").lower() == "production"
+AUTH_COOKIE_SAMESITE = "lax"
 
 
 def cookie_secure_for_request(request: Request) -> bool:
@@ -172,12 +173,12 @@ async def login(request: Request, response: Response, payload: LoginRequest, db:
     response.set_cookie(
         key="access_token", value=auth_result["access_token"], httponly=True,
         max_age=(settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60 if payload.remember_me else None),
-        samesite="strict", secure=secure_cookie,
+        samesite=AUTH_COOKIE_SAMESITE, secure=secure_cookie,
     )
     response.set_cookie(
         key="refresh_token", value=auth_result["refresh_token"], httponly=True,
         max_age=(settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60 if payload.remember_me else None),
-        samesite="strict", secure=secure_cookie,
+        samesite=AUTH_COOKIE_SAMESITE, secure=secure_cookie,
     )
     return auth_result
 
@@ -565,11 +566,12 @@ async def refresh_token(request: Request, response: Response, payload: RefreshTo
         auth_session.last_used_at = datetime.now(timezone.utc).replace(tzinfo=None)
         await db.commit()
 
-    # 🛡️ SECURITY FIX: Upgraded to Strict CSRF Protection via samesite="strict"
+    # Lax permits the top-level GET redirect back from an OAuth provider while
+    # keeping the cookies HttpOnly and Secure in production.
     secure_cookie = cookie_secure_for_request(request)
     persistent = bool(auth_session.remember_me) if auth_session else True
-    response.set_cookie(key="access_token", value=new_access_token, httponly=True, max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60 if persistent else None, samesite="strict", secure=secure_cookie)
-    response.set_cookie(key="refresh_token", value=new_refresh_token, httponly=True, max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60 if persistent else None, samesite="strict", secure=secure_cookie)
+    response.set_cookie(key="access_token", value=new_access_token, httponly=True, max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60 if persistent else None, samesite=AUTH_COOKIE_SAMESITE, secure=secure_cookie)
+    response.set_cookie(key="refresh_token", value=new_refresh_token, httponly=True, max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60 if persistent else None, samesite=AUTH_COOKIE_SAMESITE, secure=secure_cookie)
 
     return {'access_token': new_access_token, 'refresh_token': new_refresh_token, 'token_type': 'bearer'}
 
@@ -617,7 +619,7 @@ async def logout(request: Request, response: Response, db: AsyncSession = Depend
 
     # 🛡️ SECURITY FIX: Explicitly clear the strict cookies on logout
     secure_cookie = cookie_secure_for_request(request)
-    response.delete_cookie(key="access_token", httponly=True, samesite="strict", secure=secure_cookie)
-    response.delete_cookie(key="refresh_token", httponly=True, samesite="strict", secure=secure_cookie)
+    response.delete_cookie(key="access_token", httponly=True, samesite=AUTH_COOKIE_SAMESITE, secure=secure_cookie)
+    response.delete_cookie(key="refresh_token", httponly=True, samesite=AUTH_COOKIE_SAMESITE, secure=secure_cookie)
     
     return {"message": "Logged out and tokens revoked successfully."}

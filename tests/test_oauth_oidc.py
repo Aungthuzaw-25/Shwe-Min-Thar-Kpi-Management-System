@@ -9,6 +9,8 @@ from app.modules.auth.oidc import (
     create_pkce_verifier,
 )
 from app.modules.auth import router as auth_router
+from fastapi import Request
+from fastapi.responses import Response
 
 
 def test_pkce_verifier_and_challenge_are_generated():
@@ -80,3 +82,34 @@ async def test_shared_google_callback_dispatches_link_state_to_link_flow(monkeyp
     assert result is marker
     assert calls["state_data"]["flow_type"] == "LINK"
     assert calls["current_user"] is None
+
+
+def test_link_flow_auth_cookies_remain_usable_after_oauth_redirect():
+    response = Response()
+    request = Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "scheme": "https",
+            "path": "/api/v1/auth/google/callback",
+            "headers": [(b"host", b"kpi.example.com")],
+            "query_string": b"",
+            "server": ("kpi.example.com", 443),
+            "client": ("127.0.0.1", 1),
+        }
+    )
+
+    auth_router._set_auth_cookies(
+        response,
+        request,
+        {"access_token": "access", "refresh_token": "refresh"},
+        remember_me=True,
+    )
+
+    cookies = "\n".join(response.headers.getlist("set-cookie"))
+    assert "access_token=access" in cookies
+    assert "refresh_token=refresh" in cookies
+    assert "HttpOnly" in cookies
+    assert "Secure" in cookies
+    assert "SameSite=lax" in cookies
+    assert "Max-Age=0" not in cookies
