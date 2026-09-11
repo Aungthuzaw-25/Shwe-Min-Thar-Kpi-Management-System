@@ -13,7 +13,7 @@ from app.modules.auth.schemas import LoginRequest, TokenResponse, RefreshTokenRe
 from app.modules.users import repo as user_repo
 from app.modules.users import password_repo
 from app.core.dependencies import get_current_user, get_permission_map
-from app.modules.users.models import User, UserIdentity
+from app.modules.users.models import OAuthAccount, User
 from app.modules.departments.models import UserDepartment
 from app.core.password_policy import get_password_policy, validate_password_strength
 from app.core import security
@@ -210,15 +210,15 @@ async def login_for_swagger(
     }
 
 
-async def _resolve_oauth_user(db: AsyncSession, identity) -> tuple[User | None, UserIdentity | None]:
+async def _resolve_oauth_user(db: AsyncSession, identity) -> tuple[User | None, OAuthAccount | None]:
     tenant_key = identity.tenant_id or ""
     identity_row = (await db.execute(
-        select(UserIdentity).where(
-            UserIdentity.provider == identity.provider,
-            UserIdentity.issuer == identity.issuer,
-            UserIdentity.tenant_id == tenant_key,
-            UserIdentity.provider_subject == identity.subject,
-            UserIdentity.revoked_at.is_(None),
+        select(OAuthAccount).where(
+            OAuthAccount.provider == identity.provider,
+            OAuthAccount.issuer == identity.issuer,
+            OAuthAccount.tenant_id == tenant_key,
+            OAuthAccount.provider_subject == identity.subject,
+            OAuthAccount.revoked_at.is_(None),
         )
     )).scalars().first()
     if identity_row:
@@ -245,14 +245,14 @@ async def _complete_oauth_login(
     try:
         redis = get_oauth_redis(request)
         state_data = await consume_oauth_state(redis, state or "")
-        if state_data.get("provider") != provider_name or state_data.get("mode") != "login":
+        if state_data.get("provider") != provider_name or state_data.get("flow_type") != "LOGIN":
             raise HTTPException(status_code=400, detail="Invalid OAuth state.")
         provider = _provider(provider_name)
         token_response = await provider.exchange_code(code or "", state_data["pkce_verifier"])
         identity = await provider.validate_identity(token_response, state_data["nonce"])
         user, identity_row = await _resolve_oauth_user(db, identity)
         if not user:
-            db.add(AuditLog(action="OAUTH_LOGIN_REJECTED", table_name="user_identities",
+            db.add(AuditLog(action="OAUTH_LOGIN_REJECTED", table_name="oauth_accounts",
                             new_value={"provider": provider_name, "reason": "unlinked_identity"}))
             await db.commit()
             return _oauth_error_redirect("Your account has not been provisioned for this application. Please contact an administrator.")
@@ -318,7 +318,7 @@ async def _link_start(request: Request, provider_name: str, user: User, db: Asyn
     nonce, verifier = create_nonce(), create_pkce_verifier()
     state = await create_oauth_state(redis, provider=provider_name, nonce=nonce,
                                      pkce_verifier=verifier, mode="link", user_id=str(user.id),
-                                     return_path="/auth/login")
+                                     return_path="/profile")
     return RedirectResponse(await provider.authorization_url(state, nonce, verifier), status_code=303)
 
 
@@ -335,30 +335,36 @@ async def microsoft_link_start(request: Request, user: User = Depends(get_curren
 
 
 async def _complete_link(request: Request, db: AsyncSession, provider_name: str,
-                         code: str | None, state: str | None, error: str | None):
+                         code: str | None, state: str | None, error: str | None,
+                         current_user: User):
     if error:
         return _oauth_error_redirect("Provider sign-in was cancelled.")
     try:
         state_data = await consume_oauth_state(get_oauth_redis(request), state or "")
-        if state_data.get("provider") != provider_name or state_data.get("mode") != "link":
+        if state_data.get("provider") != provider_name or state_data.get("flow_type") != "LINK":
             raise HTTPException(status_code=400, detail="Invalid OAuth state.")
         provider = _provider(provider_name)
         identity = await provider.validate_identity(
             await provider.exchange_code(code or "", state_data["pkce_verifier"]), state_data["nonce"]
         )
         user_id = state_data.get("user_id")
-        duplicate = (await db.execute(select(UserIdentity).where(
-            UserIdentity.provider == provider_name,
-            UserIdentity.issuer == identity.issuer,
-            UserIdentity.tenant_id == (identity.tenant_id or ""),
-            UserIdentity.provider_subject == identity.subject,
+        if not user_id or str(current_user.id) != str(user_id):
+            raise HTTPException(status_code=403, detail="Authenticated user does not match OAuth link state.")
+        duplicate = (await db.execute(select(OAuthAccount).where(
+            OAuthAccount.provider == provider_name,
+            OAuthAccount.issuer == identity.issuer,
+            OAuthAccount.tenant_id == (identity.tenant_id or ""),
+            OAuthAccount.provider_subject == identity.subject,
         ))).scalars().first()
         if duplicate and str(duplicate.user_id) != str(user_id):
-            db.add(AuditLog(action="OAUTH_IDENTITY_CONFLICT", table_name="user_identities",
+            db.add(AuditLog(action="OAUTH_IDENTITY_CONFLICT", table_name="oauth_accounts",
                             new_value={"provider": provider_name, "reason": "already_linked"}))
             await db.commit()
             return _oauth_error_redirect("This provider account is already linked to another user.")
-        user = (await db.execute(select(User).where(User.id == user_id, User.is_deleted.is_(False)))).scalars().first()
+        user = (await db.execute(select(User).where(
+            User.id == current_user.id,
+            User.is_deleted.is_(False),
+        ))).scalars().first()
         if not user:
             return _oauth_error_redirect("Unable to link this provider account.")
         if not user.is_active or not await _recent_authentication(db, user.id):
@@ -368,14 +374,21 @@ async def _complete_link(request: Request, db: AsyncSession, provider_name: str,
             duplicate.provider_email = identity.email
             duplicate.email_verified = identity.email_verified
         else:
-            db.add(UserIdentity(user_id=user.id, provider=provider_name, issuer=identity.issuer,
+            db.add(OAuthAccount(user_id=user.id, provider=provider_name, issuer=identity.issuer,
                                 tenant_id=identity.tenant_id or "", provider_subject=identity.subject,
                                 provider_email=identity.email, email_verified=identity.email_verified,
                                 linked_at=utc_now_naive()))
         db.add(AuditLog(user_id=user.id, action="OAUTH_IDENTITY_LINKED",
-                        table_name="user_identities", new_value={"provider": provider_name}))
+                        table_name="oauth_accounts", new_value={"provider": provider_name}))
         await db.commit()
-        return RedirectResponse(url="/auth/login?oauth_linked=1", status_code=303)
+        return_path = state_data.get("return_path") or "/profile"
+        if not return_path.startswith("/") or return_path.startswith("//"):
+            return_path = "/profile"
+        separator = "&" if "?" in return_path else "?"
+        return RedirectResponse(
+            url=f"{return_path}{separator}oauth_linked=1",
+            status_code=303,
+        )
     except (OIDCValidationError, HTTPException):
         return _oauth_error_redirect("Unable to link provider account.")
     except Exception:
@@ -384,21 +397,23 @@ async def _complete_link(request: Request, db: AsyncSession, provider_name: str,
 
 @router.get("/google/link/callback")
 async def google_link_callback(request: Request, code: str | None = None, state: str | None = None,
-                               error: str | None = None, db: AsyncSession = Depends(get_db)):
-    return await _complete_link(request, db, "google", code, state, error)
+                               error: str | None = None, db: AsyncSession = Depends(get_db),
+                               current_user: User = Depends(get_current_user)):
+    return await _complete_link(request, db, "google", code, state, error, current_user)
 
 
 @router.get("/microsoft/link/callback")
 async def microsoft_link_callback(request: Request, code: str | None = None, state: str | None = None,
-                                  error: str | None = None, db: AsyncSession = Depends(get_db)):
-    return await _complete_link(request, db, "microsoft", code, state, error)
+                                  error: str | None = None, db: AsyncSession = Depends(get_db),
+                                  current_user: User = Depends(get_current_user)):
+    return await _complete_link(request, db, "microsoft", code, state, error, current_user)
 
 
 async def _unlink_provider(user: User, provider_name: str, db: AsyncSession):
     if not await _recent_authentication(db, user.id):
         raise HTTPException(status_code=403, detail="Recent authentication is required.")
-    identities = (await db.execute(select(UserIdentity).where(
-        UserIdentity.user_id == user.id, UserIdentity.revoked_at.is_(None)
+    identities = (await db.execute(select(OAuthAccount).where(
+        OAuthAccount.user_id == user.id, OAuthAccount.revoked_at.is_(None)
     ))).scalars().all()
     if len(identities) <= 1 and not getattr(user, "local_password_enabled", False):
         raise HTTPException(status_code=400, detail="Cannot remove the last usable authentication method.")
@@ -407,7 +422,7 @@ async def _unlink_provider(user: User, provider_name: str, db: AsyncSession):
         raise HTTPException(status_code=404, detail="Provider account is not linked.")
     target.revoked_at = utc_now_naive()
     db.add(AuditLog(user_id=user.id, action="OAUTH_IDENTITY_UNLINKED",
-                    table_name="user_identities", new_value={"provider": provider_name}))
+                    table_name="oauth_accounts", new_value={"provider": provider_name}))
     await db.commit()
     return {"status": "unlinked"}
 

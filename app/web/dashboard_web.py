@@ -9,7 +9,7 @@ from app.core.dependencies import get_current_user, get_permission_map
 from app.core.config import settings
 from app.database.connection import get_db
 from app.modules.departments.models import UserDepartment
-from app.modules.users.models import Position, User, UserIdentity
+from app.modules.users.models import OAuthAccount, Position, User
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -179,10 +179,10 @@ async def render_employee_profile(
         return RedirectResponse(url="/auth/login")
     context = await get_employee_context(db, current_user)
     identity_rows = (await db.execute(
-        select(UserIdentity).where(
-            UserIdentity.user_id == current_user.id,
-            UserIdentity.revoked_at.is_(None),
-        ).order_by(UserIdentity.provider)
+        select(OAuthAccount).where(
+            OAuthAccount.user_id == current_user.id,
+            OAuthAccount.revoked_at.is_(None),
+        ).order_by(OAuthAccount.provider)
     )).scalars().all()
     connected_accounts = {
         row.provider: {

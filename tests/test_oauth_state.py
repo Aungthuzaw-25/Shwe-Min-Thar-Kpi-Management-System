@@ -36,3 +36,42 @@ async def test_oauth_state_is_one_time_and_provider_bound(monkeypatch):
 async def test_oauth_state_rejects_expired_or_unknown_state():
     with pytest.raises(Exception):
         await consume_oauth_state(FakeRedis(), "unknown")
+
+
+@pytest.mark.asyncio
+async def test_oauth_state_distinguishes_login_and_link_flows():
+    redis = FakeRedis()
+    login_state = await create_oauth_state(
+        redis,
+        provider="google",
+        nonce="login-nonce",
+        pkce_verifier="login-verifier",
+    )
+    link_state = await create_oauth_state(
+        redis,
+        provider="google",
+        nonce="link-nonce",
+        pkce_verifier="link-verifier",
+        mode="link",
+        user_id="user-a",
+    )
+
+    login_payload = await consume_oauth_state(redis, login_state)
+    link_payload = await consume_oauth_state(redis, link_state)
+
+    assert login_payload["flow_type"] == "LOGIN"
+    assert login_payload["user_id"] is None
+    assert link_payload["flow_type"] == "LINK"
+    assert link_payload["user_id"] == "user-a"
+
+
+@pytest.mark.asyncio
+async def test_link_state_requires_an_authenticated_user():
+    with pytest.raises(Exception):
+        await create_oauth_state(
+            FakeRedis(),
+            provider="microsoft",
+            nonce="nonce",
+            pkce_verifier="verifier",
+            mode="link",
+        )

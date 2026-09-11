@@ -32,12 +32,18 @@ async def create_oauth_state(
     return_path: str = "/dashboard",
     remember_me: bool = False,
 ) -> str:
+    normalized_mode = mode.lower()
+    if normalized_mode not in {"login", "link"}:
+        raise HTTPException(status_code=400, detail="Invalid OAuth flow.")
+    if normalized_mode == "link" and not user_id:
+        raise HTTPException(status_code=400, detail="Authenticated user is required for account linking.")
     state = secrets.token_urlsafe(32)
     payload = {
         "provider": provider,
         "nonce": nonce,
         "pkce_verifier": pkce_verifier,
-        "mode": mode,
+        "mode": normalized_mode,
+        "flow_type": normalized_mode.upper(),
         "user_id": user_id,
         "remember_me": bool(remember_me),
         "return_path": return_path if return_path.startswith("/") and not return_path.startswith("//") else "/dashboard",

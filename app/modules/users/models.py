@@ -65,7 +65,7 @@ class User(BaseModel):
     role = relationship("Role")
     position = relationship("Position", back_populates="users")
     user_departments = relationship("UserDepartment", back_populates="user", cascade="all, delete-orphan")
-    identities = relationship("UserIdentity", back_populates="user", cascade="all, delete-orphan")
+    oauth_accounts = relationship("OAuthAccount", back_populates="user", cascade="all, delete-orphan")
 
     __table_args__ = (
         CheckConstraint(
@@ -142,10 +142,10 @@ class UserPermissionOverride(BaseModel):
     )
 
 
-class UserIdentity(BaseModel):
+class OAuthAccount(BaseModel):
     """An immutable external identity linked to one internal user."""
 
-    __tablename__ = "user_identities"
+    __tablename__ = "oauth_accounts"
 
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     provider = Column(String(32), nullable=False)
@@ -158,7 +158,7 @@ class UserIdentity(BaseModel):
     last_login_at = Column(DateTime, nullable=True)
     revoked_at = Column(DateTime, nullable=True, index=True)
 
-    user = relationship("User", back_populates="identities")
+    user = relationship("User", back_populates="oauth_accounts")
 
     __table_args__ = (
         UniqueConstraint(
@@ -166,7 +166,12 @@ class UserIdentity(BaseModel):
             "issuer",
             "tenant_id",
             "provider_subject",
-            name="uq_user_identity_provider_subject",
+            name="uq_oauth_account_provider_subject",
         ),
-        Index("ix_user_identities_provider_lookup", "provider", "issuer", "tenant_id"),
+        UniqueConstraint(
+            "user_id",
+            "provider",
+            name="uq_oauth_account_user_provider",
+        ),
+        Index("ix_oauth_accounts_provider_lookup", "provider", "issuer", "tenant_id"),
     )

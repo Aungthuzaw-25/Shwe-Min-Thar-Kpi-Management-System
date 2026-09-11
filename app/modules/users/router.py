@@ -96,7 +96,7 @@ async def revoke_user_authentication(db: AsyncSession, user_id: UUID) -> None:
     )
     await db.execute(
         text(
-            "UPDATE user_identities SET revoked_at = :now "
+            "UPDATE oauth_accounts SET revoked_at = :now "
             "WHERE user_id = :uid AND revoked_at IS NULL"
         ),
         {"now": now, "uid": str(user_id)},
