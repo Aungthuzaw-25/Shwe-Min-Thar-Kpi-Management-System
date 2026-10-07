@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import logging
 from datetime import datetime, timedelta
@@ -69,12 +70,12 @@ async def _locked_escalation():
 async def _locked_notifications():
     await _run_with_lock(
         "notifications.batch",
-        lambda: _run_sync_notification_job(),
+        _run_sync_notification_job,
     )
 
 
 async def _run_sync_notification_job():
-    process_batch_notifications()
+    await asyncio.to_thread(process_batch_notifications)
 
 # ==============================================================================
 # 1. KPI Rollup Tasks (Weekly & Monthly)

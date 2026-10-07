@@ -249,7 +249,7 @@ async def create_new_user(payload: UserCreate, db: AsyncSession = Depends(get_db
             if user_level == "L0":
                 target_dept.head_id = new_user.id
                 db.add(target_dept)
-        await record_activity(
+        record_activity(
             db,
             actor_id=current_user.id,
             action="USER_CREATED",
@@ -782,7 +782,7 @@ async def update_existing_user(user_id: UUID, payload: UserUpdate, db: AsyncSess
                     user_level=requested_level or "L2",
                 )
                 db.add(new_ud)
-        await record_activity(
+        record_activity(
             db,
             actor_id=current_user.id,
             action="USER_UPDATED",
@@ -826,7 +826,7 @@ async def delete_existing_user(user_id: UUID, db: AsyncSession = Depends(get_db)
     await db.execute(text("UPDATE departments SET head_id = NULL WHERE head_id = :uid"), {"uid": str(user_id)})
     await revoke_user_authentication(db, user.id)
     await user_repo.soft_delete_user(db, user)
-    await record_activity(
+    record_activity(
         db,
         actor_id=current_user.id,
         action="USER_DELETED",

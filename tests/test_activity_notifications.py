@@ -30,15 +30,13 @@ def test_activity_is_staged_for_the_callers_transaction():
     actor_id = uuid4()
     entity_id = uuid4()
 
-    activity = asyncio.run(
-        record_activity(
-            db,
-            actor_id=actor_id,
-            action="TASK_CREATED",
-            entity_type="task",
-            entity_id=entity_id,
-            description="Created a task",
-        )
+    activity = record_activity(
+        db,
+        actor_id=actor_id,
+        action="TASK_CREATED",
+        entity_type="task",
+        entity_id=entity_id,
+        description="Created a task",
     )
 
     assert activity.user_id == actor_id

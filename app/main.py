@@ -155,7 +155,7 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
-async def _http_exception_handler(request: Request, exc: HTTPException):
+def _http_exception_handler(request: Request, exc: HTTPException):
     """Keep internal exception details out of production HTTP responses."""
     if exc.status_code >= status.HTTP_500_INTERNAL_SERVER_ERROR:
         logger.error(

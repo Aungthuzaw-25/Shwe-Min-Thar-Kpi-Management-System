@@ -119,7 +119,7 @@
                         </div>
                     </div>
                     <div class="mt-4 flex items-center">
-                        <label class="relative inline-flex items-center cursor-pointer group">
+                        <label for="set_smtp_tls" class="relative inline-flex items-center cursor-pointer group">
                             <input type="checkbox" id="set_smtp_tls" checked class="sr-only peer">
                             <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 shadow-inner"></div>
                             <span class="ml-3 text-xs sm:text-sm font-bold text-slate-700 group-hover:text-blue-950 transition-colors">Use TLS/SSL Encryption</span>
@@ -137,11 +137,11 @@
                                 <input type="number" id="set_pwd_length" value="8" min="8" max="128" class="w-full bg-slate-50 border border-gray-200 p-3 rounded-xl text-sm font-semibold focus:outline-none focus:bg-white focus:border-blue-900 transition-all shadow-inner">
                             </div>
                             <div class="space-y-3 sm:space-y-4">
-                                <label class="flex items-center cursor-pointer group">
+                                <label for="set_pwd_complex" class="flex items-center cursor-pointer group">
                                     <input type="checkbox" id="set_pwd_complex" checked class="w-5 h-5 accent-blue-600 rounded border-gray-300 cursor-pointer shrink-0">
                                     <span class="ml-3 text-xs sm:text-sm font-bold text-slate-700 group-hover:text-blue-950 transition-colors">Require Complexity (Uppercase, Numbers, Symbols)</span>
                                 </label>
-                                <label class="flex items-center cursor-pointer group">
+                                <label for="set_pwd_expire" class="flex items-center cursor-pointer group">
                                     <input type="checkbox" id="set_pwd_expire" class="w-5 h-5 accent-blue-600 rounded border-gray-300 cursor-pointer shrink-0">
                                     <span class="ml-3 text-xs sm:text-sm font-bold text-slate-700 group-hover:text-blue-950 transition-colors">Force password change every 90 days</span>
                                 </label>

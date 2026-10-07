@@ -403,7 +403,7 @@ async def create_new_task(payload: TaskCreate, db: AsyncSession = Depends(get_db
         
         task = await task_repo.create_task(db, task_data)
         db.add(TaskHistory(task_id=task.id, changed_by=current_user.id, action="CREATED", old_value="NONE", new_value=TaskStatus.DRAFT.value, remarks="Task အသစ်ဖန်တီးခြင်း"))
-        await record_activity(
+        record_activity(
             db,
             actor_id=current_user.id,
             action="TASK_ASSIGNED" if target_user_id != current_user.id else "TASK_CREATED",
@@ -476,7 +476,7 @@ async def create_bulk_tasks(payload: BulkTaskCreate, db: AsyncSession = Depends(
 
             new_task = await task_repo.create_task(db, task_data)
             db.add(TaskHistory(task_id=new_task.id, changed_by=current_user.id, action="ASSIGNED", old_value="NONE", new_value=TaskStatus.DRAFT.value, remarks=f"[{payload.category}] Category ဖြင့် Bulk ဖန်တီးထားပါသည်"))
-            await record_activity(
+            record_activity(
                 db,
                 actor_id=current_user.id,
                 action="TASK_ASSIGNED",
@@ -748,7 +748,7 @@ async def submit_task_batch(payload: BatchSubmitRequest, db: AsyncSession = Depe
                 old_value=TaskStatus.DRAFT.value, new_value=TaskStatus.PENDING_L1.value, 
                 remarks=f"Batch ဖြင့် တင်ပြလိုက်ပါသည် (Late: {t.is_late})"
             ))
-            await record_activity(
+            record_activity(
                 db,
                 actor_id=current_user.id,
                 action="TASK_SUBMITTED",
@@ -975,7 +975,7 @@ async def upload_task_evidence(task_id: UUID, file: UploadFile = File(...), db: 
         
         new_evidence = TaskEvidence(**evidence_data)
         db.add(new_evidence)
-        await record_activity(
+        record_activity(
             db,
             actor_id=current_user.id,
             action="EVIDENCE_UPLOADED",
@@ -1094,7 +1094,7 @@ async def resubmit_task(task_id: UUID, payload: TaskCreate, db: AsyncSession = D
             old_value="REJECTED", new_value=TaskStatus.DRAFT.value, 
             remarks="မူကွဲအသစ်ဖြင့် ပြန်လည်တင်ပြရန် အသင့်ဖြစ်နေပါပြီ။"
         ))
-        await record_activity(
+        record_activity(
             db,
             actor_id=current_user.id,
             action="TASK_RESUBMITTED",

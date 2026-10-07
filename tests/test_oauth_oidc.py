@@ -1,3 +1,5 @@
+import base64
+import hashlib
 import json
 import time
 from types import SimpleNamespace
@@ -70,9 +72,15 @@ def _signed_id_token(private_key, **claim_overrides):
 
 def test_pkce_verifier_and_challenge_are_generated():
     verifier = create_pkce_verifier()
+    first_nonce = create_nonce()
+    second_nonce = create_nonce()
+
     assert len(verifier) >= 43
-    assert create_pkce_challenge(verifier)
-    assert create_nonce() != create_nonce()
+    expected_challenge = base64.urlsafe_b64encode(
+        hashlib.sha256(verifier.encode("ascii")).digest()
+    ).rstrip(b"=").decode("ascii")
+    assert create_pkce_challenge(verifier) == expected_challenge
+    assert first_nonce != second_nonce
 
 
 @pytest.mark.asyncio

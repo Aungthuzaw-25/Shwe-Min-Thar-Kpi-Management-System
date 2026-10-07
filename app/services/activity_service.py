@@ -12,7 +12,7 @@ from app.modules.tasks.models.activity_timeline import ActivityTimeline
 from app.modules.users.models import User
 
 
-async def record_activity(
+def record_activity(
     db: AsyncSession,
     *,
     actor_id: UUID,

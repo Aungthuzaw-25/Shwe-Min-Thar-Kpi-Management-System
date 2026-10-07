@@ -77,7 +77,7 @@ async def create_task(db: AsyncSession, task_in: TaskCreate, current_user_id: UU
         db.add(new_task)
         if hasattr(db, "flush"):
             await db.flush()
-        await record_activity(
+        record_activity(
             db,
             actor_id=current_user_id,
             action="TASK_CREATED",
@@ -101,7 +101,7 @@ async def submit_task(db: AsyncSession, task_id: UUID, current_user_id: UUID) ->
     
     try:
         task.status = TaskStatus.PENDING_L1
-        await record_activity(
+        record_activity(
             db,
             actor_id=current_user_id,
             action="TASK_SUBMITTED",
@@ -165,7 +165,7 @@ async def review_task_l1(db: AsyncSession, task_id: UUID, payload: TaskReviewInp
             if payload.action == "REJECTED"
             else "Delayed"
         )
-        await record_activity(
+        record_activity(
             db,
             actor_id=current_user_id,
             action=f"TASK_L1_{payload.action}",
@@ -279,7 +279,7 @@ async def verify_task_l0(db: AsyncSession, task_id: UUID, payload: TaskReviewInp
             if payload.action == "REJECTED"
             else "Delayed"
         )
-        await record_activity(
+        record_activity(
             db,
             actor_id=current_user_id,
             action=f"TASK_L0_{payload.action}",

@@ -67,7 +67,7 @@
     function isIdentifier(value) {
         if (!value) return false;
         for (let index = 0; index < value.length; index += 1) {
-            const code = value.charCodeAt(index);
+            const code = value.codePointAt(index);
             const isLetter = (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
             if (index === 0) {
                 if (!isLetter && code !== 95 && code !== 36) return false;
