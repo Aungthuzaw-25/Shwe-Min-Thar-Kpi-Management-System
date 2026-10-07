@@ -12,7 +12,7 @@ COPY templates/ ./templates/
 COPY app/ ./app/ 
 
 # Install an exact Tailwind CSS version and build the production stylesheet.
-RUN npm install --global tailwindcss@3.4.17 && \
+RUN npm install --global --ignore-scripts tailwindcss@3.4.17 && \
     tailwindcss -i ./static/css/input.css -o ./static/css/output.css --minify
 
 # ============================================================

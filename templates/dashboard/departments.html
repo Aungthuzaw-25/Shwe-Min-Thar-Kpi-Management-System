@@ -38,6 +38,7 @@
         <!-- Search Bar -->
         <div class="relative w-full xl:w-72">
             <svg class="w-4 h-4 absolute left-3 top-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+            <label for="searchInput" class="sr-only">Search departments</label>
             <input type="text" id="searchInput" onkeyup="renderDepartments()" placeholder="Search department name..." class="w-full bg-white border border-gray-200 pl-10 pr-4 py-2.5 rounded-xl text-sm focus:outline-none focus:border-blue-900 focus:ring-1 focus:ring-blue-900 transition shadow-sm">
         </div>
     </div>
@@ -124,6 +125,7 @@
                 </select>
                 
                 <div class="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
+                    <label for="userLevelSelect" class="sr-only">Employee department level</label>
                     <select id="userLevelSelect" class="border border-white shadow-sm p-2.5 sm:p-3 rounded-xl w-full sm:w-48 text-xs sm:text-sm font-semibold focus:outline-none focus:border-blue-500 bg-white cursor-pointer">
                         <option value="L2">L2 (Staff)</option>
                         <option value="L1">L1 (Supervisor)</option>

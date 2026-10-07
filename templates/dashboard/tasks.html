@@ -744,7 +744,7 @@
                 title: document.getElementById("assignTaskTitle").value.trim(),
                 owner_id: document.getElementById("assigneeUser").value,
                 due_date: new Date(document.getElementById("assignDueDate").value).toISOString(),
-                grace_period_days: parseInt(document.getElementById("assignGracePeriod").value)
+                grace_period_days: Number.parseInt(document.getElementById("assignGracePeriod").value)
             }]
         };
         try {

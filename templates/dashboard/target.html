@@ -303,7 +303,7 @@
         const payload = {
             name: document.getElementById("tName").value.trim(),
             department_id: document.getElementById("tDepartment").value || null,
-            target_value: parseFloat(document.getElementById("tValue").value),
+            target_value: Number.parseFloat(document.getElementById("tValue").value),
             metric_type: document.getElementById("tType").value,
             target_month: document.getElementById("tMonth").value
         };

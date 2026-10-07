@@ -23,7 +23,7 @@
     </header>
 
     <div class="workspace-toolbar mb-4 animate-fade-in-up csp-delay-2">
-        <label class="font-bold text-slate-700 text-xs sm:text-sm uppercase tracking-wide">ဌာနရွေးချယ်ပါ (Department) :</label>
+        <label for="deptFilter" class="font-bold text-slate-700 text-xs sm:text-sm uppercase tracking-wide">ဌာနရွေးချယ်ပါ (Department) :</label>
         <select id="deptFilter" onchange="fetchPositions()" class="w-full sm:w-auto bg-slate-50 border border-gray-200 rounded-xl p-2.5 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-900 min-w-[200px] sm:min-w-[250px] shadow-inner cursor-pointer">
             <option value="">-- ဌာနရွေးချယ်ပါ --</option>
         </select>
@@ -63,17 +63,17 @@
         <form id="positionForm" onsubmit="savePosition(event)" class="p-5 sm:p-6">
             <input type="hidden" id="posId">
             <div class="mb-4 sm:mb-5">
-                <label class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-2 uppercase tracking-wide">ရာထူးအမည် (Name) <span class="text-red-500">*</span></label>
+                <label for="posName" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-2 uppercase tracking-wide">ရာထူးအမည် (Name) <span class="text-red-500">*</span></label>
                 <input type="text" id="posName" required placeholder="ဥပမာ - Senior Developer" class="w-full bg-slate-50 border border-gray-200 rounded-xl p-2.5 sm:p-3 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-900 shadow-inner">
             </div>
             <div class="mb-4 sm:mb-5">
-                <label class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-2 uppercase tracking-wide">သက်ဆိုင်သည့် ဌာန (Department) <span class="text-red-500">*</span></label>
+                <label for="modalDept" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-2 uppercase tracking-wide">သက်ဆိုင်သည့် ဌာန (Department) <span class="text-red-500">*</span></label>
                 <select id="modalDept" required onchange="loadParentPositions()" class="w-full bg-slate-50 border border-gray-200 rounded-xl p-2.5 sm:p-3 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-900 shadow-inner cursor-pointer">
                     <option value="">-- ရွေးချယ်ပါ --</option>
                 </select>
             </div>
             <div class="mb-5 sm:mb-6">
-                <label class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-2 uppercase tracking-wide">အထက်အရာရှိ ရာထူး (Parent Position)</label>
+                <label for="modalParent" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-2 uppercase tracking-wide">အထက်အရာရှိ ရာထူး (Parent Position)</label>
                 <select id="modalParent" class="w-full bg-slate-50 border border-gray-200 rounded-xl p-2.5 sm:p-3 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-900 shadow-inner cursor-pointer">
                     <option value="">-- မရှိပါ --</option>
                 </select>

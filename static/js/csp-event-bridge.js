@@ -58,18 +58,38 @@
             const parsed = parseQuotedArgument(value);
             return parsed === null ? undefined : parsed;
         }
-        if (!/^[A-Za-z_$][\w$]*$/.test(value)) return undefined;
+        if (!isIdentifier(value)) return undefined;
         if (value === "event") return event;
         if (value === "this") return element;
         return undefined;
     }
 
+    function isIdentifier(value) {
+        if (!value) return false;
+        for (let index = 0; index < value.length; index += 1) {
+            const code = value.charCodeAt(index);
+            const isLetter = (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
+            if (index === 0) {
+                if (!isLetter && code !== 95 && code !== 36) return false;
+            } else if (!isLetter && (code < 48 || code > 57) && code !== 95 && code !== 36) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     function invokeCall(expression, element, event) {
-        const match = expression.trim().match(/^([A-Za-z_$][\w$]*)\((.*)\)$/);
-        if (!match || typeof window[match[1]] !== "function") return false;
-        const args = splitArguments(match[2]).map((value) => resolveArgument(value, element, event));
-        if (args.some((value, index) => splitArguments(match[2])[index] && value === undefined)) return false;
-        window[match[1]](...args);
+        const call = expression.trim();
+        const openingParen = call.indexOf("(");
+        if (openingParen < 1 || call[call.length - 1] !== ")") return false;
+
+        const functionName = call.slice(0, openingParen);
+        if (!isIdentifier(functionName) || typeof window[functionName] !== "function") return false;
+
+        const argumentValues = splitArguments(call.slice(openingParen + 1, -1));
+        const args = argumentValues.map((value) => resolveArgument(value, element, event));
+        if (args.some((value, index) => argumentValues[index] && value === undefined)) return false;
+        window[functionName](...args);
         return true;
     }
 
@@ -85,9 +105,10 @@
                 continue;
             }
             if (trimmed.startsWith("if(") || trimmed.startsWith("if (")) {
-                const call = trimmed.match(/}\s*(.+)$/);
+                const closingBrace = trimmed.indexOf("}");
+                const call = closingBrace === -1 ? "" : trimmed.slice(closingBrace + 1).trim();
                 if (call && (event.key === "Enter" || event.key === " ")) {
-                    invokeCall(call[1], element, event);
+                    invokeCall(call, element, event);
                 }
                 continue;
             }
