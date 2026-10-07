@@ -95,10 +95,11 @@ workflow. Never use a production database or production credentials for tests.
 
 ## GitHub Actions
 
-The CI workflow reads `CI_SECRET_KEY` from GitHub Actions secrets. SonarCloud
-analysis is optional and runs only when `SONAR_TOKEN` is configured; the
-workflow uses GitHub's provided token for repository access. Add secret values
-in repository or environment settings, never in workflow YAML.
+The CI workflow uses a non-production test-only signing key and does not need a
+`CI_SECRET_KEY` repository secret. SonarCloud analysis is optional and runs
+only when `SONAR_TOKEN` is configured; the workflow uses GitHub's provided
+token for repository access. Store real deployment credentials in repository
+or environment secrets, never in workflow YAML.
 
 ## Docker
 
