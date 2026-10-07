@@ -2,7 +2,6 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-import pytz  # 🌟 Added for Timezone Conversion
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import false, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -752,7 +751,7 @@ async def fetch_superadmin_dashboard_data(
     
     for n, u in recent_alerts_req.all():
         # 🛡️ Convert Database Naive UTC to Asia/Yangon Local Time
-        local_time = n.created_at.replace(tzinfo=pytz.utc).astimezone(yangon_tz)
+        local_time = n.created_at.replace(tzinfo=UTC).astimezone(yangon_tz)
         
         # 🛡️ Extract actual user name or fallback to System
         user_name = f"{u.first_name} {u.last_name}" if u else "System Alert"

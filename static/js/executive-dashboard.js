@@ -525,23 +525,47 @@
     }
   }
 
-  period.addEventListener('change', loadDashboard);
+  function runDashboardLoad() {
+    loadDashboard().catch(() => {
+      root.classList.remove('is-loading');
+      errorPanel.hidden = false;
+      updated.textContent = 'Update failed';
+    });
+  }
+
+  function runEmployeeResultsLoad() {
+    loadEmployeeResults(period.value, activeRequest?.signal).catch(() => {
+      document.getElementById('employeeResults').innerHTML =
+        listEmpty('Employee results could not be loaded. Try refreshing the dashboard.');
+      document.getElementById('employeePageMeta').textContent = 'Results unavailable';
+    });
+  }
+
+  function runEmployeeDetailLoad(userId) {
+    loadEmployeeDetail(userId, period.value).catch(() => {
+      const target = document.getElementById('employeeDetail');
+      target.hidden = false;
+      target.innerHTML = listEmpty('Employee KPI details could not be loaded in this authorized scope.');
+    });
+  }
+
+  period.addEventListener('change', runDashboardLoad);
   document.getElementById('employeePrevious').addEventListener('click', () => {
     employeeOffset = Math.max(employeeOffset - employeePageSize, 0);
-    loadEmployeeResults(period.value, activeRequest?.signal);
+    runEmployeeResultsLoad();
   });
   document.getElementById('employeeNext').addEventListener('click', () => {
     if (employeeOffset + employeePageSize >= employeeTotal) return;
     employeeOffset += employeePageSize;
-    loadEmployeeResults(period.value, activeRequest?.signal);
+    runEmployeeResultsLoad();
   });
   document.getElementById('employeeResults').addEventListener('click', event => {
     const button = event.target instanceof Element
       ? event.target.closest('button[data-user-id]')
       : null;
-    if (button) loadEmployeeDetail(button.dataset.userId, period.value);
+    if (button) runEmployeeDetailLoad(button.dataset.userId);
   });
-  refreshButton.addEventListener('click', loadDashboard);
-  retryButton.addEventListener('click', loadDashboard);
-  loadDashboard();
+  refreshButton.addEventListener('click', runDashboardLoad);
+  retryButton.addEventListener('click', runDashboardLoad);
+  runDashboardLoad();
 })();

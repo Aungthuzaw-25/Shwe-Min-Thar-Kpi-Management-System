@@ -92,6 +92,16 @@ python -m pytest tests --ignore=tests/test_ui_dashboard.py --cov=app --cov-repor
 
 The same test selection and additional checks run in the GitHub Actions
 workflow. Never use a production database or production credentials for tests.
+CI and Docker install the exact, hash-verified Python 3.11/Linux x86_64
+dependencies from `requirements-dev.lock` and `requirements.lock`. To refresh
+those locks after intentionally changing dependencies, install `uv` and run:
+
+```sh
+uv pip compile requirements.txt --python-version 3.11 --python-platform x86_64-manylinux_2_28 --only-binary :all: --generate-hashes --output-file requirements.lock
+uv pip compile requirements-dev.txt --python-version 3.11 --python-platform x86_64-manylinux_2_28 --only-binary :all: --generate-hashes --output-file requirements-dev.lock
+```
+
+Review and test lock updates before merging them.
 
 ## GitHub Actions
 
@@ -216,4 +226,6 @@ kpi-platform/
 ├── Dockerfile               # Backend container build instructions
 ├── requirements.txt         # Runtime Python dependencies
 ├── requirements-dev.txt     # Test and development dependencies
+├── requirements.lock        # Hash-verified Python 3.11/Linux runtime lock
+├── requirements-dev.lock    # Hash-verified Python 3.11/Linux development lock
 └── docs/                    # Development and QA documentation

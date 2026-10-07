@@ -1,6 +1,10 @@
+import json
+import time
 from types import SimpleNamespace
 
+import jwt
 import pytest
+from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import Request
 from fastapi.responses import Response
 
@@ -12,6 +16,56 @@ from app.modules.auth.oidc import (
     create_pkce_challenge,
     create_pkce_verifier,
 )
+
+
+def _oidc_test_provider(monkeypatch):
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    jwk = json.loads(jwt.algorithms.RSAAlgorithm.to_jwk(private_key.public_key()))
+    jwk.update({"kid": "test-key", "use": "sig", "alg": "RS256"})
+    provider = OIDCProvider(
+        name="google",
+        client_id="client-id",
+        client_secret="client-secret",  # noqa: S106 - synthetic test fixture; not a production credential
+        redirect_uri="https://app.example.com/callback",
+        discovery_url="https://accounts.google.com/.well-known/openid-configuration",
+        scopes=("openid", "email", "profile"),
+    )
+
+    async def metadata():
+        return {
+            "issuer": "https://accounts.google.com",
+            "jwks_uri": "https://accounts.google.com/keys",
+            "id_token_signing_alg_values_supported": ["RS256"],
+        }
+
+    async def jwks(_url):
+        return {"keys": [jwk]}
+
+    monkeypatch.setattr(provider, "metadata", metadata)
+    monkeypatch.setattr(provider, "_jwks", jwks)
+    return provider, private_key
+
+
+def _signed_id_token(private_key, **claim_overrides):
+    now = int(time.time())
+    claims = {
+        "iss": "https://accounts.google.com",
+        "sub": "subject-1",
+        "aud": "client-id",
+        "exp": now + 300,
+        "iat": now,
+        "nonce": "expected-nonce",
+        "email": "alice@example.com",
+        "email_verified": True,
+        "name": "Alice Example",
+    }
+    claims.update(claim_overrides)
+    return jwt.encode(
+        claims,
+        private_key,
+        algorithm="RS256",
+        headers={"kid": "test-key"},
+    )
 
 
 def test_pkce_verifier_and_challenge_are_generated():
@@ -40,6 +94,77 @@ async def test_google_callback_issuer_must_match_discovery_metadata(monkeypatch)
 
     with pytest.raises(OIDCValidationError):
         await provider.validate_callback_issuer("https://attacker.example")
+
+
+@pytest.mark.asyncio
+async def test_id_token_signature_and_expected_claims_are_validated(monkeypatch):
+    provider, private_key = _oidc_test_provider(monkeypatch)
+    identity = await provider.validate_identity(
+        {"id_token": _signed_id_token(private_key)},
+        "expected-nonce",
+    )
+
+    assert identity.subject == "subject-1"
+    assert identity.email == "alice@example.com"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "claims,nonce",
+    [
+        ({"iss": "https://attacker.example"}, "expected-nonce"),
+        ({"aud": "another-client"}, "expected-nonce"),
+        ({"nonce": "another-nonce"}, "expected-nonce"),
+        ({"aud": ["client-id", "another-client"]}, "expected-nonce"),
+        ({}, "another-nonce"),
+    ],
+)
+async def test_id_token_rejects_unexpected_issuer_audience_or_nonce(
+    monkeypatch, claims, nonce
+):
+    provider, private_key = _oidc_test_provider(monkeypatch)
+
+    with pytest.raises(OIDCValidationError):
+        await provider.validate_identity(
+            {"id_token": _signed_id_token(private_key, **claims)},
+            nonce,
+        )
+
+
+@pytest.mark.asyncio
+async def test_id_token_rejects_invalid_signature_and_algorithm(monkeypatch):
+    provider, private_key = _oidc_test_provider(monkeypatch)
+    other_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+
+    with pytest.raises(OIDCValidationError):
+        await provider.validate_identity(
+            {"id_token": _signed_id_token(other_key)},
+            "expected-nonce",
+        )
+
+    unsupported_token = jwt.encode(
+        {"sub": "subject-1"},
+        "not-a-trusted-key",
+        algorithm="HS256",
+        headers={"kid": "test-key"},
+    )
+    with pytest.raises(OIDCValidationError):
+        await provider.validate_identity(
+            {"id_token": unsupported_token},
+            "expected-nonce",
+        )
+
+    unadvertised_algorithm_token = jwt.encode(
+        {"sub": "subject-1"},
+        private_key,
+        algorithm="RS384",
+        headers={"kid": "test-key"},
+    )
+    with pytest.raises(OIDCValidationError):
+        await provider.validate_identity(
+            {"id_token": unadvertised_algorithm_token},
+            "expected-nonce",
+        )
 
 
 @pytest.mark.asyncio

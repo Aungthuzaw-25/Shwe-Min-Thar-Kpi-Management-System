@@ -80,11 +80,11 @@
         <h3 id="modalTitle" class="text-lg sm:text-xl font-extrabold text-blue-950 mb-5">Create New Department</h3>
         <input type="hidden" id="deptId">
         <div class="mb-6">
-            <label class="block text-xs font-bold text-slate-700 mb-2 uppercase">Department Name <span class="text-red-500">*</span></label>
+            <label for="deptName" class="block text-xs font-bold text-slate-700 mb-2 uppercase">Department Name <span class="text-red-500">*</span></label>
             <input type="text" id="deptName" class="w-full bg-slate-50 border border-gray-200 p-2.5 sm:p-3 rounded-xl focus:outline-none focus:bg-white focus:border-blue-900 transition text-sm font-semibold" placeholder="e.g., Human Resources">
         </div>
         <div class="mb-6">
-            <label class="block text-xs font-bold text-slate-700 mb-2 uppercase">Priority (0-100)</label>
+            <label for="deptPriority" class="block text-xs font-bold text-slate-700 mb-2 uppercase">Priority (0-100)</label>
             <input type="number" id="deptPriority" min="0" max="100" value="0" class="w-full bg-slate-50 border border-gray-200 p-2.5 sm:p-3 rounded-xl text-sm font-semibold">
         </div>
         <!-- 🌟 RESPONSIVE FIX: Buttons stretch on mobile -->
@@ -117,7 +117,7 @@
         
         <!-- Assignment Form -->
         <div class="bg-blue-50/50 p-3 sm:p-4 rounded-2xl border border-blue-100 mb-4 shrink-0">
-            <label class="block text-xs font-bold text-blue-900 mb-2 uppercase">Assign New Employee</label>
+            <label for="userSelect" class="block text-xs font-bold text-blue-900 mb-2 uppercase">Assign New Employee</label>
             <div class="flex flex-col lg:flex-row gap-3">
                 <select id="userSelect" class="border border-white shadow-sm p-2.5 sm:p-3 rounded-xl flex-1 text-xs sm:text-sm font-semibold focus:outline-none focus:border-blue-500 bg-white cursor-pointer w-full">
                     <option value="">-- Select Employee --</option>
@@ -615,7 +615,7 @@
             document.getElementById("actionModalTitle").innerText = "Change Employee Level";
             document.getElementById("actionModalDesc").innerHTML = `Update role level for <strong class="text-blue-900">${escapeHTML(userName)}</strong>.`;
             contentArea.innerHTML = `
-                <label class="block text-xs font-bold text-slate-700 mb-2 uppercase">Select New Level</label>
+                <label for="actionSelectValue" class="block text-xs font-bold text-slate-700 mb-2 uppercase">Select New Level</label>
                 <select id="actionSelectValue" class="w-full bg-slate-50 border border-gray-200 p-2.5 sm:p-3 rounded-xl text-sm font-semibold focus:outline-none focus:border-blue-900 shadow-inner">
                     <option value="L2" ${extraData === 'L2' ? 'selected' : ''}>L2 (Staff)</option>
                     <option value="L1" ${extraData === 'L1' ? 'selected' : ''}>L1 (Supervisor)</option>
@@ -627,7 +627,7 @@
             document.getElementById("actionModalTitle").innerText = "Transfer Employee";
             document.getElementById("actionModalDesc").innerHTML = `Move <strong class="text-blue-900">${escapeHTML(userName)}</strong> to another department.`;
             contentArea.innerHTML = `
-                <label class="block text-xs font-bold text-slate-700 mb-2 uppercase">Target Department</label>
+                <label for="actionSelectValue" class="block text-xs font-bold text-slate-700 mb-2 uppercase">Target Department</label>
                 <select id="actionSelectValue" class="w-full bg-slate-50 border border-gray-200 p-2.5 sm:p-3 rounded-xl text-sm font-semibold focus:outline-none focus:border-blue-900 shadow-inner">
                     <option value="">-- Loading Departments --</option>
                 </select>

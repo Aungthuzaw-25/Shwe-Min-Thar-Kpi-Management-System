@@ -46,10 +46,6 @@ limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter()
 
-# 🌟 SECURITY: Dummy bcrypt hash to prevent timing attacks
-TIMING_EQUALIZATION_HASH = "$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjIQ6VSAca"
-
-
 def _provider(name: str) -> OIDCProvider:
     if name == "google":
         if not (settings.OAUTH_ENABLED and settings.GOOGLE_OIDC_ENABLED and settings.GOOGLE_CLIENT_ID and settings.GOOGLE_CLIENT_SECRET and settings.GOOGLE_REDIRECT_URI):

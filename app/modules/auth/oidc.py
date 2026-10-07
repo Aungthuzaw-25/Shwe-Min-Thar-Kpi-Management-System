@@ -115,25 +115,57 @@ class OIDCProvider:
         try:
             header = jwt.get_unverified_header(id_token)
             allowed_algorithms = ["RS256", "RS384", "RS512", "ES256", "ES384", "ES512"]
-            if header.get("alg") not in allowed_algorithms:
+            algorithm = header.get("alg")
+            if algorithm not in allowed_algorithms:
                 raise OIDCValidationError("Unsupported ID token algorithm.")
+            supported_algorithms = metadata.get("id_token_signing_alg_values_supported")
+            if (
+                not isinstance(supported_algorithms, list)
+                or algorithm not in supported_algorithms
+            ):
+                raise OIDCValidationError("Unsupported ID token algorithm.")
+            kid = header.get("kid")
+            if not isinstance(kid, str) or not kid:
+                raise OIDCValidationError("Signing key not found.")
             keys = await self._jwks(metadata["jwks_uri"])
-            key = next((item for item in keys.get("keys", []) if item.get("kid") == header.get("kid")), None)
+            key = next(
+                (
+                    item
+                    for item in keys.get("keys", [])
+                    if item.get("kid") == kid
+                    and item.get("use", "sig") == "sig"
+                    and ("key_ops" not in item or "verify" in item["key_ops"])
+                    and ("alg" not in item or item["alg"] == algorithm)
+                ),
+                None,
+            )
             if not key:
                 raise OIDCValidationError("Signing key not found.")
             issuer = metadata["issuer"]
+            if not isinstance(issuer, str) or not issuer:
+                raise OIDCValidationError("Provider identity validation failed.")
             claims = jwt.decode(
                 id_token,
                 jwt.PyJWK.from_dict(key),
-                algorithms=allowed_algorithms,
+                algorithms=[algorithm],
                 audience=self.client_id,
                 issuer=issuer,
-                options={"verify_at_hash": False},
+                options={
+                    "verify_signature": True,
+                    "verify_at_hash": False,
+                    "require": ["iss", "sub", "aud", "exp", "iat", "nonce"],
+                },
             )
         except (JWTError, KeyError, TypeError) as exc:
             raise OIDCValidationError("Provider identity validation failed.") from exc
         if claims.get("nonce") != nonce:
             raise OIDCValidationError("Provider nonce validation failed.")
+        audiences = claims.get("aud")
+        if isinstance(audiences, list) and len(audiences) > 1:
+            if claims.get("azp") != self.client_id:
+                raise OIDCValidationError("Provider authorized party validation failed.")
+        elif claims.get("azp") not in (None, self.client_id):
+            raise OIDCValidationError("Provider authorized party validation failed.")
         subject = claims.get("sub")
         email = claims.get("email") or claims.get("preferred_username")
         if not subject or not email:

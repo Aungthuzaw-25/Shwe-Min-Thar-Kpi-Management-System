@@ -15,6 +15,7 @@ scripts/
 qa_l1_cookies.txt
 static/css/output.css
 requirements-dev.txt
+requirements-dev.lock
 pytest.ini
 pyproject.toml
 

@@ -1,6 +1,7 @@
 """
 Authentication Domain Service (Single Source of Truth)
 """
+import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -11,16 +12,20 @@ from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 
 from app.core import security
+from app.core.config import settings
+from app.core.password_policy import get_password_expiry_days
+from app.models.audit_log import AuditLog
 from app.modules.auth.models import AuthSession, LoginHistory, PasswordHistory
 from app.modules.departments.models import UserDepartment
 from app.modules.users.models import User
 
 INVALID_CREDENTIALS_MESSAGE = "Invalid email or password."
-from app.core.config import settings
-from app.core.password_policy import get_password_expiry_days
-from app.models.audit_log import AuditLog
 
-TIMING_EQUALIZATION_HASH = "$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjIQ6VSAca"
+# Generate one random bcrypt hash per process for timing equalization on
+# unknown and passwordless accounts. Never use a reusable credential hash.
+TIMING_EQUALIZATION_HASH = security.pwd_context.handler("bcrypt").hash(
+    secrets.token_urlsafe(32),
+)
 
 class AuthService:
     @staticmethod

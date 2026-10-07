@@ -1,8 +1,9 @@
 import pytest
+from fastapi.testclient import TestClient
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse
 
-from app.main import CSRFMiddleware
+from app.main import CSRFMiddleware, app
 
 
 def request(method="POST", headers=None, cookies=None):
@@ -65,3 +66,17 @@ async def test_bearer_api_mutation_is_not_blocked_by_csrf():
         ok_response,
     )
     assert response.status_code == 200
+
+
+def test_cors_preflight_is_handled_before_application_middleware():
+    with TestClient(app) as client:
+        response = client.options(
+            "/api/v1/health",
+            headers={
+                "Origin": "http://localhost:8000",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:8000"

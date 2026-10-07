@@ -1,8 +1,6 @@
 (function () {
     "use strict";
 
-    const argumentPattern = /^(?:'((?:\\.|[^'])*)'|"((?:\\.|[^"])*)"|([A-Za-z_$][\w$]*))$/;
-
     function splitArguments(value) {
         const result = [];
         let current = "";
@@ -34,14 +32,35 @@
         return result;
     }
 
-    function resolveArgument(value, element, event) {
-        const match = value.match(argumentPattern);
-        if (!match) return undefined;
-        if (match[1] !== undefined || match[2] !== undefined) {
-            return (match[1] ?? match[2]).replace(/\\(['"\\])/g, "$1");
+    function parseQuotedArgument(value) {
+        const quote = value[0];
+        if ((quote !== "'" && quote !== '"') || value[value.length - 1] !== quote) return null;
+
+        let result = "";
+        for (let index = 1; index < value.length - 1; index += 1) {
+            const character = value[index];
+            if (character === quote) return null;
+            if (character !== "\\") {
+                result += character;
+                continue;
+            }
+            if (index + 1 >= value.length - 1) return null;
+            const escaped = value[++index];
+            result += escaped === "'" || escaped === '"' || escaped === "\\"
+                ? escaped
+                : `\\${escaped}`;
         }
-        if (match[3] === "event") return event;
-        if (match[3] === "this") return element;
+        return result;
+    }
+
+    function resolveArgument(value, element, event) {
+        if (value[0] === "'" || value[0] === '"') {
+            const parsed = parseQuotedArgument(value);
+            return parsed === null ? undefined : parsed;
+        }
+        if (!/^[A-Za-z_$][\w$]*$/.test(value)) return undefined;
+        if (value === "event") return event;
+        if (value === "this") return element;
         return undefined;
     }
 

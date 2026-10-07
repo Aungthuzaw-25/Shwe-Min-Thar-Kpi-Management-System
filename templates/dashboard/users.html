@@ -116,22 +116,22 @@
                 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
                     <div>
-                        <label class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wide">First Name <span class="text-red-500">*</span></label>
+                        <label for="firstName" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wide">First Name <span class="text-red-500">*</span></label>
                         <input type="text" id="firstName" required class="w-full px-3 sm:px-4 py-2.5 sm:py-3 bg-slate-50 hover:bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-900 text-xs sm:text-sm font-semibold transition-all shadow-inner">
                     </div>
                     <div>
-                        <label class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wide">Last Name <span class="text-red-500">*</span></label>
+                        <label for="lastName" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wide">Last Name <span class="text-red-500">*</span></label>
                         <input type="text" id="lastName" required class="w-full px-3 sm:px-4 py-2.5 sm:py-3 bg-slate-50 hover:bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-900 text-xs sm:text-sm font-semibold transition-all shadow-inner">
                     </div>
                 </div>
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6">
                     <div>
-                        <label class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wide">Email Address <span class="text-red-500">*</span></label>
+                        <label for="userEmail" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wide">Email Address <span class="text-red-500">*</span></label>
                         <input type="email" id="userEmail" required class="w-full px-3 sm:px-4 py-2.5 sm:py-3 bg-slate-50 hover:bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-900 text-xs sm:text-sm font-semibold transition-all shadow-inner">
                     </div>
                     <div>
-                        <label class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wide">Department</label>
+                        <label for="userDepartment" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wide">Department</label>
                         <select id="userDepartment" onchange="onDepartmentChange()" class="w-full px-3 sm:px-4 py-2.5 sm:py-3 bg-slate-50 hover:bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-900 text-xs sm:text-sm font-semibold cursor-pointer transition-all shadow-inner appearance-none">
                             <option value="">-- Select Department --</option>
                         </select>
@@ -140,13 +140,13 @@
                 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6">
                     <div>
-                        <label class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wide">Position / Title</label>
+                        <label for="userPosition" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wide">Position / Title</label>
                         <select id="userPosition" class="w-full px-3 sm:px-4 py-2.5 sm:py-3 bg-slate-50 hover:bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-900 text-xs sm:text-sm font-semibold cursor-pointer transition-all shadow-inner appearance-none">
                             <option value="">-- Select Department First --</option>
                         </select>
                     </div>
                     <div>
-                        <label class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wide">System Role <span class="text-red-500">*</span></label>
+                        <label for="userRole" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wide">System Role <span class="text-red-500">*</span></label>
                         <select id="userRole" required class="w-full px-3 sm:px-4 py-2.5 sm:py-3 bg-slate-50 hover:bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-900 text-xs sm:text-sm font-semibold cursor-pointer transition-all shadow-inner appearance-none">
                             <option value="">-- Select Role --</option>
                         </select>
@@ -155,7 +155,7 @@
 
                 <div class="grid grid-cols-1 md:grid-cols-1 gap-4 sm:gap-6 mb-4 sm:mb-6">
                     <div>
-                        <label class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wide">Region / Town</label>
+                        <label for="userRegionTown" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wide">Region / Town</label>
                         <input type="text" id="userRegionTown" class="w-full px-3 sm:px-4 py-2.5 sm:py-3 bg-slate-50 hover:bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-900 text-xs sm:text-sm font-semibold transition-all shadow-inner" placeholder="e.g. YGN Office">
                     </div>
                 </div>
@@ -166,7 +166,7 @@
                     </div>
                     
                     <div class="relative z-10">
-                        <label class="block text-[10px] sm:text-xs font-extrabold text-blue-900 mb-2 uppercase tracking-wide">Temporary Password <span class="text-red-500">*</span></label>
+                        <label for="userPassword" class="block text-[10px] sm:text-xs font-extrabold text-blue-900 mb-2 uppercase tracking-wide">Temporary Password <span class="text-red-500">*</span></label>
                         <div class="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3">
                             <input type="text" id="userPassword" class="flex-1 px-3 sm:px-4 py-2.5 sm:py-3 border border-blue-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-xs sm:text-sm transition-all font-mono font-bold bg-white shadow-sm" placeholder="Type password or auto-generate">
                             <button type="button" onclick="generateRandomPassword()" class="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl text-xs sm:text-sm font-bold transition-colors shadow-sm whitespace-nowrap flex items-center justify-center focus:outline-none">
@@ -215,7 +215,7 @@
         </div>
         <div class="p-5 sm:p-6">
             <input type="hidden" id="resetUserId">
-            <label class="block text-[10px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">New Password <span class="text-red-500">*</span></label>
+            <label for="newPasswordInput" class="block text-[10px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">New Password <span class="text-red-500">*</span></label>
             <input type="text" id="newPasswordInput" required class="w-full px-3 sm:px-4 py-2.5 sm:py-3 bg-slate-50 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 text-xs sm:text-sm font-bold font-mono transition-colors shadow-inner">
             <p class="text-[9px] sm:text-[11px] font-medium text-slate-500 mt-2 sm:mt-3 leading-relaxed">Password must meet the security policy (e.g. Minimum 12 characters, uppercase, lowercase, numbers, symbols).</p>
         </div>
@@ -286,23 +286,55 @@
         }
     }
 
-    function generateRandomPassword() {
-        const randomPass = Math.random().toString(36).slice(-8) + "Kpi@1!";
-        document.getElementById('userPassword').value = randomPass;
+    function createSecurePassword() {
+        const cryptoApi = window.crypto;
+        if (!cryptoApi || typeof cryptoApi.getRandomValues !== 'function') {
+            showToast("Secure password generation is unavailable in this browser. Enter a password manually.", "error");
+            return null;
+        }
+
+        const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        const acceptanceLimit = Math.floor(256 / alphabet.length) * alphabet.length;
+        const randomValues = new Uint8Array(16);
+        let randomPart = "";
+        try {
+            while (randomPart.length < 8) {
+                cryptoApi.getRandomValues(randomValues);
+                for (const value of randomValues) {
+                    if (value < acceptanceLimit) {
+                        randomPart += alphabet[value % alphabet.length];
+                        if (randomPart.length === 8) break;
+                    }
+                }
+            }
+        } catch {
+            showToast("Secure password generation is unavailable. Enter a password manually.", "error");
+            return null;
+        }
+        return randomPart + "Kpi@1!";
     }
 
-    document.addEventListener('DOMContentLoaded', async () => {
-        await fetchDropdownData();
-        await loadUsers();
-        
-        document.getElementById('searchInput').addEventListener('input', function(e) {
-            const term = e.target.value.toLowerCase();
-            const filtered = allUsers.filter(u => 
-                (u.first_name || '').toLowerCase().includes(term) || 
-                (u.last_name || '').toLowerCase().includes(term) || 
-                (u.email || '').toLowerCase().includes(term)
-            );
-            renderUsersTable(filtered);
+    function generateRandomPassword() {
+        const randomPass = createSecurePassword();
+        if (randomPass) document.getElementById('userPassword').value = randomPass;
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        void (async () => {
+            await fetchDropdownData();
+            await loadUsers();
+
+            document.getElementById('searchInput').addEventListener('input', function(e) {
+                const term = e.target.value.toLowerCase();
+                const filtered = allUsers.filter(u =>
+                    (u.first_name || '').toLowerCase().includes(term) ||
+                    (u.last_name || '').toLowerCase().includes(term) ||
+                    (u.email || '').toLowerCase().includes(term)
+                );
+                renderUsersTable(filtered);
+            });
+        })().catch(() => {
+            showToast("Failed to initialize user management. Please refresh the page and try again.", "error");
         });
     });
 
@@ -688,7 +720,9 @@
 
     function openResetModal(userId) {
         document.getElementById('resetUserId').value = userId;
-        document.getElementById('newPasswordInput').value = Math.random().toString(36).slice(-8) + "Kpi@1!";
+        const password = createSecurePassword();
+        if (!password) return;
+        document.getElementById('newPasswordInput').value = password;
         toggleModal('resetPasswordModal', 'resetModalContent', true);
     }
 

@@ -189,14 +189,6 @@ ALLOWED_ORIGINS = [
     if origin.strip()
 ]
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["*"],
-)
-
 # C. Bank-Grade HTTP Security Headers & Content Security Policy (CSP)
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
@@ -309,6 +301,16 @@ class CSRFMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(CSRFMiddleware)
+
+# Register CORS last so it wraps the other middleware and can handle preflight
+# requests and attach CORS headers to error responses.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+)
 
 # ==============================================================================
 # 📂 5. STATIC FILES & STORAGE MOUNTING

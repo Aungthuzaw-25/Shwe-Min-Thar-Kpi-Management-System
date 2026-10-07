@@ -77,7 +77,7 @@ EOF
 # 2. Database Migrations
 # ==========================================
 echo "🚀 Step 2: Running Database Schema Migrations..."
-if [ "${SKIP_DATABASE_MIGRATIONS:-false}" = "true" ]; then
+if [[ "${SKIP_DATABASE_MIGRATIONS:-false}" == "true" ]]; then
     echo "⏭️  Step 2: Database migrations disabled for this startup."
 else
     alembic upgrade head
@@ -87,7 +87,7 @@ fi
 # ==========================================
 # 3. Idempotent Initial Data
 # ==========================================
-if [ "${SKIP_DATABASE_SEED:-false}" = "true" ]; then
+if [[ "${SKIP_DATABASE_SEED:-false}" == "true" ]]; then
     echo "⏭️  Step 3: Database seed disabled for this environment."
 else
     echo "🌱 Step 3: Running idempotent database initialization..."
@@ -98,7 +98,7 @@ fi
 # ==========================================
 # 4. Server Startup
 # ==========================================
-if [ "${RUN_SCHEDULER:-false}" = "true" ]; then
+if [[ "${RUN_SCHEDULER:-false}" == "true" ]]; then
     echo "⏰ Starting dedicated scheduler process..."
     exec python -m app.background_jobs.runner
 fi
