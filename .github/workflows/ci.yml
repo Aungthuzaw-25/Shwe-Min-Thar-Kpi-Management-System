@@ -115,12 +115,19 @@ jobs:
           fi
 
       - name: SonarQube analysis
+        id: sonar_analysis
         if: steps.sonar_config.outputs.enabled == 'true'
+        continue-on-error: true
         uses: SonarSource/sonarqube-scan-action@v6
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarcloud.io
+
+      - name: Report SonarQube analysis failure
+        if: steps.sonar_analysis.outcome == 'failure'
+        run: |
+          echo "::warning::SonarQube analysis failed. Verify that the SONAR_TOKEN repository secret is valid and that its account can analyze the configured project. Tests and build checks remain blocking."
 
       - name: Build production Docker image
         run: |
