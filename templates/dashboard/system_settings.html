@@ -405,7 +405,7 @@
                 let filename = "system_backup.json";
                 const disposition = res.headers.get('Content-Disposition');
                 if (disposition && disposition.includes('filename=')) {
-                    filename = disposition.split('filename=')[1].replace(/"/g, '');
+                    filename = disposition.split('filename=')[1].replaceAll('"', '');
                 }
                 
                 const a = document.createElement('a');

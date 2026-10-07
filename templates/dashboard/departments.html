@@ -335,7 +335,7 @@
             let actionButtons = "";
 
             // 🌟 SECURITY FIX: Used encodeURIComponent to prevent UI breaks and XSS from quotes in names
-            const safeDeptName = encodeURIComponent(dept.name).replace(/'/g, "%27");
+            const safeDeptName = encodeURIComponent(dept.name).replaceAll("'", "%27");
 
             if (currentTab === 'active') {
                 actionButtons = `

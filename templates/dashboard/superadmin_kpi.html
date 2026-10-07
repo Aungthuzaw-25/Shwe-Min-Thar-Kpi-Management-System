@@ -586,7 +586,7 @@
                 let menuItems = '';
                 
                 // 🌟 BUG FIX & SECURITY FIX: XSS Protection / Single Quote Escape for JSON passing
-                const encodedFormula = encodeURIComponent(JSON.stringify(formula)).replace(/'/g, "%27");
+                const encodedFormula = encodeURIComponent(JSON.stringify(formula)).replaceAll("'", "%27");
                 menuItems += `<button onclick="editFormula('${encodedFormula}')" class="w-full text-left px-5 py-3 text-sm font-semibold text-slate-700 hover:text-blue-700 hover:bg-blue-50 border-b border-slate-100 transition-colors">Edit Settings</button>`;
                 
                 if(formula.status === 'DRAFT') {

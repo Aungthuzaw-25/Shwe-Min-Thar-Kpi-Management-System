@@ -249,7 +249,7 @@
         // 🛡️ CSV Injection Protection
         const sanitizeCSV = (str) => {
             if (!str) return '""';
-            let s = str.toString().replace(/"/g, '""');
+            let s = str.toString().replaceAll('"', '""');
             if (s.match(/^[=\+\-@]/)) s = "'" + s;
             return `"${s}"`;
         };

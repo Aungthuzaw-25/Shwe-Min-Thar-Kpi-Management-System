@@ -512,7 +512,7 @@
             }
 
             // 🌟 URL-Safe JSON Serialization
-            const safeUserJSON = encodeURIComponent(JSON.stringify(user)).replace(/'/g, "%27");
+            const safeUserJSON = encodeURIComponent(JSON.stringify(user)).replaceAll("'", "%27");
 
             let actionButtons = '';
             if (isUserDeleted) {
