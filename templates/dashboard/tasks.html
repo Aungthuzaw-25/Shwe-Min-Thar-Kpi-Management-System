@@ -91,7 +91,7 @@
                 <table class="w-full text-left text-xs sm:text-sm border-collapse min-w-[600px]">
                     <thead class="bg-slate-50/80 backdrop-blur-sm text-[9px] sm:text-[10px] uppercase text-slate-500 font-black tracking-widest sticky top-0 z-10 shadow-sm">
                         <tr>
-                            <th class="p-3 sm:p-5 w-10 sm:w-12 text-center border-b border-slate-200/60"><input type="checkbox" id="selectAllCb" class="accent-blue-600 w-3 h-3 sm:w-4 sm:h-4 rounded cursor-pointer" onchange="toggleSelectAll(this)"></th>
+                            <th class="p-3 sm:p-5 w-10 sm:w-12 text-center border-b border-slate-200/60"><input type="checkbox" id="selectAllCb" aria-label="Select all draft tasks" class="accent-blue-600 w-3 h-3 sm:w-4 sm:h-4 rounded cursor-pointer" onchange="toggleSelectAll(this)"></th>
                             <th class="p-3 sm:p-5 border-b border-slate-200/60">Task Title & Category</th>
                             <th class="p-3 sm:p-5 border-b border-slate-200/60 text-center">Status</th>
                             <th class="p-3 sm:p-5 border-b border-slate-200/60 text-center">Evidence</th>
@@ -215,18 +215,18 @@
             </div>
             <form id="taskForm">
                 <div class="mb-4 sm:mb-5">
-                    <label class="block text-[10px] sm:text-xs font-black text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-widest">KPI Category <span class="text-red-500">*</span></label>
+                    <label for="selfTaskCategory" class="block text-[10px] sm:text-xs font-black text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-widest">KPI Category <span class="text-red-500">*</span></label>
                     <select id="selfTaskCategory" required class="w-full bg-white border border-slate-300 p-2.5 sm:p-3.5 rounded-xl text-xs sm:text-sm font-bold text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none shadow-sm cursor-pointer appearance-none">
                         <option value="">-- Select Category --</option>
                     </select>
                 </div>
                 <div class="space-y-4 sm:space-y-5">
                     <div>
-                        <label class="block text-[10px] sm:text-xs font-black text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-widest">Task Title <span class="text-red-500">*</span></label>
+                        <label for="selfTaskTitle" class="block text-[10px] sm:text-xs font-black text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-widest">Task Title <span class="text-red-500">*</span></label>
                         <input type="text" id="selfTaskTitle" placeholder="Brief description of what was done..." class="w-full bg-white border border-slate-300 p-2.5 sm:p-3.5 rounded-xl text-xs sm:text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none shadow-sm">
                     </div>
                     <div>
-                        <label class="block text-[10px] sm:text-xs font-black text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-widest">Detailed Description</label>
+                        <label for="selfTaskDesc" class="block text-[10px] sm:text-xs font-black text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-widest">Detailed Description</label>
                         <textarea id="selfTaskDesc" rows="3" placeholder="Additional notes or links..." class="w-full bg-white border border-slate-300 p-2.5 sm:p-3.5 rounded-xl text-xs sm:text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none shadow-sm"></textarea>
                     </div>
                 </div>
@@ -249,28 +249,28 @@
         <div class="p-5 sm:p-8 overflow-y-auto custom-scrollbar bg-slate-50/50 flex-1 pr-1 sm:pr-8">
             <form id="assignTaskForm" class="space-y-4 sm:space-y-5">
                 <div>
-                    <label class="block text-[10px] sm:text-xs font-black text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-widest">Assignee (Subordinate) <span class="text-red-500">*</span></label>
+                    <label for="assigneeUser" class="block text-[10px] sm:text-xs font-black text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-widest">Assignee (Subordinate) <span class="text-red-500">*</span></label>
                     <select id="assigneeUser" onchange="loadCategoriesForReceiver(this.value)" required class="w-full bg-white border border-slate-300 p-2.5 sm:p-3.5 rounded-xl text-xs sm:text-sm font-bold text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none shadow-sm cursor-pointer appearance-none">
                         <option value="">-- Select Subordinate --</option>
                     </select>
                 </div>
                 <div>
-                    <label class="block text-[10px] sm:text-xs font-black text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-widest">Task Title <span class="text-red-500">*</span></label>
+                    <label for="assignTaskTitle" class="block text-[10px] sm:text-xs font-black text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-widest">Task Title <span class="text-red-500">*</span></label>
                     <input type="text" id="assignTaskTitle" required placeholder="What needs to be done?" class="w-full bg-white border border-slate-300 p-2.5 sm:p-3.5 rounded-xl text-xs sm:text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none shadow-sm">
                 </div>
                 <div>
-                    <label class="block text-[10px] sm:text-xs font-black text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-widest">Receiver Category <span class="text-red-500">*</span></label>
+                    <label for="assignTaskCategory" class="block text-[10px] sm:text-xs font-black text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-widest">Receiver Category <span class="text-red-500">*</span></label>
                     <select id="assignTaskCategory" required disabled class="w-full bg-slate-100 border border-slate-300 p-2.5 sm:p-3.5 rounded-xl text-xs sm:text-sm font-bold text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none shadow-sm cursor-not-allowed appearance-none">
                         <option value="">-- Select Assignee First --</option>
                     </select>
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
                     <div>
-                        <label class="block text-[10px] sm:text-xs font-black text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-widest">Due Date <span class="text-red-500">*</span></label>
+                        <label for="assignDueDate" class="block text-[10px] sm:text-xs font-black text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-widest">Due Date <span class="text-red-500">*</span></label>
                         <input type="datetime-local" id="assignDueDate" required class="w-full bg-white border border-slate-300 p-2.5 sm:p-3.5 rounded-xl text-xs sm:text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none shadow-sm cursor-pointer">
                     </div>
                     <div>
-                        <label class="block text-[10px] sm:text-xs font-black text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-widest">Grace Period (Days) <span class="text-red-500">*</span></label>
+                        <label for="assignGracePeriod" class="block text-[10px] sm:text-xs font-black text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-widest">Grace Period (Days) <span class="text-red-500">*</span></label>
                         <input type="number" id="assignGracePeriod" min="0" value="2" required class="w-full bg-white border border-slate-300 p-2.5 sm:p-3.5 rounded-xl text-xs sm:text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none shadow-sm">
                     </div>
                 </div>
@@ -298,13 +298,13 @@
             <div id="existingEvidenceContainer"></div>
             <div class="bg-blue-50/30 p-3 sm:p-5 rounded-2xl border border-blue-100 shadow-inner">
                 <h4 class="text-[9px] sm:text-[10px] font-black text-blue-800 uppercase tracking-widest mb-2 sm:mb-3 flex items-center gap-1.5"><svg class="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg> Add New Files</h4>
-                <div class="border-2 border-dashed border-blue-300 bg-white hover:bg-blue-50 rounded-xl p-5 sm:p-8 text-center cursor-pointer transition-all shadow-sm" onclick="document.getElementById('evidenceFiles').click()">
+                <label for="evidenceFiles" class="block border-2 border-dashed border-blue-300 bg-white hover:bg-blue-50 rounded-xl p-5 sm:p-8 text-center cursor-pointer transition-all shadow-sm">
                     <div class="bg-blue-50 w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center mx-auto mb-2 sm:mb-3 border border-blue-100 ring-4 ring-white">
                         <svg class="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
                     </div>
                     <p class="text-xs sm:text-sm font-bold text-blue-900">Click or drag new files here</p>
                     <input type="file" id="evidenceFiles" multiple class="hidden" onchange="handleEvidenceSelection(this)">
-                </div>
+                </label>
                 <div id="filePreviewContainer" class="file-preview-grid"></div>
             </div>
         </div>
@@ -322,7 +322,7 @@
         <p class="text-[10px] sm:text-xs text-slate-500 font-medium mb-4 sm:mb-6">Return this task to the original creator so they can fix the evidence.</p>
         <input type="hidden" id="resignTaskId">
         <div class="mb-4 sm:mb-6">
-            <label class="block text-[10px] sm:text-[11px] font-black text-slate-500 mb-1.5 sm:mb-2 uppercase tracking-widest">Instructions for L2 <span class="text-red-500">*</span></label>
+            <label for="resignComments" class="block text-[10px] sm:text-[11px] font-black text-slate-500 mb-1.5 sm:mb-2 uppercase tracking-widest">Instructions for L2 <span class="text-red-500">*</span></label>
             <textarea id="resignComments" rows="3" class="w-full bg-slate-50 border border-slate-300 p-2.5 sm:p-3.5 rounded-xl text-xs sm:text-sm font-bold text-slate-800 focus:ring-2 focus:ring-purple-500/20 focus:border-purple-600 focus:outline-none shadow-sm" placeholder="Please correct the file..."></textarea>
         </div>
         <div class="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3">
@@ -344,10 +344,10 @@
             <div id="resubmitOldEvidenceContainer" class="space-y-2 opacity-60 grayscale cursor-not-allowed"></div>
             <div class="bg-blue-50/50 p-4 sm:p-5 rounded-2xl border border-blue-200 shadow-inner">
                 <h4 class="text-[9px] sm:text-[10px] font-black text-blue-800 uppercase tracking-widest mb-2 sm:mb-3">Upload Corrected Evidence (V2) *</h4>
-                <div class="border-2 border-dashed border-blue-400 bg-white hover:bg-blue-50 rounded-xl p-5 sm:p-8 text-center cursor-pointer transition-all shadow-sm" onclick="document.getElementById('resubmitFiles').click()">
+                <label for="resubmitFiles" class="block border-2 border-dashed border-blue-400 bg-white hover:bg-blue-50 rounded-xl p-5 sm:p-8 text-center cursor-pointer transition-all shadow-sm">
                     <p class="text-xs sm:text-sm font-bold text-blue-900">Select replacement file(s)</p>
                     <input type="file" id="resubmitFiles" multiple class="hidden" onchange="handleResubmitSelection(this)">
-                </div>
+                </label>
                 <div id="resubmitPreviewContainer" class="file-preview-grid"></div>
             </div>
         </div>
@@ -377,7 +377,7 @@
         <h3 class="text-xl sm:text-2xl font-black text-slate-900 mb-1.5 sm:mb-2">Submit to Manager</h3>
         <p class="text-[10px] sm:text-xs text-slate-500 font-medium mb-4 sm:mb-6">Choose the Supervisor or Head to review these selected tasks.</p>
         <div class="mb-6 sm:mb-8">
-            <label class="block text-[10px] sm:text-[11px] font-black text-slate-500 mb-1.5 sm:mb-2 uppercase tracking-widest">Forward To <span class="text-red-500">*</span></label>
+            <label for="targetManagerId" class="block text-[10px] sm:text-[11px] font-black text-slate-500 mb-1.5 sm:mb-2 uppercase tracking-widest">Forward To <span class="text-red-500">*</span></label>
             <select id="targetManagerId" class="w-full bg-white border border-slate-300 p-2.5 sm:p-3.5 rounded-xl text-xs sm:text-sm font-bold text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none shadow-sm cursor-pointer appearance-none"></select>
         </div>
         <div class="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 pt-3 sm:pt-4 border-t border-slate-100">
@@ -401,13 +401,13 @@
         <input type="hidden" id="reviewBatchId">
 
         <div class="overflow-y-auto custom-scrollbar flex-1 mb-4 sm:mb-5 border border-slate-100 rounded-xl p-1.5 sm:p-2 bg-slate-50">
-            <label class="block text-[9px] sm:text-[10px] font-black text-slate-500 mb-1 sm:mb-2 uppercase tracking-widest px-1">Tasks in this Batch</label>
+            <p class="block text-[9px] sm:text-[10px] font-black text-slate-500 mb-1 sm:mb-2 uppercase tracking-widest px-1">Tasks in this Batch</p>
             <div id="reviewTasksList" class="space-y-2 px-1"></div>
         </div>
 
         <div class="shrink-0 border-t border-slate-100 pt-3 sm:pt-4 overflow-y-auto custom-scrollbar max-h-[40vh] sm:max-h-[none] px-1 sm:px-0">
             <div class="mb-3 sm:mb-4">
-                <label class="block text-[10px] sm:text-xs font-bold text-slate-700 mb-1">Decision <span class="text-red-500">*</span></label>
+                <label for="reviewAction" class="block text-[10px] sm:text-xs font-bold text-slate-700 mb-1">Decision <span class="text-red-500">*</span></label>
                 <select id="reviewAction" class="w-full bg-slate-50 border border-slate-200 p-2 sm:p-2.5 rounded-xl text-xs sm:text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-100 cursor-pointer">
                     <option value="APPROVED">✅ Approve All</option>
                     <option value="DELAY">⏳ Delay / Return for Fix</option>
@@ -416,7 +416,7 @@
             </div>
             
             <div id="deductionRuleDiv" class="mb-3 sm:mb-4 hidden">
-                <label class="block text-[10px] sm:text-xs font-bold text-red-600 mb-1">Deduction Rule <span class="text-red-500">*</span></label>
+                <label for="deductionRuleId" class="block text-[10px] sm:text-xs font-bold text-red-600 mb-1">Deduction Rule <span class="text-red-500">*</span></label>
                 <select id="deductionRuleId" class="w-full bg-red-50 border border-red-200 p-2 sm:p-2.5 rounded-xl text-xs sm:text-sm font-bold text-red-800 focus:outline-none cursor-pointer"></select>
                 
                 <div class="mt-2.5 sm:mt-3 flex items-center gap-2">
@@ -426,16 +426,16 @@
             </div>
 
             <div id="deductionValueDiv" class="mb-3 sm:mb-4 hidden">
-                <label class="block text-[10px] sm:text-xs font-bold text-red-600 mb-1">Actual Value / Percentage (%) <span class="text-red-500">*</span></label>
+                <label for="deductionValue" class="block text-[10px] sm:text-xs font-bold text-red-600 mb-1">Actual Value / Percentage (%) <span class="text-red-500">*</span></label>
                 <input type="number" step="0.1" id="deductionValue" class="w-full bg-red-50 border border-red-200 p-2 sm:p-2.5 rounded-xl text-xs sm:text-sm font-bold text-red-800 focus:outline-none" placeholder="e.g., 85">
             </div>
 
             <div id="nextReviewerDiv" class="mb-3 sm:mb-4 hidden">
-                <label class="block text-[10px] sm:text-xs font-bold text-slate-700 mb-1">Forward To (L0) <span class="text-red-500">*</span></label>
+                <label for="nextReviewerId" class="block text-[10px] sm:text-xs font-bold text-slate-700 mb-1">Forward To (L0) <span class="text-red-500">*</span></label>
                 <select id="nextReviewerId" class="w-full bg-slate-50 border border-slate-200 p-2 sm:p-2.5 rounded-xl text-xs sm:text-sm font-bold focus:outline-none cursor-pointer"></select>
             </div>
             <div class="mb-4 sm:mb-5">
-                <label class="block text-[10px] sm:text-xs font-bold text-slate-700 mb-1">Feedback Comments</label>
+                <label for="reviewComments" class="block text-[10px] sm:text-xs font-bold text-slate-700 mb-1">Feedback Comments</label>
                 <textarea id="reviewComments" rows="2" class="w-full bg-slate-50 border border-slate-200 p-2 sm:p-3 rounded-xl text-xs sm:text-sm focus:outline-none"></textarea>
             </div>
             <div class="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3">

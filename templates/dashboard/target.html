@@ -66,6 +66,7 @@
         </div>
 
         <div class="p-4 sm:p-5 border-b border-gray-100 flex justify-between items-center bg-slate-50 shrink-0">
+            <label for="filterStatus" class="sr-only">Filter targets by status</label>
             <select id="filterStatus" onchange="fetchTargets()" class="w-full sm:w-auto bg-white border border-gray-200 p-2 sm:p-2.5 rounded-lg text-xs sm:text-sm font-semibold focus:outline-none focus:border-blue-900 shadow-sm cursor-pointer">
                 <option value="ALL">All Targets</option>
                 <option value="ACTIVE">Active</option>
@@ -113,27 +114,27 @@
                 <input type="hidden" id="targetId">
                 
                 <div>
-                    <label class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase">Objective Name <span class="text-red-500">*</span></label>
+                    <label for="tName" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase">Objective Name <span class="text-red-500">*</span></label>
                     <input type="text" id="tName" required class="w-full bg-slate-50 border border-gray-200 p-2.5 sm:p-3 rounded-xl text-xs sm:text-sm focus:bg-white focus:border-blue-900 focus:outline-none transition-all shadow-inner" placeholder="e.g. Q3 Sales Revenue, October Production Target">
                 </div>
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
                     <div>
-                        <label class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase">Assign To (Department)</label>
+                        <label for="tDepartment" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase">Assign To (Department)</label>
                         <select id="tDepartment" class="w-full bg-slate-50 border border-gray-200 p-2.5 sm:p-3 rounded-xl text-xs sm:text-sm focus:bg-white focus:border-blue-900 focus:outline-none transition-all cursor-pointer">
                             <option value="">-- Company Wide --</option>
                             <!-- Injected via JS -->
                         </select>
                     </div>
                     <div>
-                        <label class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase">Target Value (Numeric) <span class="text-red-500">*</span></label>
+                        <label for="tValue" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase">Target Value (Numeric) <span class="text-red-500">*</span></label>
                         <input type="number" id="tValue" required step="0.01" class="w-full bg-slate-50 border border-gray-200 p-2.5 sm:p-3 rounded-xl text-xs sm:text-sm font-bold focus:bg-white focus:border-blue-900 focus:outline-none transition-all shadow-inner" placeholder="e.g. 50000">
                     </div>
                 </div>
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
                     <div>
-                        <label class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase">Metric Type</label>
+                        <label for="tType" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase">Metric Type</label>
                         <select id="tType" class="w-full bg-slate-50 border border-gray-200 p-2.5 sm:p-3 rounded-xl text-xs sm:text-sm focus:bg-white focus:border-blue-900 focus:outline-none transition-all cursor-pointer">
                             <option value="CURRENCY">Currency ($ / MMK)</option>
                             <option value="COUNT">Count / Amount</option>
@@ -141,7 +142,7 @@
                         </select>
                     </div>
                     <div>
-                        <label class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase">Target Month <span class="text-red-500">*</span></label>
+                        <label for="tMonth" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase">Target Month <span class="text-red-500">*</span></label>
                         <input type="month" id="tMonth" required class="w-full bg-slate-50 border border-gray-200 p-2.5 sm:p-3 rounded-xl text-xs sm:text-sm focus:bg-white focus:border-blue-900 focus:outline-none transition-all cursor-pointer">
                     </div>
                 </div>

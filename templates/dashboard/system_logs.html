@@ -16,7 +16,9 @@
     <div class="workspace-table w-full max-w-6xl overflow-hidden flex-1">
         <div class="overflow-auto custom-scrollbar max-h-[75vh]">
             <div class="p-4 border-b border-gray-100 flex flex-wrap gap-2">
+                <label for="logSearch" class="sr-only">Search system logs</label>
                 <input id="logSearch" class="border rounded-lg px-3 py-2 text-sm" placeholder="Search logs">
+                <label for="logLevel" class="sr-only">Filter logs by level</label>
                 <select id="logLevel" class="border rounded-lg px-3 py-2 text-sm">
                     <option value="">All levels</option><option>DEBUG</option><option>INFO</option>
                     <option>WARNING</option><option>ERROR</option><option>CRITICAL</option>

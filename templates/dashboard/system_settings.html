@@ -71,15 +71,15 @@
                     <h3 class="text-base sm:text-lg font-extrabold text-blue-950 border-b border-gray-100 pb-3 mb-4 sm:mb-6">Company & Localization</h3>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
                         <div>
-                            <label class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">Company Name <span class="text-red-500">*</span></label>
+                            <label for="set_company_name" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">Company Name <span class="text-red-500">*</span></label>
                             <input type="text" id="set_company_name" value="Enterprise KPI Corp" required class="w-full bg-slate-50 border border-gray-200 p-3 rounded-xl text-sm font-semibold focus:outline-none focus:bg-white focus:border-blue-900 transition-all shadow-inner">
                         </div>
                         <div>
-                            <label class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">Support Email <span class="text-red-500">*</span></label>
+                            <label for="set_support_email" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">Support Email <span class="text-red-500">*</span></label>
                             <input type="email" id="set_support_email" value="support@kpicorp.com" required class="w-full bg-slate-50 border border-gray-200 p-3 rounded-xl text-sm font-semibold focus:outline-none focus:bg-white focus:border-blue-900 transition-all shadow-inner">
                         </div>
                         <div>
-                            <label class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">System Timezone</label>
+                            <label for="set_timezone" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">System Timezone</label>
                             <select id="set_timezone" class="w-full bg-slate-50 border border-gray-200 p-3 rounded-xl text-sm font-semibold focus:outline-none focus:bg-white focus:border-blue-900 transition-all shadow-inner cursor-pointer">
                                 <option value="Asia/Yangon" selected>Asia/Yangon (+06:30)</option>
                                 <option value="UTC">UTC (+00:00)</option>
@@ -87,7 +87,7 @@
                             </select>
                         </div>
                         <div>
-                            <label class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">Date Format</label>
+                            <label for="set_date_format" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">Date Format</label>
                             <select id="set_date_format" class="w-full bg-slate-50 border border-gray-200 p-3 rounded-xl text-sm font-semibold focus:outline-none focus:bg-white focus:border-blue-900 transition-all shadow-inner cursor-pointer">
                                 <option value="DD-MM-YYYY" selected>DD-MM-YYYY (31-12-2026)</option>
                                 <option value="MM-DD-YYYY">MM-DD-YYYY (12-31-2026)</option>
@@ -106,15 +106,15 @@
                     <p class="text-xs sm:text-sm text-slate-500 mb-4">Configure SMTP details to allow the system to send notification emails and password resets.</p>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
                         <div>
-                            <label class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">SMTP Host</label>
+                            <label for="set_smtp_host" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">SMTP Host</label>
                             <input type="text" id="set_smtp_host" placeholder="smtp.gmail.com" class="w-full bg-slate-50 border border-gray-200 p-3 rounded-xl text-sm font-semibold focus:outline-none focus:bg-white focus:border-blue-900 transition-all shadow-inner">
                         </div>
                         <div>
-                            <label class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">SMTP Port</label>
+                            <label for="set_smtp_port" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">SMTP Port</label>
                             <input type="number" id="set_smtp_port" placeholder="587" class="w-full bg-slate-50 border border-gray-200 p-3 rounded-xl text-sm font-semibold focus:outline-none focus:bg-white focus:border-blue-900 transition-all shadow-inner">
                         </div>
                         <div>
-                            <label class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">SMTP Username</label>
+                            <label for="set_smtp_user" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">SMTP Username</label>
                             <input type="text" id="set_smtp_user" placeholder="alerts@kpicorp.com" class="w-full bg-slate-50 border border-gray-200 p-3 rounded-xl text-sm font-semibold focus:outline-none focus:bg-white focus:border-blue-900 transition-all shadow-inner">
                         </div>
                     </div>
@@ -133,7 +133,7 @@
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
                         <div class="space-y-4 sm:space-y-6">
                             <div>
-                                <label class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">Minimum Password Length</label>
+                                <label for="set_pwd_length" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">Minimum Password Length</label>
                                 <input type="number" id="set_pwd_length" value="8" min="8" max="128" class="w-full bg-slate-50 border border-gray-200 p-3 rounded-xl text-sm font-semibold focus:outline-none focus:bg-white focus:border-blue-900 transition-all shadow-inner">
                             </div>
                             <div class="space-y-3 sm:space-y-4">
@@ -148,7 +148,7 @@
                             </div>
                         </div>
                         <div>
-                            <label class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">Session Timeout (Minutes)</label>
+                            <label for="set_session_timeout" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">Session Timeout (Minutes)</label>
                             <input type="number" id="set_session_timeout" value="120" placeholder="e.g. 120" class="w-full bg-slate-50 border border-gray-200 p-3 rounded-xl text-sm font-semibold focus:outline-none focus:bg-white focus:border-blue-900 transition-all shadow-inner">
                             <p class="text-[10px] sm:text-xs text-slate-500 mt-2 font-medium">Users will be automatically logged out after this period of inactivity.</p>
                         </div>
