@@ -38,6 +38,7 @@ ROLES = [
     {"name": "HR", "description": "Human resources administration"},
     {"name": "Department User", "description": "Operational users (L0, L1, L2)"}
 ]
+SENIOR_ACCOUNTANT_POSITION = "Senior Accountant"
 
 def resolve_seed_password(*candidate_names: str) -> str | None:
     for name in candidate_names:
@@ -66,6 +67,16 @@ def resolve_user_password(email: str) -> str | None:
         ),
     }
     return resolve_seed_password(*password_map.get(email, ("SEED_DEMO_PASSWORD",)))
+
+
+def resolve_test_account(name: str) -> tuple[str, str] | None:
+    if not getattr(settings, "SEED_TEST_ACCOUNTS_ENABLED", False):
+        return None
+    email = (os.getenv(f"SEED_TEST_{name}_EMAIL") or getattr(settings, f"SEED_TEST_{name}_EMAIL", None) or "").strip()
+    password = resolve_seed_password(f"SEED_TEST_{name}_PASSWORD")
+    if not email or not password:
+        return None
+    return email, password
 
 PERMISSION_CATALOG = [
     ("users.view", "View users"), ("users.create", "Create users"), ("users.edit", "Edit users"),
@@ -381,7 +392,7 @@ async def _run_seed():
                 {"name": "Reporting Timeliness & Compliance", "weight": 0.10, "max_score": 5.0, "deductions": [{"name": "Report နောက်ကျခြင်း", "measure_type": "count", "rules": STANDARD_ERROR_RULES}]},
                 {"name": "Attendance, Punctuality & Flexibility", "weight": 0.10, "max_score": 5.0, "deductions": ATTENDANCE_RULES}
             ]},
-            {"formula_title": "Senior Accountant KPI", "pos": "Senior Accountant", "region": "YGN Office", "lvl": "L1", "cats": [
+            {"formula_title": "Senior Accountant KPI", "pos": SENIOR_ACCOUNTANT_POSITION, "region": "YGN Office", "lvl": "L1", "cats": [
                 {"name": "Financial Reporting & GL Accuracy", "weight": 0.25, "max_score": 5.0, "deductions": [{"name": "GL Report အမှား", "measure_type": "count", "rules": STRICT_ERROR_RULES}]},
                 {"name": "Internal Control & Budget Management", "weight": 0.25, "max_score": 5.0, "deductions": [{"name": "ဘတ်ဂျက်လွဲချော်မှု", "measure_type": "count", "rules": STANDARD_ERROR_RULES}]},
                 {"name": "Cost Accounting & Inventory Oversight", "weight": 0.20, "max_score": 5.0, "deductions": [{"name": "Costing အမှားအယွင်း", "measure_type": "count", "rules": STANDARD_ERROR_RULES}]},
@@ -536,7 +547,11 @@ async def _run_seed():
         print("Finalizing KPI Assignments linking...")
         
         test_email = "cashier.mdy@kpi.com"
-        demo_password = resolve_user_password(test_email)
+        demo_password = (
+            resolve_seed_password("SEED_TEST_L2_PASSWORD")
+            if getattr(settings, "SEED_TEST_ACCOUNTS_ENABLED", False)
+            else None
+        ) or resolve_user_password(test_email)
         stmt = select(User).where(User.email == test_email)
         test_user = (await db.execute(stmt)).scalars().first()
         
@@ -592,7 +607,7 @@ async def _run_seed():
 
         position_dict = {}
         finance_positions = (await db.execute(
-            select(Position).where(Position.name.in_(["Accountant", "Senior Accountant"]))
+            select(Position).where(Position.name.in_(["Accountant", SENIOR_ACCOUNTANT_POSITION]))
         )).scalars().all()
         for position in finance_positions:
             position_dict[position.name] = position
@@ -603,9 +618,9 @@ async def _run_seed():
             await db.commit()
             await db.refresh(accountant_position)
             position_dict[accountant_position.name] = accountant_position
-        if "Senior Accountant" not in position_dict:
+        if SENIOR_ACCOUNTANT_POSITION not in position_dict:
             senior_accountant_position = Position(
-                name="Senior Accountant", department_id=finance_dept_id
+                name=SENIOR_ACCOUNTANT_POSITION, department_id=finance_dept_id
             )
             db.add(senior_accountant_position)
             await db.commit()
@@ -614,10 +629,23 @@ async def _run_seed():
 
         async def _ensure_finance_user(email: str, last_name: str, user_level: str):
             existing = (await db.execute(select(User).where(User.email == email))).scalars().first()
-            password = resolve_user_password(email)
-            position = position_dict["Senior Accountant" if user_level == "L1" else "Accountant"]
+            password = (
+                resolve_seed_password(f"SEED_TEST_{user_level}_PASSWORD")
+                if getattr(settings, "SEED_TEST_ACCOUNTS_ENABLED", False)
+                else None
+            ) or resolve_user_password(email)
+            position = position_dict[
+                SENIOR_ACCOUNTANT_POSITION if user_level == "L1" else "Accountant"
+            ]
 
             if existing:
+                if getattr(settings, "SEED_TEST_ACCOUNTS_ENABLED", False) and password:
+                    existing.hashed_password = get_password_hash(password)
+                    existing.is_active = True
+                    existing.is_locked = False
+                    existing.failed_login_attempts = 0
+                    existing.lockout_until = None
+                    existing.must_change_password = False
                 existing.position_id = position.id
                 dept_link = (await db.execute(
                     select(UserDepartment).where(
@@ -653,6 +681,94 @@ async def _run_seed():
 
         await _ensure_finance_user("finance.l0@kpi.com", "L0", "L0")
         await _ensure_finance_user("finance.l1@kpi.com", "L1", "L1")
+
+        async def _ensure_local_test_account(
+            account: tuple[str, str] | None,
+            role_name: str,
+            first_name: str,
+            last_name: str,
+            *,
+            must_change_password: bool,
+            department_id=None,
+            position=None,
+            user_level: str | None = None,
+        ):
+            if not account:
+                return None
+            email, password = account
+            existing = (await db.execute(select(User).where(User.email == email))).scalars().first()
+            if existing is None:
+                existing = User(
+                    email=email,
+                    first_name=first_name,
+                    last_name=last_name,
+                    hashed_password=get_password_hash(password),
+                    role_id=role_dict[role_name].id,
+                    position_id=position.id if position else None,
+                    is_active=True,
+                    must_change_password=must_change_password,
+                )
+                db.add(existing)
+                await db.commit()
+                await db.refresh(existing)
+            else:
+                existing.hashed_password = get_password_hash(password)
+                existing.role_id = role_dict[role_name].id
+                existing.position_id = position.id if position else None
+                existing.is_active = True
+                existing.is_locked = False
+                existing.failed_login_attempts = 0
+                existing.lockout_until = None
+                existing.must_change_password = must_change_password
+                await db.commit()
+
+            if department_id and user_level:
+                dept_link = (await db.execute(
+                    select(UserDepartment).where(
+                        UserDepartment.user_id == existing.id,
+                        UserDepartment.department_id == department_id,
+                    )
+                )).scalars().first()
+                if dept_link is None:
+                    db.add(UserDepartment(
+                        user_id=existing.id,
+                        department_id=department_id,
+                        user_level=user_level,
+                    ))
+                else:
+                    dept_link.user_level = user_level
+                await db.commit()
+            return existing
+
+        if getattr(settings, "SEED_TEST_ACCOUNTS_ENABLED", False):
+            await _ensure_local_test_account(
+                resolve_test_account("SUPERADMIN"),
+                "Super Admin",
+                "Phase 2.5",
+                "Super Admin",
+                must_change_password=False,
+            )
+            await _ensure_local_test_account(
+                resolve_test_account("ADMIN"),
+                "Admin",
+                "Phase 2.5",
+                "Admin",
+                must_change_password=False,
+                department_id=finance_dept_id,
+                position=position_dict["Accountant"],
+                user_level="L0",
+            )
+            await _ensure_local_test_account(
+                resolve_test_account("FIRST_LOGIN"),
+                "Department User",
+                "Phase 2.5",
+                "First Login",
+                must_change_password=True,
+                department_id=finance_dept_id,
+                position=position_dict["Accountant"],
+                user_level="L2",
+            )
+            print("Optional local Phase 2.5 test accounts synchronized.")
 
         print("KPI assignment and department user seed complete.")
         print("✅ Database seeding completed successfully! All rules and relations are perfectly configured.")

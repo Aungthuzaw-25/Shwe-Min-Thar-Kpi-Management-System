@@ -4,7 +4,7 @@ import pytest
 from fastapi import HTTPException
 from starlette.requests import Request
 
-from app.core import dependencies
+from app.core import dependencies, security
 
 
 def _request() -> Request:
@@ -21,19 +21,15 @@ def _request() -> Request:
 
 
 @pytest.mark.asyncio
-async def test_refresh_token_cannot_authenticate_as_access_token(monkeypatch):
-    monkeypatch.setattr(
-        dependencies.jwt,
-        "decode",
-        lambda *args, **kwargs: {"type": "refresh", "sub": "admin@example.com"},
-    )
+async def test_refresh_token_cannot_authenticate_as_access_token():
+    refresh_token = security.create_refresh_token({"sub": "admin@example.com"})
 
     with pytest.raises(HTTPException) as error:
         await dependencies.get_current_user(
             request=_request(),
-            token="refresh-token",
+            token=refresh_token,
             db=SimpleNamespace(),
         )
 
     assert error.value.status_code == 401
-    assert error.value.detail == "Invalid token type."
+    assert error.value.detail == "Token expired or invalid."

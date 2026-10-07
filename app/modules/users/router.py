@@ -1,33 +1,52 @@
 import traceback
-from fastapi import APIRouter, Depends, HTTPException, status, Query # 🌟 PERFORMANCE FIX: Added Query
+from datetime import UTC, datetime
+from uuid import UUID
+
+from fastapi import (  # 🌟 PERFORMANCE FIX: Added Query
+    APIRouter,
+    Depends,
+    HTTPException,
+    Query,
+)
+from sqlalchemy import func, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
-from sqlalchemy import text
-from sqlalchemy import func
-from sqlalchemy.exc import IntegrityError
-from typing import List
-from uuid import UUID
-from datetime import datetime
 
-from app.database.connection import get_db
-from app.modules.users.schemas import UserCreate, UserUpdate, UserResponse, RoleResponse, UserDeptResponse, UserLeaveRequest, SuperAdminCreate, SuperAdminUpdate
-from app.modules.users.password_schemas import PasswordResetAdmin
-from app.modules.users import repo as user_repo
-from app.modules.users import password_repo
-from app.modules.users import permission_repo
-
-from app.core.dependencies import RoleChecker, get_current_user, enforce_permission
-from app.utils.audit import log_audit_trail
-from app.services.activity_service import record_activity
-from app.core.security import get_password_hash
+from app.core.dependencies import (
+    GLOBAL_SCOPE_ROLES,
+    RoleChecker,
+    enforce_department_scope,
+    enforce_permission,
+    enforce_user_scope,
+    get_current_user,
+)
 from app.core.password_policy import get_password_policy, validate_password_strength
-
-# 🌟 BUG FIX: Role Model ကို models.py မှ တိုက်ရိုက်ယူပါမည် (roles.py အဟောင်းကို မသုံးပါ)
-from app.modules.users.models import User, Role
+from app.core.security import get_password_hash
+from app.database.connection import get_db
 from app.modules.departments.models import Department, UserDepartment
 from app.modules.tasks.models.task import Task
 from app.modules.tasks.models.task_history import TaskHistory
+from app.modules.users import password_repo, permission_repo
+from app.modules.users import repo as user_repo
+
+# 🌟 BUG FIX: Role Model ကို models.py မှ တိုက်ရိုက်ယူပါမည် (roles.py အဟောင်းကို မသုံးပါ)
+from app.modules.users.models import Role, User
+from app.modules.users.password_schemas import PasswordResetAdmin
+from app.modules.users.schemas import (
+    RoleResponse,
+    SuperAdminCreate,
+    SuperAdminUpdate,
+    UserCreate,
+    UserDeptResponse,
+    UserLeaveRequest,
+    UserResponse,
+    UserUpdate,
+)
+from app.services.activity_service import record_activity
+from app.services.authority_notice import stage_super_admin_notice
+from app.utils.audit import log_audit_trail
 
 router = APIRouter()
 admin_checker = RoleChecker(['Super Admin', 'Admin'])
@@ -86,7 +105,7 @@ def ensure_user_deletion_allowed(target_user: User, current_user: User) -> None:
 
 async def revoke_user_authentication(db: AsyncSession, user_id: UUID) -> None:
     """Disable every authentication path without deleting business history."""
-    now = datetime.utcnow()
+    now = datetime.now(UTC).replace(tzinfo=None)
     await db.execute(
         text(
             "UPDATE auth_sessions SET revoked_at = :now "
@@ -160,11 +179,12 @@ def serialize_user_obj(u: User) -> UserResponse:
 @router.post('/', response_model=UserResponse) 
 async def create_new_user(payload: UserCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
     enforce_permission(current_user, "users.create")
-    if current_user.role.name != 'Super Admin':
-        role_req = await db.execute(select(Role).where(Role.id == payload.role_id))
-        target_role = role_req.scalar_one_or_none()
-        if target_role and target_role.name == 'Super Admin':
-            raise HTTPException(status_code=403, detail='You do not have permission to create a Super Admin account.')
+    role_req = await db.execute(select(Role).where(Role.id == payload.role_id))
+    target_role = role_req.scalar_one_or_none()
+    if not target_role:
+        raise HTTPException(status_code=404, detail="Target role not found.")
+    if current_user.role.name != 'Super Admin' and target_role.name in {'Super Admin', 'Admin'}:
+        raise HTTPException(status_code=403, detail='Only Super Admins can manage administrative accounts.')
 
     # 🌟 FIX 1: Smart Soft-Delete Recovery (Ghost Account Prevention)
     stmt_check = select(User).where(User.email == payload.email)
@@ -193,6 +213,8 @@ async def create_new_user(payload: UserCreate, db: AsyncSession = Depends(get_db
         raise HTTPException(status_code=400, detail='Password (Temporary Password) is required.')
         
     dept_id = getattr(payload, 'department_id', None)
+    if dept_id:
+        await enforce_department_scope(db, current_user, dept_id)
     user_level = normalize_user_level(getattr(payload, 'user_level', 'L2') or 'L2')
     
     try:
@@ -235,6 +257,14 @@ async def create_new_user(payload: UserCreate, db: AsyncSession = Depends(get_db
             entity_id=new_user.id,
             description=f"Created user {new_user.first_name} {new_user.last_name}".strip(),
         )
+        if target_role.name in {'Super Admin', 'Admin'}:
+            await stage_super_admin_notice(
+                db,
+                actor_id=current_user.id,
+                title="Administrative account created",
+                message=f"{current_user.first_name} {current_user.last_name} created "
+                f"{target_role.name} account {new_user.email}.",
+            )
         await db.commit()
     except HTTPException:
         await db.rollback()
@@ -250,13 +280,14 @@ async def create_new_user(payload: UserCreate, db: AsyncSession = Depends(get_db
     return resp_data
 
 
-@router.get('/super-admins', response_model=List[UserResponse])
+@router.get('/super-admins', response_model=list[UserResponse])
 async def list_super_admins(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, gt=0, le=500),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    enforce_permission(current_user, "users.view")
     require_super_admin(current_user)
     stmt = (
         select(User)
@@ -358,6 +389,13 @@ async def create_super_admin(
         )
         if audit_entry is None:
             raise RuntimeError('Unable to record Super Admin creation audit event.')
+        await stage_super_admin_notice(
+            db,
+            actor_id=current_user.id,
+            title="Super Admin account created",
+            message=f"{current_user.first_name} {current_user.last_name} created "
+            f"Super Admin account {created_user.email}.",
+        )
         await db.commit()
     except IntegrityError as exc:
         await db.rollback()
@@ -420,6 +458,14 @@ async def update_super_admin(
         old_snapshot,
         {'first_name': user.first_name, 'last_name': user.last_name, 'email': user.email, 'is_active': user.is_active}
     )
+    await stage_super_admin_notice(
+        db,
+        actor_id=current_user.id,
+        title="Super Admin account updated",
+        message=f"{current_user.first_name} {current_user.last_name} updated "
+        f"Super Admin account {user.email}.",
+    )
+    await db.commit()
     return serialize_user_obj(await user_repo.get_user_by_id(db, user.id))
 
 
@@ -452,6 +498,14 @@ async def activate_super_admin(
         old_snapshot,
         {'is_active': True}
     )
+    await stage_super_admin_notice(
+        db,
+        actor_id=current_user.id,
+        title="Super Admin account activated",
+        message=f"{current_user.first_name} {current_user.last_name} activated "
+        f"Super Admin account {user.email}.",
+    )
+    await db.commit()
     return {'message': 'Super Admin activated successfully.'}
 
 
@@ -487,6 +541,14 @@ async def deactivate_super_admin(
         old_snapshot,
         {'is_active': False}
     )
+    await stage_super_admin_notice(
+        db,
+        actor_id=current_user.id,
+        title="Super Admin account deactivated",
+        message=f"{current_user.first_name} {current_user.last_name} deactivated "
+        f"Super Admin account {user.email}.",
+    )
+    await db.commit()
     return {'message': 'Super Admin deactivated successfully.'}
 
 
@@ -525,11 +587,20 @@ async def delete_super_admin(
         old_snapshot,
         {'deleted': True, 'email': user.email}
     )
+    await stage_super_admin_notice(
+        db,
+        actor_id=current_user.id,
+        title="Super Admin account deleted",
+        message=f"{current_user.first_name} {current_user.last_name} deleted "
+        f"Super Admin account {old_snapshot['email']}.",
+    )
+    await db.commit()
     return {'message': 'Super Admin deleted successfully.'}
 
 
 @router.get('/roles/list')
 async def get_roles_list(db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
+    enforce_permission(current_user, "users.view")
     stmt = select(Role)
     result = await db.execute(stmt)
     roles = result.scalars().all()
@@ -540,7 +611,7 @@ async def get_roles_list(db: AsyncSession = Depends(get_db), current_user: User 
     return [{"id": r.id, "name": r.name} for r in roles]
 
 # 🌟 PERFORMANCE FIX: Added skip and limit for pagination to avoid memory overload
-@router.get('/deleted/list', response_model=List[UserResponse])
+@router.get('/deleted/list', response_model=list[UserResponse])
 async def get_deleted_users(
     skip: int = Query(0, ge=0), 
     limit: int = Query(100, gt=0, le=500),
@@ -566,7 +637,7 @@ async def get_deleted_users(
         raise HTTPException(status_code=500, detail=str(e))
 
 # 🌟 PERFORMANCE FIX: Added skip and limit for pagination to avoid memory overload
-@router.get('/', response_model=List[UserResponse])
+@router.get('/', response_model=list[UserResponse])
 async def get_users(
     is_active: bool | None = Query(True),
     skip: int = Query(0, ge=0), 
@@ -582,6 +653,18 @@ async def get_users(
     stmt = stmt.where(User.is_deleted == False)
     if is_active is not None:
         stmt = stmt.where(User.is_active == is_active)
+    if not current_user.role or current_user.role.name not in GLOBAL_SCOPE_ROLES:
+        stmt = stmt.where(
+            User.id.in_(
+                select(UserDepartment.user_id).where(
+                    UserDepartment.department_id.in_(
+                        select(UserDepartment.department_id).where(
+                            UserDepartment.user_id == current_user.id
+                        )
+                    )
+                )
+            )
+        )
     stmt = stmt.offset(skip).limit(limit)
     
     result = await db.execute(stmt)
@@ -594,6 +677,7 @@ async def get_users(
 @router.get('/{user_id}', response_model=UserResponse)
 async def get_user_profile(user_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     enforce_permission(current_user, "users.view")
+    await enforce_user_scope(db, current_user, user_id)
     user = await user_repo.get_user_by_id(db, user_id)
     if not user: raise HTTPException(status_code=404, detail='User not found.')
     
@@ -602,6 +686,7 @@ async def get_user_profile(user_id: UUID, db: AsyncSession = Depends(get_db), cu
 @router.put('/{user_id}', response_model=UserResponse)
 async def update_existing_user(user_id: UUID, payload: UserUpdate, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
     enforce_permission(current_user, "users.edit")
+    await enforce_user_scope(db, current_user, user_id)
     stmt = select(User).options(selectinload(User.role)).where(User.id == user_id)
     result = await db.execute(stmt)
     user = result.scalars().first()
@@ -621,6 +706,8 @@ async def update_existing_user(user_id: UUID, payload: UserUpdate, db: AsyncSess
         target_role = role_req.scalar_one_or_none()
         if target_role and target_role.name == 'Super Admin':
             raise HTTPException(status_code=403, detail='You do not have permission to promote a user to Super Admin.')
+        if target_role and target_role.name == 'Admin':
+            raise HTTPException(status_code=403, detail='Only Super Admins can manage administrative accounts.')
 
     # 🌟 FIX 2: Email Update Conflict Prevention
     if payload.email and payload.email != user.email:
@@ -629,10 +716,26 @@ async def update_existing_user(user_id: UUID, payload: UserUpdate, db: AsyncSess
         if existing_email_user:
             raise HTTPException(status_code=400, detail="This email address is already registered to another account (active or deleted).")
 
+    # The existing user may be in the caller's scope while the requested
+    # destination is not. Validate it before any membership mutation.
+    if payload.department_id is not None:
+        target_dept_req = await db.execute(
+            select(Department).where(
+                Department.id == payload.department_id,
+                Department.is_deleted.is_(False),
+            )
+        )
+        if target_dept_req.scalar_one_or_none() is None:
+            raise HTTPException(status_code=404, detail="Department not found.")
+        await enforce_department_scope(db, current_user, payload.department_id)
+
     try:
         requested_level = normalize_user_level(payload.user_level)
         existing_ud = (await db.execute(
-            select(UserDepartment).where(UserDepartment.user_id == user_id)
+            select(UserDepartment).where(
+                UserDepartment.user_id == user_id,
+                UserDepartment.is_deleted.is_(False),
+            )
         )).scalars().first()
         role_changed = payload.role_id is not None and payload.role_id != user.role_id
         level_changed = (
@@ -703,6 +806,7 @@ async def update_existing_user(user_id: UUID, payload: UserUpdate, db: AsyncSess
 @router.delete('/{user_id}')
 async def delete_existing_user(user_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
     enforce_permission(current_user, "users.delete")
+    await enforce_user_scope(db, current_user, user_id)
     stmt = select(User).options(selectinload(User.role)).where(User.id == user_id)
     result = await db.execute(stmt)
     user = result.scalars().first()
@@ -792,6 +896,7 @@ async def permanent_delete_user(user_id: UUID, db: AsyncSession = Depends(get_db
 async def reset_user_password(user_id: UUID, payload: PasswordResetAdmin, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
     enforce_permission(current_user, "users.password_reset")
     stmt = select(User).options(selectinload(User.role)).where(User.id == user_id)
+    await enforce_user_scope(db, current_user, user_id)
     result = await db.execute(stmt)
     user = result.scalars().first()
     
@@ -804,6 +909,11 @@ async def reset_user_password(user_id: UUID, payload: PasswordResetAdmin, db: As
     if current_user.role.name != 'Super Admin' and getattr(user.role, 'name', '') == 'Super Admin':
         raise HTTPException(status_code=403, detail='You do not have permission to reset a Super Admin account password.')
         
+    if (
+        payload.confirm_new_password is not None
+        and payload.new_password != payload.confirm_new_password
+    ):
+        raise HTTPException(status_code=400, detail='New password confirmation does not match.')
     try:
         validate_password_strength(payload.new_password, **(await get_password_policy(db)))
     except ValueError as e:
@@ -819,6 +929,7 @@ async def reset_user_password(user_id: UUID, payload: PasswordResetAdmin, db: As
         'local_password_enabled': True,
         'must_change_password': True,
     })
+    await revoke_user_authentication(db, user.id)
     await password_repo.add_password_history(db, user.id, hashed_pass)
     
     return {'message': 'Password has been reset successfully.'}

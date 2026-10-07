@@ -1,6 +1,7 @@
-from pydantic import BaseModel
-from typing import List
 from uuid import UUID
+
+from pydantic import BaseModel
+
 
 class KPIAssignmentCreate(BaseModel):
     department_id: UUID
@@ -12,6 +13,6 @@ class KPIAssignmentCreate(BaseModel):
 class KPIBulkAssignmentCreate(BaseModel):
     department_id: UUID
     position_id: UUID
-    user_ids: List[UUID]
+    user_ids: list[UUID]
     kpi_formula_id: UUID
     kpi_period_id: UUID

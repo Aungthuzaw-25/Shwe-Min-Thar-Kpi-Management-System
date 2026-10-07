@@ -7,7 +7,7 @@ These helpers isolate scoring strategies used by the KPI calculation engine:
 
 import math
 import re
-from typing import Any, Dict, List
+from typing import Any
 
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -56,7 +56,7 @@ async def calculate_target_based_score(
     target_month_str: str,
     std_cat_name: str,
     max_score: float,
-    final_merged_data: Dict[str, float],
+    final_merged_data: dict[str, float],
 ) -> float:
     """Return the score for a TARGET-based category."""
     stmt_target = select(Target).where(
@@ -94,8 +94,8 @@ async def calculate_target_based_score(
 
 def calculate_deduction_based_score(
     cat_name: str,
-    cat_rules: List[KPIScoringRuleItem],
-    final_merged_data: Dict[str, float],
+    cat_rules: list[KPIScoringRuleItem],
+    final_merged_data: dict[str, float],
     max_score: float,
 ) -> float:
     """Return the score for a DEDUCTION-based category."""
@@ -111,7 +111,7 @@ async def score_formula_categories(
     formula: Any,
     dept_id,
     target_month_str: str,
-    final_merged_data: Dict[str, float],
+    final_merged_data: dict[str, float],
 ) -> float:
     """Apply each formula category's scoring strategy and return the weighted total."""
     total_weighted_score = 0.0

@@ -1,23 +1,27 @@
 import logging
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from datetime import datetime
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import SQLAlchemyError
-from typing import List
-from uuid import UUID
-from datetime import datetime
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.dependencies import enforce_permission, get_current_user
 from app.database.connection import get_db
-from app.core.dependencies import get_current_user, enforce_permission
+from app.models.audit_log import AuditLog
+from app.models.system import LogLevel
 from app.modules.system import repo
 from app.modules.system.schemas import (
-    SystemSettingCreate, SystemSettingUpdate, SystemSettingResponse,
-    SystemEventLogResponse, SystemEventLogPage, SystemEventLogDetailResponse, PasswordPolicyValue,
+    PasswordPolicyValue,
+    SystemEventLogDetailResponse,
+    SystemEventLogPage,
+    SystemSettingCreate,
+    SystemSettingResponse,
+    SystemSettingUpdate,
 )
-from app.models.system import LogLevel
 from app.modules.users.models import User
-from app.models.audit_log import AuditLog
 
 router = APIRouter(prefix="/system", tags=["System Settings & Logs"])
 logger = logging.getLogger(__name__)
@@ -63,7 +67,7 @@ def _safe_backup_value(key: str, value):
         return "[REDACTED]"
     return value
 
-@router.get("/settings", response_model=List[SystemSettingResponse])
+@router.get("/settings", response_model=list[SystemSettingResponse])
 async def read_all_settings(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -179,15 +183,16 @@ async def clear_system_cache(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    System Cache များကို ရှင်းလင်းရန်။
-    (Redis သို့မဟုတ် Memory Cache ရှင်းလင်းသည့် Logic ကို ဤနေရာတွင် ထည့်သွင်းနိုင်သည်။)
+    """Clear the supported application cache, if one is configured.
+
+    The application currently has no generic cache namespace. OAuth Redis holds
+    security-sensitive transient state and must not be flushed by this endpoint.
     """
     enforce_permission(current_user, "system.settings.edit")
-    try:
-        return {"message": "System cache memory cleared successfully.", "status": "success"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to clear cache: {str(e)}")
+    raise HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+        detail="No clearable application cache is configured.",
+    )
 
 
 @router.get("/backup")

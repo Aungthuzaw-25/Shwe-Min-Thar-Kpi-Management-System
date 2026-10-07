@@ -1,21 +1,26 @@
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
-from sqlalchemy import text
-from datetime import datetime, timedelta
-import pytz
-import logging
 import hashlib
+import logging
+from datetime import datetime, timedelta
 
-from app.database.connection import AsyncSessionLocal
-from app.modules.kpi.models import KPIRecord, PeriodType 
-# 🌟 KPI Engine အသစ်ကို Import ပြုလုပ်ခြင်း
-from app.modules.kpi.engine import KPICalculationEngine
-from app.modules.users.models import User
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from sqlalchemy import text
+from sqlalchemy.future import select
 
-from app.modules.tasks.scheduler import generate_recurring_tasks, process_task_escalation, send_task_reminders
 from app.background_jobs.notification_jobs import process_batch_notifications
 from app.core.timezone import APPLICATION_TIMEZONE
+from app.database.connection import AsyncSessionLocal
+
+# 🌟 KPI Engine အသစ်ကို Import ပြုလုပ်ခြင်း
+from app.modules.kpi.engine import KPICalculationEngine
+from app.modules.kpi.models import PeriodType
+from app.modules.kpi.period_ranges import calendar_period_range
+from app.modules.tasks.scheduler import (
+    generate_recurring_tasks,
+    process_task_escalation,
+    send_task_reminders,
+)
+from app.modules.departments.models import UserDepartment
+from app.modules.users.models import User
 
 logger = logging.getLogger(__name__)
 timezone = APPLICATION_TIMEZONE
@@ -81,16 +86,23 @@ async def generate_weekly_kpi():
     today = datetime.now(timezone).date()
     start_of_this_week = today - timedelta(days=today.weekday())
     start_of_last_week = start_of_this_week - timedelta(days=7)
-    end_of_last_week = start_of_this_week - timedelta(days=1)
 
-    # Convert to datetime with timezone for engine
-    period_start = datetime.combine(start_of_last_week, datetime.min.time())
-    period_end = datetime.combine(end_of_last_week, datetime.max.time())
+    period_range = calendar_period_range(PeriodType.WEEKLY, start_of_last_week)
+    period_start = period_range.start_inclusive
+    period_end = period_range.end_exclusive
 
     async with AsyncSessionLocal() as db:
         try:
             # User အားလုံးကို ဆွဲထုတ်၍ Weekly KPI တွက်ချက်မည်
-            stmt = select(User).where(User.is_active == True, User.department_id != None)
+            stmt = select(User).where(
+                User.is_active.is_(True),
+                User.is_deleted.is_(False),
+                User.id.in_(
+                    select(UserDepartment.user_id).where(
+                        UserDepartment.is_deleted.is_(False)
+                    )
+                ),
+            )
             users = (await db.execute(stmt)).scalars().all()
             
             for user in users:
@@ -114,17 +126,24 @@ async def generate_monthly_kpi():
     
     today = datetime.now(timezone).date()
     first_day_of_this_month = today.replace(day=1)
-    end_of_last_month = first_day_of_this_month - timedelta(days=1)
-    start_of_last_month = end_of_last_month.replace(day=1)
+    start_of_last_month = (first_day_of_this_month - timedelta(days=1)).replace(day=1)
     
-    # Convert to datetime with timezone for engine
-    period_start = datetime.combine(start_of_last_month, datetime.min.time())
-    period_end = datetime.combine(end_of_last_month, datetime.max.time())
+    period_range = calendar_period_range(PeriodType.MONTHLY, start_of_last_month)
+    period_start = period_range.start_inclusive
+    period_end = period_range.end_exclusive
 
     async with AsyncSessionLocal() as db:
         try:
             # User အားလုံးကို ဆွဲထုတ်၍ Monthly KPI တွက်ချက်မည်
-            stmt = select(User).where(User.is_active == True, User.department_id != None)
+            stmt = select(User).where(
+                User.is_active.is_(True),
+                User.is_deleted.is_(False),
+                User.id.in_(
+                    select(UserDepartment.user_id).where(
+                        UserDepartment.is_deleted.is_(False)
+                    )
+                ),
+            )
             users = (await db.execute(stmt)).scalars().all()
             
             for user in users:

@@ -1,15 +1,15 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from typing import List
-from uuid import UUID
-from datetime import timezone
 
+from app.core.dependencies import RoleChecker, enforce_permission, get_current_user
 from app.database.connection import get_db
-from app.core.dependencies import RoleChecker, get_current_user, enforce_permission
+from app.modules.kpi import period_service
 from app.modules.kpi.models import KPIPeriod, KPIPeriodStatus
 from app.modules.kpi.period_schemas import KPIPeriodCreate, KPIPeriodResponse
-from app.modules.kpi import period_service
+from app.modules.kpi.period_ranges import normalize_calendar_range
 from app.modules.users.models import User
 
 router = APIRouter(prefix="/periods", tags=["KPI Periods"])
@@ -31,15 +31,15 @@ async def create_kpi_period(payload: KPIPeriodCreate, db: AsyncSession = Depends
     """Initialize a new KPI evaluation cycle (e.g., Q3 2026 or August 2026)"""
     enforce_permission(current_user, "kpi.create")
     data = payload.model_dump()
-    
-    # Timezone အတိအကျ ထည့်သွင်းပေးခြင်း
-    if data['start_date'].tzinfo is None:
-        data['start_date'] = data['start_date'].replace(tzinfo=timezone.utc)
-    if data['end_date'].tzinfo is None:
-        data['end_date'] = data['end_date'].replace(tzinfo=timezone.utc)
-        
-    # ⚡ LOGIC FIX: Start date သည် End date ထက် စောရမည်
-    if data['start_date'] >= data['end_date']:
+
+    try:
+        period_range = normalize_calendar_range(data["start_date"], data["end_date"])
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    data["start_date"] = period_range.start_inclusive
+    data["end_date"] = period_range.end_exclusive
+
+    if data["start_date"] >= data["end_date"]:
         raise HTTPException(status_code=400, detail="Start date must be before end date.")
         
     try:
@@ -54,7 +54,7 @@ async def create_kpi_period(payload: KPIPeriodCreate, db: AsyncSession = Depends
         raise HTTPException(status_code=500, detail="Database error occurred while creating period.")
 
 # ⚡ PERFORMANCE FIX: Added skip and limit
-@router.get("/", response_model=List[KPIPeriodResponse])
+@router.get("/", response_model=list[KPIPeriodResponse])
 async def get_kpi_periods(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, gt=0, le=100),
@@ -77,6 +77,17 @@ async def update_period_status(
 ):
     """Transition a period's state (e.g., DRAFT -> OPEN -> FINALIZED -> LOCKED)"""
     enforce_permission(current_user, "kpi.edit")
+    if (
+        new_status == KPIPeriodStatus.OPEN
+        and current_user.role
+        and current_user.role.name != "Super Admin"
+    ):
+        period = await db.get(KPIPeriod, period_id)
+        if period and period.status in {KPIPeriodStatus.FINALIZED, KPIPeriodStatus.LOCKED}:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only Super Admins can authorize reopening a finalized or locked KPI period.",
+            )
     return await period_service.change_period_status(db, period_id, new_status, current_user.id, reason)
 
 # =======================================================================

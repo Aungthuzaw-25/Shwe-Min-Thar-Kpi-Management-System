@@ -1,10 +1,11 @@
-﻿from pydantic import BaseModel
-from typing import List, Optional
-from uuid import UUID
 from datetime import datetime
+from uuid import UUID
+
+from pydantic import BaseModel
+
 
 class BatchSubmitRequest(BaseModel):
-    task_ids: List[UUID]
+    task_ids: list[UUID]
     reviewer_id: UUID
 
 class BatchSubmitResponse(BaseModel):
@@ -23,15 +24,15 @@ class QueueItemResponse(BaseModel):
 
 class BatchReviewRequest(BaseModel):
     action: str  # APPROVED, REJECTED, DELAY
-    comments: Optional[str] = None
-    next_reviewer_id: Optional[UUID] = None 
-    deduction_rule: Optional[str] = None  # 🌟 FIX: KPI အမှတ်လျော့မည့် ခေါင်းစဉ်ကို ထည့်သွင်းရန်
+    comments: str | None = None
+    next_reviewer_id: UUID | None = None
+    deduction_rule: str | None = None  # 🌟 FIX: KPI အမှတ်လျော့မည့် ခေါင်းစဉ်ကို ထည့်သွင်းရန်
 
 class TaskTimelineResponse(BaseModel):
     id: UUID
     action: str
-    old_value: Optional[str] = None
-    new_value: Optional[str] = None
-    remarks: Optional[str] = None
+    old_value: str | None = None
+    new_value: str | None = None
+    remarks: str | None = None
     created_at: datetime
     changer_email: str

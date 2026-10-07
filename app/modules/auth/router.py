@@ -1,41 +1,53 @@
-﻿from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
+from datetime import UTC, datetime, timedelta
+from uuid import UUID
+
+import jwt
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi.concurrency import run_in_threadpool  # ⚡ PERFORMANCE FIX
 from fastapi.responses import RedirectResponse
-from fastapi.concurrency import run_in_threadpool # ⚡ PERFORMANCE FIX
+from fastapi.security import OAuth2PasswordRequestForm  # 🌟 ADDED: For Swagger UI
+from jwt import PyJWTError as JWTError
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
-from datetime import datetime, timedelta, timezone
-from jose import jwt, JWTError
-from fastapi.security import OAuth2PasswordRequestForm # 🌟 ADDED: For Swagger UI
 
-from app.database.connection import get_db
-from app.modules.auth.schemas import LoginRequest, TokenResponse, RefreshTokenRequest, ChangePasswordRequest
-from app.modules.users import repo as user_repo
-from app.modules.users import password_repo
-from app.core.dependencies import get_current_user, get_permission_map
-from app.modules.users.models import OAuthAccount, User
-from app.modules.departments.models import UserDepartment
-from app.core.password_policy import get_password_policy, validate_password_strength
 from app.core import security
 from app.core.config import settings
+from app.core.dependencies import get_current_user, get_permission_map
+from app.core.password_policy import get_password_policy, validate_password_strength
+from app.core.timezone import utc_now_naive
+from app.database.connection import get_db
+from app.models.audit_log import AuditLog
 
 # 🌟 MODIFIED: Imported TokenBlacklist from unified models
-from app.modules.auth.models import LoginHistory, TokenBlacklist, AuthSession
+from app.modules.auth.models import AuthSession, TokenBlacklist
+from app.modules.auth.oauth_state import consume_oauth_state, create_oauth_state, get_oauth_redis
+from app.modules.auth.oidc import (
+    OIDCProvider,
+    OIDCValidationError,
+    create_nonce,
+    create_pkce_verifier,
+)
+from app.modules.auth.schemas import (
+    ChangePasswordRequest,
+    LoginRequest,
+    RefreshTokenRequest,
+    TokenResponse,
+)
 from app.modules.auth.service import AuthService
-from slowapi import Limiter
-from slowapi.util import get_remote_address
-from app.modules.auth.oauth_state import create_oauth_state, consume_oauth_state, get_oauth_redis
-from app.modules.auth.oidc import OIDCProvider, OIDCValidationError, create_nonce, create_pkce_verifier
-from app.models.audit_log import AuditLog
-from sqlalchemy import and_
-from app.core.timezone import utc_now_naive
+from app.modules.departments.models import UserDepartment
+from app.modules.users import password_repo
+from app.modules.users.models import OAuthAccount, User
+from app.modules.users.router import revoke_user_authentication
 
 limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter()
 
 # 🌟 SECURITY: Dummy bcrypt hash to prevent timing attacks
-DUMMY_PASSWORD_HASH = "$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjIQ6VSAca"
+TIMING_EQUALIZATION_HASH = "$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjIQ6VSAca"
 
 
 def _provider(name: str) -> OIDCProvider:
@@ -160,7 +172,6 @@ async def get_current_user_context(db: AsyncSession = Depends(get_db), current_u
 @router.post('/login', response_model=TokenResponse)
 @limiter.limit("5/minute") 
 async def login(request: Request, response: Response, payload: LoginRequest, db: AsyncSession = Depends(get_db)):
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
     client_ip = request.client.host if request.client else 'Unknown'
     user_agent = request.headers.get('user-agent', 'Unknown')
 
@@ -322,7 +333,7 @@ async def microsoft_callback(request: Request, code: str | None = None, state: s
 
 
 async def _recent_authentication(db: AsyncSession, user_id) -> bool:
-    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=10)
+    cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(minutes=10)
     return (await db.execute(select(AuthSession).where(
         AuthSession.user_id == user_id,
         AuthSession.revoked_at.is_(None),
@@ -473,6 +484,11 @@ async def self_change_password(
     if not is_valid_old_password:
         raise HTTPException(status_code=400, detail='The current password provided is incorrect.')
 
+    if (
+        payload.confirm_new_password is not None
+        and payload.new_password != payload.confirm_new_password
+    ):
+        raise HTTPException(status_code=400, detail='New password confirmation does not match.')
     validate_password_strength(payload.new_password, **(await get_password_policy(db)))
     
     is_valid_history = await password_repo.check_password_history(db, user.id, payload.new_password)
@@ -492,6 +508,7 @@ async def self_change_password(
     await password_repo.add_password_history(
         db, user.id, hashed_pass, commit=False
     )
+    await revoke_user_authentication(db, user.id)
     await db.commit()
 
     return {'message': 'Password changed successfully.'}
@@ -515,13 +532,15 @@ async def refresh_token(request: Request, response: Response, payload: RefreshTo
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Refresh token has been revoked. Please log in again.')
 
     try:
-        decoded = jwt.decode(token_to_verify, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        if decoded.get('type') != 'refresh':
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid token type provided.')
-        email = decoded.get('sub')
-    except JWTError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid or expired refresh token.')
-
+        decoded = security.decode_token(token_to_verify, "refresh", require_session=True)
+        email = decoded["sub"]
+        session_id = UUID(decoded["sid"])
+        token_user_id = UUID(decoded["user_id"])
+    except (JWTError, ValueError, TypeError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token.",
+        ) from None
     stmt = select(User).options(
         selectinload(User.role),
         selectinload(User.user_departments)
@@ -530,22 +549,18 @@ async def refresh_token(request: Request, response: Response, payload: RefreshTo
     result = await db.execute(stmt)
     user = result.scalars().first()
 
-    if not user or user.is_deleted or not user.is_active:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='User not found or account is inactive.')
+    if not user or user.is_deleted or not user.is_active or user.id != token_user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired refresh token.")
 
-    session_id = decoded.get("sid")
-    auth_session = None
-    if session_id:
-        auth_session = (await db.execute(select(AuthSession).where(
-            AuthSession.id == session_id,
-            AuthSession.user_id == user.id,
-            AuthSession.refresh_token_hash == token_hash,
-            AuthSession.revoked_at.is_(None),
-            AuthSession.expires_at > datetime.now(timezone.utc).replace(tzinfo=None),
-        ).with_for_update())).scalars().first()
-        if not auth_session:
-            raise HTTPException(status_code=401, detail="Refresh session has been revoked.")
-
+    auth_session = (await db.execute(select(AuthSession).where(
+        AuthSession.id == session_id,
+        AuthSession.user_id == user.id,
+        AuthSession.refresh_token_hash == token_hash,
+        AuthSession.revoked_at.is_(None),
+        AuthSession.expires_at > datetime.now(UTC).replace(tzinfo=None),
+    ).with_for_update())).scalars().first()
+    if not auth_session:
+        raise HTTPException(status_code=401, detail="Refresh session has been revoked.")
     # Rotation makes a refresh token single-use. A second presentation is
     # rejected by the blacklist check above.
     db.add(TokenBlacklist(token_hash=token_hash))
@@ -556,14 +571,14 @@ async def refresh_token(request: Request, response: Response, payload: RefreshTo
     if user.user_departments and len(user.user_departments) > 0:
         user_level = user.user_departments[0].user_level
 
-    token_data = {'sub': user.email, 'user_id': str(user.id), 'role': role_value, 'level': user_level}
+    token_data = {'sub': user.email, 'user_id': str(user.id), 'sid': str(auth_session.id), 'role': role_value, 'level': user_level}
     new_access_token = security.create_access_token(data=token_data)
     new_refresh_token = security.create_refresh_token(
         data=token_data, remember_me=bool(auth_session.remember_me) if auth_session else True
     )
     if auth_session:
         auth_session.refresh_token_hash = security.token_digest(new_refresh_token)
-        auth_session.last_used_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        auth_session.last_used_at = datetime.now(UTC).replace(tzinfo=None)
         await db.commit()
 
     # Lax permits the top-level GET redirect back from an OAuth provider while
@@ -576,7 +591,7 @@ async def refresh_token(request: Request, response: Response, payload: RefreshTo
     return {'access_token': new_access_token, 'refresh_token': new_refresh_token, 'token_type': 'bearer'}
 
 @router.post("/logout")
-async def logout(request: Request, response: Response, db: AsyncSession = Depends(get_db)):
+async def logout(request: Request, response: Response, payload: RefreshTokenRequest | None = None, db: AsyncSession = Depends(get_db)):
     # 1. Extract Access Token
     access_token = None
     auth_header = request.headers.get("Authorization")
@@ -588,7 +603,7 @@ async def logout(request: Request, response: Response, db: AsyncSession = Depend
             access_token = cookie_token.removeprefix("Bearer ").strip()
 
     # 2. Extract Refresh Token
-    refresh_token = request.cookies.get("refresh_token")
+    refresh_token = (payload.refresh_token if payload and payload.refresh_token else request.cookies.get("refresh_token"))
 
     # 🛡️ SECURITY FIX: Invalidate both Access & Refresh Tokens in the Database
     tokens_to_revoke = [t for t in [access_token, refresh_token] if t]
@@ -601,6 +616,8 @@ async def logout(request: Request, response: Response, db: AsyncSession = Depend
         for token_hash in set(token_hashes) - set(existing_tokens):
             db.add(TokenBlacklist(token_hash=token_hash))
 
+        # Signature and the configured algorithm remain verified here. Expiration is
+        # intentionally ignored only so an expired presented credential can still revoke its session.
         # Revoke the server-side session as well as its credentials.
         try:
             session_payload = jwt.decode(
@@ -614,7 +631,7 @@ async def logout(request: Request, response: Response, db: AsyncSession = Depend
         if sid:
             session = await db.get(AuthSession, sid)
             if session:
-                session.revoked_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                session.revoked_at = datetime.now(UTC).replace(tzinfo=None)
         await db.commit()
 
     # 🛡️ SECURITY FIX: Explicitly clear the strict cookies on logout

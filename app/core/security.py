@@ -1,49 +1,111 @@
-from datetime import datetime, timedelta, timezone # 🌟 IMPORT FIX: Added timezone
-import uuid
 import hashlib
+import uuid
+from datetime import UTC, datetime, timedelta  # 🌟 IMPORT FIX: Added timezone
+
+import jwt
+from jwt import PyJWTError as JWTError
 from passlib.context import CryptContext
-from jose import jwt
+
 from app.core.config import settings
+from app.core.password_policy import MAX_PASSWORD_LENGTH
 
 # ⚡ PERFORMANCE FIX: Reduced bcrypt rounds from 15 to 12. 
 # Round 15 is exponentially slower and causes multi-second login delays. 
 # Round 12 is the industry standard for balancing instant speed and strict security.
 pwd_context = CryptContext(
-    schemes=['bcrypt', 'argon2'], 
-    deprecated='auto',
+    schemes=['argon2', 'bcrypt'],
+    default='argon2',
+    deprecated=['bcrypt'],
+    argon2__type='ID',
     bcrypt__rounds=12 # 👈 Changed from 15 to 12
 )
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    if isinstance(plain_password, str):
-        plain_password = plain_password.encode('utf-8')
-    if len(plain_password) > 72:
-        plain_password = plain_password[:72]
-    return pwd_context.verify(plain_password.decode('utf-8', errors='ignore'), hashed_password)
+    """Verify a credential without ever truncating user-controlled input."""
+    if not isinstance(plain_password, str) or not isinstance(hashed_password, str):
+        return False
+    if len(plain_password) > MAX_PASSWORD_LENGTH:
+        return False
+    if pwd_context.identify(hashed_password) == "bcrypt" and len(plain_password.encode("utf-8")) > 72:
+        # Bcrypt truncates after 72 bytes; reject rather than authenticate a prefix.
+        return False
+    try:
+        # Passlib/bcrypt rejects inputs above bcrypt's 72-byte limit. That is
+        # the desired outcome for legacy bcrypt hashes: accepting a prefix
+        # would silently make two distinct credentials equivalent.
+        return pwd_context.verify(plain_password, hashed_password)
+    except (ValueError, TypeError):
+        return False
 
 def get_password_hash(password: str) -> str:
-    if isinstance(password, str):
-        password = password.encode('utf-8')
-    if len(password) > 72:
-        password = password[:72]
-    return pwd_context.hash(password.decode('utf-8', errors='ignore'))
+    if not isinstance(password, str) or not password:
+        raise ValueError('Password is required.')
+    if len(password) > MAX_PASSWORD_LENGTH:
+        raise ValueError(f'Password must be no more than {MAX_PASSWORD_LENGTH} characters long.')
+    return pwd_context.hash(password)
+
+def password_needs_rehash(hashed_password: str) -> bool:
+    """Identify legacy bcrypt hashes for opportunistic Argon2id migration."""
+    try:
+        return pwd_context.needs_update(hashed_password)
+    except (ValueError, TypeError):
+        return False
+
+TOKEN_TYPES = {"access", "refresh"}
+REQUIRED_TOKEN_CLAIMS = ("sub", "type", "exp", "iat", "jti")
+
+
+def _create_token(data: dict, token_type: str, expires_delta: timedelta) -> str:
+    if token_type not in TOKEN_TYPES:
+        raise ValueError("Unsupported token type.")
+    subject = data.get("sub")
+    if not isinstance(subject, str) or not subject.strip():
+        raise ValueError("Token subject is required.")
+
+    issued_at = datetime.now(UTC)
+    to_encode = data.copy()
+    # Server-controlled security claims always replace caller input.
+    to_encode.update({
+        "exp": issued_at + expires_delta,
+        "iat": issued_at,
+        "type": token_type,
+        "jti": str(uuid.uuid4()),
+    })
+    return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+
 
 def create_access_token(data: dict) -> str:
-    to_encode = data.copy()
-    # 🌟 FUTURE-PROOF FIX: datetime.utcnow() is deprecated in Python 3.12+
-    expire = datetime.now(timezone.utc) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode.update({'exp': expire, 'type': 'access', 'jti': str(uuid.uuid4())})
-    return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+    return _create_token(
+        data, "access", timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    )
+
 
 def create_refresh_token(data: dict, remember_me: bool = True) -> str:
-    to_encode = data.copy()
-    # 🌟 FUTURE-PROOF FIX: datetime.utcnow() is deprecated in Python 3.12+
     days = settings.REFRESH_TOKEN_EXPIRE_DAYS if remember_me else 1
-    expire = datetime.now(timezone.utc) + timedelta(days=days)
-    to_encode.update({'exp': expire, 'type': 'refresh', 'jti': str(uuid.uuid4())})
-    return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+    return _create_token(data, "refresh", timedelta(days=days))
 
 
+def decode_token(
+    token: str, expected_type: str, *, require_session: bool = False
+) -> dict:
+    """Verify a server-issued JWT and enforce its security claims."""
+    if expected_type not in TOKEN_TYPES:
+        raise ValueError("Unsupported token type.")
+    payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+    for claim in REQUIRED_TOKEN_CLAIMS:
+        value = payload.get(claim)
+        if value is None or (isinstance(value, str) and not value.strip()):
+            raise JWTError("Invalid token.")
+    if not isinstance(payload["sub"], str) or not isinstance(payload["jti"], str):
+        raise JWTError("Invalid token.")
+    if payload.get("type") != expected_type:
+        raise JWTError("Invalid token type.")
+    if require_session:
+        for claim in ("sid", "user_id"):
+            value = payload.get(claim)
+            if not isinstance(value, str) or not value.strip():
+                raise JWTError("Invalid token.")
+    return payload
 def token_digest(token: str) -> str:
     """Return a non-reversible digest suitable for revocation/session lookup."""
     return hashlib.sha256(token.encode("utf-8")).hexdigest()

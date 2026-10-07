@@ -1,26 +1,28 @@
 """
 Standardized Audit Trail Utility
 """
-from sqlalchemy.ext.asyncio import AsyncSession
-from uuid import UUID
-from typing import Optional, Dict, Any
-from app.models.audit_log import AuditLog
 import logging
+from typing import Any
+from uuid import UUID
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.audit_log import AuditLog
 
 logger = logging.getLogger(__name__)
 
 async def log_audit_trail(
     db: AsyncSession,
-    user_id: Optional[UUID],
+    user_id: UUID | None,
     action: str,
     table_name: str,
-    record_id: Optional[str] = None,
-    old_value: Optional[Dict[str, Any]] = None,
-    new_value: Optional[Dict[str, Any]] = None,
-    ip_address: Optional[str] = "127.0.0.1",
+    record_id: str | None = None,
+    old_value: dict[str, Any] | None = None,
+    new_value: dict[str, Any] | None = None,
+    ip_address: str | None = "127.0.0.1",
     *,
     commit: bool = True,
-) -> Optional[AuditLog]:
+) -> AuditLog | None:
     """စနစ်တွင်း အပြောင်းအလဲများကို audit_logs table တွင် တပြေးညီ မှတ်တမ်းတင်ရန်"""
     try:
         log_entry = AuditLog(

@@ -1,8 +1,11 @@
-from sqlalchemy import Column, String, DateTime, ForeignKey, JSON
-from sqlalchemy.dialects.postgresql import UUID
 import uuid
+
+from sqlalchemy import JSON, Column, DateTime, ForeignKey, String
+from sqlalchemy.dialects.postgresql import UUID
+
 from app.core.timezone import utc_now_naive
 from app.database.connection import Base
+
 
 class AuditLog(Base):
     __tablename__ = 'audit_logs'

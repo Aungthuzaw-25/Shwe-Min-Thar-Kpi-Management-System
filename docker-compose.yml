@@ -4,7 +4,7 @@ services:
     container_name: kpi_production_app
     restart: always
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     env_file:
       - .env
     environment:
@@ -13,6 +13,7 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - ENABLE_SCHEDULER=true
       - RUN_SCHEDULER=false
+      - SKIP_DATABASE_SEED=true
     depends_on:
       redis:
         condition: service_healthy
@@ -30,7 +31,11 @@ services:
       - ENABLE_SCHEDULER=true
       - RUN_SCHEDULER=true
       - REDIS_URL=redis://redis:6379/0
+      - SKIP_DATABASE_SEED=true
+      - SKIP_DATABASE_MIGRATIONS=true
     depends_on:
+      api:
+        condition: service_healthy
       redis:
         condition: service_healthy
       minio:

@@ -1,6 +1,8 @@
 from sqlalchemy import Boolean, Column, ForeignKey, Index, String, Text
 from sqlalchemy.dialects.postgresql import UUID
+
 from app.database.base import BaseModel
+
 
 class Notification(BaseModel):
     __tablename__ = "notifications"

@@ -1,4 +1,4 @@
-from jose import jwt
+import jwt
 
 from app.core.config import settings
 from app.core.security import (
@@ -10,7 +10,7 @@ from app.core.security import (
 
 
 def test_password_hash_round_trip():
-    raw_password = "StrongPass!123"
+    raw_password = "StrongPass!123"  # noqa: S105 - synthetic test fixture; not a production credential
     hashed = get_password_hash(raw_password)
 
     assert hashed != raw_password

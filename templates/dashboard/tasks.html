@@ -24,10 +24,10 @@
     .file-remove-btn:hover { transform: scale(1.1); }
 </style>
 
-<div class="min-h-screen bg-slate-50/50 text-slate-800 font-sans flex flex-col p-4 sm:p-6 md:p-8 overflow-x-hidden">
+<div class="workspace-page">
     
     <!-- HEADER -->
-    <header class="mb-6 sm:mb-8 animate-fade-slide flex flex-col md:flex-row justify-between items-start md:items-center gap-4 sm:gap-5">
+    <header class="workspace-header animate-fade-slide">
         <div class="flex items-center gap-3 sm:gap-4">
             <div class="bg-white p-2.5 sm:p-3.5 rounded-2xl shadow-sm ring-1 ring-slate-900/5 text-blue-600 shrink-0">
                 <svg class="w-6 h-6 sm:w-7 sm:h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg>
@@ -57,7 +57,7 @@
     </header>
 
     <!-- TABS NAVIGATION -->
-    <div class="flex space-x-4 sm:space-x-6 border-b border-slate-200 mb-6 px-1 sm:px-2 overflow-x-auto custom-scrollbar animate-fade-slide pb-1" style="animation-delay: 0.1s;">
+    <div class="workspace-tabs mb-6 animate-fade-slide csp-delay-2" role="tablist" aria-label="Task views">
         <button onclick="switchTab('drafts-tab')" id="btn-drafts-tab" class="tab-btn active shrink-0 whitespace-nowrap text-xs sm:text-sm">1. Draft Tasks</button>
         <button onclick="switchTab('rejected-tab')" id="btn-rejected-tab" class="tab-btn shrink-0 flex items-center gap-1.5 whitespace-nowrap text-xs sm:text-sm">2. Rejected History <span id="rejectBadge" class="hidden bg-red-100 text-red-700 px-1.5 sm:px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-black">0</span></button>
         <button onclick="switchTab('resign-tab')" id="btn-resign-tab" class="tab-btn shrink-0 flex items-center gap-1.5 text-purple-700 whitespace-nowrap text-xs sm:text-sm">3. Resign Tasks <span id="resignBadge" class="hidden bg-purple-100 text-purple-700 px-1.5 sm:px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-black">0</span></button>
@@ -73,7 +73,7 @@
     </div>
 
     <!-- MAIN CONTENT AREA -->
-    <div class="w-full relative flex-1 bg-white rounded-2xl sm:rounded-3xl shadow-sm ring-1 ring-slate-900/5 flex flex-col overflow-hidden animate-fade-slide" style="animation-delay: 0.2s;">
+    <div class="workspace-table w-full relative flex-1 flex flex-col overflow-hidden animate-fade-slide csp-delay-3">
         
         <!-- SECTION 1: DRAFTS TAB -->
         <div id="drafts-tab" class="tab-content flex flex-col h-full">
@@ -200,7 +200,7 @@
 <!-- ========================================================== -->
 
 <!-- MODAL 1: Personal Task Modal (No Due Date / Penalty) -->
-<div id="selfTaskModal" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm transition-opacity opacity-0 p-4" style="transition: opacity 0.3s ease;">
+<div id="selfTaskModal" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm transition-opacity opacity-0 p-4 csp-modal">
     <div class="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden transform scale-95 transition-transform duration-300 flex flex-col max-h-[95vh] sm:max-h-[90vh]" id="selfTaskContent">
         <div class="px-5 sm:px-8 py-4 sm:py-5 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
             <h3 class="text-lg sm:text-xl font-black text-slate-900">Log Personal Task</h3>
@@ -240,7 +240,7 @@
 </div>
 
 <!-- MODAL 2: Manager Assignment Modal (Includes Due Date & Grace Period) -->
-<div id="assignTaskModal" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm transition-opacity opacity-0 p-4" style="transition: opacity 0.3s ease;">
+<div id="assignTaskModal" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm transition-opacity opacity-0 p-4 csp-modal">
     <div class="bg-white rounded-3xl w-full max-w-xl shadow-2xl overflow-hidden transform scale-95 transition-transform duration-300 flex flex-col max-h-[95vh] sm:max-h-[90vh]" id="assignTaskContent">
         <div class="px-5 sm:px-8 py-4 sm:py-5 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
             <h3 class="text-lg sm:text-xl font-black text-slate-900">Assign Delegation Task</h3>
@@ -519,20 +519,13 @@
 
         document.querySelectorAll('.tab-btn').forEach(btn => {
             btn.classList.remove('active');
-            btn.style.borderColor = 'transparent';
-            if(btn.id !== 'btn-approvals-tab') btn.style.color = '#64748b'; 
+            btn.classList.remove('tab-btn--resign', 'tab-btn--approvals');
         });
         
         const activeBtn = document.getElementById(`btn-${tabId}`);
         activeBtn.classList.add('active');
-        if(tabId !== 'approvals-tab' && tabId !== 'btn-resign-tab') {
-            activeBtn.style.color = '#1d4ed8';
-            activeBtn.style.borderColor = '#1d4ed8';
-        }
-        if(tabId === 'btn-resign-tab') {
-            activeBtn.style.color = '#7e22ce';
-            activeBtn.style.borderColor = '#7e22ce';
-        }
+        activeBtn.classList.toggle('tab-btn--resign', tabId === 'resign-tab');
+        activeBtn.classList.toggle('tab-btn--approvals', tabId === 'approvals-tab');
 
         if(['drafts-tab', 'rejected-tab', 'review-tab', 'completed-tab', 'resign-tab'].includes(tabId)) loadMyTasks();
         if(tabId === 'approvals-tab' && ['L1', 'L0', 'Level 1', 'Level 0'].includes(currentUserLevel)) loadApprovalQueue();

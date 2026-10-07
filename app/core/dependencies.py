@@ -1,23 +1,40 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from uuid import UUID
+
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
-from jose import jwt, JWTError
+from jwt import PyJWTError as JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 
-from app.core.config import settings
 from app.core import security
-from app.database.connection import get_db
 from app.core.exceptions import PermissionDeniedException
-# 🌟 FIX: Permission များကို တစ်ပါတည်း ဆွဲထုတ်ရန် Role ကိုပါ Import လုပ်ပါသည်
-from app.modules.users.models import User, Role, Permission, RolePermission, UserPermissionOverride
+from app.database.connection import get_db
+from app.modules.auth.models import AuthSession, TokenBlacklist
 from app.modules.departments.models import UserDepartment
-from app.modules.auth.models import TokenBlacklist, AuthSession
+
+# 🌟 FIX: Permission များကို တစ်ပါတည်း ဆွဲထုတ်ရန် Role ကိုပါ Import လုပ်ပါသည်
+from app.modules.users.models import Role, User, UserPermissionOverride
 
 SUPER_ADMIN_ROLE = "Super Admin"
 GLOBAL_SCOPE_ROLES = {"Super Admin", "HR"}
 LEVEL_RESTRICTED_TASK_PERMISSIONS = {"tasks.approve", "tasks.reject", "tasks.return"}
+
+
+async def get_authorized_department_ids(
+    db: AsyncSession, current_user: User
+) -> set[str] | None:
+    """Return active department memberships, or ``None`` for global roles."""
+    if current_user.role and current_user.role.name in GLOBAL_SCOPE_ROLES:
+        return None
+    rows = await db.execute(
+        select(UserDepartment.department_id).where(
+            UserDepartment.user_id == current_user.id,
+            UserDepartment.is_deleted.is_(False),
+        )
+    )
+    return {str(department_id) for department_id in rows.scalars().all()}
 
 
 async def enforce_user_scope(db: AsyncSession, current_user: User, target_user_id) -> None:
@@ -29,13 +46,15 @@ async def enforce_user_scope(db: AsyncSession, current_user: User, target_user_i
 
     rows = await db.execute(
         select(UserDepartment.department_id).where(
-            UserDepartment.user_id == current_user.id
+            UserDepartment.user_id == current_user.id,
+            UserDepartment.is_deleted.is_(False)
         )
     )
     current_departments = {str(department_id) for department_id in rows.scalars().all()}
     target_rows = await db.execute(
         select(UserDepartment.department_id).where(
-            UserDepartment.user_id == target_user_id
+            UserDepartment.user_id == target_user_id,
+            UserDepartment.is_deleted.is_(False)
         )
     )
     target_departments = {str(department_id) for department_id in target_rows.scalars().all()}
@@ -53,15 +72,12 @@ async def enforce_department_scope(
     db: AsyncSession, current_user: User, department_id
 ) -> None:
     """Allow global roles or users explicitly assigned to the department."""
-    if current_user.role and current_user.role.name in GLOBAL_SCOPE_ROLES:
-        return
-    result = await db.execute(
-        select(UserDepartment.id).where(
-            UserDepartment.user_id == current_user.id,
-            UserDepartment.department_id == department_id,
-        )
+    authorized_department_ids = await get_authorized_department_ids(
+        db, current_user
     )
-    if result.scalar_one_or_none() is None:
+    if authorized_department_ids is None:
+        return
+    if str(department_id) not in authorized_department_ids:
         raise PermissionDeniedException(
             detail="Access denied for this department scope."
         )
@@ -189,24 +205,15 @@ async def get_current_user(
 
     # 🌟 SECURITY & PERFORMANCE FIX: Hacker မှ Token အမှားများဖြင့် DB ကို DoS မလုပ်နိုင်ရန် JWT ကို အရင် Decode လုပ်မည်
     try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        if payload.get("type") != "access":
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token type.",
-            )
-        email: str = payload.get("sub")
-        if email is None:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED, 
-                detail="Invalid token payload."
-            )
-    except JWTError:
+        payload = security.decode_token(token, "access", require_session=True)
+        email = payload["sub"]
+        session_id = UUID(payload["sid"])
+        session_user_id = UUID(payload["user_id"])
+    except (JWTError, ValueError, TypeError):
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, 
+            status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token expired or invalid."
         )
-
     # Decode အောင်မြင်မှသာ Blacklist ဝင်နေသလား စစ်ဆေးမည်
     is_blacklisted = await db.execute(
         select(TokenBlacklist).where(
@@ -219,22 +226,19 @@ async def get_current_user(
             detail="Token has been revoked. Please log in again."
         )
 
-    session_id = payload.get("sid")
-    if session_id:
-        session_result = await db.execute(
-            select(AuthSession).where(
-                AuthSession.id == session_id,
-                AuthSession.user_id == payload.get("user_id"),
-                AuthSession.revoked_at.is_(None),
-                AuthSession.expires_at > datetime.now(timezone.utc).replace(tzinfo=None),
-            )
+    session_result = await db.execute(
+        select(AuthSession).where(
+            AuthSession.id == session_id,
+            AuthSession.user_id == session_user_id,
+            AuthSession.revoked_at.is_(None),
+            AuthSession.expires_at > datetime.now(UTC).replace(tzinfo=None),
         )
-        if session_result.scalars().first() is None:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Session has been revoked or expired.",
-            )
-
+    )
+    if session_result.scalars().first() is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session has been revoked or expired.",
+        )
     # 🌟 PERFORMANCE FIX (DBA): User ကို ဆွဲထုတ်စဉ် Role နှင့် ၎င်း၏ Permissions များကို 
     # တစ်ပါတည်း (Eager Load) ဆွဲထုတ်ထားခြင်းဖြင့် RequirePermission တွင် DB ထပ်ခေါ်စရာ မလိုတော့ပါ။
     stmt = select(User).options(
@@ -330,8 +334,8 @@ class RequirePermission:
         try:
             resource_id = params.get("task_id")
             if resource_id:
-                from app.modules.tasks.models.task import Task
                 from app.modules.departments.models import UserDepartment
+                from app.modules.tasks.models.task import Task
                 task = await db.get(Task, resource_id)
                 if task:
                     owner_id = task.owner_id
@@ -355,7 +359,7 @@ class RequirePermission:
                 batch = await db.get(SubmissionBatch, resource_id)
                 if batch:
                     owner_id = batch.submitter_id
-        except Exception:
+        except Exception:  # noqa: S110 - malformed scope hints remain fail-closed
             # Scope resolution must never turn a malformed resource into an
             # authorization bypass; unresolved scoped overrides simply don't
             # match and the normal role decision remains fail-closed.

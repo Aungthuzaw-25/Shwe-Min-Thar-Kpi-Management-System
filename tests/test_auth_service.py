@@ -41,7 +41,7 @@ def test_authenticate_user_returns_tokens_for_valid_credentials(monkeypatch):
         is_deleted=False,
         is_locked=False,
         lockout_until=None,
-        hashed_password="hashed-password",
+        hashed_password="hashed-password",  # noqa: S106 - synthetic test fixture; not a production credential
         failed_login_attempts=0,
         role=SimpleNamespace(name="L2"),
         position=SimpleNamespace(name="Officer"),
@@ -59,8 +59,8 @@ def test_authenticate_user_returns_tokens_for_valid_credentials(monkeypatch):
 
     payload = asyncio.run(AuthService.authenticate_user(db, "alice@example.com", "password123"))
 
-    assert payload["access_token"] == "fake-access"
-    assert payload["refresh_token"] == "fake-refresh"
+    assert payload["access_token"] == "fake-access"  # noqa: S105 - synthetic test fixture; not a production credential
+    assert payload["refresh_token"] == "fake-refresh"  # noqa: S105 - synthetic test fixture; not a production credential
     assert payload["user"]["email"] == "alice@example.com"
     assert payload["user"]["role"]["name"] == "L2"
 

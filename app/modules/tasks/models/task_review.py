@@ -1,7 +1,9 @@
-﻿from sqlalchemy import Column, String, Text, ForeignKey, Boolean
+﻿from sqlalchemy import Boolean, Column, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
+
 from app.database.base import BaseModel
+
 
 class TaskReview(BaseModel):
     __tablename__ = 'task_reviews'

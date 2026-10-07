@@ -1,12 +1,15 @@
 import json
 import secrets
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import HTTPException, Request, status
 from redis.asyncio import Redis
 
 from app.core.config import settings
+
+OAUTH_UNAVAILABLE_MESSAGE = "OAuth sign-in is temporarily unavailable."
+INVALID_OAUTH_STATE_MESSAGE = "Invalid OAuth state."
 
 
 def get_oauth_redis(request: Request) -> Redis:
@@ -16,7 +19,7 @@ def get_oauth_redis(request: Request) -> Redis:
     if client is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="OAuth sign-in is temporarily unavailable.",
+            detail=OAUTH_UNAVAILABLE_MESSAGE,
         )
     return client
 
@@ -47,7 +50,7 @@ async def create_oauth_state(
         "user_id": user_id,
         "remember_me": bool(remember_me),
         "return_path": return_path if return_path.startswith("/") and not return_path.startswith("//") else "/dashboard",
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
     }
     try:
         await redis.set(
@@ -59,14 +62,14 @@ async def create_oauth_state(
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="OAuth sign-in is temporarily unavailable.",
+            detail=OAUTH_UNAVAILABLE_MESSAGE,
         ) from exc
     return state
 
 
 async def consume_oauth_state(redis: Redis, state: str) -> dict[str, Any]:
     if not state or len(state) > 256:
-        raise HTTPException(status_code=400, detail="Invalid OAuth state.")
+        raise HTTPException(status_code=400, detail=INVALID_OAUTH_STATE_MESSAGE)
     try:
         raw = await redis.getdel(f"oauth:state:{state}")
     except Exception as exc:
@@ -79,5 +82,5 @@ async def consume_oauth_state(redis: Redis, state: str) -> dict[str, Any]:
     try:
         payload = json.loads(raw)
     except (TypeError, ValueError) as exc:
-        raise HTTPException(status_code=400, detail="OAuth state is invalid.") from exc
+        raise HTTPException(status_code=400, detail=INVALID_OAUTH_STATE_MESSAGE) from exc
     return payload

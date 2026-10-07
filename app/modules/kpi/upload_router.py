@@ -1,31 +1,43 @@
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Request, BackgroundTasks
+import io
+import mimetypes
+import os
+from datetime import datetime
+from uuid import UUID
+
+import pandas as pd
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    UploadFile,
+    status,
+)
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
-from fastapi.concurrency import run_in_threadpool
-import pandas as pd
-import io
-import calendar
-import os
-import mimetypes
-from datetime import datetime, timezone
 
 try:
     import magic  # Optional dependency for MIME validation.
 except ImportError:  # pragma: no cover - libmagic may be absent in runtime image.
     magic = None
 
-from app.database.connection import get_db, AsyncSessionLocal # Background Worker DB Session
-from app.core.dependencies import RoleChecker, enforce_permission
-from app.modules.users.models import User
-from app.modules.departments.models import UserDepartment
-from app.modules.kpi.models import PeriodType
-from app.modules.kpi.engine import KPICalculationEngine
-
 # RATE LIMITER IMPORTS
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+
+from app.core.dependencies import RoleChecker, enforce_permission, get_authorized_department_ids
+from app.database.connection import AsyncSessionLocal, get_db  # Background Worker DB Session
+from app.modules.departments.models import UserDepartment
+from app.modules.kpi.engine import KPICalculationEngine
+from app.modules.kpi.models import PeriodType
+from app.modules.kpi.period_ranges import calendar_period_range
+from app.modules.users.models import User
 
 limiter = Limiter(key_func=get_remote_address)
 router = APIRouter(prefix="/kpi-uploads", tags=["KPI Excel Uploads"])
@@ -51,7 +63,7 @@ def _detect_mime_type(file_bytes: bytes, filename: str | None = None) -> str:
             detected = magic.from_buffer(file_bytes, mime=True)
             if detected:
                 return detected
-        except Exception:
+        except Exception:  # noqa: S110 - optional libmagic failure uses safe fallback
             pass
 
     if filename:
@@ -95,11 +107,39 @@ async def _read_upload_dataframe(file: UploadFile) -> pd.DataFrame:
     return dataframe
 
 
-async def _build_upload_rows(df: pd.DataFrame, db: AsyncSession):
+def _scoped_active_users_statement(current_user: User, department_ids: set[str] | None):
+    statement = select(User).options(
+        selectinload(User.user_departments).selectinload(UserDepartment.department)
+    ).where(User.is_active.is_(True), User.is_deleted.is_(False))
+    if department_ids is not None:
+        database_department_ids = [UUID(department_id) for department_id in department_ids]
+        statement = statement.where(
+            User.id.in_(
+                select(UserDepartment.user_id).where(
+                    UserDepartment.department_id.in_(database_department_ids),
+                    UserDepartment.is_deleted.is_(False),
+                )
+            )
+        )
+    return statement
+
+
+def _visible_department_name(user: User, department_ids: set[str] | None) -> str:
+    memberships = [
+        membership for membership in (user.user_departments or [])
+        if not getattr(membership, "is_deleted", False)
+        and (department_ids is None or str(membership.department_id) in department_ids)
+    ]
+    if memberships and getattr(memberships[0], "department", None):
+        return memberships[0].department.name
+    return "N/A"
+
+async def _build_upload_rows(df: pd.DataFrame, db: AsyncSession, current_user: User):
     emails = df["Email"].dropna().astype(str).str.strip().tolist()
-    statement = select(User.id, User.email).where(
-        User.email.in_(emails), User.is_active == True, User.is_deleted == False
-    )
+    department_ids = await get_authorized_department_ids(db, current_user)
+    statement = _scoped_active_users_statement(current_user, department_ids).with_only_columns(
+        User.id, User.email
+    ).where(User.email.in_(emails))
     user_records = (await db.execute(statement)).all()
     email_to_user_id = {email: user_id for user_id, email in user_records}
     ignored_columns = {"email", "employee name", "name", "department", "id", "no", "no.", "sr", "sr."}
@@ -129,7 +169,6 @@ async def _build_upload_rows(df: pd.DataFrame, db: AsyncSession):
                 errors.append(f"Row {index + 2}: Invalid metric number '{value_text}' in column '{column}'.")
         valid_rows.append({"user_id": user_id, "task_data": task_data})
     return valid_rows, errors
-
 # ==============================================================================
 # BACKGROUND WORKER FUNCTION (Non-Blocking Heavy Calculation Engine)
 # ==============================================================================
@@ -181,17 +220,14 @@ async def export_kpi_template(
     enforce_permission(current_user, "report.export")
     try:
         # Database Active 
-        stmt = select(User).options(
-            selectinload(User.user_departments).selectinload(UserDepartment.department)
-        ).where(User.is_active == True, User.is_deleted == False)
+        department_ids = await get_authorized_department_ids(db, current_user)
+        stmt = _scoped_active_users_statement(current_user, department_ids)
         
         users = (await db.execute(stmt)).scalars().all()
         
         rows = []
         for u in users:
-            dept_name = "N/A"
-            if u.user_departments and getattr(u.user_departments[0], 'department', None):
-                dept_name = u.user_departments[0].department.name
+            dept_name = _visible_department_name(u, department_ids)
                 
             rows.append({
                 "Email": u.email,
@@ -256,13 +292,15 @@ async def upload_monthly_kpi_data(
         df = await _read_upload_dataframe(file)
         try:
             year, month = map(int, target_month.split('-'))
-            period_start = datetime(year, month, 1, 0, 0, 0, tzinfo=timezone.utc)
-            last_day = calendar.monthrange(year, month)[1]
-            period_end = datetime(year, month, last_day, 23, 59, 59, tzinfo=timezone.utc)
+            period_range = calendar_period_range(
+                PeriodType.MONTHLY, datetime(year, month, 1).date()
+            )
+            period_start = period_range.start_inclusive
+            period_end = period_range.end_exclusive
         except ValueError:
             raise ValueError("Invalid target_month format. Must be YYYY-MM (e.g., 2026-08).")
 
-        valid_rows, error_logs = await _build_upload_rows(df, db)
+        valid_rows, error_logs = await _build_upload_rows(df, db, current_user)
 
         if error_logs:
             error_message = " | ".join(error_logs[:5])

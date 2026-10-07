@@ -1,24 +1,65 @@
+from datetime import datetime
+from uuid import UUID
+
+from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import joinedload, selectinload
-from fastapi import HTTPException, status
-from uuid import UUID
-from datetime import datetime
-import pytz
 
-from app.modules.tasks.models.task import Task, TaskStatus
-from app.modules.tasks.models.task_review import TaskReview 
-from app.modules.users.models import User
-from app.modules.departments.models import Department, UserDepartment
+from app.core.dependencies import GLOBAL_SCOPE_ROLES, enforce_permission
+from app.core.timezone import APPLICATION_TIMEZONE
+from app.modules.departments.models import UserDepartment
 from app.modules.kpi.engine import trigger_kpi_recalculation
-from app.modules.tasks.schemas import TaskCreate, TaskUpdate, TaskReviewInput
 
 # 🌟 FIX: Updated import to use the refactored module-level function
 from app.modules.notifications.repo import create_notification
-from app.core.timezone import APPLICATION_TIMEZONE
+from app.modules.tasks.models.task import Task, TaskStatus
+from app.modules.tasks.models.task_review import TaskReview
+from app.modules.tasks.schemas import TaskCreate, TaskReviewInput
+from app.modules.users.models import Role, User, UserPermissionOverride
 from app.services.activity_service import record_activity
 
 timezone = APPLICATION_TIMEZONE
+
+
+async def _authorize_reviewer(
+    db: AsyncSession,
+    task: Task,
+    current_user_id: UUID,
+    required_level: str,
+) -> None:
+    result = await db.execute(
+        select(User)
+        .options(
+            joinedload(User.role).selectinload(Role.permissions),
+            joinedload(User.user_departments),
+            selectinload(User.permission_overrides).selectinload(
+                UserPermissionOverride.permission
+            ),
+        )
+        .where(User.id == current_user_id, User.is_deleted.is_(False), User.is_active.is_(True))
+    )
+    current_user = result.unique().scalars().first()
+    if not current_user:
+        raise HTTPException(status_code=403, detail="Reviewer is not active.")
+    enforce_permission(current_user, "tasks.approve")
+    if current_user.role and current_user.role.name in GLOBAL_SCOPE_ROLES:
+        return
+
+    owner_department_ids = {
+        str(link.department_id)
+        for link in (getattr(task.owner, "user_departments", []) or [])
+        if not getattr(link, "is_deleted", False)
+    }
+    reviewer_links = [
+        link for link in (current_user.user_departments or []) if not link.is_deleted
+    ]
+    if not any(
+        str(link.department_id) in owner_department_ids
+        and str(link.user_level).upper().replace("LEVEL ", "") == required_level
+        for link in reviewer_links
+    ):
+        raise HTTPException(status_code=403, detail="Reviewer is outside the task workflow scope.")
 
 # ==============================================================================
 # ၁။ Task အသစ်ဖန်တီးခြင်း နှင့် တင်ပြခြင်း (L2)
@@ -80,14 +121,14 @@ async def submit_task(db: AsyncSession, task_id: UUID, current_user_id: UUID) ->
 # ==============================================================================
 async def review_task_l1(db: AsyncSession, task_id: UUID, payload: TaskReviewInput, current_user_id: UUID) -> Task:
     stmt = select(Task).options(
-        joinedload(Task.owner).selectinload(User.user_departments)
+        selectinload(Task.owner).selectinload(User.user_departments)
     ).where(Task.id == task_id).with_for_update()
     
     task = (await db.execute(stmt)).scalars().first()
     
     if not task:
         raise HTTPException(status_code=404, detail="Task မတွေ့ရှိပါ။")
-        
+
     if task.status != TaskStatus.PENDING_L1:
         raise HTTPException(status_code=400, detail="ဤ Task သည် L1 စစ်ဆေးရန် အခြေအနေတွင် မရှိပါ။")
 
@@ -96,6 +137,8 @@ async def review_task_l1(db: AsyncSession, task_id: UUID, payload: TaskReviewInp
 
     if payload.action == "REJECTED" and not payload.deduction_rule:
         raise HTTPException(status_code=400, detail="KPI ဖြတ်မည့် Deduction Rule အား ရွေးချယ်ပေးရပါမည်။")
+
+    await _authorize_reviewer(db, task, current_user_id, "L1")
 
     try:
         if payload.action == "APPROVED":
@@ -165,14 +208,14 @@ async def review_task_l1(db: AsyncSession, task_id: UUID, payload: TaskReviewInp
 # ==============================================================================
 async def verify_task_l0(db: AsyncSession, task_id: UUID, payload: TaskReviewInput, current_user_id: UUID) -> Task:
     stmt = select(Task).options(
-        joinedload(Task.owner).selectinload(User.user_departments)
+        selectinload(Task.owner).selectinload(User.user_departments)
     ).where(Task.id == task_id).with_for_update()
     
     task = (await db.execute(stmt)).scalars().first()
     
     if not task:
         raise HTTPException(status_code=404, detail="Task မတွေ့ရှိပါ။")
-        
+
     if task.status != TaskStatus.PENDING_L0:
         raise HTTPException(status_code=400, detail="ဤ Task သည် L0 စစ်ဆေးရန် အခြေအနေတွင် မရှိပါ။")
 
@@ -181,6 +224,8 @@ async def verify_task_l0(db: AsyncSession, task_id: UUID, payload: TaskReviewInp
 
     if payload.action == "REJECTED" and not payload.deduction_rule:
         raise HTTPException(status_code=400, detail="KPI ဖြတ်မည့် Deduction Rule အား ရွေးချယ်ပေးရပါမည်။")
+
+    await _authorize_reviewer(db, task, current_user_id, "L0")
 
     try:
         owner_dept_id = None
@@ -210,7 +255,6 @@ async def verify_task_l0(db: AsyncSession, task_id: UUID, payload: TaskReviewInp
                 target_kpi_user_id = l1_review.reviewer_id
                 target_kpi_level = "L1"
                 
-                from app.modules.departments.models import UserDepartment
                 l1_ud_stmt = select(UserDepartment).where(UserDepartment.user_id == l1_review.reviewer_id)
                 l1_ud = (await db.execute(l1_ud_stmt)).scalars().first()
                 target_kpi_dept = l1_ud.department_id if l1_ud else owner_dept_id

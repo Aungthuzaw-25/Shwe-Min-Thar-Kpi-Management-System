@@ -4,8 +4,8 @@
 {% block title %}Super Admin Management{% endblock %}
 
 {% block content %}
-<div class="flex-1 overflow-y-auto bg-slate-50 px-4 py-6 sm:px-6 lg:px-8">
-    <div class="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+<div class="workspace-page min-h-full overflow-y-auto">
+    <div class="app-page-header">
         <div>
             <h1 class="text-2xl font-extrabold tracking-tight text-blue-950">Super Admin Management</h1>
             <p class="mt-1 text-sm text-slate-500">Create, activate, deactivate, and remove Super Admin accounts with backend enforcement.</p>
@@ -13,7 +13,7 @@
         <button id="openCreateModal" class="rounded-xl bg-blue-950 px-5 py-2.5 text-sm font-bold text-white shadow-md transition hover:bg-blue-900">Add Super Admin</button>
     </div>
 
-    <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <div class="workspace-table overflow-hidden">
         <div class="overflow-x-auto">
             <table class="min-w-full text-left text-sm text-slate-700">
                 <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">

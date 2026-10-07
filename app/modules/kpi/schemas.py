@@ -1,8 +1,10 @@
-from pydantic import BaseModel, ConfigDict, Field, model_validator
-from typing import Optional, Dict, Any, List, Literal
-from uuid import UUID
 from datetime import datetime
-from app.modules.kpi.models import FormulaScope, PeriodType, KPIStatus, FormulaStatus
+from typing import Literal
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from app.modules.kpi.models import FormulaScope, FormulaStatus, KPIStatus, PeriodType
 
 TIMELINESS_CATEGORY_NAME = "အချိန်မှီမတင်ပြခြင်း"
 
@@ -20,7 +22,7 @@ def _is_timeliness_category_name(name: str) -> bool:
     )
 
 
-def _normalize_timeliness_category(categories: List["KPICategoryConfig"]) -> List["KPICategoryConfig"]:
+def _normalize_timeliness_category(categories: list["KPICategoryConfig"]) -> list["KPICategoryConfig"]:
     if not categories:
         return categories
 
@@ -97,12 +99,12 @@ class KPILevelSettingUpdate(BaseModel):
 class KPILevelSettingResponse(BaseModel):
     level_name: str
     is_enabled: bool
-    
+
     model_config = ConfigDict(from_attributes=True)
 
 class DepartmentLevelSettingRequest(BaseModel):
     department_id: UUID
-    settings: Dict[str, bool] = Field(..., description="e.g., {'L0': true, 'L1': false, 'L2': true}")
+    settings: dict[str, bool] = Field(..., description="e.g., {'L0': true, 'L1': false, 'L2': true}")
 
 # 🌟 FIX: Added the exact strict schema for targeted department level saving
 class DepartmentKPILevelUpdate(BaseModel):
@@ -114,8 +116,17 @@ class CustomKpiCalculationRequest(BaseModel):
     start_date: datetime
     end_date: datetime
 
+
+class ExplicitKpiCalculationRequest(BaseModel):
+    record_id: UUID
+    assignment_id: UUID | None = None
+    period_id: UUID | None = None
+    formula_id: UUID | None = None
+    user_id: UUID | None = None
+
+
 class BulkKpiCalculationRequest(BaseModel):
-    user_ids: Optional[List[UUID]] = None
+    user_ids: list[UUID] | None = None
     start_date: datetime
     end_date: datetime
     run_in_background: bool = False
@@ -132,36 +143,37 @@ class KPIDeductionRule(BaseModel):
 class KPIDeductionItem(BaseModel):
     name: str = Field(..., description="ဥပမာ - ရုံးနောက်ကျခြင်း")
     measure_type: Literal["count", "percentage"] = Field(..., description="Count သို့မဟုတ် Percentage တစ်ခုသာဖြစ်ရမည်")
-    rules: List[KPIDeductionRule] = Field(..., min_length=1)
+    rules: list[KPIDeductionRule] = Field(..., min_length=1)
 
 class KPICategoryConfig(BaseModel):
     name: str = Field(..., description="Category Name (ဥပမာ - Cash Handling)")
-    description: Optional[str] = None
+    description: str | None = None
     weight: float = Field(..., ge=0.0, le=1.0, description="ရာခိုင်နှုန်းပြမည့် Weight (ဥပမာ ၀.၃)")
     max_score: float = Field(5.0, description="ပုံသေ ၅ မှတ်စနစ်")
-    
+
     # 🌟 NEW: Target လား Deduction လား ခွဲခြားရန် Field အသစ် ဖြည့်စွက်ထားပါသည်
     evaluation_type: Literal["DEDUCTION", "TARGET"] = Field("DEDUCTION", description="Deduction သို့မဟုတ် Target")
-    
-    deductions: Optional[List[KPIDeductionItem]] = []
+
+    deductions: list[KPIDeductionItem] | None = []
 
 class KPIFormulaCreate(BaseModel):
     name: str = Field(..., max_length=100)
-    description: Optional[str] = None
-    
+    description: str | None = None
+
     # 🌟 Targeting Fields
-    region_town: Optional[str] = Field(None, description="Region သို့မဟုတ် Town (e.g. YGN Office)")
+    region_town: str | None = Field(None, description="Region သို့မဟုတ် Town (e.g. YGN Office)")
     department_id: UUID = Field(..., description="Department မဖြစ်မနေရွေးရမည်")
     position_name: str = Field(..., description="ရာထူးကို မဖြစ်မနေ ရွေးချယ်ရမည်")
+    position_id: UUID | None = Field(None, description="Authoritative position identifier")
     user_level: str = Field(..., description="L0, L1, L2")
-    
+
     # 🌟 Categories and Rules
-    categories: List[KPICategoryConfig] = Field(..., min_length=1)
-    
+    categories: list[KPICategoryConfig] = Field(..., min_length=1)
+
     scope: FormulaScope = FormulaScope.DEPARTMENT
     is_active: bool = True
-    effective_month: Optional[str] = Field(None, description="e.g., 2024-11")
-    expression: Optional[str] = None  # New optional expression field
+    effective_month: str | None = Field(None, description="e.g., 2024-11")
+    expression: str | None = None  # New optional expression field
 
     @model_validator(mode='after')
     def validate_formula_rules(self):
@@ -175,11 +187,12 @@ class KPIFormulaCreate(BaseModel):
         return self
 
 class KPIFormulaUpdate(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
-    categories: Optional[List[KPICategoryConfig]] = None
-    is_active: Optional[bool] = None
-    effective_month: Optional[str] = None
+    name: str | None = None
+    description: str | None = None
+    position_id: UUID | None = None
+    categories: list[KPICategoryConfig] | None = None
+    is_active: bool | None = None
+    effective_month: str | None = None
 
     @model_validator(mode='after')
     def validate_formula_rules(self):
@@ -197,10 +210,10 @@ class KPIFormulaResponse(KPIFormulaCreate):
     id: UUID
     version: int
     status: FormulaStatus
-    
-    created_by_email: Optional[str] = None
-    updated_at: Optional[datetime] = None
-    
+
+    created_by_email: str | None = None
+    updated_at: datetime | None = None
+
     model_config = ConfigDict(from_attributes=True)
 
 # ---------------------------------------------------------
@@ -209,22 +222,22 @@ class KPIFormulaResponse(KPIFormulaCreate):
 class KPIRecordResponse(BaseModel):
     id: UUID
     user_id: UUID
-    department_id: Optional[UUID]
-    formula_id: Optional[UUID]
-    
+    department_id: UUID | None
+    formula_id: UUID | None
+
     period_type: PeriodType
     period_start: datetime
     period_end: datetime
-    
-    raw_score_total: float = Field(alias="raw_score", default=0.0) 
+
+    raw_score_total: float = Field(alias="raw_score", default=0.0)
     weighted_score: float
     percentage: float
-    grade: KPIStatus       
-    
+    grade: KPIStatus
+
     is_frozen: bool = False
     is_overridden: bool = False
-    override_reason: Optional[str] = None 
-    
+    override_reason: str | None = None
+
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 # ---------------------------------------------------------
@@ -234,13 +247,15 @@ class KPIHistoryResponse(BaseModel):
     id: UUID
     kpi_record_id: UUID
     changed_by_id: UUID
-    
+
     old_percentage: float
     new_percentage: float
+    old_weighted_score: float | None = None
+    new_weighted_score: float | None = None
     old_status: KPIStatus
     new_status: KPIStatus
     reason: str
-    
+
     model_config = ConfigDict(from_attributes=True)
 
 # ==============================================================================
@@ -256,7 +271,7 @@ class KPIDeductionRequest(BaseModel):
 
 class KPIFreezeRequest(BaseModel):
     is_frozen: bool = Field(..., description="True (အသေထားမည်) သို့မဟုတ် False (ပြန်ဖွင့်မည်)")
-    
+
 # ==============================================================================
 # 6. Dashboard: Charts & Ranking Schemas
 # ==============================================================================
@@ -279,20 +294,20 @@ class KPIChartPoint(BaseModel):
 class KPIChartResponse(BaseModel):
     user_id: UUID
     period_type: PeriodType
-    data_points: List[KPIChartPoint]
-    
+    data_points: list[KPIChartPoint]
+
 # ==============================================================================
-# 7. KPI Report Schemas 
+# 7. KPI Report Schemas
 # ==============================================================================
 class KpiReportItem(BaseModel):
     user_id: UUID
     full_name: str
-    department_name: Optional[str] = None
+    department_name: str | None = None
     total_score: float
     grade: str
     evaluated_tasks_count: int
     period_type: str
-    created_at: Optional[datetime] = None
+    created_at: datetime | None = None
 
 class KpiReportSummaryResponse(BaseModel):
     success: bool = True
@@ -300,4 +315,4 @@ class KpiReportSummaryResponse(BaseModel):
     period: str
     total_employees_evaluated: int
     average_company_score: float
-    data: List[KpiReportItem]
+    data: list[KpiReportItem]

@@ -1,42 +1,40 @@
 """
 File Validation, MIME Type Sniffing and SHA-256 Checksum Utilities
 """
-import os
 import hashlib
-import mimetypes
-from fastapi import UploadFile, HTTPException, status
-from typing import Set, List
+import os
+
+from fastapi import HTTPException, UploadFile, status
 
 try:
     import magic
 except ImportError:  # pragma: no cover - libmagic may not be installed.
     magic = None
 
-from app.core.constants import ALLOWED_EVIDENCE_EXTENSIONS, ALLOWED_EVIDENCE_MIME_TYPES, MAX_EVIDENCE_FILE_SIZE
+from app.core.constants import (
+    ALLOWED_EVIDENCE_EXTENSIONS,
+    ALLOWED_EVIDENCE_MIME_TYPES,
+    MAX_EVIDENCE_FILE_SIZE,
+)
+
 
 def _detect_mime_type(file_bytes: bytes, filename: str | None = None) -> str:
-    """Fallback MIME detection when libmagic is unavailable."""
+    """Detect MIME from content; production never trusts a filename fallback."""
     if magic is not None:
         try:
             detected = magic.from_buffer(file_bytes, mime=True)
             if detected:
                 return detected
-        except Exception:
-            pass
-
-    if filename:
-        guessed = mimetypes.guess_type(filename)[0]
-        if guessed:
-            return guessed
-
-    if file_bytes.startswith(b"%PDF"):
-        return "application/pdf"
-    if file_bytes.startswith(b"\x89PNG"):
-        return "image/png"
-    if file_bytes.startswith(b"\xff\xd8\xff"):
-        return "image/jpeg"
-    if file_bytes.startswith(b"PK"):
-        return "application/zip"
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                detail="Unable to inspect file content safely.",
+            ) from exc
+    if os.getenv("ENV", "development").lower() == "production":
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Secure file inspection is unavailable.",
+        )
     return "application/octet-stream"
 
 
@@ -47,8 +45,8 @@ def calculate_content_hash(content: bytes) -> str:
 async def validate_and_read_upload(
     file: UploadFile,
     max_size: int = MAX_EVIDENCE_FILE_SIZE,
-    allowed_extensions: Set[str] = ALLOWED_EVIDENCE_EXTENSIONS,
-    allowed_mimes: List[str] = ALLOWED_EVIDENCE_MIME_TYPES
+    allowed_extensions: set[str] = ALLOWED_EVIDENCE_EXTENSIONS,
+    allowed_mimes: list[str] = ALLOWED_EVIDENCE_MIME_TYPES
 ) -> tuple[bytes, str]:
     """
     Validates file size (DoS prevention), file extension, and binary signature (magic MIME check).
@@ -82,10 +80,26 @@ async def validate_and_read_upload(
 
     # 3. Binary Signature MIME Sniffing Check
     mime_type = _detect_mime_type(content, file.filename)
-    if not any(mime in mime_type.lower() for mime in allowed_mimes):
+    allowed_mime_set = {mime.lower() for mime in allowed_mimes}
+    if mime_type.lower() not in allowed_mime_set:
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             detail=f"Security Alert: File signature ({mime_type}) does not match a valid document."
+        )
+    extension_mimes = {
+        ".pdf": {"application/pdf"},
+        ".jpg": {"image/jpeg"},
+        ".jpeg": {"image/jpeg"},
+        ".png": {"image/png"},
+        ".csv": {"text/csv", "text/plain", "application/csv", "application/vnd.ms-excel"},
+        ".xlsx": {"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},
+        ".doc": {"application/msword"},
+        ".docx": {"application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
+    }
+    if ext in extension_mimes and mime_type.lower() not in extension_mimes[ext]:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="File extension does not match its detected content.",
         )
 
     file_hash = calculate_content_hash(content)

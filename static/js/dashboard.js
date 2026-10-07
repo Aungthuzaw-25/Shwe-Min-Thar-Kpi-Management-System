@@ -82,7 +82,7 @@
     setTimeout(() => {
       const el = document.getElementById(id);
       if (el) {
-        el.style.animation = 'slideOutRight 0.3s ease-out forwards';
+        el.classList.add('toast-exit');
         setTimeout(() => el.remove(), 300);
       }
     }, duration);
@@ -141,7 +141,7 @@
       list.innerHTML = data.map(n => `
         <div class="notification-item ${n.is_read ? '' : 'unread'}" onclick="markNotifRead('${n.id}')">
           <div class="fw-semibold">${escapeHTML(n.title || 'Notification')}</div>
-          <div class="text-muted" style="font-size:0.75rem;">${escapeHTML(n.message || '')}</div>
+          <div class="text-muted notification-message">${escapeHTML(n.message || '')}</div>
           <div class="text-muted small">${formatApplicationTime(n.created_at)}</div>
         </div>
       `).join('');
@@ -197,7 +197,7 @@
       const q = this.value.toLowerCase();
       // searches any visible table
       document.querySelectorAll('table tbody tr').forEach(row => {
-        row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
+        row.classList.toggle('is-hidden', !row.textContent.toLowerCase().includes(q));
       });
     });
   }

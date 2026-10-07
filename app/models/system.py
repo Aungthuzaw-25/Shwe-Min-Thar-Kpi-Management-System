@@ -1,6 +1,9 @@
-from sqlalchemy import Column, String, Text, JSON, Enum
 import enum
+
+from sqlalchemy import JSON, Column, Enum, String, Text
+
 from app.database.base import BaseModel
+
 
 class LogLevel(enum.Enum):
     DEBUG = "DEBUG"

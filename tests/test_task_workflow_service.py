@@ -16,6 +16,9 @@ class FakeResult:
     def scalars(self):
         return self
 
+    def unique(self):
+        return self
+
     def first(self):
         return self._value
 
@@ -23,12 +26,33 @@ class FakeResult:
 class FakeDB:
     def __init__(self, task=None):
         self.task = task
+        self.actor = SimpleNamespace(
+            id="reviewer-1",
+            is_deleted=False,
+            is_active=True,
+            role=SimpleNamespace(
+                name="Admin",
+                permissions=[SimpleNamespace(code="tasks.approve")],
+            ),
+            user_departments=[
+                SimpleNamespace(
+                    department_id="dept-1",
+                    user_level="L1",
+                    is_deleted=False,
+                )
+            ],
+        )
+        self.execute_count = 0
         self.added = []
         self.committed = 0
         self.rolled_back = 0
 
     async def execute(self, stmt):
-        return FakeResult(self.task)
+        self.execute_count += 1
+        if self.execute_count > 1 and self.task and self.task.status == TaskStatus.PENDING_L0:
+            self.actor.user_departments[0].user_level = "L0"
+            self.actor.id = "manager-1"
+        return FakeResult(self.task if self.execute_count == 1 else self.actor)
 
     async def commit(self):
         self.committed += 1
@@ -70,7 +94,11 @@ def test_l1_approval_promotes_task_to_l0_review(monkeypatch):
         title="KPI review",
         status=TaskStatus.PENDING_L1,
         owner_id="user-1",
-        owner=SimpleNamespace(user_departments=[]),
+        owner=SimpleNamespace(
+            user_departments=[
+                SimpleNamespace(department_id="dept-1", is_deleted=False)
+            ]
+        ),
         due_date=None,
     )
     db = FakeDB(task)

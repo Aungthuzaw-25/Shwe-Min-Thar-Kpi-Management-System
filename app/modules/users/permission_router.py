@@ -1,24 +1,25 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Response
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import desc, select
-from sqlalchemy.orm import selectinload
-from typing import List, Optional
 from uuid import UUID
 
-from app.database.connection import get_db
-from app.core.dependencies import RequirePermission, get_permission_map
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from sqlalchemy import desc, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from app.core.dependencies import RequirePermission, get_current_user, get_permission_map
 from app.core.exceptions import PermissionDeniedException
-from app.modules.users import permission_repo
-from app.modules.users.permission_schemas import (
-    PermissionResponse, AssignPermissionsRequest,
-    UserPermissionOverrideRequest, UserPermissionOverrideResponse,
-    EffectivePermissionsResponse, BulkUserOverrideRequest,
-    AuditLogDetailResponse,
-)
-from app.modules.users.models import User, Role, Permission, UserPermissionOverride
-from app.modules.departments.models import Department, UserDepartment
-from app.utils.audit import log_audit_trail
+from app.database.connection import get_db
 from app.models.audit_log import AuditLog
+from app.modules.departments.models import Department, UserDepartment
+from app.modules.users import permission_repo
+from app.modules.users.models import Permission, Role, User, UserPermissionOverride
+from app.modules.users.permission_schemas import (
+    AssignPermissionsRequest,
+    BulkUserOverrideRequest,
+    PermissionResponse,
+    UserPermissionOverrideRequest,
+    UserPermissionOverrideResponse,
+)
+from app.utils.audit import log_audit_trail
 
 router = APIRouter(prefix="/permissions", tags=["Permissions"])
 
@@ -68,7 +69,7 @@ async def _assert_can_manage_target(
 # =====================================================================
 # 1. List all permission codes
 # =====================================================================
-@router.get("/", response_model=List[PermissionResponse], dependencies=[Depends(admin_only)])
+@router.get("/", response_model=list[PermissionResponse], dependencies=[Depends(admin_only)])
 async def list_all_permissions(db: AsyncSession = Depends(get_db)):
     """System အတွင်းရှိ Granular Permission အားလုံးကို ဆွဲထုတ်ရန်"""
     return await permission_repo.get_all_permissions(db)
@@ -77,13 +78,13 @@ async def list_all_permissions(db: AsyncSession = Depends(get_db)):
 # =====================================================================
 # 2. Role permissions CRUD
 # =====================================================================
-@router.get("/role/{role_id}", response_model=List[PermissionResponse], dependencies=[Depends(admin_only)])
+@router.get("/role/{role_id}", response_model=list[PermissionResponse], dependencies=[Depends(admin_only)])
 async def get_permissions_for_role(role_id: UUID, db: AsyncSession = Depends(get_db)):
     """သတ်မှတ်ထားသော Role တစ်ခုတွင် ရရှိထားသည့် Permission များကို ကြည့်ရန်"""
     return await permission_repo.get_role_permissions(db, role_id)
 
 
-@router.put("/role/{role_id}", response_model=List[PermissionResponse], dependencies=[Depends(admin_only)])
+@router.put("/role/{role_id}", response_model=list[PermissionResponse], dependencies=[Depends(admin_only)])
 async def update_role_permissions(
     role_id: UUID,
     payload: AssignPermissionsRequest,
@@ -94,6 +95,12 @@ async def update_role_permissions(
     role = (await db.execute(select(Role).where(Role.id == role_id))).scalar_one_or_none()
     if not role:
         raise HTTPException(status_code=404, detail="Role not found.")
+    if current_user.role and current_user.role.name != SUPER_ADMIN_ROLE:
+        if role.name in {SUPER_ADMIN_ROLE, "Admin"}:
+            raise HTTPException(
+                status_code=403,
+                detail="Only Super Admins can manage administrative role permissions.",
+            )
 
     # Security: Non-Super-Admin cannot grant permissions they don't have
     if current_user.role and current_user.role.name != SUPER_ADMIN_ROLE:
@@ -128,7 +135,7 @@ async def update_role_permissions(
 # =====================================================================
 # 3. List users for the permissions UI
 # =====================================================================
-@router.get("/users", response_model=List[dict], dependencies=[Depends(admin_only)])
+@router.get("/users", response_model=list[dict], dependencies=[Depends(admin_only)])
 async def list_permission_users(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(admin_only),
@@ -184,7 +191,7 @@ async def list_permission_users(
 # =====================================================================
 # 4. User overrides (single)
 # =====================================================================
-@router.get("/user/{user_id}", response_model=List[UserPermissionOverrideResponse], dependencies=[Depends(admin_only)])
+@router.get("/user/{user_id}", response_model=list[UserPermissionOverrideResponse], dependencies=[Depends(admin_only)])
 async def get_user_overrides(user_id: UUID, db: AsyncSession = Depends(get_db)):
     rows = (await db.execute(
         select(UserPermissionOverride, Permission)
@@ -195,7 +202,7 @@ async def get_user_overrides(user_id: UUID, db: AsyncSession = Depends(get_db)):
              "scope": o.scope, "department_id": o.department_id} for o, p in rows]
 
 
-@router.put("/user/{user_id}", response_model=List[UserPermissionOverrideResponse])
+@router.put("/user/{user_id}", response_model=list[UserPermissionOverrideResponse])
 async def set_user_override(
     user_id: UUID,
     payload: UserPermissionOverrideRequest,
@@ -204,10 +211,17 @@ async def set_user_override(
 ):
     await _assert_can_manage_target(db, current_user, user_id)
 
-    target = (await db.execute(select(User).where(User.id == user_id, User.is_deleted == False))).scalar_one_or_none()
+    target = (await db.execute(
+        select(User).options(selectinload(User.role)).where(
+            User.id == user_id, User.is_deleted.is_(False)
+        )
+    )).scalar_one_or_none()
     permission = (await db.execute(select(Permission).where(Permission.code == payload.permission_code))).scalar_one_or_none()
     if not target or not permission:
         raise HTTPException(status_code=404, detail="User or permission not found.")
+    if current_user.role and current_user.role.name != SUPER_ADMIN_ROLE:
+        if getattr(target.role, "name", "") in {SUPER_ADMIN_ROLE, "Admin"}:
+            raise HTTPException(status_code=403, detail="Only Super Admins can manage administrative accounts.")
     if payload.scope not in {"OWN", "DEPARTMENT", "ALL"}:
         raise HTTPException(status_code=422, detail="Scope must be OWN, DEPARTMENT, or ALL.")
     if payload.scope == "DEPARTMENT" and not payload.department_id:
@@ -299,6 +313,16 @@ async def bulk_save_user_overrides(
 ):
     """Atomically replace all user permission overrides."""
     await _assert_can_manage_target(db, current_user, user_id)
+    target = (await db.execute(
+        select(User).options(selectinload(User.role)).where(
+            User.id == user_id, User.is_deleted.is_(False)
+        )
+    )).scalar_one_or_none()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found.")
+    if current_user.role and current_user.role.name != SUPER_ADMIN_ROLE:
+        if getattr(target.role, "name", "") in {SUPER_ADMIN_ROLE, "Admin"}:
+            raise HTTPException(status_code=403, detail="Only Super Admins can manage administrative accounts.")
 
     # Security: Non-Super-Admin cannot grant permissions they don't have
     if current_user.role and current_user.role.name != SUPER_ADMIN_ROLE:
@@ -382,11 +406,11 @@ async def reset_user_overrides(
 # =====================================================================
 # 8. Enriched audit history
 # =====================================================================
-@router.get("/audit", response_model=List[dict], dependencies=[Depends(admin_only)])
+@router.get("/audit", response_model=list[dict], dependencies=[Depends(admin_only)])
 async def permission_audit_history(
     limit: int = Query(100, gt=0, le=500),
     offset: int = Query(0, ge=0),
-    action: Optional[str] = None,
+    action: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
     """Return enriched permission change audit logs with actor/target names."""
@@ -411,7 +435,7 @@ async def permission_audit_history(
         if log.record_id:
             try:
                 target_ids.add(log.record_id)
-            except Exception:
+            except Exception:  # noqa: S110 - defensive audit-record normalization
                 pass
 
     # Fetch actor names
@@ -464,9 +488,7 @@ async def permission_audit_history(
 # 9. Current user's own permission map
 # =====================================================================
 @router.get("/me", response_model=dict)
-async def my_permission_map(current_user: User = Depends(__import__(
-    "app.core.dependencies", fromlist=["get_current_user"]
-).get_current_user)):
+async def my_permission_map(current_user: User = Depends(get_current_user)):
     """Expose the current user's effective global permissions to the UI."""
     return {
         "user_id": str(current_user.id),
@@ -478,7 +500,7 @@ async def my_permission_map(current_user: User = Depends(__import__(
 # =====================================================================
 # 10. Departments list for scope selector
 # =====================================================================
-@router.get("/departments", response_model=List[dict], dependencies=[Depends(admin_only)])
+@router.get("/departments", response_model=list[dict], dependencies=[Depends(admin_only)])
 async def permission_departments(db: AsyncSession = Depends(get_db)):
     rows = (await db.execute(
         select(Department).where(Department.is_deleted == False).order_by(Department.name)

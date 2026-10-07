@@ -1,7 +1,9 @@
-from sqlalchemy import Column, String, DateTime, ForeignKey, Boolean, Index
-from sqlalchemy.dialects.postgresql import UUID
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, String, UniqueConstraint
+from sqlalchemy.dialects.postgresql import UUID
+
 from app.database.connection import Base
 
 # ==============================================================================
@@ -18,7 +20,7 @@ class LoginHistory(Base):
     ip_address = Column(String(50), nullable=True)
     user_agent = Column(String(255), nullable=True)
     is_success = Column(Boolean, default=True)
-    attempted_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), index=True)
+    attempted_at = Column(DateTime, default=lambda: datetime.now(UTC).replace(tzinfo=None), index=True)
 
 
 class TokenBlacklist(Base):
@@ -28,7 +30,7 @@ class TokenBlacklist(Base):
     # Only a digest is persisted.  Bearer/refresh tokens are credentials and
     # must never be recoverable from the database.
     token_hash = Column(String(64), unique=True, index=True, nullable=False)
-    blacklisted_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    blacklisted_at = Column(DateTime, default=lambda: datetime.now(UTC).replace(tzinfo=None))
 
 
 class AuthSession(Base):
@@ -38,7 +40,7 @@ class AuthSession(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"),
                      nullable=False, index=True)
-    refresh_token_hash = Column(String(64), unique=True, nullable=False, index=True)
+    refresh_token_hash = Column(String(64), nullable=False, index=True)
     device_id = Column(String(128), nullable=True)
     user_agent = Column(String(255), nullable=True)
     ip_address = Column(String(50), nullable=True)
@@ -48,6 +50,7 @@ class AuthSession(Base):
     revoked_at = Column(DateTime, nullable=True, index=True)
 
     __table_args__ = (
+        UniqueConstraint("refresh_token_hash"),
         Index("idx_auth_sessions_active_user", "user_id", "revoked_at", "expires_at"),
     )
 
@@ -59,4 +62,4 @@ class PasswordHistory(Base):
     # 🌟 FIX: Added ondelete="CASCADE"
     user_id = Column(UUID(as_uuid=True), ForeignKey('users.id', ondelete="CASCADE"), nullable=False, index=True)
     hashed_password = Column(String(255), nullable=False)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC).replace(tzinfo=None))

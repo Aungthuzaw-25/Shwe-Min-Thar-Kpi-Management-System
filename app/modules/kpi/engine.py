@@ -1,27 +1,59 @@
 from __future__ import annotations
 
 import logging
-from typing import List, Dict, Optional, Tuple
-from datetime import datetime
-import calendar
 import operator
 import re
-
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
-from sqlalchemy import or_, and_, func, desc
-from sqlalchemy.orm import selectinload 
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from uuid import UUID
 
-from app.modules.kpi.models import KPIStatus, KPIRecord, PeriodType, KPIScoringRuleItem
-from app.modules.kpi.models import KPILevelSetting, KPIFormula, FormulaStatus, KPIPeriod, KPIPeriodStatus, KPIAssignment
-from app.modules.users.models import User
+from sqlalchemy import and_, desc, func, or_
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+from sqlalchemy.orm import selectinload
+
+from app.core.timezone import as_application_time
+from app.modules.kpi.engine_helpers import score_formula_categories, standardize_key
+from app.modules.kpi.models import (
+    FormulaStatus,
+    KPIAssignment,
+    KPIFormula,
+    KPIHistory,
+    KPILevelSetting,
+    KPIPeriod,
+    KPIPeriodStatus,
+    KPIRecord,
+    KPIScoringRuleItem,
+    KPIStatus,
+    PeriodType,
+)
+from app.modules.kpi.period_ranges import calendar_period_range, normalize_calendar_range
 from app.modules.tasks.models.task import Task
 from app.modules.tasks.models.task_review import TaskReview
-from app.modules.kpi.engine_helpers import standardize_key
+from app.modules.users.models import User
 
 # Configure Module Logger for Observability
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class KPICalculationContext:
+    record_id: UUID
+    assignment_id: UUID | None = None
+    period_id: UUID | None = None
+    formula_id: UUID | None = None
+    user_id: UUID | None = None
+
+
+@dataclass(frozen=True)
+class ResolvedKPICalculationContext:
+    user: User
+    record: KPIRecord
+    period: KPIPeriod
+    formula: KPIFormula
+    period_start: datetime
+    period_end: datetime
+
 
 # Python Operators Mapping for dynamic mathematical parsing
 OPERATORS = {
@@ -34,7 +66,7 @@ LATE_SUBMISSION_KEYWORDS = ["late", "အချိန်", "နောက်ကျ
 DEFAULT_LATE_CAT_NAME = "အချိန်မှီမတင်ပြခြင်း"
 
 
-def _parse_numeric(value, context: str) -> Optional[float]:
+def _parse_numeric(value, context: str) -> float | None:
     try:
         return float(value)
     except (ValueError, TypeError):
@@ -84,21 +116,43 @@ def _merge_kpi_data(deduction_values, deduction_counts, manual_data):
     return merged
 
 
+def _normalize_user_level(value):
+    normalized = str(value or "").strip().upper().replace("LEVEL ", "L")
+    return normalized if normalized in {"L0", "L1", "L2"} else None
+
+
 async def _find_fallback_formula(db, user, target_month: str):
     active_memberships = [
         membership for membership in (user.user_departments or [])
         if not getattr(membership, "is_deleted", False)
     ]
     department_id = active_memberships[0].department_id if active_memberships else None
+    user_level = _normalize_user_level(
+        active_memberships[0].user_level if active_memberships else None
+    )
     if not department_id and user.position and user.position.is_active and not user.position.is_deleted:
         department_id = user.position.department_id
-    if not department_id:
+    if not department_id or not user_level:
         return None
     statement = select(KPIFormula).options(
         selectinload(KPIFormula.scoring_rules)
     ).where(
         KPIFormula.department_id == department_id,
-        KPIFormula.position_name == (user.position.name if user.position else "Unknown"),
+        KPIFormula.user_level == user_level,
+        (
+            or_(
+                KPIFormula.position_id == user.position_id,
+                and_(
+                    KPIFormula.position_id.is_(None),
+                    KPIFormula.position_name == user.position.name,
+                ),
+            )
+            if user.position_id and user.position
+            else and_(
+                KPIFormula.position_id.is_(None),
+                KPIFormula.position_name == (user.position.name if user.position else "Unknown"),
+            )
+        ),
         KPIFormula.status == FormulaStatus.ACTIVE,
         KPIFormula.is_active == True,
         KPIFormula.is_deleted == False,
@@ -119,11 +173,17 @@ async def _find_fallback_formula(db, user, target_month: str):
 
 
 async def _collect_deductions(db, user, formula, period_start, period_end):
-    start = period_start.replace(tzinfo=None)
-    end = period_end.replace(tzinfo=None)
+    start = as_application_time(period_start)
+    end = as_application_time(period_end)
+    created_start = start.astimezone(UTC).replace(tzinfo=None)
+    created_end = end.astimezone(UTC).replace(tzinfo=None)
     date_filter = or_(
-        Task.due_date.between(start, end),
-        and_(Task.due_date.is_(None), Task.created_at.between(start, end)),
+        and_(Task.due_date >= start, Task.due_date < end),
+        and_(
+            Task.due_date.is_(None),
+            Task.created_at >= created_start,
+            Task.created_at < created_end,
+        ),
     )
     l2 = select(TaskReview.task_id, TaskReview.comments).join(Task, TaskReview.task_id == Task.id).where(
         Task.owner_id == user.id,
@@ -179,7 +239,18 @@ async def _collect_deductions(db, user, formula, period_start, period_end):
     return counts, values
 
 
-async def _save_kpi_record(db, user, formula, period, period_type, period_start, period_end, total_score, percentage):
+async def _save_kpi_record(
+    db,
+    user,
+    formula,
+    period,
+    period_type,
+    period_start,
+    period_end,
+    total_score,
+    percentage,
+    explicit_record_id: UUID | None = None,
+):
     if period is not None:
         locked_period = (await db.execute(
             select(KPIPeriod).where(KPIPeriod.id == period.id).with_for_update()
@@ -188,22 +259,90 @@ async def _save_kpi_record(db, user, formula, period, period_type, period_start,
             KPIPeriodStatus.FINALIZED, KPIPeriodStatus.LOCKED, KPIPeriodStatus.CANCELLED
         }:
             raise ValueError("KPI calculation is not allowed for a finalized, locked, or cancelled period.")
-    statement = select(KPIRecord).where(
-        KPIRecord.user_id == user.id,
-        KPIRecord.period_type == period_type,
-        KPIRecord.period_start == period_start,
-        KPIRecord.is_deleted == False,
-    ).with_for_update()
+    if explicit_record_id is not None:
+        statement = select(KPIRecord).where(
+            KPIRecord.id == explicit_record_id,
+            KPIRecord.is_deleted.is_(False),
+        ).with_for_update()
+    else:
+        statement = select(KPIRecord).where(
+            KPIRecord.user_id == user.id,
+            KPIRecord.period_type == period_type,
+            KPIRecord.period_start == period_start,
+            KPIRecord.is_deleted == False,
+        ).with_for_update()
     record = (await db.execute(statement)).scalars().first()
+    if explicit_record_id is not None:
+        if record is None:
+            raise ValueError("KPI record was not found.")
+        if (
+            record.user_id != user.id
+            or record.formula_id != formula.id
+            or record.kpi_period_id != period.id
+        ):
+            raise ValueError("KPI record context changed during calculation.")
     if record:
         if record.is_frozen or record.is_overridden:
+            if explicit_record_id is not None:
+                raise ValueError("Frozen or overridden KPI records cannot be recalculated.")
             return
+        old_score = float(record.weighted_score or 0.0)
+        old_percentage = float(record.percentage or 0.0)
+        old_status = record.status_bucket
+        provenance_changes = []
+        for field_name, old_value, new_value in (
+            ("department_id", record.department_id, formula.department_id),
+            ("formula_id", record.formula_id, formula.id),
+            ("kpi_period_id", record.kpi_period_id, period.id if period else None),
+            ("period_end", record.period_end, period_end),
+        ):
+            values_differ = old_value != new_value
+            if (
+                field_name == "period_end"
+                and old_value is not None
+                and new_value is not None
+            ):
+                values_differ = (
+                    as_application_time(old_value)
+                    != as_application_time(new_value)
+                )
+            if values_differ:
+                provenance_changes.append(
+                    f"{field_name}: {old_value} -> {new_value}"
+                )
         record.weighted_score = total_score
         record.raw_score = total_score
         record.percentage = percentage
         record.status_bucket = KPICalculationEngine.get_grade(percentage)
-        record.kpi_period_id = period.id if period else None
+        record.department_id = formula.department_id
+        record.formula_id = formula.id
+        record.period_end = period_end
+        if explicit_record_id is None:
+            record.kpi_period_id = period.id if period else None
+        if (
+            old_score != float(total_score)
+            or old_percentage != float(percentage)
+            or old_status != record.status_bucket
+            or provenance_changes
+        ):
+            db.add(KPIHistory(
+                kpi_record_id=record.id,
+                old_percentage=old_percentage,
+                new_percentage=float(percentage),
+                old_weighted_score=old_score,
+                new_weighted_score=float(total_score),
+                old_status=old_status,
+                new_status=record.status_bucket,
+                reason=(
+                    "Automatic KPI recalculation"
+                    if not provenance_changes
+                    else "Automatic KPI recalculation; "
+                    + "; ".join(provenance_changes)
+                ),
+            ))
         return
+    if explicit_record_id is not None:
+        raise ValueError("KPI record was not found.")
     db.add(KPIRecord(
         user_id=user.id,
         department_id=formula.department_id,
@@ -255,7 +394,7 @@ class KPICalculationEngine:
         else: return KPIStatus.POOR
 
     @staticmethod
-    def evaluate_db_rules(cat_name: str, rules: List["KPIScoringRuleItem"], evaluated_data: dict, max_score: float = 5.0) -> float:
+    def evaluate_db_rules(cat_name: str, rules: list[KPIScoringRuleItem], evaluated_data: dict, max_score: float = 5.0) -> float:
         """
         Checks BOTH the Category Name (from Excel) AND the Rule Name (from System Workflow)
         to ensure no deductions are missed. Uses highest applicable deduction per rule.
@@ -275,14 +414,15 @@ class KPICalculationEngine:
         return max(0.0, float(max_score) - total_deduction)
 
     @staticmethod
-    async def get_applicable_formula_and_period(db: AsyncSession, user: User, target_date: datetime) -> Tuple[Optional[KPIFormula], Optional[KPIPeriod]]:
+    async def get_applicable_formula_and_period(db: AsyncSession, user: User, target_date: datetime) -> tuple[KPIFormula | None, KPIPeriod | None]:
         """
         🌟 Fully Relational Connection:
         Period ကို ရှာမည် -> ထို Period တွင် Assign လုပ်ထားသော Assignment ကို ရှာမည် -> Formula ကို ဆွဲထုတ်မည်။
         """
+        target_date = as_application_time(target_date)
         stmt_period = select(KPIPeriod).where(
             KPIPeriod.start_date <= target_date,
-            KPIPeriod.end_date >= target_date,
+            KPIPeriod.end_date > target_date,
             KPIPeriod.is_deleted == False
         ).order_by(KPIPeriod.start_date.desc(), KPIPeriod.id)
         periods = (await db.execute(stmt_period)).scalars().all()
@@ -319,46 +459,176 @@ class KPICalculationEngine:
         return await _find_fallback_formula(db, user, target_date.strftime("%Y-%m")), period
 
     @staticmethod
-    async def execute_kpi_calculation(db: AsyncSession, user: User, period_start: datetime, period_end: datetime, period_type: PeriodType, task_data: dict = None):
+    async def resolve_explicit_calculation_context(
+        db: AsyncSession,
+        context: KPICalculationContext,
+    ) -> ResolvedKPICalculationContext:
+        record = (
+            await db.execute(
+                select(KPIRecord)
+                .options(
+                    selectinload(KPIRecord.user),
+                    selectinload(KPIRecord.period),
+                    selectinload(KPIRecord.formula).selectinload(KPIFormula.scoring_rules),
+                )
+                .where(
+                    KPIRecord.id == context.record_id,
+                    KPIRecord.is_deleted.is_(False),
+                )
+            )
+        ).scalars().first()
+        if record is None:
+            raise ValueError("KPI record was not found.")
+        if context.user_id is not None and context.user_id != record.user_id:
+            raise ValueError("KPI record does not belong to the requested user.")
+        if context.period_id is not None and context.period_id != record.kpi_period_id:
+            raise ValueError("KPI record does not belong to the requested period.")
+        if context.formula_id is not None and context.formula_id != record.formula_id:
+            raise ValueError("KPI record does not use the requested formula.")
+
+        user = record.user
+        period = record.period
+        formula = record.formula
+        if user is None or user.is_deleted or not user.is_active:
+            raise ValueError("KPI record user is unavailable.")
+        if period is None or period.is_deleted:
+            raise ValueError("KPI record must reference an available KPI period.")
+        if period.status in {
+            KPIPeriodStatus.FINALIZED,
+            KPIPeriodStatus.LOCKED,
+            KPIPeriodStatus.CANCELLED,
+        }:
+            raise ValueError("KPI calculation is not allowed for a finalized, locked, or cancelled period.")
+        if (
+            formula is None
+            or formula.is_deleted
+            or not formula.is_active
+            or formula.status != FormulaStatus.ACTIVE
+        ):
+            raise ValueError("KPI record formula is unavailable.")
+        if record.is_frozen or record.is_overridden:
+            raise ValueError("Frozen or overridden KPI records cannot be recalculated.")
+
+        period_range = normalize_calendar_range(period.start_date, period.end_date)
+        if period_range.start_inclusive is None or period_range.end_exclusive is None:
+            raise ValueError("KPI period boundaries are incomplete.")
+        if (
+            as_application_time(period.start_date) != period_range.start_inclusive
+            or as_application_time(period.end_date) != period_range.end_exclusive
+            or as_application_time(record.period_start) != period_range.start_inclusive
+            or as_application_time(record.period_end) != period_range.end_exclusive
+        ):
+            raise ValueError("KPI record and period must use matching calendar boundaries.")
+
+        if context.assignment_id is not None:
+            assignment = await db.get(KPIAssignment, context.assignment_id)
+            if assignment is None or assignment.is_deleted:
+                raise ValueError("KPI assignment is unavailable.")
+            if (
+                assignment.user_id != record.user_id
+                or assignment.kpi_period_id != record.kpi_period_id
+                or assignment.kpi_formula_id != record.formula_id
+            ):
+                raise ValueError("KPI assignment does not match the selected record.")
+
+        effective_month = period_range.start_inclusive.strftime("%Y-%m")
+        if formula.effective_month and formula.effective_month > effective_month:
+            raise ValueError("KPI record formula is not effective for the selected period.")
+
+        return ResolvedKPICalculationContext(
+            user=user,
+            record=record,
+            period=period,
+            formula=formula,
+            period_start=period_range.start_inclusive,
+            period_end=period_range.end_exclusive,
+        )
+
+    @staticmethod
+    async def execute_kpi_calculation(
+        db: AsyncSession,
+        user: User | None = None,
+        period_start: datetime | None = None,
+        period_end: datetime | None = None,
+        period_type: PeriodType | None = None,
+        task_data: dict | None = None,
+        *,
+        context: KPICalculationContext | None = None,
+    ):
         """
         Core Engine: Aggregates tasks, parses text-based deductions, calculates target completion, 
         and updates or creates the final KPI Record securely with Transaction rollback protection.
         """
+        user_id = user.id if user is not None else context.user_id if context else None
         try:
-            formula, period = await KPICalculationEngine.get_applicable_formula_and_period(db, user, period_start)
+            explicit_record_id = None
+            if context is not None:
+                resolved = await KPICalculationEngine.resolve_explicit_calculation_context(
+                    db, context
+                )
+                user = resolved.user
+                formula = resolved.formula
+                period = resolved.period
+                period_start = resolved.period_start
+                period_end = resolved.period_end
+                period_type = resolved.record.period_type
+                explicit_record_id = resolved.record.id
+            else:
+                if user is None or period_start is None or period_end is None or period_type is None:
+                    raise ValueError("User, date boundaries, and period type are required.")
+                formula, period = await KPICalculationEngine.get_applicable_formula_and_period(
+                    db, user, period_start
+                )
             if not formula:
-                logger.info("No active formula found for user %s", user.id)
+                logger.info("No active formula found for user %s", user_id)
                 return None
             counts, values = await _collect_deductions(db, user, formula, period_start, period_end)
             merged_data = _merge_kpi_data(values, counts, task_data or {})
             total_score = await score_formula_categories(
-                db, formula, formula.department_id, period_start.strftime("%Y-%m"), merged_data
+                db,
+                formula,
+                formula.department_id,
+                as_application_time(period_start).strftime("%Y-%m"),
+                merged_data,
             )
             weighted_max = formula_max_score(formula)
             percentage = 0.0 if weighted_max <= 0 else min(100.0, max(0.0, total_score / weighted_max * 100.0))
-            await _save_kpi_record(
-                db, user, formula, period, period_type, period_start, period_end, total_score, percentage
-            )
+            if explicit_record_id is None:
+                await _save_kpi_record(
+                    db, user, formula, period, period_type, period_start, period_end,
+                    total_score, percentage,
+                )
+            else:
+                await _save_kpi_record(
+                    db, user, formula, period, period_type, period_start, period_end,
+                    total_score, percentage, explicit_record_id=explicit_record_id,
+                )
             await db.commit()
+            return resolved.record if explicit_record_id is not None else None
         except Exception:
             await db.rollback()
-            logger.exception("Critical error calculating KPI for user %s", user.id)
+            logger.exception("Critical error calculating KPI for user %s", user_id)
             raise
 
     @staticmethod
     async def calculate_monthly_kpi_for_user(db: AsyncSession, user: User, target_date: datetime, task_data: dict = None):
         """Helper to invoke monthly calculation logic correctly parsing dates"""
-        period_start = target_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        last_day = calendar.monthrange(target_date.year, target_date.month)[1]
-        period_end = target_date.replace(day=last_day, hour=23, minute=59, second=59, microsecond=999999)
+        period_range = calendar_period_range(PeriodType.MONTHLY, target_date)
 
-        await KPICalculationEngine.execute_kpi_calculation(db, user, period_start, period_end, PeriodType.MONTHLY, task_data)
+        await KPICalculationEngine.execute_kpi_calculation(
+            db,
+            user,
+            period_range.start_inclusive,
+            period_range.end_exclusive,
+            PeriodType.MONTHLY,
+            task_data,
+        )
 
 
 # ==============================================================================
 # 2. Support Helper Functions
 # ==============================================================================
-async def is_level_kpi_enabled(db: AsyncSession, level_name: str, department_id: Optional[UUID] = None) -> bool:
+async def is_level_kpi_enabled(db: AsyncSession, level_name: str, department_id: UUID | None = None) -> bool:
     """Checks if KPI evaluation is administratively unblocked for a user level."""
     stmt = select(KPILevelSetting).where(KPILevelSetting.level_name == level_name)
     
@@ -372,7 +642,7 @@ async def is_level_kpi_enabled(db: AsyncSession, level_name: str, department_id:
 # ==============================================================================
 # 3. Master Routing Operations
 # ==============================================================================
-async def trigger_kpi_recalculation(db: AsyncSession, user_level: str, user_id: UUID, target_date: datetime, department_id: Optional[UUID] = None):
+async def trigger_kpi_recalculation(db: AsyncSession, user_level: str, user_id: UUID, target_date: datetime, department_id: UUID | None = None):
     """Entry Point for on-the-fly recalculations whenever a task is processed."""
     
     stmt = select(User).options(

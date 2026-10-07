@@ -30,7 +30,7 @@ if settings.DATABASE_URL.startswith("postgresql+asyncpg://"):
     parsed = urlparse(settings.DATABASE_URL)
     host = (parsed.hostname or "").lower()
     is_localhost = host in {"localhost", "127.0.0.1", "::1"}
-    if not is_localhost:
+    if settings.DATABASE_SSL_REQUIRED and not is_localhost:
         connect_args["ssl"] = True
 
 # 🌟 FIX: PostgreSQL/MySQL specific optimizations. SQLite doesn't support these pool args.

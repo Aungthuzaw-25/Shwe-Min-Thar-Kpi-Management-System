@@ -1,7 +1,8 @@
-from pydantic import BaseModel, ConfigDict
-from uuid import UUID
 from datetime import datetime
-from typing import Optional
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict
+
 
 class NotificationResponse(BaseModel):
     id: UUID
@@ -10,7 +11,7 @@ class NotificationResponse(BaseModel):
     notification_type: str
     is_read: bool
     channel: str
-    group_key: Optional[str] = None
+    group_key: str | None = None
     created_at: datetime
 
     # 🌟 Pydantic V2 အတွက် class Config အစား model_config ကို ပြောင်းလဲအသုံးပြုထားပါသည်
@@ -22,4 +23,4 @@ class NotificationCreate(BaseModel):
     message: str
     notification_type: str
     channel: str = "DASHBOARD"
-    group_key: Optional[str] = None
+    group_key: str | None = None

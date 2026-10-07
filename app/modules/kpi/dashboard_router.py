@@ -1,65 +1,373 @@
-from datetime import datetime, timezone
-from typing import Dict, Any, Optional, List
+from datetime import UTC, datetime
+from typing import Any
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+import pytz  # 🌟 Added for Timezone Conversion
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import false, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
-import pytz # 🌟 Added for Timezone Conversion
-from app.core.timezone import APPLICATION_TIMEZONE # 🌟 Added for Timezone Conversion
 
+from app.core.dependencies import get_current_user
+from app.core.timezone import APPLICATION_TIMEZONE  # 🌟 Added for Timezone Conversion
 from app.database.connection import get_db
-from app.modules.users.models import User, Position
 from app.modules.departments.models import Department, UserDepartment
+from app.modules.kpi.dashboard_schemas import DashboardSummaryResponse
+from app.modules.kpi.dashboard_service import build_dashboard_summary
+from app.modules.kpi.executive_intelligence_schemas import (
+    ExecutiveEmployeeDetail,
+    ExecutiveEmployeePage,
+    ExecutiveOverview,
+)
+from app.modules.kpi.executive_intelligence_service import (
+    build_executive_overview,
+    get_executive_employee_detail,
+    list_executive_employee_results,
+)
+from app.modules.kpi.models import KPIRecord, KPIStatus, PeriodType
 from app.modules.notifications.models import Notification
-from app.modules.kpi.models import KPIRecord, KPIStatus
 from app.modules.tasks.models.task import Task, TaskStatus
+from app.modules.users.models import Position, User
 
 # 🌟 လုံခြုံရေးအတွက် Role Checker ကို Import လုပ်ခြင်း
-from app.modules.users.router import admin_checker 
+from app.modules.users.router import admin_checker
 
 router = APIRouter()
 superadmin_router = APIRouter()
 admin_router = APIRouter()
+unified_router = APIRouter()
 
 
-def _normalize_role_name(value: Optional[str]) -> str:
+def _normalize_role_name(value: str | None) -> str:
     if not value:
         return ""
     return value.replace("-", " ").replace("_", " ").upper()
 
 
-async def _get_scope_user_ids(db: AsyncSession, current_user: User) -> Optional[List[int]]:
+def _completion_percentage(completed_tasks: int, total_tasks: int) -> float:
+    """Return completed/total; overdue and late are independent diagnostics."""
+    if total_tasks <= 0:
+        return 0.0
+    return round((completed_tasks / total_tasks) * 100, 2)
+
+
+@unified_router.get(
+    "/summary",
+    response_model=DashboardSummaryResponse,
+    tags=["Unified Dashboard"],
+)
+async def fetch_unified_dashboard_summary(
+    period_type: PeriodType = Query(PeriodType.MONTHLY),
+    period_start: datetime | None = Query(None),
+    period_end: datetime | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return one role-scoped aggregation payload for dashboard consumers."""
+    scope_user_ids = await _get_scope_user_ids(db, current_user)
+    if scope_user_ids is None:
+        scope_user_ids = list(
+            (
+                await db.execute(
+                    select(User.id).where(
+                        User.is_deleted.is_(False),
+                        User.is_active.is_(True),
+                    )
+                )
+            ).scalars().all()
+        )
+    else:
+        scope_user_ids = list(dict.fromkeys(scope_user_ids))
+
+    membership_department_ids = list(
+        (
+            await db.execute(
+                select(UserDepartment.department_id)
+                .where(
+                    UserDepartment.user_id == current_user.id,
+                    UserDepartment.is_deleted.is_(False),
+                )
+                .order_by(UserDepartment.department_id)
+            )
+        ).scalars().all()
+    )
+    role_name = _normalize_role_name(
+        getattr(getattr(current_user, "role", None), "name", None)
+    )
+    if "SUPER ADMIN" in role_name or role_name == "HR":
+        department_ids = list(
+            (
+                await db.execute(
+                    select(Department.id).where(Department.is_deleted.is_(False))
+                )
+            ).scalars().all()
+        )
+    else:
+        department_ids = membership_department_ids
+
+    try:
+        return await build_dashboard_summary(
+            db,
+            current_user,
+            scope_user_ids=list(scope_user_ids),
+            department_ids=department_ids,
+            period_type=period_type,
+            period_start=period_start,
+            period_end=period_end,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+async def _get_executive_scope(
+    db: AsyncSession, current_user: User
+) -> tuple[list[UUID] | None, list[UUID] | None, bool]:
+    role_name = _normalize_role_name(
+        getattr(getattr(current_user, "role", None), "name", None)
+    )
+    memberships = (
+        await db.execute(
+            select(UserDepartment.department_id, UserDepartment.user_level)
+            .join(Department, Department.id == UserDepartment.department_id)
+            .where(
+                UserDepartment.user_id == current_user.id,
+                UserDepartment.is_deleted.is_(False),
+                Department.is_deleted.is_(False),
+            )
+        )
+    ).all()
+    levels = {
+        str(row.user_level or "")
+        .strip()
+        .upper()
+        .replace("LEVEL ", "L")
+        for row in memberships
+    }
+    if "SUPER ADMIN" in role_name or role_name == "HR":
+        visible_departments = None
+    else:
+        visible_departments = list(
+            dict.fromkeys(row.department_id for row in memberships)
+        )
+    manager_scope = (
+        "ADMIN" in role_name
+        or role_name == "HR"
+        or bool(levels.intersection({"L0", "L1"}))
+        or "SUPER ADMIN" in role_name
+    )
+    scope_user_ids = await _get_scope_user_ids(db, current_user)
+    if scope_user_ids is not None:
+        if visible_departments:
+            members = (
+                await db.execute(
+                    select(UserDepartment.user_id)
+                    .join(User, User.id == UserDepartment.user_id)
+                    .where(
+                        UserDepartment.department_id.in_(visible_departments),
+                        UserDepartment.is_deleted.is_(False),
+                        User.is_deleted.is_(False),
+                        User.is_active.is_(True),
+                    )
+                )
+            ).scalars().all()
+            permitted_members = set(members)
+            scope_user_ids = list(
+                dict.fromkeys(
+                    user_id
+                    for user_id in scope_user_ids
+                    if user_id in permitted_members
+                )
+            )
+        else:
+            scope_user_ids = (
+                [current_user.id]
+                if current_user.id in scope_user_ids
+                else []
+            )
+    return (
+        scope_user_ids,
+        visible_departments,
+        manager_scope,
+    )
+
+
+@unified_router.get(
+    "/executive/overview",
+    response_model=ExecutiveOverview,
+    tags=["Executive KPI Intelligence"],
+)
+async def fetch_executive_overview(
+    period_id: UUID | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> ExecutiveOverview:
+    """Return read-only KPI intelligence within the existing dashboard scope."""
+    scope_user_ids, department_ids, show_departments = await _get_executive_scope(
+        db, current_user
+    )
+    try:
+        return await build_executive_overview(
+            db,
+            scope_user_ids=scope_user_ids,
+            department_ids=department_ids,
+            show_departments=show_departments,
+            period_id=period_id,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@unified_router.get(
+    "/executive/employees/{user_id}",
+    response_model=ExecutiveEmployeeDetail,
+    tags=["Executive KPI Intelligence"],
+)
+async def fetch_executive_employee_detail(
+    user_id: UUID,
+    period_id: UUID = Query(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> ExecutiveEmployeeDetail:
+    """Return persisted KPI details only for a user in the viewer's dashboard scope."""
+    scope_user_ids, department_ids, _ = await _get_executive_scope(db, current_user)
+    detail = await get_executive_employee_detail(
+        db,
+        user_id=user_id,
+        period_id=period_id,
+        scope_user_ids=scope_user_ids,
+        department_ids=department_ids,
+    )
+    if detail is None:
+        raise HTTPException(status_code=404, detail="KPI result not found.")
+    return detail
+
+
+@unified_router.get(
+    "/executive/employees",
+    response_model=ExecutiveEmployeePage,
+    tags=["Executive KPI Intelligence"],
+)
+async def fetch_executive_employee_results(
+    period_id: UUID = Query(...),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(25, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> ExecutiveEmployeePage:
+    """List evaluated employees alphabetically within the viewer's dashboard scope."""
+    scope_user_ids, department_ids, _ = await _get_executive_scope(db, current_user)
+    return await list_executive_employee_results(
+        db,
+        period_id=period_id,
+        scope_user_ids=scope_user_ids,
+        department_ids=department_ids,
+        offset=offset,
+        limit=limit,
+    )
+
+
+async def _get_scope_user_ids(
+    db: AsyncSession, current_user: User
+) -> list[UUID] | None:
     role_name = _normalize_role_name(getattr(getattr(current_user, "role", None), "name", None))
     if "SUPER ADMIN" in role_name or "SUPERADMIN" in role_name:
         return None
 
     if "ADMIN" in role_name:
-        dept_stmt = select(UserDepartment.department_id).where(UserDepartment.user_id == current_user.id)
+        dept_stmt = select(UserDepartment.department_id).where(
+            UserDepartment.user_id == current_user.id,
+            UserDepartment.is_deleted.is_(False),
+        )
         department_ids = (await db.execute(dept_stmt)).scalars().all()
         if not department_ids:
             return [current_user.id]
-        user_stmt = select(UserDepartment.user_id).where(UserDepartment.department_id.in_(department_ids))
+        user_stmt = select(UserDepartment.user_id).where(
+            UserDepartment.department_id.in_(department_ids),
+            UserDepartment.is_deleted.is_(False),
+            UserDepartment.user_id.in_(
+                select(User.id).where(
+                    User.is_deleted.is_(False),
+                    User.is_active.is_(True),
+                )
+            ),
+        )
         return (await db.execute(user_stmt)).scalars().all()
 
     if "LEVEL 0" in role_name or "L0" in role_name or "LEVEL0" in role_name:
-        dept_stmt = select(UserDepartment.department_id).where(UserDepartment.user_id == current_user.id)
+        dept_stmt = select(UserDepartment.department_id).where(
+            UserDepartment.user_id == current_user.id,
+            UserDepartment.is_deleted.is_(False),
+        )
         department_ids = (await db.execute(dept_stmt)).scalars().all()
         if not department_ids:
             return [current_user.id]
-        user_stmt = select(UserDepartment.user_id).where(UserDepartment.department_id.in_(department_ids))
+        user_stmt = select(UserDepartment.user_id).where(
+            UserDepartment.department_id.in_(department_ids),
+            UserDepartment.is_deleted.is_(False),
+            UserDepartment.user_id.in_(
+                select(User.id).where(
+                    User.is_deleted.is_(False),
+                    User.is_active.is_(True),
+                )
+            ),
+        )
         return (await db.execute(user_stmt)).scalars().all()
 
     if "LEVEL 1" in role_name or "L1" in role_name or "LEVEL1" in role_name:
-        dept_stmt = select(UserDepartment.department_id).where(UserDepartment.user_id == current_user.id)
+        dept_stmt = select(UserDepartment.department_id).where(
+            UserDepartment.user_id == current_user.id,
+            UserDepartment.is_deleted.is_(False),
+        )
         department_ids = (await db.execute(dept_stmt)).scalars().all()
         if not department_ids:
             return [current_user.id]
         user_stmt = select(UserDepartment.user_id).where(
             UserDepartment.department_id.in_(department_ids),
             UserDepartment.user_id != current_user.id,
+            UserDepartment.is_deleted.is_(False),
+            UserDepartment.user_id.in_(
+                select(User.id).where(
+                    User.is_deleted.is_(False),
+                    User.is_active.is_(True),
+                )
+            ),
         )
         allowed_user_ids = (await db.execute(user_stmt)).scalars().all()
         return list(dict.fromkeys(allowed_user_ids + [current_user.id]))
+
+    # Department User accounts carry their operational level on the active
+    # department membership rather than in the coarse role name.
+    level_rows = (
+        await db.execute(
+            select(UserDepartment.user_level).where(
+                UserDepartment.user_id == current_user.id,
+                UserDepartment.is_deleted.is_(False),
+            )
+        )
+    ).scalars().all()
+    normalized_levels = {
+        str(level).upper().replace("LEVEL ", "L") for level in level_rows
+    }
+    if normalized_levels.intersection({"L0", "L1"}):
+        department_ids = (
+            await db.execute(
+                select(UserDepartment.department_id).where(
+                    UserDepartment.user_id == current_user.id,
+                    UserDepartment.is_deleted.is_(False),
+                )
+            )
+        ).scalars().all()
+        user_stmt = select(UserDepartment.user_id).where(
+            UserDepartment.department_id.in_(department_ids),
+            UserDepartment.is_deleted.is_(False),
+            UserDepartment.user_id.in_(
+                select(User.id).where(
+                    User.is_deleted.is_(False),
+                    User.is_active.is_(True),
+                )
+            ),
+        )
+        allowed_user_ids = (await db.execute(user_stmt)).scalars().all()
+        return list(dict.fromkeys(list(allowed_user_ids) + [current_user.id]))
 
     return [current_user.id]
 
@@ -69,7 +377,7 @@ async def _count_tasks(db: AsyncSession, base_filters: list, status_filters: lis
     return (await db.execute(stmt)).scalar() or 0
 
 
-async def _get_dashboard_task_summary(db: AsyncSession, current_user: User) -> Dict[str, Any]:
+async def _get_dashboard_task_summary(db: AsyncSession, current_user: User) -> dict[str, Any]:
     scope_user_ids = await _get_scope_user_ids(db, current_user)
     base_filters = [Task.is_deleted == False]
     if scope_user_ids is not None:
@@ -90,7 +398,7 @@ async def _get_dashboard_task_summary(db: AsyncSession, current_user: User) -> D
     overdue_stmt = select(func.count(Task.id)).where(
         *base_filters,
         Task.due_date.is_not(None),
-        Task.due_date < datetime.now(timezone.utc),
+        Task.due_date < datetime.now(UTC),
         Task.status.not_in([TaskStatus.COMPLETED, TaskStatus.APPROVED, TaskStatus.REJECTED])
     )
     overdue_tasks = (await db.execute(overdue_stmt)).scalar() or 0
@@ -120,6 +428,9 @@ async def _get_dashboard_task_summary(db: AsyncSession, current_user: User) -> D
         "overdue_tasks": overdue_tasks,
         "late_tasks": late_tasks,
         "current_kpi_score": round(float(kpi_value), 2),
+        # Completion is based only on mutually exclusive lifecycle states.
+        # Overdue and late are secondary diagnostics and are not added here.
+        "completion_percentage": _completion_percentage(completed_tasks, total_tasks),
     }
     # Backward compatibility with legacy dashboard keys.
     summary.update({
@@ -139,7 +450,7 @@ async def _get_dashboard_task_summary(db: AsyncSession, current_user: User) -> D
 async def fetch_dashboard_role_summary(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(admin_checker),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Return a role-scoped summary consistent with the project dashboard data model."""
     summary = await _get_dashboard_task_summary(db, current_user)
     return {"summary": summary}
@@ -149,7 +460,7 @@ async def fetch_dashboard_role_summary(
 async def fetch_process_tracking_summary(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(admin_checker),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Return a zero-safe tracking summary with explicit status and overdue/late counts."""
     scope_user_ids = await _get_scope_user_ids(db, current_user)
     filters = [Task.is_deleted == False]
@@ -168,7 +479,7 @@ async def fetch_process_tracking_summary(
         "ASSIGNED": (await db.execute(select(func.count(Task.id)).where(*filters, Task.status == TaskStatus.DRAFT))).scalar() or 0,
         "IN_PROGRESS": (await db.execute(select(func.count(Task.id)).where(*filters, Task.status.in_([TaskStatus.PENDING_L1, TaskStatus.PENDING_L0])))).scalar() or 0,
         "SUBMITTED": (await db.execute(select(func.count(Task.id)).where(*filters, Task.status.in_([TaskStatus.PENDING_L1, TaskStatus.PENDING_L0])))).scalar() or 0,
-        "OVERDUE": (await db.execute(select(func.count(Task.id)).where(*filters, Task.due_date.is_not(None),         Task.due_date < datetime.now(timezone.utc), Task.status.not_in([TaskStatus.COMPLETED, TaskStatus.APPROVED, TaskStatus.REJECTED])))).scalar() or 0,
+        "OVERDUE": (await db.execute(select(func.count(Task.id)).where(*filters, Task.due_date.is_not(None),         Task.due_date < datetime.now(UTC), Task.status.not_in([TaskStatus.COMPLETED, TaskStatus.APPROVED, TaskStatus.REJECTED])))).scalar() or 0,
         "LATE": (await db.execute(select(func.count(Task.id)).where(*filters, Task.is_late == True))).scalar() or 0,
     }
 
@@ -194,7 +505,7 @@ async def fetch_process_tracking_summary(
     }
 
 
-async def _get_admin_scope_departments(db: AsyncSession, current_user: User) -> Optional[List[str]]:
+async def _get_admin_scope_departments(db: AsyncSession, current_user: User) -> list[str] | None:
     role_name = _normalize_role_name(getattr(getattr(current_user, "role", None), "name", None))
     if "SUPER ADMIN" in role_name:
         return None
@@ -212,7 +523,7 @@ async def _get_admin_scope_departments(db: AsyncSession, current_user: User) -> 
 async def fetch_admin_dashboard_summary(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(admin_checker),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Return an admin-scoped summary with actual task, user, KPI, and department data."""
     role_name = _normalize_role_name(getattr(getattr(current_user, "role", None), "name", None))
     if "ADMIN" not in role_name and "SYSTEM ADMIN" not in role_name:
@@ -228,6 +539,8 @@ async def fetch_admin_dashboard_summary(
                 UserDepartment.is_deleted == False,
             )
         ))
+    elif department_ids == []:
+        user_filters.append(User.id == current_user.id)
 
     user_counts = (
         await db.execute(
@@ -253,6 +566,8 @@ async def fetch_admin_dashboard_summary(
                 UserDepartment.is_deleted == False,
             )
         ))
+    elif department_ids == []:
+        task_filters.append(Task.owner_id == current_user.id)
 
     task_counts = (
         await db.execute(
@@ -262,11 +577,12 @@ async def fetch_admin_dashboard_summary(
                 .filter(Task.status.in_([TaskStatus.PENDING_L1, TaskStatus.PENDING_L0]))
                 .label("pending_approvals"),
                 func.count(Task.id).filter(Task.status == TaskStatus.COMPLETED).label("completed_tasks"),
+                func.count(Task.id).filter(Task.status == TaskStatus.APPROVED).label("approved_tasks"),
                 func.count(Task.id).filter(Task.status == TaskStatus.REJECTED).label("rejected_tasks"),
                 func.count(Task.id)
                 .filter(
                     Task.due_date.is_not(None),
-                    Task.due_date < datetime.now(timezone.utc),
+                    Task.due_date < datetime.now(UTC),
                     Task.status.not_in(
                         [TaskStatus.COMPLETED, TaskStatus.APPROVED, TaskStatus.REJECTED]
                     ),
@@ -294,6 +610,8 @@ async def fetch_admin_dashboard_summary(
     kpi_filters = [KPIRecord.percentage.is_not(None), KPIRecord.is_deleted == False]
     if department_ids:
         kpi_filters.append(KPIRecord.department_id.in_(department_ids))
+    elif department_ids == []:
+        kpi_filters.append(KPIRecord.user_id == current_user.id)
     average_kpi = (await db.execute(select(func.avg(KPIRecord.percentage)).where(*kpi_filters))).scalar() or 0.0
 
     position_count = 0
@@ -316,17 +634,22 @@ async def fetch_admin_dashboard_summary(
     )
     if department_ids:
         dept_stmt = dept_stmt.where(Department.id.in_(department_ids))
+    elif department_ids == []:
+        dept_stmt = dept_stmt.where(false())
     dept_stmt = dept_stmt.group_by(Department.name).order_by(func.count(UserDepartment.user_id).desc())
     for name, count in (await db.execute(dept_stmt)).all():
         users_by_department.append({"label": name, "value": int(count or 0)})
 
     task_summary = {
+        "total": total_tasks,
         "assigned": int(task_counts.assigned_tasks or 0),
         "pending": int(task_counts.pending_tasks or 0),
+        "approved": int(task_counts.approved_tasks or 0),
         "completed": completed_tasks,
         "rejected": rejected_tasks,
         "overdue": overdue_tasks,
         "late": late_tasks,
+        "completion_percentage": _completion_percentage(completed_tasks, total_tasks),
     }
 
     dept_kpi_stmt = select(
@@ -340,11 +663,17 @@ async def fetch_admin_dashboard_summary(
     ).where(Department.is_deleted == False)
     if department_ids:
         dept_kpi_stmt = dept_kpi_stmt.where(Department.id.in_(department_ids))
+    elif department_ids == []:
+        dept_kpi_stmt = dept_kpi_stmt.where(false())
     dept_kpi_stmt = dept_kpi_stmt.group_by(Department.name).order_by(func.avg(KPIRecord.percentage).desc())
     kpi_by_department = [{"label": name, "value": round(float(avg or 0.0), 2)} for name, avg in (await db.execute(dept_kpi_stmt)).all()]
 
-    category_stmt = select(Task.category, func.count(Task.id).label("task_count")).where(*task_filters, Task.category.is_not(None)).group_by(Task.category).order_by(func.count(Task.id).desc()).limit(6)
-    category_performance = [{"label": category, "value": int(count or 0)} for category, count in (await db.execute(category_stmt)).all()]
+    # KPIRecord stores an aggregate score for a formula/period, not a
+    # per-category result. Task.category is an operational label and cannot be
+    # presented as KPI performance. Keep this explicitly unavailable until
+    # category-level scoring results exist rather than reporting task counts as
+    # performance.
+    category_performance = []
 
     return {
         "metrics": {
@@ -362,6 +691,7 @@ async def fetch_admin_dashboard_summary(
         "task_summary": task_summary,
         "kpi_by_department": kpi_by_department,
         "category_performance": category_performance,
+        "category_performance_status": "unavailable",
         "status": "ok",
     }
 
@@ -370,7 +700,7 @@ async def fetch_admin_dashboard_summary(
 async def fetch_superadmin_dashboard_data(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(admin_checker) # 🌟 ဤနေရာတွင် Token နှင့် Role ကို စစ်ဆေးမည်
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     
     # 1. Total Active Users (exclude deleted/trashed users to match User Management)
     users_count = await db.execute(

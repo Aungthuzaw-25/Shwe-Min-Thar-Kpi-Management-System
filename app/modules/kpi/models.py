@@ -1,16 +1,28 @@
-"""
+﻿"""
 Enterprise KPI Domain Models (Single Source of Truth)
 Enhanced with High-Performance Indexing & Referential Integrity
 """
 import enum
+
 from sqlalchemy import (
-    Column, String, Float, Boolean, ForeignKey, DateTime, 
-    Enum as SQLEnum, Text, JSON, Integer, Index, UniqueConstraint
+    JSON,
+    Boolean,
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
 )
+from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
-from app.database.base import BaseModel
 from sqlalchemy.sql import func
+
+from app.database.base import BaseModel
 
 DEPARTMENTS_ID = "departments.id"
 POSITIONS_ID = "positions.id"
@@ -77,11 +89,11 @@ class ActionPlanStatus(str, enum.Enum):
 class KPILevelSetting(BaseModel):
     """L0, L1, L2 များအတွက် KPI တွက်/မတွက် အဖွင့်အပိတ်လုပ်ရန်"""
     __tablename__ = "kpi_level_settings"
-    
+
     department_id = Column(UUID(as_uuid=True), ForeignKey(DEPARTMENTS_ID, ondelete="CASCADE"), nullable=True, index=True)
     level_name = Column(String(10), nullable=False)  # 'L0', 'L1', 'L2'
     is_enabled = Column(Boolean, default=False, nullable=False)
-    
+
     # Relationships
     department = relationship("Department")
 
@@ -93,31 +105,31 @@ class KPILevelSetting(BaseModel):
 class KPIFormula(BaseModel):
     """Task 5.1: Configurable Enterprise KPI Formulas"""
     __tablename__ = "kpi_formulas"
-    
+
     name = Column(String(100), nullable=False)
     description = Column(Text, nullable=True)
-    expression = Column(Text, nullable=True) 
-    
+    expression = Column(Text, nullable=True)
+
     # Targeting & Organizational Mapping
-    region_town = Column(String(100), nullable=True, index=True)   
+    region_town = Column(String(100), nullable=True, index=True)
     department_id = Column(UUID(as_uuid=True), ForeignKey(DEPARTMENTS_ID, ondelete="CASCADE"), nullable=False, index=True)
-    position_name = Column(String(100), nullable=True)  
+    position_name = Column(String(100), nullable=True)
     position_id = Column(UUID(as_uuid=True), ForeignKey(POSITIONS_ID, ondelete=SET_NULL), nullable=True, index=True)
     user_level = Column(String(10), nullable=False, index=True)  # 'L0', 'L1', 'L2'
-    
+
     # Categories, Weights & Rules Payload
-    categories = Column(JSON, nullable=False) 
+    categories = Column(JSON, nullable=False)
     scope = Column(SQLEnum(FormulaScope), default=FormulaScope.DEPARTMENT, nullable=False)
-    is_active = Column(Boolean, default=True, index=True)
+    is_active = Column(Boolean, default=True, nullable=False, index=True)
 
     # Workflow & Versioning
     version = Column(Integer, default=1, nullable=False)
     status = Column(SQLEnum(FormulaStatus), default=FormulaStatus.DRAFT, nullable=False, index=True)
     parent_formula_id = Column(UUID(as_uuid=True), ForeignKey(KPI_FORMULAS_ID, ondelete=SET_NULL), nullable=True)
-    
+
     effective_month = Column(String(7), nullable=True, index=True) # "YYYY-MM"
     created_by_id = Column(UUID(as_uuid=True), ForeignKey(USERS_ID, ondelete=SET_NULL), nullable=True)
-    
+
     # Relationships
     department = relationship("Department")
     position = relationship("Position")
@@ -147,28 +159,28 @@ class KPIPeriod(BaseModel):
 class KPIRecord(BaseModel):
     """Task 5.2 - 5.6: KPI Evaluation Aggregated Records"""
     __tablename__ = "kpi_records"
-    
+
     user_id = Column(UUID(as_uuid=True), ForeignKey(USERS_ID, ondelete="CASCADE"), nullable=False, index=True)
     department_id = Column(UUID(as_uuid=True), ForeignKey(DEPARTMENTS_ID, ondelete=SET_NULL), nullable=True, index=True)
     formula_id = Column(UUID(as_uuid=True), ForeignKey(KPI_FORMULAS_ID, ondelete=SET_NULL), nullable=True, index=True)
     kpi_period_id = Column(UUID(as_uuid=True), ForeignKey("kpi_periods.id", ondelete=SET_NULL), nullable=True, index=True)
-    
+
     period_type = Column(SQLEnum(PeriodType), nullable=False, index=True)
-    period_start = Column(DateTime(timezone=True), nullable=False, index=True) 
-    period_end = Column(DateTime(timezone=True), nullable=False)   
-    
+    period_start = Column(DateTime(timezone=True), nullable=False, index=True)
+    period_end = Column(DateTime(timezone=True), nullable=False)
+
     # Enterprise Scoring (Out of 5.0 Base & Percentage)
-    raw_score = Column(Float, nullable=False, default=0.0)      
-    weighted_score = Column(Float, nullable=False, default=0.0) 
-    percentage = Column(Float, nullable=False, default=0.0)     
-    
+    raw_score = Column(Float, nullable=False, default=0.0)
+    weighted_score = Column(Float, nullable=False, default=0.0)
+    percentage = Column(Float, nullable=False, default=0.0)
+
     status_bucket = Column(SQLEnum(KPIStatus), nullable=False, default=KPIStatus.GOOD, index=True)
-    
+
     # Admin Overrides & Freezing
     is_frozen = Column(Boolean, default=False, index=True)
     is_overridden = Column(Boolean, default=False)
     override_reason = Column(Text, nullable=True)
-    
+
     # Relationships
     user = relationship("User")
     department = relationship("Department")
@@ -187,6 +199,14 @@ class KPIRecord(BaseModel):
         Index('idx_kpi_user_period_history', 'user_id', 'period_type', 'period_start'),
         # Department Ranking & Summary အမြန်ဆုံးဆွဲရန်
         Index('idx_kpi_dept_summary', 'department_id', 'period_type', 'period_start'),
+        Index(
+            'uq_active_kpi_record_user_period',
+            'user_id',
+            'period_type',
+            'period_start',
+            unique=True,
+            postgresql_where="is_deleted = false",
+        ),
     )
 
 
@@ -196,10 +216,10 @@ class KPIAssignment(BaseModel):
 
     department_id = Column(UUID(as_uuid=True), ForeignKey(DEPARTMENTS_ID, ondelete="CASCADE"), nullable=False)
     position_id = Column(UUID(as_uuid=True), ForeignKey(POSITIONS_ID, ondelete="CASCADE"), nullable=False)
-    user_id = Column(UUID(as_uuid=True), ForeignKey(USERS_ID, ondelete="CASCADE"), nullable=False, index=True) 
+    user_id = Column(UUID(as_uuid=True), ForeignKey(USERS_ID, ondelete="CASCADE"), nullable=False, index=True)
     kpi_formula_id = Column(UUID(as_uuid=True), ForeignKey(KPI_FORMULAS_ID, ondelete="CASCADE"), nullable=False, index=True)
     kpi_period_id = Column(UUID(as_uuid=True), ForeignKey("kpi_periods.id", ondelete="CASCADE"), nullable=False, index=True)
-    
+
     assigned_by_id = Column(UUID(as_uuid=True), ForeignKey(USERS_ID, ondelete=SET_NULL), nullable=True)
     assigned_at = Column(DateTime(timezone=True), nullable=False)
     is_deleted = Column(Boolean, default=False, nullable=False, index=True)
@@ -224,11 +244,11 @@ class KPIScoringRuleItem(BaseModel):
     __tablename__ = "kpi_scoring_rule_items"
 
     formula_id = Column(UUID(as_uuid=True), ForeignKey(KPI_FORMULAS_ID, ondelete="CASCADE"), nullable=False, index=True)
-    
+
     category_name = Column(String(255), nullable=False) # e.g., "Attendance & Punctuality"
     rule_name = Column(String(255), nullable=False)     # e.g., "ရုံးနောက်ကျခြင်း"
     measure_type = Column(String(50), nullable=False)   # "count" သို့မဟုတ် "percentage"
-    
+
     operator = Column(String(20), nullable=False)       # ">=", "==", "<", "<=", ">"
     target_value = Column(Float, nullable=False)        # 1.0, 2.0, 95.0
     deduct_score = Column(Float, nullable=False)        # 1.0, 2.0, 4.0
@@ -243,11 +263,11 @@ class ActionPlan(BaseModel):
 
     kpi_record_id = Column(UUID(as_uuid=True), ForeignKey("kpi_records.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
     user_id = Column(UUID(as_uuid=True), ForeignKey(USERS_ID, ondelete="CASCADE"), nullable=False, index=True)
-    
+
     description = Column(Text, nullable=False)
     target_completion_date = Column(DateTime(timezone=True), nullable=False)
     status = Column(SQLEnum(ActionPlanStatus), default=ActionPlanStatus.DRAFT, nullable=False, index=True)
-    
+
     manager_feedback = Column(Text, nullable=True)
     reviewed_by_id = Column(UUID(as_uuid=True), ForeignKey(USERS_ID, ondelete=SET_NULL), nullable=True)
     reviewed_at = Column(DateTime(timezone=True), nullable=True)
@@ -261,17 +281,19 @@ class ActionPlan(BaseModel):
 class KPIHistory(BaseModel):
     """Task 5.7 & 5.15: KPI Calculation Audit Trail"""
     __tablename__ = "kpi_history"
-    
+
     kpi_record_id = Column(UUID(as_uuid=True), ForeignKey("kpi_records.id", ondelete="CASCADE"), nullable=False, index=True)
     changed_by_id = Column(UUID(as_uuid=True), ForeignKey(USERS_ID, ondelete=SET_NULL), nullable=True)
-    
+
     old_percentage = Column(Float, nullable=False)
     new_percentage = Column(Float, nullable=False)
+    old_weighted_score = Column(Float, nullable=True)
+    new_weighted_score = Column(Float, nullable=True)
     old_status = Column(SQLEnum(KPIStatus), nullable=False)
     new_status = Column(SQLEnum(KPIStatus), nullable=False)
-    
+
     reason = Column(Text, nullable=False)
-    
+
     # Relationships
     record = relationship("KPIRecord", back_populates="histories")
     changed_by = relationship("User", foreign_keys=[changed_by_id])
@@ -319,4 +341,4 @@ class KpiCategory(BaseModel):
     id = Column(UUID(as_uuid=True), primary_key=True, default=func.gen_random_uuid())
     name = Column(String(100), nullable=False, unique=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())

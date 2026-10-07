@@ -1,8 +1,11 @@
-from sqlalchemy.ext.asyncio import AsyncSession
-from fastapi import HTTPException, status
 from uuid import UUID
-from app.modules.kpi.models import KPIPeriod, KPIPeriodStatus
+
+from fastapi import HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.models.audit_log import AuditLog
+from app.modules.kpi.models import KPIPeriod, KPIPeriodStatus, KPIRecord
+
 
 async def change_period_status(
     db: AsyncSession, 
@@ -60,4 +63,22 @@ async def check_period_editable(db: AsyncSession, period_id: UUID):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, 
             detail="Operation rejected. Cannot modify records inside a FINALIZED or LOCKED evaluation period."
+        )
+
+
+def ensure_kpi_record_editable(record: KPIRecord) -> None:
+    """Reject direct KPI mutations for authoritative or cancelled periods.
+
+    Records without a linked period retain the legacy editable behavior because
+    there is no period lifecycle state to evaluate.
+    """
+    period = getattr(record, "period", None)
+    if period and period.status in {
+        KPIPeriodStatus.FINALIZED,
+        KPIPeriodStatus.LOCKED,
+        KPIPeriodStatus.CANCELLED,
+    }:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Finalized, locked, or cancelled KPI records require the correction workflow.",
         )

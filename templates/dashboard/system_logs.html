@@ -4,8 +4,8 @@
 {% block title %}System Event Logs - KPI Platform{% endblock %}
 
 {% block content %}
-<div class="min-h-screen bg-slate-50 text-slate-800 p-4 sm:p-6 flex flex-col items-center overflow-x-hidden">
-    <header class="w-full max-w-6xl mb-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+<div class="workspace-page">
+    <header class="workspace-header">
         <div>
             <h2 class="text-2xl sm:text-3xl font-extrabold text-blue-950 tracking-tight">System Event Logs</h2>
             <p class="text-slate-500 mt-1 text-xs sm:text-sm">Monitor background jobs and operational system events.</p>
@@ -13,7 +13,7 @@
         <button type="button" onclick="loadSystemLogs()" class="bg-white border border-gray-200 text-slate-600 hover:text-blue-800 px-4 py-2.5 rounded-xl text-sm font-bold shadow-sm">Refresh</button>
     </header>
 
-    <div class="w-full max-w-6xl bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex-1">
+    <div class="workspace-table w-full max-w-6xl overflow-hidden flex-1">
         <div class="overflow-auto custom-scrollbar max-h-[75vh]">
             <div class="p-4 border-b border-gray-100 flex flex-wrap gap-2">
                 <input id="logSearch" class="border rounded-lg px-3 py-2 text-sm" placeholder="Search logs">
@@ -157,6 +157,6 @@
         );
     }
 
-    document.addEventListener('DOMContentLoaded', loadSystemLogs);
+    document.addEventListener('DOMContentLoaded', () => loadSystemLogs(1));
 </script>
 {% endblock %}

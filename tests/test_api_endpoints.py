@@ -1,16 +1,16 @@
+from datetime import UTC
 from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
-
 from fastapi.testclient import TestClient
 
-from app.main import app
+import app.modules.activity_web as activity_web
 import app.modules.auth.router as auth_router
 import app.modules.kpi.dashboard_router as dashboard_router
 import app.modules.notifications.router as notifications_router
 import app.modules.system.router as system_router
-import app.modules.activity_web as activity_web
+from app.main import app
 
 
 class FakeResult:
@@ -49,6 +49,7 @@ class FakeDB:
 
 
 def test_login_route_returns_tokens(monkeypatch):
+    monkeypatch.setenv("SEED_SUPER_ADMIN_PASSWORD", "Valid@Test123456")
     fake_user = SimpleNamespace(
         id="user-1",
         email="alice@example.com",
@@ -59,7 +60,7 @@ def test_login_route_returns_tokens(monkeypatch):
         is_locked=False,
         lockout_until=None,
         failed_login_attempts=0,
-        hashed_password="hashed-password",
+        hashed_password="hashed-password",  # noqa: S106 - synthetic test fixture; not a production credential
         must_change_password=False,
         role=SimpleNamespace(name="L2"),
         position=SimpleNamespace(name="Officer"),
@@ -80,13 +81,14 @@ def test_login_route_returns_tokens(monkeypatch):
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["access_token"] == "fake-access-token"
-    assert payload["refresh_token"] == "fake-refresh-token"
+    assert payload["access_token"] == "fake-access-token"  # noqa: S105 - synthetic test fixture; not a production credential
+    assert payload["refresh_token"] == "fake-refresh-token"  # noqa: S105 - synthetic test fixture; not a production credential
     assert payload["user"]["email"] == "alice@example.com"
     app.dependency_overrides.pop(auth_router.get_db, None)
 
 
 def test_me_route_returns_current_user_context(monkeypatch):
+    monkeypatch.setenv("SEED_SUPER_ADMIN_PASSWORD", "Valid@Test123456")
     fake_user = SimpleNamespace(
         id="user-1",
         first_name="Alice",
@@ -114,6 +116,7 @@ def test_me_route_returns_current_user_context(monkeypatch):
 
 
 def test_dashboard_summary_route_uses_backend_summary(monkeypatch):
+    monkeypatch.setenv("SEED_SUPER_ADMIN_PASSWORD", "Valid@Test123456")
     fake_user = SimpleNamespace(id="admin-1", role=SimpleNamespace(name="Super Admin"))
 
     app.dependency_overrides[dashboard_router.get_db] = lambda: FakeDB()
@@ -145,6 +148,13 @@ def test_dashboards_have_distinct_summary_routes():
 
     assert "/summary" in super_paths
     assert "/summary" in admin_paths
+    assert "/summary" in {
+        getattr(route, "path", None) for route in dashboard_router.unified_router.routes
+    }
+
+
+def test_unified_dashboard_route_is_registered():
+    assert "/api/v1/dashboard/summary" in app.openapi()["paths"]
 
 
 @pytest.mark.asyncio
@@ -269,7 +279,7 @@ async def test_notification_detail_rejects_invalid_id():
 
 @pytest.mark.asyncio
 async def test_notification_detail_is_user_scoped_and_marks_read(monkeypatch):
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     user_id = uuid4()
     notification = SimpleNamespace(
@@ -281,7 +291,7 @@ async def test_notification_detail_is_user_scoped_and_marks_read(monkeypatch):
         is_read=False,
         channel="DASHBOARD",
         group_key=None,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
     db = SimpleNamespace()
 

@@ -1,6 +1,5 @@
 import logging
 from datetime import datetime
-from typing import List, Optional
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -8,25 +7,27 @@ from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
+from app.modules.kpi import repo as kpi_repo
+from app.modules.kpi.engine import KPICalculationEngine, calculate_custom_period_kpi
+
 # Models and utilities
 from app.modules.kpi.models import (
-    KPILevelSetting,
-    KPIFormula,
-    KPIRecord,
-    PeriodType,
     FormulaStatus,
     KpiCategory,
+    KPIFormula,
+    KPILevelSetting,
+    KPIRecord,
     KPIScoringRuleItem,
+    PeriodType,
 )
-from app.modules.kpi.engine import calculate_custom_period_kpi, KPICalculationEngine
 from app.modules.kpi.schemas import (
     KPIFormulaCreate,
     KPIFormulaUpdate,
     KPILevelSettingUpdate,
-    KpiReportSummaryResponse,
     KpiReportItem,
+    KpiReportSummaryResponse,
 )
-from app.modules.kpi import repo as kpi_repo
+from app.modules.users.models import Position
 
 # Logger for this module
 logger = logging.getLogger(__name__)
@@ -62,6 +63,26 @@ async def _sync_formula_categories(db: AsyncSession, categories) -> None:
         await db.flush()
 
 
+async def _resolve_formula_position(
+    db: AsyncSession, department_id: UUID, position_id: UUID | None
+) -> Position | None:
+    """Resolve an active position only when it belongs to the formula department."""
+    if position_id is None:
+        return None
+    position = await db.get(Position, position_id)
+    if (
+        position is None
+        or position.is_deleted
+        or not position.is_active
+        or position.department_id != department_id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Selected position is not active in the formula department.",
+        )
+    return position
+
+
 async def sync_existing_formula_categories(db: AsyncSession) -> int:
     """Backfill the shared category lookup from all stored formula JSON payloads."""
     formulas = (await db.execute(select(KPIFormula))).scalars().all()
@@ -73,7 +94,7 @@ async def sync_existing_formula_categories(db: AsyncSession) -> int:
 # ==============================================================================
 # 1. KPI Level Settings Logic (L0, L1, L2 အဖွင့်အပိတ် ပြုလုပ်ခြင်း)
 # ==============================================================================
-async def get_kpi_level_settings(db: AsyncSession, department_id: Optional[UUID] = None):
+async def get_kpi_level_settings(db: AsyncSession, department_id: UUID | None = None):
     """လက်ရှိ ဖွင့်/ပိတ် ထားသော Level အားလုံးကို ဆွဲထုတ်မည် (ဌာနအလိုက်ပါ Filter လုပ်နိုင်ရန် ပြင်ဆင်ထားသည်)"""
     stmt = select(KPILevelSetting)
     if department_id:
@@ -111,13 +132,17 @@ async def create_kpi_formula(db: AsyncSession, formula_in: KPIFormulaCreate):
     
     # Payload မှ categories များကို dictionary format သို့ ပြောင်းလဲခြင်း
     categories_data = [cat.model_dump() for cat in formula_in.categories]
+    position = await _resolve_formula_position(
+        db, formula_in.department_id, formula_in.position_id
+    )
 
     new_formula = KPIFormula(
         name=formula_in.name,
         description=formula_in.description,
         region_town=formula_in.region_town,
         department_id=formula_in.department_id,
-        position_name=formula_in.position_name,
+        position_id=position.id if position else None,
+        position_name=position.name if position else formula_in.position_name,
         user_level=formula_in.user_level,
         categories=categories_data,
         scope=formula_in.scope,
@@ -169,7 +194,7 @@ async def get_all_kpi_formulas(db: AsyncSession, department_id: UUID = None):
     result = await db.execute(stmt)
     return result.scalars().all()
 
-def _build_scoring_rule_items(formula_id, categories) -> List[KPIScoringRuleItem]:
+def _build_scoring_rule_items(formula_id, categories) -> list[KPIScoringRuleItem]:
     """Build KPIScoringRuleItem list from formula categories."""
     rules = []
     for cat in categories:
@@ -200,7 +225,8 @@ async def _create_new_formula_version(
         description=update_data.get("description", formula.description),
         region_town=formula.region_town,
         department_id=formula.department_id,
-        position_name=formula.position_name,
+        position_id=update_data.get("position_id", formula.position_id),
+        position_name=update_data.get("position_name", formula.position_name),
         user_level=formula.user_level,
         categories=new_categories,
         scope=formula.scope,
@@ -234,6 +260,11 @@ async def update_kpi_formula(db: AsyncSession, formula_id: UUID, formula_in: KPI
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="KPI Formula မတွေ့ရှိပါ။")
 
     update_data = formula_in.model_dump(exclude_unset=True)
+    if "position_id" in update_data:
+        position = await _resolve_formula_position(
+            db, formula.department_id, update_data["position_id"]
+        )
+        update_data["position_name"] = position.name if position else formula.position_name
 
     # 🌟 Formula သည် ACTIVE, APPROVED သို့မဟုတ် ARCHIVED ဖြစ်နေလျှင် အသစ် (Version အသစ်) အဖြစ် DRAFT ပြန်လုပ်မည်
     if formula.status in [FormulaStatus.ACTIVE, FormulaStatus.APPROVED, FormulaStatus.ARCHIVED]:
@@ -265,7 +296,7 @@ async def update_kpi_formula(db: AsyncSession, formula_id: UUID, formula_in: KPI
 
 async def bulk_calculate_kpis(
     db: AsyncSession,
-    user_ids: List[UUID],
+    user_ids: list[UUID],
     start_date: datetime,
     end_date: datetime,
 ) -> dict:
@@ -319,10 +350,13 @@ class KpiReportService:
     async def generate_summary_report(
         db: AsyncSession, 
         period_type: str, 
-        department_id: Optional[UUID] = None
+        department_id: UUID | None = None,
+        department_ids: set[str] | None = None,
     ) -> KpiReportSummaryResponse:
         
-        raw_data = await kpi_repo.get_kpi_report_data(db, period_type, department_id)
+        raw_data = await kpi_repo.get_kpi_report_data(
+            db, period_type, department_id, department_ids=department_ids
+        )
         
         report_items = []
         total_company_score = 0.0

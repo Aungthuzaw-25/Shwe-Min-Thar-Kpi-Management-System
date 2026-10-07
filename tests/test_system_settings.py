@@ -1,10 +1,10 @@
+from datetime import UTC, datetime
 from types import SimpleNamespace
+from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
 from pydantic import ValidationError
-from uuid import uuid4
-from datetime import datetime, timezone
 
 from app.core.password_policy import get_password_policy, validate_password_strength
 from app.modules.system.router import _sanitize_setting_value
@@ -54,7 +54,7 @@ def test_new_setting_response_allows_null_updated_at():
             "key": "security",
             "value": {"minimum_password_length": 10},
             "description": None,
-            "created_at": datetime.now(timezone.utc),
+            "created_at": datetime.now(UTC),
             "updated_at": None,
         }
     )
@@ -64,7 +64,7 @@ def test_new_setting_response_allows_null_updated_at():
 def test_security_setting_rejects_invalid_types_and_ranges():
     with pytest.raises(ValidationError):
         PasswordPolicyValue(
-            minimum_password_length="10",
+            minimum_password_length="10",  # noqa: S106 - synthetic test fixture; not a production credential
             require_complexity=True,
             force_password_change_days=90,
         )

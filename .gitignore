@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+!.env.qa.example
 venv/
 env/
 .venv/
@@ -15,8 +16,12 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .coverage
+.coverage.*
 coverage.xml
 htmlcov/
+.scannerwork/
+playwright-report/
+test-results/
 
 # Uploads (Production တွင် MinIO သုံးမည်ဖြစ်သော်လည်း Local အတွက်ဖျက်ထားရန်)
 uploads/
@@ -27,6 +32,9 @@ reports/
 tmp/
 temp/
 *.log
+full_pytest.txt
+pytest_focus.txt
+query
 
 # IDEs
 .vscode/
@@ -36,6 +44,11 @@ Thumbs.db
 node_modules/
 *.bak
 *.tmp
+.tmp_*
+qa_l1_cookies.txt
+docker-compose.override.yml
+Microsoft/Windows/PowerShell/ModuleAnalysisCache
+static/css/output.css
 
 # Local databases and generated exports
 *.db

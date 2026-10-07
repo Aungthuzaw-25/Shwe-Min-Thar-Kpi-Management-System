@@ -1,35 +1,80 @@
-﻿from app.database.connection import Base
 from app.database.base import BaseModel
+from app.database.connection import Base
 
-# 🌟 1. Users & Roles (Single Source of Truth)
-from app.modules.users.models import User, Role, Position, Permission, RolePermission
+# 🌟 6. Audit & Auth Logs
+from app.models.audit_log import AuditLog
+
+# 🌟 7. System Settings & Logs
+from app.models.system import SystemEventLog, SystemSetting
+from app.modules.auth.models import AuthSession, LoginHistory, PasswordHistory, TokenBlacklist
 
 # 🌟 2. Departments
 from app.modules.departments.models import Department, UserDepartment
 
-# 🌟 3. Tasks & Workflow Engine
-from app.modules.tasks.models.task import Task
-from app.modules.tasks.models.task_evidence import TaskEvidence
-from app.modules.tasks.models.task_review import TaskReview
-from app.modules.tasks.models.submission_batch import SubmissionBatch
-from app.modules.tasks.models.approval_queue import ApprovalQueue
-from app.modules.tasks.models.task_history import TaskHistory
-from app.modules.tasks.models.activity_timeline import ActivityTimeline
-
 # 🌟 4. KPI Models
 from app.modules.kpi.models import (
-    KPIRecord, KPIFormula, KPILevelSetting, KPIPeriod, 
-    KPIAssignment, KPIScoringRuleItem, ActionPlan, KpiRule, 
-    KPIHistory, FormulaAuditLog
+    ActionPlan,
+    FormulaAuditLog,
+    KPIAssignment,
+    KPIFormula,
+    KPIHistory,
+    KPILevelSetting,
+    KPIPeriod,
+    KPIRecord,
+    KpiRule,
+    KPIScoringRuleItem,
 )
+from app.modules.notifications.models import Notification
 
 # 🌟 5. Targets & Notifications
 from app.modules.targets.models import Target
-from app.modules.notifications.models import Notification
+from app.modules.tasks.models.activity_timeline import ActivityTimeline
+from app.modules.tasks.models.approval_queue import ApprovalQueue
+from app.modules.tasks.models.submission_batch import SubmissionBatch
 
-# 🌟 6. Audit & Auth Logs
-from app.models.audit_log import AuditLog
-from app.modules.auth.models import PasswordHistory, LoginHistory, TokenBlacklist, AuthSession
+# 🌟 3. Tasks & Workflow Engine
+from app.modules.tasks.models.task import Task
+from app.modules.tasks.models.task_evidence import TaskEvidence
+from app.modules.tasks.models.task_history import TaskHistory
+from app.modules.tasks.models.task_review import TaskReview
 
-# 🌟 7. System Settings & Logs
-from app.models.system import SystemSetting, SystemEventLog
+# 🌟 1. Users & Roles (Single Source of Truth)
+from app.modules.users.models import Permission, Position, Role, RolePermission, User
+
+__all__ = [
+    'BaseModel',
+    'Base',
+    'AuditLog',
+    'SystemEventLog',
+    'SystemSetting',
+    'AuthSession',
+    'LoginHistory',
+    'PasswordHistory',
+    'TokenBlacklist',
+    'Department',
+    'UserDepartment',
+    'ActionPlan',
+    'FormulaAuditLog',
+    'KPIAssignment',
+    'KPIFormula',
+    'KPIHistory',
+    'KPILevelSetting',
+    'KPIPeriod',
+    'KPIRecord',
+    'KpiRule',
+    'KPIScoringRuleItem',
+    'Notification',
+    'Target',
+    'ActivityTimeline',
+    'ApprovalQueue',
+    'SubmissionBatch',
+    'Task',
+    'TaskEvidence',
+    'TaskHistory',
+    'TaskReview',
+    'Permission',
+    'Position',
+    'Role',
+    'RolePermission',
+    'User',
+]

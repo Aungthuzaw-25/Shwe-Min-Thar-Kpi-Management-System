@@ -5,9 +5,7 @@
 
 {% block content %}
 <style>
-    .audit-shell {
-        background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
-    }
+    .audit-shell { background: var(--color-bg); }
     .audit-stat {
         box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
     }
@@ -16,7 +14,7 @@
     }
     .audit-table-row:hover {
         background: #f8fafc;
-        box-shadow: inset 3px 0 0 #9b1c1c;
+        box-shadow: inset 3px 0 0 var(--color-primary);
     }
     .audit-table-row td {
         vertical-align: top;
@@ -42,7 +40,7 @@
     }
 </style>
 
-<main class="audit-shell min-h-full overflow-y-auto px-4 py-5 sm:px-6 lg:px-8">
+<main class="audit-shell workspace-page min-h-full overflow-y-auto">
     <div class="mx-auto max-w-7xl">
         <header class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>

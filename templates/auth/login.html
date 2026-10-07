@@ -6,29 +6,29 @@
     <title>KPI Dashboard - Sign In</title>
     
     <link rel="stylesheet" href="/static/css/output.css">
+    <link rel="stylesheet" href="/static/css/design-system.css">
     <link rel="stylesheet" href="/static/css/notifications.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
             color-scheme: light;
-            --kpi-red: #991b1b;
-            --kpi-red-dark: #7f1d1d;
-            --kpi-cream: #fcf6f0;
-            --kpi-ink: #1f2937;
-            --kpi-muted: #64748b;
+            --kpi-red: #2457d6;
+            --kpi-red-dark: #173ea5;
+            --kpi-cream: #f5f7fa;
+            --kpi-ink: #17212b;
+            --kpi-muted: #5f6b78;
         }
 
         body {
             font-family: 'Inter', sans-serif;
-            background:
-                radial-gradient(circle at 15% 10%, rgba(153, 27, 27, 0.08), transparent 32rem),
-                var(--kpi-cream);
+            background: var(--kpi-cream);
         }
 
         .bg-kpi-cream { background-color: transparent; }
         .login-card {
             animation: cardEnter 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
-            box-shadow: 0 24px 70px rgba(91, 33, 33, 0.12);
+            border: 1px solid #dbe2ea;
+            box-shadow: 0 8px 24px rgba(23, 33, 43, .08);
         }
         .login-input {
             min-height: 3rem;
@@ -51,7 +51,7 @@
         }
         .login-submit {
             min-height: 3rem;
-            background: linear-gradient(135deg, var(--kpi-red), var(--kpi-red-dark));
+            background: var(--kpi-red);
             transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
         }
         .login-submit:hover:not(:disabled) {
@@ -66,7 +66,7 @@
             content: "";
             position: absolute;
             border-radius: 999px;
-            background: rgba(255, 255, 255, 0.08);
+            background: rgba(255, 255, 255, 0.05);
             pointer-events: none;
             z-index: -1;
         }
@@ -285,6 +285,8 @@
     </div>
 
     <!-- Scripts -->
+    <script src="/static/js/csp-event-bridge.js"></script>
+    <script src="/static/js/csrf.js"></script>
     <script src="/static/js/notifications.js"></script>
     <script>
         // 🌟 SECURITY FIX: Global HTML Escape Function to prevent XSS
@@ -401,6 +403,18 @@
             window.history.replaceState({}, document.title, window.location.pathname);
         }
 
+        const allowedPostLoginPaths = new Set(['/dashboard', '/admin/dashboard', '/superadmin/dashboard']);
+        const requestedPostLoginPath = new URLSearchParams(window.location.search).get('next');
+        const safePostLoginPath = allowedPostLoginPaths.has(requestedPostLoginPath)
+            ? requestedPostLoginPath
+            : null;
+        const dashboardPathFor = (user) => {
+            const roleName = user?.role?.name || '';
+            if (roleName === 'Super Admin') return '/superadmin/dashboard';
+            if (roleName === 'Admin' || roleName === 'HR') return '/admin/dashboard';
+            return '/dashboard';
+        };
+
         document.getElementById('loginForm').addEventListener('submit', async (e) => {
             e.preventDefault();
 
@@ -430,20 +444,13 @@
                         localStorage.removeItem("remembered_email");
                     }
                     if (data.must_change_password) {
-                        window.location.href = '/auth/change-password';
+                        const destination = dashboardPathFor(data.user);
+                        window.location.href = `/auth/change-password?next=${encodeURIComponent(destination)}`;
                     } else {
                         const userData = data.user;
                         if(userData) {
                             localStorage.setItem("user", JSON.stringify(userData));
-                            const roleName = userData.role ? userData.role.name : '';
-                            
-                            if (roleName === 'Super Admin') {
-                                window.location.href = '/superadmin/dashboard';
-                            } else if (roleName === 'Admin' || roleName === 'HR') {
-                                window.location.href = '/admin/dashboard';
-                            } else {
-                                window.location.href = '/dashboard'; 
-                            }
+                            window.location.href = safePostLoginPath || dashboardPathFor(userData);
                         } else {
                             const userRole = data.access_token ? JSON.parse(atob(data.access_token.split('.')[1])).role : '';
                             const roleLower = userRole.toLowerCase();

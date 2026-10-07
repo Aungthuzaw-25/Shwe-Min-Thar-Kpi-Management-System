@@ -1,8 +1,11 @@
+from uuid import UUID
+
+from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from fastapi import HTTPException, status
-from uuid import UUID
-from app.modules.kpi.models import KPIRecord, KPIStatus, ActionPlan
+
+from app.modules.kpi.models import ActionPlan, KPIRecord, KPIStatus
+
 
 async def require_action_plan_check(db: AsyncSession, kpi_record_id: UUID):
     """

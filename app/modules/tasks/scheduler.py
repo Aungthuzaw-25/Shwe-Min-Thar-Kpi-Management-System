@@ -1,11 +1,13 @@
 from datetime import datetime, timedelta
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
-from app.modules.tasks.models.task import Task, TaskStatus, TaskFrequency
-from app.modules.tasks.models.task_history import TaskHistory
-import pytz
+
+from app.background_jobs.reminders import check_and_send_task_reminders
 from app.core.timezone import APPLICATION_TIMEZONE
+from app.modules.tasks.models.task import Task, TaskFrequency, TaskStatus
+from app.modules.tasks.models.task_history import TaskHistory
 
 timezone = APPLICATION_TIMEZONE
 
@@ -92,6 +94,5 @@ async def process_task_escalation(db: AsyncSession):
     print(f"⚠️ Escalated {len(stale_tasks)} stale tasks.")
 
 async def send_task_reminders(db: AsyncSession):
-    """Due Date နီးကပ်လာသော သို့မဟုတ် Pending ကြာနေသော Task များကို Email/Notification သတိပေးခြင်း"""
-    # (Email ပို့မည့် Logic ကို Phase 5 Notifications တွင် ချိတ်ဆက်မည်)
-    pass
+    """Dispatch the existing dashboard deadline reminders under the scheduler lock."""
+    await check_and_send_task_reminders(db)

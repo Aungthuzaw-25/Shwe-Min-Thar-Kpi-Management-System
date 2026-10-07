@@ -73,7 +73,7 @@ async def test_bootstrap_creates_super_admin_without_logging_password():
     assert account.first_name == "Super"
     assert account.last_name == "Admin"
     assert account.role_id == role.id
-    assert account.hashed_password != "ValidPassword123!"
+    assert account.hashed_password != "ValidPassword123!"  # noqa: S105 - synthetic test fixture; not a production credential
     assert all("ValidPassword123!" not in repr(value) for value in db.added)
     assert db.commits == 1
 

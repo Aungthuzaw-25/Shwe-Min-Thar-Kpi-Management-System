@@ -2,15 +2,17 @@
 {% set active_page = "permissions" %}
 {% block title %}Permission Management - KPI Platform{% endblock %}
 {% block content %}
-<div class="min-h-screen bg-slate-50 p-4 sm:p-6 lg:p-8">
-    <header class="mb-6">
-        <h2 class="text-2xl font-extrabold text-blue-950">Permission Management</h2>
-        <p class="mt-1 text-sm text-slate-500">Manage role-based defaults, user-specific overrides, and view the audit trail. Super Admin permissions cannot be self-edited.</p>
+<div class="workspace-page">
+    <header class="workspace-header">
+        <div>
+            <h2>Access control</h2>
+            <p>Manage role defaults, user-specific overrides, and the permission audit trail.</p>
+        </div>
     </header>
 
-    <div class="mx-auto max-w-[1400px] rounded-3xl border border-gray-100 bg-white p-5 shadow-sm sm:p-8">
+    <div class="workspace-table mx-auto max-w-[1400px] p-5 sm:p-8">
         <!-- ========== TAB NAVIGATION ========== -->
-        <div class="mb-6 flex flex-wrap gap-2 border-b border-slate-100 pb-4">
+        <div class="workspace-tabs mb-6" role="tablist" aria-label="Access control sections">
             <button data-tab="roles" class="tab-btn rounded-xl bg-blue-950 px-5 py-2.5 text-sm font-bold text-white transition-all">
                 <svg class="mr-1.5 inline h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
                 Role Matrix
@@ -372,11 +374,11 @@ function updateGroupSelectAll(group) {
 document.getElementById("roleSearch").addEventListener("input", (e) => {
     const q = e.target.value.toLowerCase();
     roleMatrix.querySelectorAll(".perm-row").forEach(row => {
-        row.style.display = row.dataset.code.toLowerCase().includes(q) ? "" : "none";
+        row.classList.toggle("is-hidden", !row.dataset.code.toLowerCase().includes(q));
     });
     roleMatrix.querySelectorAll(".perm-group").forEach(group => {
-        const visibleRows = group.querySelectorAll(".perm-row:not([style*='display: none'])");
-        group.style.display = visibleRows.length ? "" : "none";
+        const visibleRows = group.querySelectorAll(".perm-row:not(.is-hidden)");
+        group.classList.toggle("is-hidden", !visibleRows.length);
     });
 });
 
@@ -571,11 +573,11 @@ function renderUserMatrix(permissions) {
 document.getElementById("userSearch").addEventListener("input", (e) => {
     const q = e.target.value.toLowerCase();
     userMatrixEl.querySelectorAll(".user-perm-row").forEach(row => {
-        row.style.display = row.dataset.code.toLowerCase().includes(q) ? "" : "none";
+        row.classList.toggle("is-hidden", !row.dataset.code.toLowerCase().includes(q));
     });
     userMatrixEl.querySelectorAll(".user-perm-group").forEach(group => {
-        const visibleRows = group.querySelectorAll(".user-perm-row:not([style*='display: none'])");
-        group.style.display = visibleRows.length ? "" : "none";
+        const visibleRows = group.querySelectorAll(".user-perm-row:not(.is-hidden)");
+        group.classList.toggle("is-hidden", !visibleRows.length);
     });
 });
 

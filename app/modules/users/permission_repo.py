@@ -1,25 +1,25 @@
+from uuid import UUID
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import delete
-from uuid import UUID
-from typing import List, Optional, Dict
-from app.modules.users.models import Permission, RolePermission, Role, UserPermissionOverride, User
-from app.modules.departments.models import Department, UserDepartment
+
+from app.modules.departments.models import UserDepartment
+from app.modules.users.models import Permission, Role, RolePermission, User, UserPermissionOverride
 
 
-async def get_all_permissions(db: AsyncSession) -> List[Permission]:
+async def get_all_permissions(db: AsyncSession) -> list[Permission]:
     stmt = select(Permission).order_by(Permission.code)
     result = await db.execute(stmt)
     return result.scalars().all()
 
 
-async def get_role_permissions(db: AsyncSession, role_id: UUID) -> List[Permission]:
+async def get_role_permissions(db: AsyncSession, role_id: UUID) -> list[Permission]:
     stmt = select(Permission).join(RolePermission).where(RolePermission.role_id == role_id)
     result = await db.execute(stmt)
     return result.scalars().all()
 
 
-async def assign_permissions_to_role(db: AsyncSession, role_id: UUID, permission_codes: List[str]):
+async def assign_permissions_to_role(db: AsyncSession, role_id: UUID, permission_codes: list[str]):
     permission_codes = list(dict.fromkeys(permission_codes))
     # 1. ယခင်ရှိပြီးသား Permission များကို အရင်ဖျက်ပါမည် (Clean Slate)
     stmt_delete = select(RolePermission).where(RolePermission.role_id == role_id)
@@ -54,7 +54,7 @@ async def assign_permissions_to_role(db: AsyncSession, role_id: UUID, permission
 # =====================================================================
 async def get_user_effective_permissions(
     db: AsyncSession, user_id: UUID
-) -> Dict:
+) -> dict:
     """Compute the effective permission matrix for a user by merging
     role permissions with user-specific overrides.
 
@@ -87,7 +87,7 @@ async def get_user_effective_permissions(
 
     # Resolve overrides for the user's current department.  An explicit deny
     # wins over an allow when legacy data contains multiple scoped rows.
-    override_map: Dict[str, UserPermissionOverride] = {}
+    override_map: dict[str, UserPermissionOverride] = {}
     for ov in (user.permission_overrides or []):
         perm = getattr(ov, "permission", None)
         if not perm:
@@ -166,8 +166,8 @@ async def get_user_effective_permissions(
 async def bulk_save_user_overrides(
     db: AsyncSession,
     user_id: UUID,
-    overrides: List[Dict],
-) -> List[Dict]:
+    overrides: list[dict],
+) -> list[dict]:
     """Atomically replace all user permission overrides.
 
     ``overrides`` is a list of dicts with keys:

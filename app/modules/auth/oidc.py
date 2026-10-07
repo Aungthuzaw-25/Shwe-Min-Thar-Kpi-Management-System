@@ -6,7 +6,8 @@ from typing import Any
 from urllib.parse import urlencode
 
 import httpx
-from jose import JWTError, jwt
+import jwt
+from jwt import PyJWTError as JWTError
 
 
 class OIDCValidationError(ValueError):
@@ -113,18 +114,18 @@ class OIDCProvider:
         metadata = await self.metadata()
         try:
             header = jwt.get_unverified_header(id_token)
-            unverified_claims = jwt.get_unverified_claims(id_token)
+            allowed_algorithms = ["RS256", "RS384", "RS512", "ES256", "ES384", "ES512"]
+            if header.get("alg") not in allowed_algorithms:
+                raise OIDCValidationError("Unsupported ID token algorithm.")
             keys = await self._jwks(metadata["jwks_uri"])
             key = next((item for item in keys.get("keys", []) if item.get("kid") == header.get("kid")), None)
             if not key:
                 raise OIDCValidationError("Signing key not found.")
             issuer = metadata["issuer"]
-            if self.microsoft and unverified_claims.get("tid"):
-                issuer = f"https://login.microsoftonline.com/{unverified_claims['tid']}/v2.0"
             claims = jwt.decode(
                 id_token,
-                key,
-                algorithms=["RS256", "RS384", "RS512", "ES256", "ES384", "ES512"],
+                jwt.PyJWK.from_dict(key),
+                algorithms=allowed_algorithms,
                 audience=self.client_id,
                 issuer=issuer,
                 options={"verify_at_hash": False},

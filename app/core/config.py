@@ -1,8 +1,10 @@
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import field_validator, model_validator
 from pathlib import Path
-from typing import Optional
 from urllib.parse import urlparse
+
+from pydantic import field_validator, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+ASYNC_POSTGRES_SCHEME = "postgresql+asyncpg://"
 
 class Settings(BaseSettings):
     PROJECT_NAME: str
@@ -16,48 +18,70 @@ class Settings(BaseSettings):
     ALGORITHM: str
     ACCESS_TOKEN_EXPIRE_MINUTES: int
     REFRESH_TOKEN_EXPIRE_DAYS: int
+    DATABASE_SSL_REQUIRED: bool = True
+    QA_DATABASE_HOST: str = "postgres-qa"
+    QA_DATABASE_PORT: int = 5432
+    QA_DATABASE_NAME: str = "kpi_qa"
 
     # 🌟 MinIO / S3 Storage Settings
     USE_S3: bool = True
-    S3_ENDPOINT: Optional[str] = None
-    S3_ACCESS_KEY: Optional[str] = None
-    S3_SECRET_KEY: Optional[str] = None
+    S3_ENDPOINT: str | None = None
+    S3_ACCESS_KEY: str | None = None
+    S3_SECRET_KEY: str | None = None
     S3_BUCKET_NAME: str = "kpi-evidence"
     ALLOWED_ORIGINS: str = "http://localhost:8000,http://127.0.0.1:8000"
-    REDIS_URL: Optional[str] = None
+    REDIS_URL: str | None = None
     OAUTH_ENABLED: bool = False
-    OAUTH_PUBLIC_BASE_URL: Optional[str] = None
+    OAUTH_PUBLIC_BASE_URL: str | None = None
     OAUTH_STATE_TTL_SECONDS: int = 600
     GOOGLE_OIDC_ENABLED: bool = False
-    GOOGLE_CLIENT_ID: Optional[str] = None
-    GOOGLE_CLIENT_SECRET: Optional[str] = None
-    GOOGLE_REDIRECT_URI: Optional[str] = None
+    GOOGLE_CLIENT_ID: str | None = None
+    GOOGLE_CLIENT_SECRET: str | None = None
+    GOOGLE_REDIRECT_URI: str | None = None
     MICROSOFT_OIDC_ENABLED: bool = False
-    MICROSOFT_CLIENT_ID: Optional[str] = None
-    MICROSOFT_CLIENT_SECRET: Optional[str] = None
+    MICROSOFT_CLIENT_ID: str | None = None
+    MICROSOFT_CLIENT_SECRET: str | None = None
     MICROSOFT_TENANT_ID: str = "organizations"
-    MICROSOFT_REDIRECT_URI: Optional[str] = None
+    MICROSOFT_REDIRECT_URI: str | None = None
     ENABLE_SCHEDULER: bool = False
     RUN_SCHEDULER: bool = False
+    SKIP_DATABASE_SEED: bool = False
     TIMEZONE: str = "Asia/Yangon"
     MAIL_ENABLED: bool = False
-    MAIL_HOST: Optional[str] = None
+    MAIL_HOST: str | None = None
     MAIL_PORT: int = 587
-    MAIL_USERNAME: Optional[str] = None
-    MAIL_PASSWORD: Optional[str] = None
-    MAIL_FROM: Optional[str] = None
+    MAIL_USERNAME: str | None = None
+    MAIL_PASSWORD: str | None = None
+    MAIL_FROM: str | None = None
     MAIL_FROM_NAME: str = "Enterprise KPI Platform"
     MAIL_USE_TLS: bool = True
-    BOOTSTRAP_SUPERADMIN_EMAIL: Optional[str] = None
-    BOOTSTRAP_SUPERADMIN_PASSWORD: Optional[str] = None
-    SEED_SUPERADMIN_EMAIL: Optional[str] = None
-    SEED_SUPERADMIN_PASSWORD: Optional[str] = None
+    BOOTSTRAP_SUPERADMIN_EMAIL: str | None = None
+    BOOTSTRAP_SUPERADMIN_PASSWORD: str | None = None
+    SEED_SUPERADMIN_EMAIL: str | None = None
+    SEED_SUPERADMIN_PASSWORD: str | None = None
     # Backward-compatible read of the former variable name for local setups.
-    SEED_SUPER_ADMIN_PASSWORD: Optional[str] = None
-    SEED_DEMO_PASSWORD: Optional[str] = None
-    SEED_L2_PASSWORD: Optional[str] = None
-    SEED_L0_PASSWORD: Optional[str] = None
-    SEED_L1_PASSWORD: Optional[str] = None
+    SEED_SUPER_ADMIN_PASSWORD: str | None = None
+    SEED_DEMO_PASSWORD: str | None = None
+    SEED_L2_PASSWORD: str | None = None
+    SEED_L0_PASSWORD: str | None = None
+    SEED_L1_PASSWORD: str | None = None
+    SEED_TEST_ACCOUNTS_ENABLED: bool = False
+    SEED_TEST_SUPERADMIN_EMAIL: str | None = None
+    SEED_TEST_SUPERADMIN_PASSWORD: str | None = None
+    SEED_TEST_ADMIN_EMAIL: str | None = None
+    SEED_TEST_ADMIN_PASSWORD: str | None = None
+    SEED_TEST_FIRST_LOGIN_EMAIL: str | None = None
+    SEED_TEST_FIRST_LOGIN_PASSWORD: str | None = None
+    SEED_TEST_L0_PASSWORD: str | None = None
+    SEED_TEST_L1_PASSWORD: str | None = None
+    SEED_TEST_L2_PASSWORD: str | None = None
+
+    @field_validator("ALGORITHM")
+    @classmethod
+    def validate_jwt_algorithm(cls, value: str) -> str:
+        if value != "HS256":
+            raise ValueError("ALGORITHM must be HS256.")
+        return value
 
     @field_validator("DATABASE_URL")
     @classmethod
@@ -68,13 +92,13 @@ class Settings(BaseSettings):
         # another PostgreSQL scheme; unwrap that extra scheme before parsing.
         for prefix in ("postgresql+asyncpg://postgresql://", "postgresql://postgresql://"):
             if v.startswith(prefix):
-                v = "postgresql+asyncpg://" + v[len(prefix):]
+                v = ASYNC_POSTGRES_SCHEME + v[len(prefix):]
                 break
 
         if v.startswith("postgres://"):
-            v = v.replace("postgres://", "postgresql+asyncpg://", 1)
+            v = v.replace("postgres://", ASYNC_POSTGRES_SCHEME, 1)
         elif v.startswith("postgresql://") and not v.startswith("postgresql+asyncpg://"):
-            v = v.replace("postgresql://", "postgresql+asyncpg://", 1)
+            v = v.replace("postgresql://", ASYNC_POSTGRES_SCHEME, 1)
 
         for pattern in (
             "?channel_binding=require",
@@ -101,17 +125,53 @@ class Settings(BaseSettings):
             )
 
         if self.ENV.lower() == "production":
-            if self.SECRET_KEY.lower() in {
-                "replace-with-super-secret-key-in-production",
-                "change-me",
-            }:
-                raise ValueError("SECRET_KEY must be changed in production.")
+            secret_key = self.SECRET_KEY.strip()
+            if (
+                len(secret_key) < 32
+                or secret_key.lower() in {
+                    "replace-with-super-secret-key-in-production",
+                    "change-me",
+                }
+                or secret_key.upper().startswith("CHANGE_ME")
+            ):
+                raise ValueError("SECRET_KEY must be a non-placeholder value of at least 32 characters in production.")
             if not self.ALLOWED_ORIGINS.strip():
                 raise ValueError("ALLOWED_ORIGINS must be configured in production.")
+            if not self.DATABASE_SSL_REQUIRED:
+                raise ValueError("DATABASE_SSL_REQUIRED must be enabled in production.")
+            database_host = (urlparse(getattr(self, "DATABASE_URL", "")).hostname or "").lower()
+            if database_host in {"", "localhost", "127.0.0.1", "::1"}:
+                raise ValueError("Production DATABASE_URL must target a remote TLS-protected database.")
+            if not self.USE_S3:
+                raise ValueError("USE_S3 must be enabled in production.")
             if self.USE_S3:
                 storage_scheme = urlparse(self.S3_ENDPOINT or "").scheme.lower()
                 if storage_scheme != "https":
                     raise ValueError("S3_ENDPOINT must use HTTPS in production.")
+
+        if self.ENV.lower() == "qa":
+            database = urlparse(self.DATABASE_URL)
+            database_host = (database.hostname or "").lower()
+            expected_host = self.QA_DATABASE_HOST.strip().lower()
+            database_name = database.path.lstrip("/")
+            allowed_qa_hosts = {"localhost", "127.0.0.1", "::1", "postgres-qa"}
+            allowed_qa_ports = {5432, 55432}
+            if expected_host not in allowed_qa_hosts:
+                    raise ValueError("QA_DATABASE_HOST must identify the local QA PostgreSQL service.")
+            if self.QA_DATABASE_PORT not in allowed_qa_ports:
+                    raise ValueError("QA_DATABASE_PORT must identify the local QA PostgreSQL service.")
+            if database_host != expected_host:
+                    raise ValueError(
+                        "QA DATABASE_URL must target the configured local QA PostgreSQL host."
+                    )
+            if database.port != self.QA_DATABASE_PORT:
+                    raise ValueError(
+                        "QA DATABASE_URL must target the configured local QA PostgreSQL port."
+                    )
+            if database_name != self.QA_DATABASE_NAME:
+                    raise ValueError(
+                        "QA DATABASE_URL must target the configured local QA database name."
+                    )
 
         return self
 

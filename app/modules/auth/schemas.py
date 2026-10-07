@@ -1,5 +1,6 @@
+
 from pydantic import BaseModel
-from typing import Optional
+
 
 class LoginRequest(BaseModel):
     email: str
@@ -12,7 +13,7 @@ class TokenResponse(BaseModel):
     refresh_token: str
     token_type: str
     must_change_password: bool = False
-    user: Optional[dict] = None
+    user: dict | None = None
 
 class RefreshTokenRequest(BaseModel):
     refresh_token: str
@@ -20,3 +21,6 @@ class RefreshTokenRequest(BaseModel):
 class ChangePasswordRequest(BaseModel):
     old_password: str
     new_password: str
+    # Optional for API compatibility; supported clients send it and the router
+    # rejects a mismatch before any password state is changed.
+    confirm_new_password: str | None = None

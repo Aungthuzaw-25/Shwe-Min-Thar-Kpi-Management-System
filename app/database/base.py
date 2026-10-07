@@ -1,8 +1,11 @@
-from sqlalchemy import Column, DateTime, Boolean, text
-from sqlalchemy.dialects.postgresql import UUID
 import uuid
-from app.database.connection import Base
+
+from sqlalchemy import Boolean, Column, DateTime, text
+from sqlalchemy.dialects.postgresql import UUID
+
 from app.core.timezone import utc_now_naive
+from app.database.connection import Base
+
 
 class BaseModel(Base):
     __abstract__ = True

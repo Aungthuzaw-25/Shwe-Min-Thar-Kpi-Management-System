@@ -1,21 +1,54 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query # 🌟 FIX: Added Query for Pagination
+from datetime import UTC, datetime
+from uuid import UUID
+
+from fastapi import (  # 🌟 FIX: Added Query for Pagination
+    APIRouter,
+    Depends,
+    HTTPException,
+    Query,
+    status,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
-from typing import List
-from uuid import UUID
-from datetime import datetime, timezone
 
+from app.core.dependencies import (
+    RoleChecker,
+    enforce_permission,
+    enforce_user_scope,
+    get_current_user,
+)
 from app.database.connection import get_db
-from app.core.dependencies import RoleChecker, get_current_user, enforce_permission, enforce_user_scope
-from app.modules.kpi.models import ActionPlan, ActionPlanStatus, KPIRecord, KPIStatus, KPIPeriodStatus
+from app.modules.departments.models import UserDepartment
 from app.modules.kpi.action_plan_schemas import ActionPlanCreate, ActionPlanReview
+from app.modules.kpi.models import (
+    ActionPlan,
+    ActionPlanStatus,
+    KPIPeriodStatus,
+    KPIRecord,
+    KPIStatus,
+)
 from app.modules.users.models import User
 
 router = APIRouter(prefix="/action-plans", tags=["KPI Action Plans"])
 
 # Manager များ၊ HR နှင့် Admin များသာ Review လုပ်ခွင့်ရှိသည်
 reviewer_role = RoleChecker(["Super Admin", "Admin", "HR", "Department Head"])
+
+
+async def _enforce_kpi_record_scope(
+    db: AsyncSession, current_user: User, target_user_id
+) -> None:
+    try:
+        await enforce_user_scope(db, current_user, target_user_id)
+    except HTTPException as exc:
+        if exc.status_code != status.HTTP_403_FORBIDDEN:
+            raise
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="KPI Record not found.",
+        ) from exc
+
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
 async def submit_action_plan(
@@ -35,7 +68,7 @@ async def submit_action_plan(
     if not record:
         raise HTTPException(status_code=404, detail="KPI Record not found.")
         
-    await enforce_user_scope(db, current_user, record.user_id)
+    await _enforce_kpi_record_scope(db, current_user, record.user_id)
     if record.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Only the KPI owner can submit an action plan.")
     if record.period and record.period.status in {KPIPeriodStatus.FINALIZED, KPIPeriodStatus.LOCKED, KPIPeriodStatus.CANCELLED}:
@@ -71,7 +104,20 @@ async def get_all_action_plans(
 ):
     """System အတွင်းရှိ Action Plan အားလုံးကို ကြည့်ရှုရန် (Manager/Admin View)"""
     enforce_permission(current_user, "kpi.view")
-    stmt = select(ActionPlan).where(ActionPlan.is_deleted == False).order_by(ActionPlan.created_at.desc()).offset(skip).limit(limit)
+    stmt = select(ActionPlan).where(ActionPlan.is_deleted.is_(False))
+    if current_user.role.name not in {"Super Admin", "HR"}:
+        stmt = stmt.where(ActionPlan.user_id.in_(
+            select(UserDepartment.user_id).where(
+                UserDepartment.department_id.in_(
+                    select(UserDepartment.department_id).where(
+                        UserDepartment.user_id == current_user.id,
+                        UserDepartment.is_deleted.is_(False),
+                    )
+                ),
+                UserDepartment.is_deleted.is_(False),
+            )
+        ))
+    stmt = stmt.order_by(ActionPlan.created_at.desc()).offset(skip).limit(limit)
     result = await db.execute(stmt)
     return result.scalars().all()
 
@@ -85,12 +131,16 @@ async def get_action_plan(
     enforce_permission(current_user, "kpi.view")
     
     # 🌟 SECURITY: Prevent IDOR (Data Stealing). Users cannot read other's PIPs.
-    record = await db.get(KPIRecord, kpi_record_id)
+    record = (await db.execute(
+        select(KPIRecord).where(
+            KPIRecord.id == kpi_record_id,
+            KPIRecord.is_deleted.is_(False),
+        )
+    )).scalars().first()
     if not record:
         raise HTTPException(status_code=404, detail="KPI Record not found.")
         
-    if str(record.user_id) != str(current_user.id) and current_user.role.name not in ["Super Admin", "Admin", "HR", "Department Head"]:
-        raise HTTPException(status_code=403, detail="Security Exception: Unauthorized access to sensitive action plan.")
+    await _enforce_kpi_record_scope(db, current_user, record.user_id)
 
     stmt = select(ActionPlan).where(ActionPlan.kpi_record_id == kpi_record_id, ActionPlan.is_deleted == False)
     result = await db.execute(stmt)
@@ -116,6 +166,7 @@ async def review_action_plan(
     )).scalars().first()
     if not plan:
         raise HTTPException(status_code=404, detail="Action Plan not found.")
+    await enforce_user_scope(db, current_user, plan.user_id)
     if plan.record and plan.record.period and plan.record.period.status in {
         KPIPeriodStatus.FINALIZED, KPIPeriodStatus.LOCKED, KPIPeriodStatus.CANCELLED
     }:
@@ -135,7 +186,7 @@ async def review_action_plan(
     plan.status = payload.status
     plan.manager_feedback = payload.manager_feedback
     plan.reviewed_by_id = current_user.id
-    plan.reviewed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    plan.reviewed_at = datetime.now(UTC).replace(tzinfo=None)
 
     db.add(plan)
     await db.commit()

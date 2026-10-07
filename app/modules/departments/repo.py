@@ -1,12 +1,12 @@
+from uuid import UUID
+
+from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import func
-from sqlalchemy.orm import selectinload 
-from uuid import UUID
-from typing import List, Optional
+from sqlalchemy.orm import selectinload
 
 from app.modules.departments.models import Department, UserDepartment
-from app.modules.users.models import User
+
 
 async def create_department(db: AsyncSession, dept_data: dict) -> Department:
     try:
@@ -19,7 +19,7 @@ async def create_department(db: AsyncSession, dept_data: dict) -> Department:
         await db.rollback()
         raise e
 
-async def get_all_departments(db: AsyncSession, skip: int = 0, limit: int = 100) -> List[Department]:
+async def get_all_departments(db: AsyncSession, skip: int = 0, limit: int = 100) -> list[Department]:
     stmt = (
         select(Department)
         .where(Department.is_deleted == False)
@@ -30,22 +30,22 @@ async def get_all_departments(db: AsyncSession, skip: int = 0, limit: int = 100)
     result = await db.execute(stmt)
     return list(result.scalars().all())
 
-async def get_department_by_id(db: AsyncSession, dept_id: UUID) -> Optional[Department]:
+async def get_department_by_id(db: AsyncSession, dept_id: UUID) -> Department | None:
     stmt = select(Department).where(Department.id == dept_id, Department.is_deleted == False)
     result = await db.execute(stmt)
     return result.scalar_one_or_none()
 
-async def get_department_with_positions(db: AsyncSession, dept_id: UUID) -> Optional[Department]:
+async def get_department_with_positions(db: AsyncSession, dept_id: UUID) -> Department | None:
     stmt = select(Department).options(selectinload(Department.positions)).where(Department.id == dept_id, Department.is_deleted == False)
     result = await db.execute(stmt)
     return result.scalar_one_or_none()
 
-async def get_department_by_name(db: AsyncSession, name: str) -> Optional[Department]:
+async def get_department_by_name(db: AsyncSession, name: str) -> Department | None:
     stmt = select(Department).where(Department.name == name, Department.is_deleted == False)
     result = await db.execute(stmt)
     return result.scalar_one_or_none()
 
-async def get_department_any(db: AsyncSession, dept_id: UUID) -> Optional[Department]:
+async def get_department_any(db: AsyncSession, dept_id: UUID) -> Department | None:
     stmt = select(Department).where(Department.id == dept_id)
     result = await db.execute(stmt)
     return result.scalar_one_or_none()

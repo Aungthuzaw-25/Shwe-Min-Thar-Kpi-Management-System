@@ -4,19 +4,19 @@ import logging
 import os
 from collections.abc import Callable
 
+from fastapi import HTTPException
 from pydantic import EmailStr, TypeAdapter, ValidationError
 from sqlalchemy import select, text
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
-from fastapi import HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.password_policy import validate_password_strength
 from app.core.security import get_password_hash
 from app.database.connection import AsyncSessionLocal
+from app.database.seed import ensure_roles_and_permissions
 from app.models.audit_log import AuditLog
 from app.modules.users.models import Role, User
-from app.database.seed import ensure_roles_and_permissions
 
 logger = logging.getLogger(__name__)
 

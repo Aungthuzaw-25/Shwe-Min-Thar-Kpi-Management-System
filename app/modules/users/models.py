@@ -1,8 +1,20 @@
-from sqlalchemy import CheckConstraint, Column, String, Boolean, Integer, ForeignKey, DateTime, UniqueConstraint, Index
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import relationship, backref
-from app.database.base import BaseModel
 import uuid
+
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    Column,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    UniqueConstraint,
+)
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import backref, relationship
+
+from app.database.base import BaseModel
 
 # ──────────────────────────────────────
 # Constants for repeated string literals

@@ -1,15 +1,26 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query # 🌟 FIX: Added Query for Pagination
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
-from typing import List
 from uuid import UUID
 
-from app.database.connection import get_db
+from fastapi import (  # 🌟 FIX: Added Query for Pagination
+    APIRouter,
+    Depends,
+    Query,
+    status,
+)
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+
 # 🌟 RequireRole အစား RoleChecker သို့ ပြောင်းထားပါသည်
-from app.core.dependencies import RoleChecker, get_current_user, enforce_permission, enforce_user_scope
-from app.modules.kpi.models import KPIAssignment
-from app.modules.kpi.assignment_schemas import KPIAssignmentCreate, KPIBulkAssignmentCreate
+from app.core.dependencies import (
+    RoleChecker,
+    enforce_department_scope,
+    enforce_permission,
+    enforce_user_scope,
+    get_current_user,
+)
+from app.database.connection import get_db
 from app.modules.kpi import assignment_service
+from app.modules.kpi.assignment_schemas import KPIAssignmentCreate, KPIBulkAssignmentCreate
+from app.modules.kpi.models import KPIAssignment
 from app.modules.users.models import User
 
 router = APIRouter(prefix="/assignments", tags=["KPI Assignments"])
@@ -25,6 +36,7 @@ async def assign_single_kpi(
 ):
     """ဝန်ထမ်းတစ်ဦးချင်းစီအတွက် KPI သတ်မှတ်ပေးရန်"""
     enforce_permission(current_user, "kpi.create")
+    await enforce_department_scope(db, current_user, payload.department_id)
     return await assignment_service.assign_kpi_to_user(db, payload.model_dump(), current_user.id)
 
 @router.post("/bulk-assign", status_code=status.HTTP_201_CREATED, dependencies=[Depends(assigner_role)])
@@ -35,6 +47,7 @@ async def bulk_assign_kpi(
 ):
     """ဝန်ထမ်းများစွာအတွက် KPI တစ်ပြိုင်နက် သတ်မှတ်ပေးရန်"""
     enforce_permission(current_user, "kpi.create")
+    await enforce_department_scope(db, current_user, payload.department_id)
     return await assignment_service.bulk_assign_kpi(db, payload.model_dump(), current_user.id)
 
 # 🌟 PERFORMANCE FIX: Added skip and limit to prevent memory exhaustion

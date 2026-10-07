@@ -8,8 +8,8 @@ from sqlalchemy.orm import joinedload
 
 from app.core.dependencies import get_current_user
 from app.database.connection import get_db
-from app.modules.tasks.models.activity_timeline import ActivityTimeline
 from app.modules.departments.models import UserDepartment
+from app.modules.tasks.models.activity_timeline import ActivityTimeline
 from app.services.activity_service import activity_payload, get_activity_scope_user_ids
 
 router = APIRouter(prefix="/activity", tags=["Activity"])

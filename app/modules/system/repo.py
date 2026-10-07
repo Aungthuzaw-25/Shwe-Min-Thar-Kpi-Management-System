@@ -1,20 +1,21 @@
+from datetime import datetime
+from uuid import UUID
+
+from sqlalchemy import func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import func, or_
-from typing import List, Optional
-from uuid import UUID
-from datetime import datetime
 
-from app.models.system import SystemSetting, SystemEventLog, LogLevel
+from app.models.system import LogLevel, SystemEventLog, SystemSetting
 from app.modules.system.schemas import SystemSettingCreate, SystemSettingUpdate
 
-async def get_all_settings(db: AsyncSession) -> List[SystemSetting]:
+
+async def get_all_settings(db: AsyncSession) -> list[SystemSetting]:
     # Setting အရေအတွက်က နည်းတဲ့အတွက် Limit မလိုပါ
     stmt = select(SystemSetting).order_by(SystemSetting.key)
     result = await db.execute(stmt)
     return result.scalars().all()
 
-async def get_setting_by_key(db: AsyncSession, key: str) -> Optional[SystemSetting]:
+async def get_setting_by_key(db: AsyncSession, key: str) -> SystemSetting | None:
     stmt = select(SystemSetting).where(SystemSetting.key == key)
     result = await db.execute(stmt)
     # ⚡ PERFORMANCE & DATA INTEGRITY FIX: Changed to scalar_one_or_none
@@ -50,7 +51,7 @@ async def get_recent_logs(
     level: LogLevel | None = None, event_type: str | None = None,
     search: str | None = None, start: datetime | None = None,
     end: datetime | None = None,
-) -> List[SystemEventLog]:
+) -> list[SystemEventLog]:
     stmt = select(SystemEventLog).where(SystemEventLog.is_deleted.is_(False))
     if level:
         stmt = stmt.where(SystemEventLog.level == level)
@@ -92,7 +93,7 @@ async def count_system_logs(
     return int((await db.execute(stmt)).scalar_one())
 
 
-async def get_system_log(db: AsyncSession, log_id: UUID) -> Optional[SystemEventLog]:
+async def get_system_log(db: AsyncSession, log_id: UUID) -> SystemEventLog | None:
     result = await db.execute(select(SystemEventLog).where(
         SystemEventLog.id == log_id,
         SystemEventLog.is_deleted.is_(False),

@@ -1,19 +1,20 @@
-from pydantic import BaseModel, Field
-from typing import Optional, List
 from uuid import UUID
+
+from pydantic import BaseModel, Field
+
 
 class DepartmentCreate(BaseModel):
     name: str
     priority: int = Field(default=0, ge=0, le=100)
 
 class DepartmentUpdate(BaseModel):
-    name: Optional[str] = None
-    priority: Optional[int] = Field(default=None, ge=0, le=100)
+    name: str | None = None
+    priority: int | None = Field(default=None, ge=0, le=100)
 
 class DepartmentResponse(BaseModel):
     id: UUID
     name: str
-    head_id: Optional[UUID] = None
+    head_id: UUID | None = None
     priority: int = 0
     class Config:
         from_attributes = True
@@ -27,7 +28,7 @@ class PositionInDepartment(BaseModel):
         from_attributes = True
 
 class DepartmentDetailResponse(DepartmentResponse):
-    positions: List[PositionInDepartment] = []
+    positions: list[PositionInDepartment] = []
     class Config:
         from_attributes = True
 

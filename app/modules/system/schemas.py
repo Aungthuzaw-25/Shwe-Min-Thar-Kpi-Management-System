@@ -1,17 +1,20 @@
-from pydantic import BaseModel, ConfigDict, field_validator, Field, StrictBool, StrictInt
-from typing import Optional, Any, Dict
 from datetime import datetime
+from typing import Any
 from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, field_validator
+
 from app.models.system import LogLevel
+
 
 class SystemSettingCreate(BaseModel):
     key: str
-    value: Dict[str, Any]
-    description: Optional[str] = None
+    value: dict[str, Any]
+    description: str | None = None
 
 class SystemSettingUpdate(BaseModel):
-    value: Optional[Dict[str, Any]] = None
-    description: Optional[str] = None
+    value: dict[str, Any] | None = None
+    description: str | None = None
 
 
 class PasswordPolicyValue(BaseModel):
@@ -22,10 +25,10 @@ class PasswordPolicyValue(BaseModel):
 class SystemSettingResponse(BaseModel):
     id: UUID
     key: str
-    value: Dict[str, Any]
-    description: Optional[str] = None
+    value: dict[str, Any]
+    description: str | None = None
     created_at: datetime
-    updated_at: Optional[datetime] = None
+    updated_at: datetime | None = None
 
     # 🌟 FIX: Updated to Pydantic V2 syntax
     model_config = ConfigDict(from_attributes=True)
@@ -42,8 +45,8 @@ class SystemEventLogResponse(BaseModel):
     event_type: str
     level: LogLevel
     message: str
-    details: Optional[Dict[str, Any]] = None
-    created_at: Optional[datetime] = None
+    details: dict[str, Any] | None = None
+    created_at: datetime | None = None
 
     # 🌟 FIX: Updated to Pydantic V2 syntax
     model_config = ConfigDict(from_attributes=True)

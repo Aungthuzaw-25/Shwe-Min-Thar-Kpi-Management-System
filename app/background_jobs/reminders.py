@@ -3,15 +3,15 @@ Background Reminders & Notification Dispatcher
 """
 import logging
 from datetime import datetime, timedelta
-import pytz
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 
-from app.database.connection import AsyncSessionLocal
-from app.modules.tasks.models.task import Task, TaskStatus
-from app.modules.notifications.repo import create_notification
 from app.core.timezone import APPLICATION_TIMEZONE
+from app.database.connection import AsyncSessionLocal
+from app.modules.notifications.repo import create_notification
+from app.modules.tasks.models.task import Task, TaskStatus
 
 logger = logging.getLogger(__name__)
 timezone = APPLICATION_TIMEZONE
@@ -31,20 +31,30 @@ async def check_and_send_task_reminders(db: AsyncSession):
     result_due = await db.execute(stmt_due)
     due_tasks = result_due.scalars().all()
     
+    reminders_sent = 0
     for t in due_tasks:
         try:
+            last_sent = t.last_reminder_sent
+            if last_sent is not None:
+                if last_sent.tzinfo is None:
+                    last_sent = timezone.localize(last_sent)
+                if last_sent >= now - timedelta(hours=24):
+                    continue
             await create_notification(db, {
                 "user_id": t.owner_id,
                 "title": "Task Deadline Approaching",
                 "message": f"Reminder: Your task '{t.title}' is due on {t.due_date.strftime('%d %b %Y')}.",
                 "notification_type": "DEADLINE",
                 "channel": "DASHBOARD"
-            })
+            }, commit=False)
+            t.last_reminder_sent = now
+            db.add(t)
+            reminders_sent += 1
         except Exception as e:
             logger.error(f"Error sending deadline reminder for task {t.id}: {e}")
 
     await db.commit()
-    logger.info(f"Dispatched {len(due_tasks)} task deadline reminders.")
+    logger.info(f"Dispatched {reminders_sent} task deadline reminders.")
 
 async def run_reminders_cron():
     """APScheduler မှ ခေါ်ယူရန် Wrapper Function"""

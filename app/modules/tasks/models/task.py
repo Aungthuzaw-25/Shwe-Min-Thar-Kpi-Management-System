@@ -2,13 +2,14 @@
 Enterprise Task & Workflow Engine Model
 """
 import enum
-from sqlalchemy import (
-    Column, String, Text, ForeignKey, DateTime, 
-    Enum as SQLEnum, Integer, Boolean, Index
-)
+
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
+
 from app.database.base import BaseModel
+
 
 # ==============================================================================
 # 🌟 1. ENUMS (Task Status & Frequency Lifecycle)

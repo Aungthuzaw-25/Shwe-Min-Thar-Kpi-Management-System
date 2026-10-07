@@ -1,10 +1,12 @@
+from datetime import UTC, datetime
+from uuid import UUID
+
+from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from fastapi import HTTPException, status
-from uuid import UUID
-from datetime import datetime, timezone
-from app.modules.kpi.models import KPIAssignment, KPIFormula, KPIPeriod
+
 from app.modules.departments.models import Department, UserDepartment
+from app.modules.kpi.models import KPIAssignment, KPIFormula, KPIPeriod
 from app.modules.users.models import Position, User
 
 
@@ -37,6 +39,7 @@ async def validate_assignment_scope(
         select(UserDepartment).where(
             UserDepartment.user_id == user_id,
             UserDepartment.department_id == department_id,
+            UserDepartment.is_deleted.is_(False),
         )
     )
     if not membership.scalars().first():
@@ -75,7 +78,7 @@ async def assign_kpi_to_user(db: AsyncSession, data: dict, assigner_id: UUID):
     assignment = KPIAssignment(
         **data,
         assigned_by_id=assigner_id,
-        assigned_at=datetime.now(timezone.utc).replace(tzinfo=None)
+        assigned_at=datetime.now(UTC).replace(tzinfo=None)
     )
     db.add(assignment)
     await db.commit()
@@ -107,7 +110,7 @@ async def bulk_assign_kpi(db: AsyncSession, data: dict, assigner_id: UUID):
             kpi_formula_id=data['kpi_formula_id'],
             kpi_period_id=data['kpi_period_id'],
             assigned_by_id=assigner_id,
-            assigned_at=datetime.now(timezone.utc).replace(tzinfo=None)
+            assigned_at=datetime.now(UTC).replace(tzinfo=None)
         )
         db.add(assignment)
         assignments.append(assignment)

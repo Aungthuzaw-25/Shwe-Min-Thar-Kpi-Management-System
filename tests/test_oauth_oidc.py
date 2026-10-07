@@ -1,6 +1,10 @@
-import pytest
 from types import SimpleNamespace
 
+import pytest
+from fastapi import Request
+from fastapi.responses import Response
+
+from app.modules.auth import router as auth_router
 from app.modules.auth.oidc import (
     OIDCProvider,
     OIDCValidationError,
@@ -8,9 +12,6 @@ from app.modules.auth.oidc import (
     create_pkce_challenge,
     create_pkce_verifier,
 )
-from app.modules.auth import router as auth_router
-from fastapi import Request
-from fastapi.responses import Response
 
 
 def test_pkce_verifier_and_challenge_are_generated():
@@ -25,7 +26,7 @@ async def test_google_callback_issuer_must_match_discovery_metadata(monkeypatch)
     provider = OIDCProvider(
         name="google",
         client_id="client-id",
-        client_secret="client-secret",
+        client_secret="client-secret",  # noqa: S106 - synthetic test fixture; not a production credential
         redirect_uri="https://app.example.com/api/v1/auth/google/callback",
         discovery_url="https://accounts.google.com/.well-known/openid-configuration",
         scopes=("openid", "email", "profile"),

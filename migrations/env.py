@@ -10,6 +10,8 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 # --- Project ရဲ့ Settings နဲ့ Base ကို Import လုပ်ရန် ---
 from app.core.config import settings
 from app.database.base import Base
+# Import every model so all tables are registered on Base.metadata.
+import app.models  # noqa: F401
 
 # 🌟 အရေးကြီးသည်: Tables များကို Alembic သိရှိစေရန် Model အားလုံးကို ဤနေရာတွင် Import လုပ်ပါ
 
@@ -52,6 +54,7 @@ async def run_async_migrations() -> None:
     if settings.DATABASE_URL.startswith("postgresql+asyncpg://") and database_url.hostname not in {
         "localhost",
         "127.0.0.1",
+        "postgres-qa",
     }:
         connect_args["ssl"] = True
 

@@ -1,14 +1,17 @@
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import func, select, update
-from app.modules.notifications.models import Notification
+from collections.abc import Sequence
+from typing import Any
 from uuid import UUID
-from typing import List, Dict, Any, Sequence
+
+from sqlalchemy import func, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.modules.notifications.models import Notification
 
 # 🌟 ARCHITECTURE FIX: Class နှင့် @staticmethod များ ဖယ်ရှားပြီး 
 # အခြား Repo ဖိုင်များနှင့် တပြေးညီတည်းဖြစ်အောင် Module-level Function များအဖြစ် ပြောင်းလဲထားပါသည်။
 
 async def create_notification(
-    db: AsyncSession, obj_in: Dict[str, Any], *, commit: bool = True
+    db: AsyncSession, obj_in: dict[str, Any], *, commit: bool = True
 ) -> Notification:
     """Notification အသစ်ဖန်တီးရန်"""
     try:

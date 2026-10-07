@@ -24,6 +24,7 @@ python - << 'EOF'
 import os
 import sys
 import asyncio
+from urllib.parse import urlparse
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy import text
 
@@ -44,7 +45,11 @@ for token in ("?sslmode=require", "&sslmode=require", "?channel_binding=require"
     db_url = db_url.replace(token, "")
 
 clean_url = db_url
-connect_args = {"ssl": True} if clean_url.startswith("postgresql+asyncpg://") else {}
+parsed_url = urlparse(clean_url)
+local_hosts = {"localhost", "127.0.0.1", "::1", "postgres-qa"}
+connect_args = {}
+if clean_url.startswith("postgresql+asyncpg://") and (parsed_url.hostname or "").lower() not in local_hosts:
+    connect_args["ssl"] = True
 
 async def verify_connection():
     max_retries = 5
@@ -72,15 +77,23 @@ EOF
 # 2. Database Migrations
 # ==========================================
 echo "🚀 Step 2: Running Database Schema Migrations..."
-alembic upgrade head
-echo "✅ Migrations completed successfully."
+if [ "${SKIP_DATABASE_MIGRATIONS:-false}" = "true" ]; then
+    echo "⏭️  Step 2: Database migrations disabled for this startup."
+else
+    alembic upgrade head
+    echo "✅ Migrations completed successfully."
+fi
 
 # ==========================================
 # 3. Idempotent Initial Data
 # ==========================================
-echo "🌱 Step 3: Running idempotent database initialization..."
-python -m app.database.seed
-echo "✅ Database initialization completed successfully."
+if [ "${SKIP_DATABASE_SEED:-false}" = "true" ]; then
+    echo "⏭️  Step 3: Database seed disabled for this environment."
+else
+    echo "🌱 Step 3: Running idempotent database initialization..."
+    python -m app.database.seed
+    echo "✅ Database initialization completed successfully."
+fi
 
 # ==========================================
 # 4. Server Startup

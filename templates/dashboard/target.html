@@ -17,10 +17,10 @@
     }
 </style>
 
-<div class="min-h-screen bg-slate-50 text-slate-800 font-sans p-4 sm:p-6 md:p-8 overflow-y-auto custom-scrollbar">
+<div class="workspace-page min-h-full overflow-y-auto custom-scrollbar">
     
     <!-- HEADER -->
-    <header class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 sm:mb-8 animate-fade-in-up">
+    <header class="app-page-header animate-fade-in-up">
         <div class="flex items-center gap-3 sm:gap-4">
             <div class="bg-white p-2.5 sm:p-3 rounded-xl border border-gray-200 shadow-sm text-blue-950 shrink-0">
                 <svg class="w-6 h-6 sm:w-8 sm:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
@@ -39,7 +39,7 @@
     </header>
 
     <!-- METRICS OVERVIEW CARDS -->
-    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 mb-6 sm:mb-8 animate-fade-in-up" style="animation-delay: 0.1s;">
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 mb-6 sm:mb-8 animate-fade-in-up csp-delay-2">
         <div class="bg-white p-5 sm:p-6 rounded-3xl border border-gray-200 shadow-sm flex flex-col justify-center">
             <p class="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider">Active Targets</p>
             <h4 id="statActiveTargets" class="text-2xl sm:text-3xl font-extrabold text-blue-950 mt-1.5 sm:mt-2">0</h4>
@@ -55,7 +55,7 @@
     </div>
 
     <!-- TARGETS DATA TABLE -->
-    <div class="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden relative min-h-[300px] sm:min-h-[400px] flex flex-col animate-fade-in-up" style="animation-delay: 0.2s;">
+    <div class="workspace-table overflow-hidden relative min-h-[300px] sm:min-h-[400px] flex flex-col animate-fade-in-up csp-delay-3">
         
         <div id="tableLoader" class="hidden absolute inset-0 bg-white/80 backdrop-blur-sm z-10 flex flex-col items-center justify-center">
             <svg class="animate-spin h-8 w-8 sm:h-10 sm:w-10 text-blue-900 mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -266,7 +266,7 @@
             else if (t.metric_type === 'CURRENCY') valDisplay = '$' + valDisplay;
 
             tbody.innerHTML += `
-                <tr class="hover:bg-slate-50 transition-colors animate-fade-in-up" style="animation-delay: ${index * 0.03}s">
+                <tr class="hover:bg-slate-50 transition-colors animate-fade-in-up">
                     <td class="p-4 sm:p-5 font-extrabold text-blue-950">${escapeHTML(t.name)}</td>
                     <td class="p-4 sm:p-5 font-semibold text-slate-600">
                         ${t.department_name ? `<span class="bg-slate-100 px-2 py-1 rounded-md border text-[10px] sm:text-xs">${escapeHTML(t.department_name)}</span>` : '<span class="bg-purple-50 text-purple-700 border border-purple-200 px-2 py-1 rounded-md text-[10px] sm:text-xs font-bold">Company Wide</span>'}

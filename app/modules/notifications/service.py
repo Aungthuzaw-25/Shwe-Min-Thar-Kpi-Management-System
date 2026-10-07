@@ -1,12 +1,14 @@
-from fastapi import BackgroundTasks 
+from uuid import UUID
+
+from fastapi import BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.background_jobs.notification_jobs import send_email_notification
 from app.modules.notifications.repo import create_notification
+
 # 🌟 CRITICAL FIX: UserRepository အစား get_user_by_id ကို ခေါ်ယူပါမည်
 from app.modules.users.repo import get_user_by_id
-from app.background_jobs.notification_jobs import send_email_notification
-from uuid import UUID
-from typing import Optional
+
 
 class NotificationService:
     @staticmethod
@@ -18,7 +20,7 @@ class NotificationService:
         notification_type: str, 
         background_tasks: BackgroundTasks, 
         channel: str = "DASHBOARD",
-        group_key: Optional[str] = None
+        group_key: str | None = None
     ):
         # 1. Database သို့ သိမ်းခြင်း
         notification_data = {

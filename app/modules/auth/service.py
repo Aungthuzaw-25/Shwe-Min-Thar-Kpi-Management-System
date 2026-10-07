@@ -1,25 +1,26 @@
 """
 Authentication Domain Service (Single Source of Truth)
 """
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
+from fastapi import HTTPException, status
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
-from fastapi import HTTPException, status
-from fastapi.concurrency import run_in_threadpool
-from datetime import datetime, timezone, timedelta
-from jose import jwt, JWTError
-from typing import Optional, Dict, Any
 
-from app.modules.users.models import User
-from app.modules.departments.models import UserDepartment
-from app.modules.auth.models import LoginHistory, TokenBlacklist, AuthSession, PasswordHistory
-from app.modules.users import password_repo
 from app.core import security
+from app.modules.auth.models import AuthSession, LoginHistory, PasswordHistory
+from app.modules.departments.models import UserDepartment
+from app.modules.users.models import User
+
+INVALID_CREDENTIALS_MESSAGE = "Invalid email or password."
 from app.core.config import settings
 from app.core.password_policy import get_password_expiry_days
 from app.models.audit_log import AuditLog
 
-DUMMY_PASSWORD_HASH = "$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjIQ6VSAca"
+TIMING_EQUALIZATION_HASH = "$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjIQ6VSAca"
 
 class AuthService:
     @staticmethod
@@ -30,8 +31,8 @@ class AuthService:
         ip_address: str = "Unknown", 
         user_agent: str = "Unknown",
         remember_me: bool = False,
-    ) -> Dict[str, Any]:
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+    ) -> dict[str, Any]:
+        now = datetime.now(UTC).replace(tzinfo=None)
 
         stmt = select(User).options(
             selectinload(User.role),
@@ -43,8 +44,8 @@ class AuthService:
         user = result.scalars().first()
 
         if not user:
-            await run_in_threadpool(security.verify_password, password, DUMMY_PASSWORD_HASH)
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password.")
+            await run_in_threadpool(security.verify_password, password, TIMING_EQUALIZATION_HASH)
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=INVALID_CREDENTIALS_MESSAGE)
 
         if not user.is_active or user.is_deleted:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account disabled. Please contact your administrator.")
@@ -60,8 +61,8 @@ class AuthService:
                 await db.commit()
 
         if not getattr(user, "local_password_enabled", True) or not user.hashed_password:
-            await run_in_threadpool(security.verify_password, password, DUMMY_PASSWORD_HASH)
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password.")
+            await run_in_threadpool(security.verify_password, password, TIMING_EQUALIZATION_HASH)
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=INVALID_CREDENTIALS_MESSAGE)
         is_valid_password = await run_in_threadpool(security.verify_password, password, user.hashed_password)
 
         if not is_valid_password:
@@ -76,7 +77,7 @@ class AuthService:
             
             if user.is_locked:
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account locked due to multiple failed login attempts.")
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password.")
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=INVALID_CREDENTIALS_MESSAGE)
 
         user.failed_login_attempts = 0
         user.is_locked = False
@@ -115,9 +116,9 @@ class AuthService:
         user_agent: str = "Unknown",
         remember_me: bool = False,
         audit_action: str = "OAUTH_LOGIN",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Issue the existing AuthSession/JWT pair for any trusted identity."""
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        now = datetime.now(UTC).replace(tzinfo=None)
         if audit_action != "LOGIN":
             db.add(AuditLog(
                 user_id=user.id, action=audit_action, table_name="auth_sessions",
@@ -141,7 +142,7 @@ class AuthService:
         if hasattr(db, "bind"):
             import hashlib
             device_id = hashlib.sha256(
-                f"{user_agent}|{ip_address}".encode("utf-8")
+                f"{user_agent}|{ip_address}".encode()
             ).hexdigest()[:32]
             active = (await db.execute(
                 select(AuthSession).where(
@@ -175,7 +176,7 @@ class AuthService:
                 expires_at=now + timedelta(
                     days=settings.REFRESH_TOKEN_EXPIRE_DAYS if remember_me else 1
                 ),
-                last_used_at=now, refresh_token_hash="pending",
+                last_used_at=now, refresh_token_hash="pending",  # noqa: S106 - server-side placeholder, never a credential
             )
             db.add(session)
             await db.flush()

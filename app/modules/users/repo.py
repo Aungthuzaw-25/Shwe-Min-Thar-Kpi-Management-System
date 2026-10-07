@@ -1,9 +1,12 @@
+import uuid
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
-from app.modules.users.models import User, Role, UserPermissionOverride
+
 from app.modules.departments.models import UserDepartment
-import uuid
+from app.modules.users.models import Role, User, UserPermissionOverride
+
 
 # 🌟 Reusable Base Query for User with standard Eager Load relations
 def get_user_base_query():

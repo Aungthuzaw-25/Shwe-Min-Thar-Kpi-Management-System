@@ -1,8 +1,10 @@
-from pydantic import BaseModel
 from datetime import datetime
-from typing import Optional
 from uuid import UUID
+
+from pydantic import BaseModel
+
 from app.modules.kpi.models import ActionPlanStatus
+
 
 class ActionPlanCreate(BaseModel):
     kpi_record_id: UUID
@@ -11,4 +13,4 @@ class ActionPlanCreate(BaseModel):
 
 class ActionPlanReview(BaseModel):
     status: ActionPlanStatus # APPROVED or REJECTED
-    manager_feedback: Optional[str] = None
+    manager_feedback: str | None = None

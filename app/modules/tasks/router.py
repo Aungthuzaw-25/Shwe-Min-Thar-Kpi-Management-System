@@ -1,50 +1,65 @@
-﻿from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Query
+import hashlib
+import json
+import mimetypes
+import os
+from datetime import UTC, datetime  # 🌟 FIX: Added timezone for late calculation
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from sqlalchemy import or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import joinedload, selectinload
-from sqlalchemy import or_
-from typing import List
-from uuid import UUID
-import hashlib
-import json  
-import os
-import mimetypes
-from datetime import datetime, timezone # 🌟 FIX: Added timezone for late calculation
-import pytz
 
 try:
     import magic  # Optional dependency for strict MIME sniffing.
 except ImportError:  # pragma: no cover - environment may not include libmagic.
     magic = None
 
-from app.database.connection import get_db
-from app.modules.tasks.schemas import TaskCreate, TaskUpdate, TaskResponse, TaskReviewInput, TaskEvidenceResponse, BulkTaskCreate
-from app.modules.tasks.workflow_schemas import BatchSubmitRequest, BatchSubmitResponse, QueueItemResponse, BatchReviewRequest, TaskTimelineResponse
-from app.modules.tasks.models.task import Task, TaskStatus
-from app.modules.users.models import User, Position  
-from app.modules.departments.models import UserDepartment
-from app.modules.kpi.models import KPIFormula  
-from app.modules.kpi.category_service import get_eligible_kpi_categories_for_user
-from app.modules.tasks.models.approval_queue import ApprovalQueue
-from app.modules.tasks.models.task_history import TaskHistory  
-from app.modules.tasks.models.submission_batch import SubmissionBatch 
-from app.modules.tasks.models.task_review import TaskReview 
-from app.modules.tasks.models.task_evidence import TaskEvidence
-from app.modules.tasks import repo as task_repo, workflow_repo
-from app.modules.tasks import service as task_service
-from app.modules.kpi.engine import trigger_kpi_recalculation 
-from app.core.dependencies import get_current_user, enforce_permission, GLOBAL_SCOPE_ROLES
-from app.services.storage_service import storage_service
+from app.core.dependencies import GLOBAL_SCOPE_ROLES, enforce_permission, get_current_user
 from app.core.timezone import APPLICATION_TIMEZONE
-from app.services.activity_service import record_activity
+from app.database.connection import get_db
+from app.modules.departments.models import UserDepartment
+from app.modules.kpi.category_service import get_eligible_kpi_categories_for_user
+from app.modules.kpi.engine import trigger_kpi_recalculation
+from app.modules.kpi.models import KPIFormula
 from app.modules.notifications.repo import create_notification
+from app.modules.tasks import repo as task_repo
+from app.modules.tasks import service as task_service
+from app.modules.tasks import workflow_repo
+from app.modules.tasks.models.approval_queue import ApprovalQueue
+from app.modules.tasks.models.submission_batch import SubmissionBatch
+from app.modules.tasks.models.task import Task, TaskStatus
+from app.modules.tasks.models.task_evidence import TaskEvidence
+from app.modules.tasks.models.task_history import TaskHistory
+from app.modules.tasks.models.task_review import TaskReview
+from app.modules.tasks.schemas import (
+    BulkTaskCreate,
+    TaskCreate,
+    TaskEvidenceResponse,
+    TaskResponse,
+    TaskReviewInput,
+)
+from app.modules.tasks.workflow_schemas import (
+    BatchReviewRequest,
+    BatchSubmitRequest,
+    BatchSubmitResponse,
+    QueueItemResponse,
+)
+from app.modules.users.models import Position, User
+from app.services.activity_service import record_activity
+from app.services.storage_service import storage_service
 
 router = APIRouter()
 app_timezone = APPLICATION_TIMEZONE
 
 
 async def _authorized_task(
-    db: AsyncSession, task_id: UUID, current_user: User
+    db: AsyncSession,
+    task_id: UUID,
+    current_user: User,
+    *,
+    allow_workflow_scope: bool = False,
 ) -> Task:
     """Load a task only when the caller has an ownership or organizational relationship."""
     stmt = select(Task).options(
@@ -63,21 +78,69 @@ async def _authorized_task(
         return task
 
     owner_departments = {
-        str(link.department_id) for link in (task.owner.user_departments or [])
+        str(link.department_id)
+        for link in (task.owner.user_departments or [])
+        if not link.is_deleted
     }
     current_links = await db.execute(
         select(UserDepartment.department_id).where(
-            UserDepartment.user_id == current_user.id
+            UserDepartment.user_id == current_user.id,
+            UserDepartment.is_deleted.is_(False),
         )
     )
     current_departments = {str(value) for value in current_links.scalars().all()}
+    allowed_department_roles = {"Admin", "Department Head"}
+    if allow_workflow_scope:
+        allowed_department_roles.add("Department User")
     if (
         current_user.role
-        and current_user.role.name in {"Admin", "Department Head"}
+        and current_user.role.name in allowed_department_roles
         and owner_departments.intersection(current_departments)
     ):
         return task
     raise HTTPException(status_code=404, detail="Task not found.")
+
+
+async def _authorize_workflow_actor(
+    db: AsyncSession,
+    task_id: UUID,
+    current_user: User,
+    required_level: str,
+    permission: str = "tasks.approve",
+) -> Task:
+    """Authorize a workflow mutation against the task's owner and reviewer scope."""
+    enforce_permission(current_user, permission)
+    task = await _authorized_task(
+        db,
+        task_id,
+        current_user,
+        allow_workflow_scope=True,
+    )
+
+    role_name = current_user.role.name if current_user.role else ""
+    if role_name in GLOBAL_SCOPE_ROLES:
+        return task
+
+    membership = (
+        await db.execute(
+            select(UserDepartment).where(
+                UserDepartment.user_id == current_user.id,
+                UserDepartment.is_deleted.is_(False),
+            )
+        )
+    ).scalars().first()
+    owner_department_ids = {
+        str(link.department_id)
+        for link in (task.owner.user_departments or [])
+        if not link.is_deleted
+    }
+    if (
+        not membership
+        or str(membership.department_id) not in owner_department_ids
+        or str(membership.user_level).upper().replace("LEVEL ", "") != required_level
+    ):
+        raise HTTPException(status_code=403, detail="You are not authorized for this workflow stage.")
+    return task
 
 # 🌟 ADMIN ONLY KEYWORDS 
 ADMIN_ONLY_KEYWORDS = [
@@ -109,7 +172,7 @@ def _detect_mime_type(file_bytes: bytes, filename: str | None = None) -> str:
             detected = magic.from_buffer(file_bytes, mime=True)
             if detected:
                 return detected
-        except Exception:
+        except Exception:  # noqa: S110 - optional libmagic failure uses safe fallback
             pass
 
     if filename:
@@ -369,7 +432,7 @@ async def create_new_task(payload: TaskCreate, db: AsyncSession = Depends(get_db
         await db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post('/bulk-create', response_model=List[TaskResponse], status_code=status.HTTP_201_CREATED)
+@router.post('/bulk-create', response_model=list[TaskResponse], status_code=status.HTTP_201_CREATED)
 async def create_bulk_tasks(payload: BulkTaskCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     """ 🌟 Manager/Admin များမှ Task ကို Assign ချပေးသော Endpoint """
     enforce_permission(current_user, "tasks.create")
@@ -447,12 +510,7 @@ async def create_bulk_tasks(payload: BulkTaskCreate, db: AsyncSession = Depends(
 @router.delete('/{task_id}', status_code=status.HTTP_204_NO_CONTENT)
 async def delete_draft_task(task_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     try:
-        stmt = select(Task).options(selectinload(Task.evidence)).where(Task.id == task_id)
-        result = await db.execute(stmt)
-        task = result.scalars().first()
-        
-        if not task:
-            raise HTTPException(status_code=404, detail="Task not found")
+        task = await _authorized_task(db, task_id, current_user)
         if str(task.owner_id) != str(current_user.id):
             enforce_permission(current_user, "tasks.delete")
         else:
@@ -470,12 +528,15 @@ async def delete_draft_task(task_id: UUID, db: AsyncSession = Depends(get_db), c
                         await storage_service.delete_file(ev.file_path)
                     elif hasattr(storage_service, 'remove_file'):
                         await storage_service.remove_file(ev.file_path)
-                except Exception:
+                except Exception:  # noqa: S110 - evidence cleanup is best-effort during deletion
                     pass
-                    
+
         await db.delete(task)
         await db.commit()
         return None
+    except HTTPException:
+        await db.rollback()
+        raise
     except Exception as e:
         await db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
@@ -512,7 +573,7 @@ async def get_department_managers(db: AsyncSession = Depends(get_db), current_us
                 "level": ud_obj.user_level
             })
         return manager_list
-    except Exception as e:
+    except Exception:
         raise HTTPException(status_code=500, detail="Internal Server Error fetching managers.")
 
 
@@ -563,7 +624,7 @@ async def get_task_assignees(
 
 
 # 🌟 PERFORMANCE FIX: Add Pagination and DB-level filtering to prevent Memory Exhaustion
-@router.get('', response_model=List[TaskResponse])
+@router.get('', response_model=list[TaskResponse])
 async def get_my_tasks(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, gt=0, le=500),
@@ -625,7 +686,7 @@ async def get_my_tasks(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database formatting error: {str(e)}")
 
-@router.get('/batch/{batch_id}/details', response_model=List[TaskResponse])
+@router.get('/batch/{batch_id}/details', response_model=list[TaskResponse])
 async def get_batch_tasks_details(batch_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     enforce_permission(current_user, "tasks.view")
     stmt = select(Task).options(
@@ -660,7 +721,7 @@ async def submit_task_batch(payload: BatchSubmitRequest, db: AsyncSession = Depe
         stmt = select(Task).where(Task.id.in_(payload.task_ids))
         tasks_to_update = (await db.execute(stmt)).scalars().all()
 
-        current_time = datetime.now(timezone.utc)
+        current_time = datetime.now(UTC)
 
         for t in tasks_to_update:
             t.batch_id = batch.id
@@ -670,7 +731,7 @@ async def submit_task_batch(payload: BatchSubmitRequest, db: AsyncSession = Depe
             # 🌟 CORE FIX: Grace Period & Late Penalty Logic
             # due_date ရှိသော Assigned Task များအတွက်သာ အလုပ်လုပ်မည်
             if getattr(t, 'due_date', None):
-                t_due = t.due_date if t.due_date.tzinfo else t.due_date.replace(tzinfo=timezone.utc)
+                t_due = t.due_date if t.due_date.tzinfo else t.due_date.replace(tzinfo=UTC)
                 diff = current_time - t_due
                 days_late = diff.days
                 
@@ -720,7 +781,7 @@ async def submit_task_batch(payload: BatchSubmitRequest, db: AsyncSession = Depe
         raise HTTPException(status_code=500, detail=str(e))
 
 # 🌟 PERFORMANCE FIX: Eliminate N+1 DB Queries from the Loop
-@router.get('/approval-queue', response_model=List[QueueItemResponse])
+@router.get('/approval-queue', response_model=list[QueueItemResponse])
 async def get_approval_queue(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     enforce_permission(current_user, "tasks.approve")
     queues = await workflow_repo.get_my_approval_queue(db, current_user.id)
@@ -836,23 +897,37 @@ async def review_task_batch_api(batch_id: UUID, payload: BatchReviewRequest, db:
 
 @router.post('/{task_id}/resign', response_model=TaskResponse)
 async def resign_task_to_l2(task_id: UUID, payload: TaskReviewInput, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    enforce_permission(current_user, "tasks.return")
+    task = await _authorize_workflow_actor(
+        db, task_id, current_user, required_level="L1", permission="tasks.return"
+    )
+    if task.status != TaskStatus.PENDING_L0:
+        raise HTTPException(status_code=400, detail="Task is not awaiting L1 resignation.")
+    latest_l1_review = max(
+        (
+            review for review in (task.reviews or [])
+            if review.reviewer_level in {"L1", "Level 1"}
+            and review.action == "APPROVED"
+        ),
+        key=lambda review: review.created_at,
+        default=None,
+    )
+    if not latest_l1_review or latest_l1_review.reviewer_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the assigned L1 reviewer can resign this task.")
     try:
-        task = await task_repo.get_task_by_id(db, task_id)
-        if not task: raise HTTPException(status_code=404, detail="Task not found")
-        
         ud = (await db.execute(select(UserDepartment).where(UserDepartment.user_id == current_user.id))).scalars().first()
         user_level = ud.user_level if ud else "L1"
-        
+        old_status = task.status.value
         task.status = TaskStatus.REJECTED
         
         new_review = TaskReview(task_id=task.id, reviewer_id=current_user.id, reviewer_level=user_level, action="RESIGNED", comments=payload.comments)
         db.add(new_review)
-        db.add(TaskHistory(task_id=task.id, changed_by=current_user.id, action="RESIGNED", old_value=task.status.value, new_value=task.status.value, remarks="L1 မှ L2 သို့ ပြန်လည်ပြင်ဆင်ရန် ညွှန်ကြားလိုက်ပါသည်"))
+        db.add(TaskHistory(task_id=task.id, changed_by=current_user.id, action="RESIGNED", old_value=old_status, new_value=task.status.value, remarks="L1 မှ L2 သို့ ပြန်လည်ပြင်ဆင်ရန် ညွှန်ကြားလိုက်ပါသည်"))
         
         await db.commit()
         await db.refresh(task)
         return task
+    except HTTPException:
+        raise
     except Exception as e:
         await db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
@@ -978,6 +1053,20 @@ async def resubmit_task(task_id: UUID, payload: TaskCreate, db: AsyncSession = D
         task_data['owner_id'] = old_task.owner_id
         
         current_version = old_task.version if old_task.version else 1
+        existing_resubmission_stmt = select(Task.id).where(
+            Task.parent_task_id == old_task.id,
+            Task.version == current_version + 1,
+            Task.is_deleted == False,
+        )
+        existing_resubmission_id = (
+            await db.execute(existing_resubmission_stmt)
+        ).scalars().first()
+        if existing_resubmission_id is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A resubmission for this task version already exists.",
+            )
+
         task_data['version'] = current_version + 1
         task_data['parent_task_id'] = old_task.id
         
@@ -1026,6 +1115,9 @@ async def resubmit_task(task_id: UUID, payload: TaskCreate, db: AsyncSession = D
         refreshed_task = (await db.execute(stmt)).scalars().first()
         
         return refreshed_task
+    except HTTPException:
+        await db.rollback()
+        raise
     except Exception as e:
         await db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to process V2 resubmission: {str(e)}")
@@ -1041,8 +1133,10 @@ async def get_single_task(task_id: UUID, db: AsyncSession = Depends(get_db), cur
     if not task:
         raise HTTPException(status_code=404, detail='Task not found')
 
-    # Security Validation: Verify ownership/authorization before disclosing the task
-    if current_user.role.name not in ['Super Admin', 'Admin', 'Level 0']:
+    # Admins remain department-scoped; global roles retain unrestricted access.
+    if current_user.role and current_user.role.name == "Admin":
+        task = await _authorized_task(db, task_id, current_user)
+    elif current_user.role.name not in ['Super Admin', 'Level 0']:
         is_owner = str(task.owner_id) == str(current_user.id)
         is_assigner = str(task.assigner_id) == str(current_user.id)
         is_reviewer = any(str(r.reviewer_id) == str(current_user.id) for r in task.reviews)
@@ -1054,9 +1148,9 @@ async def get_single_task(task_id: UUID, db: AsyncSession = Depends(get_db), cur
 
 @router.post('/{task_id}/review/l1', response_model=TaskResponse)
 async def l1_review_task(task_id: UUID, payload: TaskReviewInput, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    task = await task_repo.get_task_by_id(db, task_id)
-    if not task:
-        raise HTTPException(status_code=404, detail='Task not found')
+    task = await _authorize_workflow_actor(db, task_id, current_user, required_level="L1")
+    if task.status != TaskStatus.PENDING_L1:
+        raise HTTPException(status_code=400, detail="Task is not awaiting L1 review.")
     
     old_status = getattr(task.status, 'value', str(task.status))
     updated_task = await task_service.review_task_l1(db, task_id, payload, current_user.id)
@@ -1067,9 +1161,9 @@ async def l1_review_task(task_id: UUID, payload: TaskReviewInput, db: AsyncSessi
 
 @router.post('/{task_id}/verify/l0', response_model=TaskResponse)
 async def l0_verify_task(task_id: UUID, payload: TaskReviewInput, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    task = await task_repo.get_task_by_id(db, task_id)
-    if not task:
-        raise HTTPException(status_code=404, detail='Task not found')
+    task = await _authorize_workflow_actor(db, task_id, current_user, required_level="L0")
+    if task.status != TaskStatus.PENDING_L0:
+        raise HTTPException(status_code=400, detail="Task is not awaiting L0 verification.")
     
     old_status = getattr(task.status, 'value', str(task.status))
     updated_task = await task_service.verify_task_l0(db, task_id, payload, current_user.id)

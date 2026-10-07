@@ -1,7 +1,9 @@
-﻿from sqlalchemy import Column, Integer, ForeignKey
+﻿from sqlalchemy import Column, ForeignKey, Integer
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
+
 from app.database.base import BaseModel
+
 
 class ApprovalQueue(BaseModel):
     __tablename__ = 'approval_queues'

@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from app.modules.departments.models import UserDepartment
-from app.modules.kpi.models import KPIFormula, KpiCategory
+from app.modules.kpi.models import FormulaStatus, KPIFormula
 from app.modules.users.models import Position, User
 
 
@@ -40,13 +40,14 @@ async def get_eligible_kpi_categories_for_user(
 ) -> set[str]:
     """Return canonical KPI categories configured for a user's current context."""
     user = await db.get(User, user_id)
-    if not user or not user.is_active or not user.position_id:
+    if not user or not user.is_active or user.is_deleted or not user.position_id:
         return set()
 
     department_link = (
         await db.execute(
             select(UserDepartment)
             .where(UserDepartment.user_id == user_id)
+            .where(UserDepartment.is_deleted.is_(False))
             .order_by(UserDepartment.department_id)
         )
     ).scalars().first()
@@ -54,6 +55,8 @@ async def get_eligible_kpi_categories_for_user(
         return set()
 
     position = await db.get(Position, user.position_id)
+    if not position or not position.is_active or position.is_deleted:
+        return set()
     position_name = _normalized_name(position.name if position else "")
     formulas = (
         await db.execute(
@@ -61,6 +64,8 @@ async def get_eligible_kpi_categories_for_user(
                 KPIFormula.department_id == department_link.department_id,
                 KPIFormula.user_level == _normalized_level(department_link.user_level),
                 KPIFormula.is_active.is_(True),
+                KPIFormula.status == FormulaStatus.ACTIVE,
+                KPIFormula.is_deleted.is_(False),
             )
         )
     ).scalars().all()
@@ -87,16 +92,8 @@ async def get_eligible_kpi_categories_for_user(
     if not formula_names:
         return set()
 
-    canonical_categories = (
-        await db.execute(
-            select(KpiCategory.name).where(KpiCategory.name.in_(formula_names))
-        )
-    ).scalars().all()
-    canonical_by_key = {
-        _normalized_name(name): name for name in canonical_categories
-    }
-    return {
-        canonical_by_key[_normalized_name(name)]
-        for name in formula_names
-        if _normalized_name(name) in canonical_by_key
-    }
+    # Formula JSON is the authoritative configuration. KpiCategory is a
+    # compatibility lookup maintained when formulas are saved, but requiring
+    # a matching lookup row here would hide valid legacy/admin-defined
+    # categories from employees.
+    return formula_names

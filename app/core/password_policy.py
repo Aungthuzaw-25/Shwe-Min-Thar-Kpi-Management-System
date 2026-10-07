@@ -1,7 +1,8 @@
 import re
-from fastapi import HTTPException
 import secrets
 import string
+
+from fastapi import HTTPException
 from sqlalchemy import select
 
 from app.models.system import SystemSetting
@@ -10,6 +11,18 @@ DEFAULT_PASSWORD_POLICY = {
     "minimum_password_length": 12,
     "require_complexity": True,
     "force_password_change_days": 90,
+}
+
+# Bound input before handing it to a password-hashing backend. This is large
+# enough for passphrases while preventing accidental or hostile oversized input.
+MAX_PASSWORD_LENGTH = 256
+
+# This is intentionally a small, high-confidence deny list. It supplements,
+# rather than replaces, the configurable length/complexity policy below.
+COMMON_WEAK_PASSWORDS = {
+    "password", "password1", "password123", "12345678", "123456789",
+    "qwerty", "qwerty123", "admin", "admin123", "letmein",
+    "welcome", "welcome1", "changeme", "change_me",
 }
 
 async def get_password_policy(db):
@@ -55,6 +68,17 @@ def validate_password_strength(
     minimum_length: int = DEFAULT_PASSWORD_POLICY["minimum_password_length"],
     require_complexity: bool = DEFAULT_PASSWORD_POLICY["require_complexity"],
 ):
+    if not isinstance(password, str) or not password:
+        raise HTTPException(status_code=400, detail="Password is required.")
+    if password.strip().casefold() in COMMON_WEAK_PASSWORDS:
+        raise HTTPException(status_code=400, detail="Password is too commonly used.")
+    if password.isspace():
+        raise HTTPException(status_code=400, detail="Password cannot contain only whitespace.")
+    if len(password) > MAX_PASSWORD_LENGTH:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Password must be no more than {MAX_PASSWORD_LENGTH} characters long",
+        )
     if len(password) < minimum_length:
         raise HTTPException(status_code=400, detail=f'Password must be at least {minimum_length} characters long')
     if not require_complexity:

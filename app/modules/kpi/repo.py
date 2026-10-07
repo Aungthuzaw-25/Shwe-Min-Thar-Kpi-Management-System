@@ -1,12 +1,14 @@
+from typing import Any
+from uuid import UUID
+
+from sqlalchemy import func, literal
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import func, literal
-from uuid import UUID
-from typing import Optional, List, Dict, Any
 
+from app.modules.departments.models import Department
 from app.modules.kpi.models import KPIFormula, KPIRecord
 from app.modules.users.models import User
-from app.modules.departments.models import Department
+
 
 async def create_formula(db: AsyncSession, formula_data: dict) -> KPIFormula:
     try:
@@ -21,7 +23,7 @@ async def create_formula(db: AsyncSession, formula_data: dict) -> KPIFormula:
         raise e
 
 # ⚡ PERFORMANCE FIX: Added skip and limit
-async def get_all_formulas(db: AsyncSession, skip: int = 0, limit: int = 100) -> List[KPIFormula]:
+async def get_all_formulas(db: AsyncSession, skip: int = 0, limit: int = 100) -> list[KPIFormula]:
     stmt = (
         select(KPIFormula)
         .where(KPIFormula.is_deleted == False)
@@ -32,7 +34,7 @@ async def get_all_formulas(db: AsyncSession, skip: int = 0, limit: int = 100) ->
     result = await db.execute(stmt)
     return list(result.scalars().all())
 
-async def get_formula_by_id(db: AsyncSession, formula_id: UUID) -> Optional[KPIFormula]:
+async def get_formula_by_id(db: AsyncSession, formula_id: UUID) -> KPIFormula | None:
     stmt = select(KPIFormula).where(KPIFormula.id == formula_id)
     result = await db.execute(stmt)
     # ⚡ ACCURACY FIX: scalar_one_or_none
@@ -54,10 +56,11 @@ async def toggle_formula_status(db: AsyncSession, formula: KPIFormula, is_active
 async def get_kpi_report_data(
     db: AsyncSession, 
     period_type: str, 
-    department_id: Optional[UUID] = None,
+    department_id: UUID | None = None,
     skip: int = 0,
-    limit: int = 1000 # ⚡ PERFORMANCE FIX: Added Limit
-) -> List[Dict[str, Any]]:
+    limit: int = 1000, # ⚡ PERFORMANCE FIX: Added Limit
+    department_ids: set[str] | None = None,
+) -> list[dict[str, Any]]:
     """
     Report အတွက် KPIRecord, User နှင့် Department Data များကို Join လုပ်၍ ဆွဲထုတ်မည်။
     """
@@ -82,8 +85,11 @@ async def get_kpi_report_data(
         )
     )
 
-    if department_id:
+    if department_id is not None:
         stmt = stmt.where(KPIRecord.department_id == department_id)
+    elif department_ids is not None:
+        # Empty delegated scope is intentionally an empty result, never global.
+        stmt = stmt.where(KPIRecord.department_id.in_(department_ids))
 
     # ⚡ PERFORMANCE FIX: Pagination applied
     stmt = stmt.order_by(KPIRecord.weighted_score.desc(), KPIRecord.user_id, KPIRecord.id).offset(skip).limit(limit)
@@ -107,7 +113,7 @@ async def get_kpi_report_data(
         
     return report_data
 
-async def get_active_user_ids(db: AsyncSession) -> List[UUID]:
+async def get_active_user_ids(db: AsyncSession) -> list[UUID]:
     """Return list of UUIDs for users where is_active is True."""
     stmt = select(User.id).where(User.is_active == True)
     result = await db.execute(stmt)

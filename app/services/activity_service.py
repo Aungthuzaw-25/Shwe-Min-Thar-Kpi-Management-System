@@ -6,10 +6,10 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.dependencies import GLOBAL_SCOPE_ROLES
 from app.modules.departments.models import UserDepartment
 from app.modules.tasks.models.activity_timeline import ActivityTimeline
 from app.modules.users.models import User
-from app.core.dependencies import GLOBAL_SCOPE_ROLES
 
 
 async def record_activity(

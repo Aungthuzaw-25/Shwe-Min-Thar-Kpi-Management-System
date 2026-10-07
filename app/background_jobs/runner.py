@@ -5,7 +5,6 @@ import logging
 
 from app.background_jobs.scheduler import start_scheduler
 
-
 logger = logging.getLogger(__name__)
 
 

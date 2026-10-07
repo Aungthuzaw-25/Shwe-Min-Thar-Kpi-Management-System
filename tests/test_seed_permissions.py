@@ -1,5 +1,6 @@
-import pytest
 from types import SimpleNamespace
+
+import pytest
 from fastapi import HTTPException
 
 from app.database.seed import PERMISSION_CATALOG, _ensure_super_admin, _seed_permissions

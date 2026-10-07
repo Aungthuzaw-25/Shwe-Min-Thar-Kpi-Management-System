@@ -2,17 +2,17 @@
 {% block title %}Account Profile{% endblock %}
 {% block content %}
 <div class="p-4 sm:p-6 lg:p-8 space-y-6 overflow-y-auto">
-  <section class="rounded-3xl bg-slate-900 text-white p-6 sm:p-8 shadow-xl">
+  <section class="app-surface p-6 sm:p-8">
     <div class="flex flex-col sm:flex-row sm:items-center gap-5">
-      <div class="h-20 w-20 rounded-2xl bg-blue-600 flex items-center justify-center text-3xl font-black">
+      <div class="app-user-avatar profile-hero-avatar">
         {{ user_name[:1]|upper }}
       </div>
       <div>
-        <h1 class="text-2xl sm:text-3xl font-black">{{ user_name }}</h1>
-        <p class="text-slate-300 mt-1">{{ user_email }}</p>
+        <h1 class="text-2xl sm:text-3xl font-bold text-slate-900">{{ user_name }}</h1>
+        <p class="text-slate-500 mt-1">{{ user_email }}</p>
         <div class="flex flex-wrap gap-2 mt-3 text-xs font-bold">
-          <span class="px-3 py-1 rounded-full bg-blue-500/20 text-blue-200">{{ user_display_identity }}</span>
-          <span class="px-3 py-1 rounded-full {% if account_status == 'Active' %}bg-emerald-500/20 text-emerald-200{% else %}bg-red-500/20 text-red-200{% endif %}">{{ account_status }}</span>
+          <span class="app-status app-status--info">{{ user_display_identity }}</span>
+          <span class="app-status {% if account_status == 'Active' %}app-status--success{% else %}app-status--danger{% endif %}">{{ account_status }}</span>
         </div>
       </div>
     </div>

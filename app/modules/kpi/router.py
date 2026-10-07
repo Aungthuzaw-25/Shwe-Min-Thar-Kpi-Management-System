@@ -1,41 +1,65 @@
 import logging
-from typing import List, Optional, Any, Dict
-from uuid import UUID
 from datetime import datetime, timedelta
-import pytz
+from typing import Any
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query, BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict
+from sqlalchemy import asc, desc
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import desc, asc
 from sqlalchemy.orm import joinedload, selectinload
-from sqlalchemy.exc import SQLAlchemyError
 
-from app.database.connection import get_db, AsyncSessionLocal
-from app.core.dependencies import get_current_user, enforce_permission, enforce_user_scope, enforce_department_scope
+from app.core.dependencies import (
+    enforce_department_scope,
+    enforce_permission,
+    enforce_user_scope,
+    get_authorized_department_ids,
+    get_current_user,
+)
 from app.core.timezone import APPLICATION_TIMEZONE
-
-from app.modules.users.models import User
+from app.database.connection import AsyncSessionLocal, get_db
+from app.models.audit_log import AuditLog
 from app.modules.departments.models import Department, UserDepartment
-from app.models.audit_log import AuditLog  
-
+from app.modules.kpi import category_service as kpi_category_service
+from app.modules.kpi import period_service
+from app.modules.kpi import repo as kpi_repo
 from app.modules.kpi import service as kpi_service
-from app.modules.kpi import repo as kpi_repo 
+from app.modules.kpi.engine import (
+    KPICalculationContext,
+    KPICalculationEngine,
+    calculate_custom_period_kpi,
+    formula_max_score,
+)
 from app.modules.kpi.models import (
-    KPIRecord, PeriodType, KPIFormula, FormulaStatus, KPIPeriodStatus,
-    KPILevelSetting, KpiRule
+    FormulaStatus,
+    KPIFormula,
+    KPIHistory,
+    KPILevelSetting,
+    KPIPeriodStatus,
+    KPIRecord,
+    PeriodType,
 )
-from app.modules.kpi.engine import KPICalculationEngine, calculate_custom_period_kpi, formula_max_score
-
 from app.modules.kpi.schemas import (
-    KPIFormulaCreate, KPIFormulaUpdate, KPIFormulaResponse,
-    KPILevelSettingUpdate, KPILevelSettingResponse, KPIRecordResponse,
-    KPIOverrideRequest, KPIDeductionRequest, KPIFreezeRequest,
-    KPIRankingResponse, KPIChartResponse, KpiReportSummaryResponse,
-    CustomKpiCalculationRequest, KPIChartPoint,
-    BulkKpiCalculationRequest
+    BulkKpiCalculationRequest,
+    CustomKpiCalculationRequest,
+    ExplicitKpiCalculationRequest,
+    KPIChartPoint,
+    KPIChartResponse,
+    KPIDeductionRequest,
+    KPIFormulaCreate,
+    KPIFormulaResponse,
+    KPIFormulaUpdate,
+    KPIFreezeRequest,
+    KPILevelSettingResponse,
+    KPILevelSettingUpdate,
+    KPIOverrideRequest,
+    KPIRankingResponse,
+    KPIRecordResponse,
+    KpiReportSummaryResponse,
 )
+from app.modules.users.models import User
 
 # 🌟 1. Setup Production Logger
 logger = logging.getLogger(__name__)
@@ -46,7 +70,7 @@ router = APIRouter()
 # 🌟 2. DEPENDENCIES: Centralized Role-Based Access Control (RBAC)
 # ==============================================================================
 class RoleChecker:
-    def __init__(self, allowed_roles: List[str]):
+    def __init__(self, allowed_roles: list[str]):
         self.allowed_roles = allowed_roles
 
     def __call__(self, user: User = Depends(get_current_user)) -> User:
@@ -108,8 +132,8 @@ class AuditLogResponse(BaseModel):
     admin_name: str
     action: str
     table_name: str
-    old_value: Dict[str, Any]
-    new_value: Dict[str, Any]
+    old_value: dict[str, Any]
+    new_value: dict[str, Any]
     ip_address: str
     
     model_config = ConfigDict(from_attributes=True)
@@ -118,7 +142,7 @@ class AuditLogResponse(BaseModel):
 # ==============================================================================
 # 1. Admin Setup: L0, L1, L2 KPI Settings
 # ==============================================================================
-@router.get('/settings', response_model=List[KPILevelSettingResponse])
+@router.get('/settings', response_model=list[KPILevelSettingResponse])
 async def get_kpi_settings(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(allow_admins)
@@ -135,10 +159,9 @@ async def update_kpi_setting(
     level_name: str,
     payload: KPILevelSettingUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(allow_admins)
+    current_user: User = Depends(allow_super_admins)
 ):
     enforce_permission(current_user, "system.settings.edit")
-    await enforce_department_scope(db, current_user, department_id)
     try:
         return await kpi_service.update_kpi_level_setting(db, level_name, payload)
     except SQLAlchemyError as e:
@@ -154,6 +177,7 @@ async def update_targeted_department_levels(
     current_user: User = Depends(allow_admins)
 ):
     enforce_permission(current_user, "system.settings.edit")
+    await enforce_department_scope(db, current_user, department_id)
     try:
         levels_map = {
             "L0": payload.l0_enabled,
@@ -187,6 +211,38 @@ async def update_targeted_department_levels(
         raise HTTPException(status_code=500, detail="Failed to update department level settings.")
 
 
+async def _load_formula_in_scope(
+    db: AsyncSession, current_user: User, formula_id: UUID
+) -> KPIFormula:
+    formula = await kpi_repo.get_formula_by_id(db, formula_id)
+    if not formula or formula.is_deleted:
+        raise HTTPException(status_code=404, detail="Formula not found.")
+    await enforce_department_scope(db, current_user, formula.department_id)
+    return formula
+
+
+async def _authorized_active_user_ids(
+    db: AsyncSession, current_user: User, requested_ids: list[UUID] | None = None
+) -> list[UUID]:
+    department_ids = await get_authorized_department_ids(db, current_user)
+    stmt = select(User.id).where(User.is_active.is_(True), User.is_deleted.is_(False))
+    if department_ids is not None:
+        database_department_ids = [UUID(department_id) for department_id in department_ids]
+        stmt = stmt.where(User.id.in_(select(UserDepartment.user_id).where(
+            UserDepartment.department_id.in_(database_department_ids),
+            UserDepartment.is_deleted.is_(False),
+        )))
+    if requested_ids:
+        requested = set(requested_ids)
+        allowed = set((await db.execute(stmt.where(User.id.in_(requested)))).scalars().all())
+        if allowed != requested:
+            raise HTTPException(status_code=403, detail="Access denied for this user's organizational scope.")
+        return list(allowed)
+    return list((await db.execute(stmt)).scalars().all())
+
+
+
+
 # ==============================================================================
 # 2. KPI Formulas
 # ==============================================================================
@@ -197,6 +253,7 @@ async def create_kpi_formula(
     current_user: User = Depends(allow_admins)
 ):
     enforce_permission(current_user, "kpi.create")
+    await enforce_department_scope(db, current_user, payload.department_id)
     try:
         return await kpi_service.create_kpi_formula(db, payload)
     except SQLAlchemyError as e:
@@ -212,6 +269,7 @@ async def edit_kpi_formula(
     current_user: User = Depends(allow_admins)
 ):
     enforce_permission(current_user, "kpi.edit")
+    await _load_formula_in_scope(db, current_user, formula_id)
     try:
         return await kpi_service.update_kpi_formula(db, formula_id, payload)
     except SQLAlchemyError as e:
@@ -219,7 +277,7 @@ async def edit_kpi_formula(
         logger.error(f"Error updating formula {formula_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to update KPI formula.")
 
-@router.get('/formulas', response_model=List[KPIFormulaResponse])
+@router.get('/formulas', response_model=list[KPIFormulaResponse])
 async def get_kpi_formulas(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, gt=0, le=500),
@@ -227,7 +285,9 @@ async def get_kpi_formulas(
     current_user: User = Depends(get_current_user)
 ):
     enforce_permission(current_user, "kpi.view")
-    return await kpi_repo.get_all_formulas(db, skip=skip, limit=limit)
+    formulas = await kpi_repo.get_all_formulas(db, skip=skip, limit=limit)
+    department_ids = await get_authorized_department_ids(db, current_user)
+    return formulas if department_ids is None else [formula for formula in formulas if str(formula.department_id) in department_ids]
 
 @router.put('/formulas/{formula_id}/toggle', response_model=KPIFormulaResponse)
 async def toggle_kpi_formula(
@@ -238,7 +298,7 @@ async def toggle_kpi_formula(
 ):
     enforce_permission(current_user, "kpi.edit")
     try:
-        formula = await kpi_repo.get_formula_by_id(db, formula_id)
+        formula = await _load_formula_in_scope(db, current_user, formula_id)
         if not formula:
             raise HTTPException(status_code=404, detail="Formula not found.")
             
@@ -251,10 +311,16 @@ async def toggle_kpi_formula(
 # ------------------------------------------------------------------------------
 # Formula State Workflow APIs (With DRY Helper)
 # ------------------------------------------------------------------------------
-async def _transition_formula_state(db: AsyncSession, formula_id: UUID, current_status: List[FormulaStatus], new_status: FormulaStatus) -> KPIFormula:
+async def _transition_formula_state(
+    db: AsyncSession,
+    formula_id: UUID,
+    current_status: list[FormulaStatus],
+    new_status: FormulaStatus,
+    current_user: User,
+) -> KPIFormula:
     """Helper method to handle repetitive state transitions safely."""
     try:
-        formula = await db.get(KPIFormula, formula_id)
+        formula = await _load_formula_in_scope(db, current_user, formula_id)
         if not formula:
             raise HTTPException(status_code=404, detail="Formula not found.")
             
@@ -275,28 +341,28 @@ async def _transition_formula_state(db: AsyncSession, formula_id: UUID, current_
 
 @router.post('/formulas/{formula_id}/submit', response_model=KPIFormulaResponse)
 async def submit_formula_for_review(formula_id: UUID, db: AsyncSession = Depends(get_db), _: User = Depends(allow_admins)):
-    return await _transition_formula_state(db, formula_id, [FormulaStatus.DRAFT], FormulaStatus.REVIEW)
+    return await _transition_formula_state(db, formula_id, [FormulaStatus.DRAFT], FormulaStatus.REVIEW, _)
 
 @router.post('/formulas/{formula_id}/approve', response_model=KPIFormulaResponse)
 async def approve_formula(formula_id: UUID, db: AsyncSession = Depends(get_db), _: User = Depends(allow_super_admins)):
-    return await _transition_formula_state(db, formula_id, [FormulaStatus.REVIEW], FormulaStatus.APPROVED)
+    return await _transition_formula_state(db, formula_id, [FormulaStatus.REVIEW], FormulaStatus.APPROVED, _)
 
 @router.post('/formulas/{formula_id}/reject', response_model=KPIFormulaResponse)
 async def reject_formula(formula_id: UUID, db: AsyncSession = Depends(get_db), _: User = Depends(allow_super_admins)):
-    return await _transition_formula_state(db, formula_id, [FormulaStatus.REVIEW], FormulaStatus.DRAFT)
+    return await _transition_formula_state(db, formula_id, [FormulaStatus.REVIEW], FormulaStatus.DRAFT, _)
 
 @router.post('/formulas/{formula_id}/activate', response_model=KPIFormulaResponse)
 async def activate_formula(formula_id: UUID, db: AsyncSession = Depends(get_db), _: User = Depends(allow_admins)):
-    return await _transition_formula_state(db, formula_id, [FormulaStatus.APPROVED, FormulaStatus.ARCHIVED], FormulaStatus.ACTIVE)
+    return await _transition_formula_state(db, formula_id, [FormulaStatus.APPROVED, FormulaStatus.ARCHIVED], FormulaStatus.ACTIVE, _)
 
 @router.post('/formulas/{formula_id}/archive', response_model=KPIFormulaResponse)
 async def archive_formula(formula_id: UUID, db: AsyncSession = Depends(get_db), _: User = Depends(allow_admins)):
-    return await _transition_formula_state(db, formula_id, [FormulaStatus.ACTIVE, FormulaStatus.APPROVED], FormulaStatus.ARCHIVED)
+    return await _transition_formula_state(db, formula_id, [FormulaStatus.ACTIVE, FormulaStatus.APPROVED], FormulaStatus.ARCHIVED, _)
 
 @router.delete('/formulas/{formula_id}', status_code=status.HTTP_204_NO_CONTENT)
-async def delete_kpi_formula(formula_id: UUID, db: AsyncSession = Depends(get_db), _: User = Depends(allow_super_admins)):
+async def delete_kpi_formula(formula_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(allow_super_admins)):
     try:
-        formula = await db.get(KPIFormula, formula_id)
+        formula = await _load_formula_in_scope(db, current_user, formula_id)
         if not formula:
             raise HTTPException(status_code=404, detail="Formula not found.")
             
@@ -311,7 +377,7 @@ async def delete_kpi_formula(formula_id: UUID, db: AsyncSession = Depends(get_db
 # ==============================================================================
 # 3. KPI Records & Available Categories Matrix Filtering
 # ==============================================================================
-@router.get('/records/monthly/{target_user_id}', response_model=List[KPIRecordResponse])
+@router.get('/records/monthly/{target_user_id}', response_model=list[KPIRecordResponse])
 async def get_monthly_kpi_records(
     target_user_id: UUID,
     db: AsyncSession = Depends(get_db),
@@ -333,28 +399,17 @@ async def get_available_kpi_categories(
     current_user: User = Depends(get_current_user)
 ):
     enforce_permission(current_user, "kpi.view")
-    try:
-        ud_stmt = select(UserDepartment).where(UserDepartment.user_id == current_user.id)
-        ud = (await db.execute(ud_stmt)).scalars().first()
-        
-        if not ud or not current_user.position_id:
-            return {"categories": [], "message": "No organizational context found for your user profile."}
-            
-        stmt = select(KpiRule.category_name).where(
-            KpiRule.department_id == ud.department_id,
-            KpiRule.position_id == current_user.position_id,
-            KpiRule.level == ud.user_level,
-            KpiRule.is_active == True
+    categories = sorted(
+        await kpi_category_service.get_eligible_kpi_categories_for_user(
+            db, current_user.id
         )
-        categories = (await db.execute(stmt)).scalars().all()
-        
-        if not categories:
-            return {"categories": [], "message": "No KPI categories are currently assigned."}
-            
-        return {"categories": categories}
-    except Exception as e:
-        logger.error(f"Error fetching categories for {current_user.id}: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Error retrieving available KPI categories.")
+    )
+    if not categories:
+        return {
+            "categories": [],
+            "message": "No active KPI categories are configured for your profile.",
+        }
+    return {"categories": categories}
 
 
 # ==============================================================================
@@ -405,6 +460,7 @@ async def override_kpi_record(
         if not record:
             raise HTTPException(status_code=404, detail="KPI Record not found.")
         await enforce_user_scope(db, current_user, record.user_id)
+        period_service.ensure_kpi_record_editable(record)
         if record.is_frozen:
             raise HTTPException(status_code=400, detail="This KPI is frozen and cannot be modified. Unfreeze it first.")
 
@@ -414,16 +470,28 @@ async def override_kpi_record(
 
         old_score = float(record.weighted_score or 0.0)
         old_pct = float(record.percentage or 0.0)
+        old_status = record.status_bucket
 
-        record.weighted_score = payload.new_score
         max_score = formula_max_score(record.formula) if record.formula else 5.0
         if payload.new_score > max_score:
             raise HTTPException(status_code=400, detail=f"Override score cannot exceed {max_score}.")
+        record.weighted_score = payload.new_score
         record.percentage = 0.0 if max_score <= 0 else (payload.new_score / max_score) * 100
         record.status_bucket = KPICalculationEngine.get_grade(record.percentage)
         record.is_overridden = True
         record.override_reason = payload.reason
 
+        db.add(KPIHistory(
+            kpi_record_id=record.id,
+            changed_by_id=current_user.id,
+            old_percentage=old_pct,
+            new_percentage=float(record.percentage),
+            old_weighted_score=old_score,
+            new_weighted_score=float(record.weighted_score),
+            old_status=old_status,
+            new_status=record.status_bucket,
+            reason=payload.reason,
+        ))
         db.add(AuditLog(
             user_id=current_user.id,
             action="UPDATE_KPI_OVERRIDE",
@@ -460,12 +528,12 @@ async def deduct_kpi_record(
         if not record:
             raise HTTPException(status_code=404, detail="KPI Record not found.")
         await enforce_user_scope(db, current_user, record.user_id)
-        if record.period and record.period.status in [KPIPeriodStatus.FINALIZED, KPIPeriodStatus.LOCKED, KPIPeriodStatus.CANCELLED]:
-            raise HTTPException(status_code=409, detail="Finalized KPI records require the correction workflow.")
+        period_service.ensure_kpi_record_editable(record)
         if record.is_frozen:
             raise HTTPException(status_code=400, detail="This KPI is frozen and cannot be modified.")
 
         old_score = float(record.weighted_score or 0.0)
+        old_status = record.status_bucket
         
         # Explicit edge case handling for logical constraints
         if payload.deduct_points < 0:
@@ -484,6 +552,17 @@ async def deduct_kpi_record(
         existing_reason = f"{record.override_reason} | " if record.override_reason else ""
         record.override_reason = f"{existing_reason}Deducted {payload.deduct_points} pts: {payload.reason}"
 
+        db.add(KPIHistory(
+            kpi_record_id=record.id,
+            changed_by_id=current_user.id,
+            old_percentage=old_pct,
+            new_percentage=float(record.percentage),
+            old_weighted_score=old_score,
+            new_weighted_score=float(record.weighted_score),
+            old_status=old_status,
+            new_status=record.status_bucket,
+            reason=payload.reason,
+        ))
         db.add(AuditLog(
             user_id=current_user.id,
             action="UPDATE_KPI_DEDUCT",
@@ -507,17 +586,19 @@ async def deduct_kpi_record(
 # ==============================================================================
 # 5. Dashboard: Ranking (Leaderboard) - O(1) N+1 Fix
 # ==============================================================================
-@router.get('/dashboard/ranking', response_model=List[KPIRankingResponse], tags=["Dashboard"])
+@router.get('/dashboard/ranking', response_model=list[KPIRankingResponse], tags=["Dashboard"])
 async def get_kpi_ranking(
     period_type: PeriodType = PeriodType.MONTHLY,
     limit: int = Query(10, gt=0, le=100),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    """Rank from the current month (or today), independent of summary date filters."""
     enforce_permission(current_user, "kpi.view")
     try:
         today = datetime.now(APPLICATION_TIMEZONE).date()
         start_date = today.replace(day=1) if period_type == PeriodType.MONTHLY else today
+        authorized_department_ids = await get_authorized_department_ids(db, current_user)
         
         stmt = select(KPIRecord).options(
             joinedload(KPIRecord.user).selectinload(User.user_departments)
@@ -526,14 +607,18 @@ async def get_kpi_ranking(
             KPIRecord.is_deleted == False,
             KPIRecord.user.has(User.is_deleted == False),
             KPIRecord.period_start >= start_date
-        ).order_by(
+        )
+        if authorized_department_ids is not None:
+            stmt = stmt.where(KPIRecord.department_id.in_(authorized_department_ids))
+
+        stmt = stmt.order_by(
             desc(KPIRecord.weighted_score), KPIRecord.user_id, KPIRecord.id
         ).limit(limit)
         
         records = (await db.execute(stmt)).scalars().all()
         
         # 🌟 O(1) Bulk fetch departments to eliminate N+1 loop query
-        dept_ids = {r.user.user_departments[0].department_id for r in records if r.user.user_departments}
+        dept_ids = {r.department_id for r in records if r.department_id is not None}
         department_map = {}
         if dept_ids:
             dept_stmt = select(Department.id, Department.name).where(Department.id.in_(dept_ids))
@@ -543,9 +628,8 @@ async def get_kpi_ranking(
         ranking_list = []
         for index, record in enumerate(records):
             dept_name = "Unknown"
-            if record.user.user_departments:
-                dept_id = record.user.user_departments[0].department_id
-                dept_name = department_map.get(dept_id, "Unknown")
+            if record.department_id is not None:
+                dept_name = department_map.get(record.department_id, "Unknown")
 
             ranking_list.append(KPIRankingResponse(
                 user_id=record.user_id,
@@ -574,6 +658,7 @@ async def get_kpi_trend_chart(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    """Return a rolling ``days_limit`` chart independent of summary date filters."""
     enforce_permission(current_user, "kpi.view")
     await enforce_user_scope(db, current_user, target_user_id)
  
@@ -611,21 +696,36 @@ async def get_kpi_trend_chart(
 # ==============================================================================
 # 7. KPI Reports: Summary Report
 # ==============================================================================
+def _normalize_report_period_type(period_type: str) -> str:
+    try:
+        return PeriodType(period_type.strip().upper()).value
+    except (AttributeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="period_type must be one of: DAILY, WEEKLY, MONTHLY.",
+        ) from exc
+
+
 @router.get('/reports/summary', response_model=KpiReportSummaryResponse, tags=["Reports"])
 async def get_kpi_summary_report(
     period_type: str = Query(..., description="e.g., DAILY, WEEKLY, MONTHLY"),
-    department_id: Optional[UUID] = Query(None, description="Filter by Department"),
+    department_id: UUID | None = Query(None, description="Filter by Department"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_report_access)
 ):
     enforce_permission(current_user, "report.view")
+    normalized_period_type = _normalize_report_period_type(period_type)
+    authorized_department_ids = await get_authorized_department_ids(db, current_user)
     if department_id is not None:
         await enforce_department_scope(db, current_user, department_id)
     try:
         return await kpi_service.KpiReportService.generate_summary_report(
             db=db, 
-            period_type=period_type, 
-            department_id=department_id
+            period_type=normalized_period_type,
+            department_id=department_id,
+            department_ids=(
+                authorized_department_ids if department_id is None else None
+            ),
         )
     except Exception as e:
         logger.error(f"Failed to generate summary report: {str(e)}", exc_info=True)
@@ -635,7 +735,7 @@ async def get_kpi_summary_report(
 # ==============================================================================
 # 8. Custom API: Calculate with exact date
 # ==============================================================================
-async def run_custom_kpi_background(user_ids: List[UUID], start_date: datetime, end_date: datetime):
+async def run_custom_kpi_background(user_ids: list[UUID], start_date: datetime, end_date: datetime):
     """
     Background worker function that runs calculation non-blocking using a dedicated DB session.
     """
@@ -666,8 +766,7 @@ async def trigger_custom_calculation(
 ):
     enforce_permission(current_user, "kpi.calculate")
     try:
-        stmt = select(User.id).where(User.is_active == True)
-        user_ids = (await db.execute(stmt)).scalars().all()
+        user_ids = await _authorized_active_user_ids(db, current_user)
         
         if not user_ids:
             raise HTTPException(status_code=400, detail="No active users found to calculate KPIs for.")
@@ -691,6 +790,30 @@ async def trigger_custom_calculation(
         raise HTTPException(status_code=500, detail="Failed to initialize background task.")
 
 
+@router.post('/calculate/explicit', tags=["KPI Engine"])
+async def calculate_kpi_record_explicitly(
+    payload: ExplicitKpiCalculationRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(allow_admins),
+):
+    enforce_permission(current_user, "kpi.calculate")
+    record = await db.get(KPIRecord, payload.record_id)
+    if record is None or record.is_deleted:
+        raise HTTPException(status_code=404, detail="KPI Record not found.")
+    await enforce_user_scope(db, current_user, record.user_id)
+
+    context = KPICalculationContext(**payload.model_dump())
+    try:
+        await KPICalculationEngine.execute_kpi_calculation(db, context=context)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    return {
+        "record_id": str(payload.record_id),
+        "detail": "Explicit KPI calculation completed.",
+    }
+
+
 # ==============================================================================
 # 9. Audit Logs Extraction API
 # ==============================================================================
@@ -706,12 +829,8 @@ async def bulk_calculate_endpoint(
     If `user_ids` is empty, all active users are targeted.
     """
     enforce_permission(current_user, "kpi.calculate")
-    # Resolve target users
-    if payload.user_ids:
-        target_user_ids = payload.user_ids
-    else:
-        # fetch all active user ids
-        target_user_ids = await kpi_repo.get_active_user_ids(db)
+    # Resolve target users only after validating their server-side department scope.
+    target_user_ids = await _authorized_active_user_ids(db, current_user, payload.user_ids)
 
     if not target_user_ids:
         raise HTTPException(status_code=400, detail="No users found for KPI calculation.")
@@ -738,7 +857,7 @@ async def bulk_calculate_endpoint(
     )
     return result
 
-@router.get('/audit-logs', response_model=List[AuditLogResponse], tags=["Audit Logs"])
+@router.get('/audit-logs', response_model=list[AuditLogResponse], tags=["Audit Logs"])
 async def get_system_audit_logs(
     limit: int = Query(100, le=1000), 
     db: AsyncSession = Depends(get_db),

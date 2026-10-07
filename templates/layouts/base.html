@@ -25,13 +25,17 @@
 
     <!-- Production CSS -->
     <link rel="stylesheet" href="/static/css/output.css">
+    <link rel="stylesheet" href="/static/css/design-system.css">
     <link rel="stylesheet" href="/static/css/notifications.css">
     <link rel="stylesheet" href="/static/css/dashboard.css">
     <link rel="stylesheet" href="/static/css/enterprise-ui.css">
+    <link rel="stylesheet" href="/static/css/executive-dashboard.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
     <!-- External Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="/static/js/csp-event-bridge.js"></script>
+    <script src="/static/js/csrf.js"></script>
     
     <style>
         body { font-family: 'Inter', sans-serif; background-color: #FAF9F6; }
@@ -97,6 +101,7 @@
                 <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg> Dashboard
             </a>
             
+            <div class="nav-group-label">Organization</div>
             <!-- Users -->
             <a href="/superadmin/users" class="{% if active_page == 'users' %}sidebar-item-active{% else %}sidebar-item text-red-100{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
                 <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg> Users
@@ -121,6 +126,7 @@
                 <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg> Positions
             </a>
 
+            <div class="nav-group-label">Performance</div>
             <!-- KPIs -->
             <a href="/superadmin/kpi" class="{% if active_page == 'kpis' %}sidebar-item-active{% else %}sidebar-item text-red-100{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
                 <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg> KPIs
@@ -146,11 +152,13 @@
                 <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg> Reports
             </a>
 
+            <div class="nav-group-label">Operations</div>
             <!-- Action Plans -->
             <a href="/action-plans" class="{% if active_page == 'action_plans' %}sidebar-item-active{% else %}sidebar-item text-red-100{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
                 <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg> Action Plans
             </a>
 
+           <div class="nav-group-label">Governance</div>
            <!-- Super Admin Process Tracking Sidebar Link -->
             <a href="/superadmin/process-tracking" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all {% if active_page == 'process_tracking' %}bg-blue-600 text-white shadow-md{% else %}text-red-100 hover:bg-[rgba(255,255,255,0.1)]{% endif %}">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
@@ -215,6 +223,29 @@
             </button>
         </div>
         {% endif %}
+
+        <header class="app-topbar">
+            <div class="app-topbar__context">
+                <p class="app-topbar__eyebrow">Enterprise performance platform</p>
+                <p class="app-topbar__title">{% block shell_context %}{{ user_role or 'Workspace' }} workspace{% endblock %}</p>
+            </div>
+            <div class="app-topbar__actions">
+                <a class="app-topbar__icon" href="/notifications" aria-label="Open notifications">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 00-12 0v3.2c0 .5-.2 1-.6 1.4L4 17h5m6 0v1a3 3 0 01-6 0v-1"/></svg>
+                    <span id="topbarNotificationCount" class="app-notification-count" hidden></span>
+                </a>
+                <div class="app-topbar__identity">
+                    <span class="app-topbar__avatar">{{ user_name[0] if user_name else 'U' }}</span>
+                    <div class="app-topbar__user">
+                        <strong>{{ user_name or 'User' }}</strong>
+                        <span>{{ user_role or 'Authorized user' }}</span>
+                    </div>
+                </div>
+                <button type="button" class="app-topbar__icon" onclick="handleLogout()" aria-label="Sign out">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M10 17l5-5-5-5m5 5H3m10-8V3a2 2 0 012-2h4a2 2 0 012 2v18a2 2 0 01-2 2h-4a2 2 0 01-2-2v-2"/></svg>
+                </button>
+            </div>
+        </header>
 
         <div class="flex-1 overflow-y-auto custom-scrollbar relative">
             {% block content %}{% endblock %}
@@ -395,8 +426,11 @@
             if (!(await window.appConfirm('စနစ်မှ ထွက်ခွာရန် (Logout) သေချာပါသလား?', { title: 'Sign out?' }))) return;
             try {
                 const response = await fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' });
+                if (!response.ok) {
+                    throw new Error(`Logout failed with status ${response.status}`);
+                }
                 localStorage.removeItem('user'); // 🌟 SECURITY: Clear local cache
-                window.location.href = '/auth/login';
+                window.location.replace('/auth/login');
             } catch (error) {
                 console.error('Logout error:', error);
                 window.showToast('ကွန်ရက် ချိတ်ဆက်မှု အမှားအယွင်း ရှိနေပါသည်။', 'error');

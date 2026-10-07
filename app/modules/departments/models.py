@@ -1,8 +1,11 @@
+import uuid
+
 from sqlalchemy import Column, ForeignKey, Index, Integer, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
+
 from app.database.base import BaseModel
-import uuid
+
 
 class Department(BaseModel):
     __tablename__ = "departments"
@@ -29,6 +32,7 @@ class UserDepartment(BaseModel):
 
     __table_args__ = (
         Index("idx_user_departments_department_user_deleted", "department_id", "user_id", "is_deleted"),
+        Index("idx_user_departments_user_department_deleted", "user_id", "department_id", "is_deleted"),
     )
     
     user = relationship("User", back_populates="user_departments")

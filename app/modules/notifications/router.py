@@ -1,23 +1,24 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List
 from uuid import UUID
 
-from app.database.connection import get_db
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.dependencies import get_current_user
-from app.modules.notifications.schemas import NotificationResponse
+from app.database.connection import get_db
 
 # 🌟 FIX: Import the module-level functions from repo.py
 from app.modules.notifications.repo import (
+    count_unread_notifications,
+    get_notification_by_user,
     get_notifications_by_user,
     mark_all_notifications_as_read,
     mark_notification_as_read,
-    count_unread_notifications,
-    get_notification_by_user,
 )
+from app.modules.notifications.schemas import NotificationResponse
 
 # 🌟 Swagger UI တွင် သပ်ရပ်စွာပေါ်ရန် Tag ထည့်ပေးခြင်း
 router = APIRouter(tags=["Notifications"])
+NOTIFICATION_NOT_FOUND = "Notification not found"
 
 
 @router.get("/unread-count")
@@ -27,7 +28,7 @@ async def get_unread_count(
 ):
     return {"count": await count_unread_notifications(db, current_user.id)}
 
-@router.get("", response_model=List[NotificationResponse])
+@router.get("", response_model=list[NotificationResponse])
 async def get_my_notifications(
     skip: int = Query(0, ge=0),
     # 🌟 SECURITY FIX: Prevent Memory Exhaustion DoS by capping limit to 100
@@ -49,10 +50,13 @@ async def get_my_notification(
     try:
         parsed_notification_id = UUID(notification_id)
     except ValueError:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notification not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=NOTIFICATION_NOT_FOUND,
+        ) from None
     notification = await get_notification_by_user(db, parsed_notification_id, current_user.id)
     if notification is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notification not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=NOTIFICATION_NOT_FOUND)
     if not notification.is_read:
         notification.is_read = True
         await db.commit()
@@ -81,5 +85,5 @@ async def mark_as_read(
     # 🌟 FIX: Call the function directly
     success = await mark_notification_as_read(db, notification_id, current_user.id)
     if not success:
-        raise HTTPException(status_code=404, detail="Notification not found")
+        raise HTTPException(status_code=404, detail=NOTIFICATION_NOT_FOUND)
     return {"success": True, "message": "Marked as read"}

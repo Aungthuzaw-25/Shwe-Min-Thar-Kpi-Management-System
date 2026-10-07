@@ -1,12 +1,14 @@
 """
 Enterprise Request/Response Logging & Performance Middleware
 """
+import logging
 import time
 import uuid
-import logging
+
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
+
 from app.models.system import LogLevel
 from app.services.system_log_service import record_system_log
 
