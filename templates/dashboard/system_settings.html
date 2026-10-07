@@ -190,11 +190,11 @@
     function escapeHTML(str) {
         if (str === null || str === undefined) return "";
         return str.toString()
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/"/g, "&quot;")
-            .replace(/'/g, "&#039;");
+            .replaceAll("&", "&amp;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;")
+            .replaceAll('"', "&quot;")
+            .replaceAll("'", "&#039;");
     }
 
     const activeTabStyle = "setting-tab-btn active-tab w-auto lg:w-full text-left px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center shrink-0 bg-blue-950 text-white shadow-md whitespace-nowrap";
