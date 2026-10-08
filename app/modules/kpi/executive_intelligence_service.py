@@ -151,23 +151,27 @@ async def _load_periods(
     scope_user_ids: list[UUID] | None,
     department_ids: list[UUID] | None,
 ) -> list[KPIPeriod]:
-    records = _ranked_records()
-    authorized_period_ids = (
-        select(records.c.kpi_period_id)
-        .where(*_record_filters(records, scope_user_ids, department_ids))
-        .distinct()
-        .subquery()
+    statement = select(KPIPeriod).where(
+        KPIPeriod.is_deleted.is_(False),
+        KPIPeriod.status.in_(FINAL_PERIOD_STATUSES),
     )
+    if scope_user_ids is not None or department_ids is not None:
+        records = _ranked_records()
+        authorized_period_ids = (
+            select(records.c.kpi_period_id)
+            .where(*_record_filters(records, scope_user_ids, department_ids))
+            .distinct()
+            .subquery()
+        )
+        statement = statement.join(
+            authorized_period_ids,
+            authorized_period_ids.c.kpi_period_id == KPIPeriod.id,
+        )
+
     return list(
         (
             await db.execute(
-                select(KPIPeriod)
-                .join(
-                    authorized_period_ids,
-                    authorized_period_ids.c.kpi_period_id == KPIPeriod.id,
-                )
-                .where(KPIPeriod.is_deleted.is_(False))
-                .order_by(KPIPeriod.start_date.desc(), KPIPeriod.id.desc())
+                statement.order_by(KPIPeriod.start_date.desc(), KPIPeriod.id.desc())
             )
         )
         .scalars()
@@ -179,7 +183,6 @@ def _default_period(periods: list[KPIPeriod]) -> KPIPeriod | None:
     for preferred_status in (
         KPIPeriodStatus.OPEN,
         KPIPeriodStatus.IN_PROGRESS,
-        *FINAL_PERIOD_STATUSES,
     ):
         match = next(
             (period for period in periods if period.status == preferred_status),
@@ -187,6 +190,12 @@ def _default_period(periods: list[KPIPeriod]) -> KPIPeriod | None:
         )
         if match:
             return match
+    finalized_or_locked = next(
+        (period for period in periods if period.status in FINAL_PERIOD_STATUSES),
+        None,
+    )
+    if finalized_or_locked:
+        return finalized_or_locked
     return periods[0] if periods else None
 
 

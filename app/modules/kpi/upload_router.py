@@ -1,115 +1,455 @@
+import csv
 import io
-import mimetypes
+import logging
+import math
 import os
-from datetime import datetime
+import re
+from dataclasses import dataclass
+from datetime import date
+from decimal import Decimal, InvalidOperation
+from typing import Annotated, Any
 from uuid import UUID
+from xml.etree.ElementTree import ParseError
+from zipfile import BadZipFile
 
-import pandas as pd
 from fastapi import (
     APIRouter,
-    BackgroundTasks,
     Depends,
     File,
     Form,
     HTTPException,
+    Query,
     Request,
     UploadFile,
     status,
 )
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
-from sqlalchemy.orm import selectinload
-
-try:
-    import magic  # Optional dependency for MIME validation.
-except ImportError:  # pragma: no cover - libmagic may be absent in runtime image.
-    magic = None
-
-# RATE LIMITER IMPORTS
+from openpyxl import Workbook, load_workbook
+from openpyxl.utils import get_column_letter
+from openpyxl.utils.exceptions import InvalidFileException
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
-from app.core.dependencies import RoleChecker, enforce_permission, get_authorized_department_ids
-from app.database.connection import AsyncSessionLocal, get_db  # Background Worker DB Session
+from app.core.dependencies import (
+    RoleChecker,
+    enforce_permission,
+    get_authorized_department_ids,
+)
+from app.core.timezone import as_application_time
+from app.database.connection import get_db
 from app.modules.departments.models import UserDepartment
 from app.modules.kpi.engine import KPICalculationEngine
-from app.modules.kpi.models import PeriodType
+from app.modules.kpi.models import (
+    KPIFormula,
+    KPIPeriod,
+    KPIPeriodStatus,
+    KPIRecord,
+    PeriodType,
+)
 from app.modules.kpi.period_ranges import calendar_period_range
+from app.modules.kpi.upload_contract import (
+    EMPLOYEE_HEADERS,
+    HeaderContract,
+    HeaderContractError,
+    build_header_contract,
+    normalize_header,
+)
 from app.modules.users.models import User
 
+logger = logging.getLogger(__name__)
 limiter = Limiter(key_func=get_remote_address)
 router = APIRouter(prefix="/kpi-uploads", tags=["KPI Excel Uploads"])
-admin_hr_checker = RoleChecker(['Super Admin', 'Admin', 'HR'])
+admin_hr_checker = RoleChecker(["Super Admin", "Admin", "HR"])
 
-# SECURITY: Anti-Malware & Anti-DoS Constants
-MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB Limit for Spreadsheets
-ALLOWED_EXTENSIONS = {".csv", ".xls", ".xlsx"}
-ALLOWED_MIME_TYPES = [
-    "text/csv",
-    "text/plain",
-    "application/vnd.ms-excel",
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    "application/octet-stream", # Excel 
-    "application/zip" # xlsx XML 
-]
+MAX_FILE_SIZE = 5 * 1024 * 1024
+ALLOWED_EXTENSIONS = {".csv", ".xlsx"}
+EDITABLE_PERIOD_STATUSES = {KPIPeriodStatus.OPEN, KPIPeriodStatus.IN_PROGRESS}
 
 
-def _detect_mime_type(file_bytes: bytes, filename: str | None = None) -> str:
-    """Fallback MIME detection if libmagic is missing."""
-    if magic is not None:
-        try:
-            detected = magic.from_buffer(file_bytes, mime=True)
-            if detected:
-                return detected
-        except Exception:  # noqa: S110 - optional libmagic failure uses safe fallback
-            pass
-
-    if filename:
-        guessed = mimetypes.guess_type(filename)[0]
-        if guessed:
-            return guessed
-
-    if file_bytes.startswith(b"PK"):
-        return "application/zip"
-    if file_bytes.startswith(b"\x89PNG"):
-        return "image/png"
-    if file_bytes.startswith(b"\xff\xd8\xff"):
-        return "image/jpeg"
-    if file_bytes.startswith(b"%PDF"):
-        return "application/pdf"
-    return "application/octet-stream"
+class UploadValidationError(ValueError):
+    def __init__(self, errors: list[str] | str):
+        self.errors = [errors] if isinstance(errors, str) else errors
+        super().__init__("KPI workbook validation failed.")
 
 
-async def _read_upload_dataframe(file: UploadFile) -> pd.DataFrame:
-    file.file.seek(0, 2)
+@dataclass(frozen=True)
+class ParsedWorkbook:
+    headers: list[Any]
+    rows: list[tuple[int, list[Any]]]
+
+
+@dataclass(frozen=True)
+class ValidatedUploadRow:
+    row_number: int
+    email: str
+    user: User
+    formula: KPIFormula
+    task_data: dict[str, float]
+
+
+def _period_month_range(period: KPIPeriod):
+    start_date = as_application_time(period.start_date).date()
+    if start_date.day != 1:
+        return None
+    expected = calendar_period_range(PeriodType.MONTHLY, start_date)
+    if as_application_time(period.start_date) != expected.start_inclusive or (
+        as_application_time(period.end_date) != expected.end_exclusive
+    ):
+        return None
+    return expected
+
+
+def _assert_importable_period(period: KPIPeriod | None) -> KPIPeriod:
+    if period is None or period.is_deleted:
+        raise UploadValidationError("Select an available evaluation period.")
+    if period.status not in EDITABLE_PERIOD_STATUSES:
+        raise UploadValidationError(
+            "The selected evaluation period is not open for KPI imports."
+        )
+    if _period_month_range(period) is None:
+        raise UploadValidationError(
+            "The selected evaluation period must use complete monthly boundaries."
+        )
+    return period
+
+
+async def _resolve_period(
+    db: AsyncSession,
+    *,
+    period_id: UUID | None,
+    target_month: str | None,
+) -> KPIPeriod:
+    if period_id is not None:
+        period = await db.get(KPIPeriod, period_id)
+        return _assert_importable_period(period)
+
+    if target_month is None or not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", target_month):
+        raise UploadValidationError(
+            "Select an evaluation period using its period ID."
+        )
+    parsed_date = date.fromisoformat(f"{target_month}-01")
+    expected = calendar_period_range(PeriodType.MONTHLY, parsed_date)
+    candidates = (
+        await db.execute(
+            select(KPIPeriod).where(
+                KPIPeriod.is_deleted.is_(False),
+                KPIPeriod.status.in_(EDITABLE_PERIOD_STATUSES),
+            )
+        )
+    ).scalars().all()
+    matches = [
+        period
+        for period in candidates
+        if _period_month_range(period) == expected
+    ]
+    if len(matches) != 1:
+        raise UploadValidationError(
+            "The selected month must match exactly one open evaluation period."
+        )
+    return _assert_importable_period(matches[0])
+
+
+async def _resolve_user_formula(
+    db: AsyncSession, user: User, period: KPIPeriod
+) -> KPIFormula | None:
+    period_range = _period_month_range(period)
+    try:
+        formula, resolved_period = (
+            await KPICalculationEngine.get_applicable_formula_and_period(
+                db, user, period_range.start_inclusive
+            )
+        )
+    except ValueError as exc:
+        raise UploadValidationError(
+            f"KPI formula resolution is ambiguous for {user.email} in the selected period."
+        ) from exc
+    if resolved_period is None or resolved_period.id != period.id:
+        raise UploadValidationError(
+            f"No unambiguous KPI period/formula context exists for {user.email}."
+        )
+    return formula
+
+
+async def _read_upload_dataframe(file: UploadFile) -> ParsedWorkbook:
+    filename = file.filename or ""
+    extension = os.path.splitext(filename)[1].lower()
+    if extension not in ALLOWED_EXTENSIONS:
+        raise UploadValidationError(
+            "Unsupported file format. Upload a .xlsx or .csv file."
+        )
+    file.file.seek(0, os.SEEK_END)
     file_size = file.file.tell()
     await file.seek(0)
     if file_size > MAX_FILE_SIZE:
-        raise ValueError("File too large. Maximum size allowed is 5MB to prevent memory overload.")
-    extension = os.path.splitext(file.filename)[1].lower()
-    if extension not in ALLOWED_EXTENSIONS:
-        raise ValueError("Unsupported file format. Please upload a strictly formatted .csv or .xlsx file.")
+        raise UploadValidationError("File exceeds the 5MB upload limit.")
     contents = await file.read()
-    mime_type = _detect_mime_type(contents, file.filename)
-    if not any(mime in mime_type.lower() for mime in ["csv", "excel", "sheet", "zip", "text", "octet-stream"]):
-        raise ValueError(f"Security Alert: File content signature ({mime_type}) does not match a valid spreadsheet.")
+    if len(contents) > MAX_FILE_SIZE:
+        raise UploadValidationError("File exceeds the 5MB upload limit.")
+    if not contents:
+        raise UploadValidationError("The uploaded workbook is empty.")
 
-    def parse_file():
-        source = io.BytesIO(contents)
-        return pd.read_csv(source) if extension == ".csv" else pd.read_excel(source)
+    def parse_file() -> ParsedWorkbook:
+        if extension == ".csv":
+            try:
+                rows = list(csv.reader(io.StringIO(contents.decode("utf-8-sig"), newline="")))
+            except (UnicodeDecodeError, csv.Error) as exc:
+                raise UploadValidationError("The CSV file is malformed or not UTF-8.") from exc
+            if not rows:
+                raise UploadValidationError("The uploaded file has no header row.")
+            return _table_from_rows(rows)
 
-    dataframe = await run_in_threadpool(parse_file)
-    dataframe.columns = dataframe.columns.str.strip()
-    if "Email" not in dataframe.columns:
-        raise ValueError("The uploaded file is missing the strictly required 'Email' column.")
-    return dataframe
+        try:
+            workbook = load_workbook(io.BytesIO(contents), data_only=False, read_only=False)
+        except (
+            BadZipFile,
+            InvalidFileException,
+            KeyError,
+            OSError,
+            ParseError,
+            ValueError,
+        ) as exc:
+            raise UploadValidationError("The XLSX file is corrupted or invalid.") from exc
+        try:
+            if "KPI_Data" not in workbook.sheetnames:
+                raise UploadValidationError(
+                    "The workbook must contain the KPI_Data worksheet."
+                )
+            worksheet = workbook["KPI_Data"]
+            values = list(worksheet.iter_rows(values_only=False))
+            if not values:
+                raise UploadValidationError("The KPI_Data worksheet is empty.")
+            headers = [cell.value for cell in values[0]]
+            rows: list[tuple[int, list[Any]]] = []
+            for row_number, cells in enumerate(values[1:], start=2):
+                row_values = [cell.value for cell in cells]
+                for column_index, cell in enumerate(cells):
+                    if cell.data_type == "f":
+                        header = (
+                            str(headers[column_index])
+                            if column_index < len(headers) and headers[column_index]
+                            else get_column_letter(column_index + 1)
+                        )
+                        raise UploadValidationError(
+                            f"Row {row_number} — {header}: formula cells are not supported."
+                        )
+                if any(value is not None and str(value).strip() for value in row_values):
+                    rows.append((row_number, row_values))
+            return ParsedWorkbook(headers=headers, rows=rows)
+        finally:
+            workbook.close()
+
+    try:
+        return await run_in_threadpool(parse_file)
+    except UploadValidationError:
+        raise
+    except (UnicodeDecodeError, csv.Error) as exc:
+        raise UploadValidationError("The uploaded file is malformed.") from exc
 
 
-def _scoped_active_users_statement(current_user: User, department_ids: set[str] | None):
+def _table_from_rows(rows: list[list[Any]]) -> ParsedWorkbook:
+    headers = rows[0]
+    parsed_rows = []
+    for row_number, row in enumerate(rows[1:], start=2):
+        values = row + [None] * max(0, len(headers) - len(row))
+        if any(value is not None and str(value).strip() for value in values):
+            parsed_rows.append((row_number, values[: len(headers)]))
+    return ParsedWorkbook(headers=headers, rows=parsed_rows)
+
+
+def _validate_headers(
+    workbook_headers: list[Any], contract: HeaderContract
+) -> tuple[dict[str, int], list[str]]:
+    errors: list[str] = []
+    header_indexes: dict[str, int] = {}
+    for index, raw_header in enumerate(workbook_headers):
+        key = normalize_header(raw_header)
+        if not key:
+            errors.append(f"Column {index + 1}: header is blank.")
+        elif key in header_indexes:
+            errors.append(
+                f"Duplicate column header after normalization: '{raw_header}'."
+            )
+        else:
+            header_indexes[key] = index
+
+    expected_keys = {normalize_header(header) for header in contract.headers}
+    missing_keys = expected_keys - header_indexes.keys()
+    unknown_keys = header_indexes.keys() - expected_keys
+    canonical_labels = {
+        normalize_header(header): header for header in contract.headers
+    }
+    errors.extend(
+        f"Missing required column: {canonical_labels[key]}."
+        for key in sorted(missing_keys)
+    )
+    errors.extend(
+        f"Unknown column: {workbook_headers[header_indexes[key]]}."
+        for key in sorted(unknown_keys)
+    )
+    if errors:
+        return header_indexes, errors
+    return header_indexes, []
+
+
+def _is_empty(value: Any) -> bool:
+    return value is None or (isinstance(value, str) and not value.strip())
+
+
+def _finite_number(value: Any) -> float | None:
+    if isinstance(value, bool) or _is_empty(value):
+        return None
+    try:
+        number = float(Decimal(str(value).strip()))
+    except (InvalidOperation, TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+async def _build_upload_rows(
+    workbook: ParsedWorkbook,
+    db: AsyncSession,
+    current_user: User,
+    period: KPIPeriod,
+) -> tuple[list[ValidatedUploadRow], list[str]]:
+    errors: list[str] = []
+    department_ids = await get_authorized_department_ids(db, current_user)
+    users_statement = _scoped_active_users_statement(department_ids)
+    users = (await db.execute(users_statement)).scalars().unique().all()
+    user_by_email = {
+        str(user.email).strip().casefold(): user
+        for user in users
+        if user.email
+    }
+
+    formulas_by_user: dict[UUID, KPIFormula] = {}
+    contracts_by_user: dict[UUID, frozenset[str]] = {}
+    for user in users:
+        try:
+            formula = await _resolve_user_formula(db, user, period)
+        except UploadValidationError:
+            continue
+        if formula is not None:
+            formulas_by_user[user.id] = formula
+            try:
+                contracts_by_user[user.id] = frozenset(
+                    field.key
+                    for field in build_header_contract([formula]).metric_headers
+                )
+            except HeaderContractError as exc:
+                raise UploadValidationError(str(exc)) from exc
+    try:
+        contract = build_header_contract(list(formulas_by_user.values()))
+    except HeaderContractError as exc:
+        raise UploadValidationError(str(exc)) from exc
+
+    header_indexes, header_errors = _validate_headers(workbook.headers, contract)
+    errors.extend(header_errors)
+    if not workbook.rows:
+        errors.append("The workbook contains no data rows.")
+    if header_errors:
+        return [], errors
+
+    metadata_indexes = {
+        key: header_indexes[normalize_header(header)]
+        for header in EMPLOYEE_HEADERS
+        for key in (normalize_header(header),)
+    }
+    metric_by_key = {
+        field.key: field for field in contract.metric_headers
+    }
+    seen_emails: set[str] = set()
+    validated_rows: list[ValidatedUploadRow] = []
+
+    for row_number, values in workbook.rows:
+        email_value = values[metadata_indexes["email"]]
+        email = (
+            str(email_value).strip().casefold()
+            if isinstance(email_value, str)
+            else ""
+        )
+        if not email:
+            errors.append(f"Row {row_number} — Email: a non-empty email is required.")
+            continue
+        if email in seen_emails:
+            errors.append(f"Row {row_number} — Email '{email}': duplicate employee row.")
+            continue
+        seen_emails.add(email)
+
+        user = user_by_email.get(email)
+        if user is None:
+            errors.append(
+                f"Row {row_number} — Email '{email}': active employee was not found "
+                "in your authorized departments."
+            )
+            continue
+        formula = formulas_by_user.get(user.id)
+        if formula is None:
+            errors.append(
+                f"Row {row_number} — Email '{email}': no active KPI formula is assigned "
+                "for the selected period."
+            )
+            continue
+        existing_record = (
+            await db.execute(
+                select(KPIRecord).where(
+                    KPIRecord.user_id == user.id,
+                    KPIRecord.kpi_period_id == period.id,
+                    KPIRecord.is_deleted.is_(False),
+                )
+            )
+        ).scalars().first()
+        if existing_record and (existing_record.is_frozen or existing_record.is_overridden):
+            errors.append(
+                f"Row {row_number} — Email '{email}': the existing KPI record is frozen "
+                "or overridden and cannot be recalculated."
+            )
+            continue
+
+        applicable_keys = contracts_by_user[user.id]
+        task_data: dict[str, float] = {}
+        row_has_error = False
+        for key, field in metric_by_key.items():
+            column_index = header_indexes[key]
+            value = values[column_index] if column_index < len(values) else None
+            if key not in applicable_keys:
+                if not _is_empty(value):
+                    errors.append(
+                        f"Row {row_number} — Email '{email}', {field.label}: "
+                        "this KPI field does not apply to the employee's formula."
+                    )
+                    row_has_error = True
+                continue
+            number = _finite_number(value)
+            if number is None:
+                safe_value = repr(value)[:60]
+                errors.append(
+                    f"Row {row_number} — Email '{email}', {field.label}: "
+                    f"must be a finite number (received {safe_value})."
+                )
+                row_has_error = True
+                continue
+            task_data[key] = number
+        if not row_has_error:
+            validated_rows.append(
+                ValidatedUploadRow(
+                    row_number=row_number,
+                    email=email,
+                    user=user,
+                    formula=formula,
+                    task_data=task_data,
+                )
+            )
+    return validated_rows, errors
+
+
+def _scoped_active_users_statement(department_ids: set[str] | None):
     statement = select(User).options(
-        selectinload(User.user_departments).selectinload(UserDepartment.department)
+        selectinload(User.user_departments).selectinload(UserDepartment.department),
+        selectinload(User.position),
     ).where(User.is_active.is_(True), User.is_deleted.is_(False))
     if department_ids is not None:
         database_department_ids = [UUID(department_id) for department_id in department_ids]
@@ -121,206 +461,210 @@ def _scoped_active_users_statement(current_user: User, department_ids: set[str] 
                 )
             )
         )
-    return statement
+    return statement.order_by(func.lower(User.email))
 
 
-def _visible_department_name(user: User, department_ids: set[str] | None) -> str:
+def _user_metadata(user: User, department_ids: set[str] | None) -> dict[str, str]:
     memberships = [
-        membership for membership in (user.user_departments or [])
-        if not getattr(membership, "is_deleted", False)
-        and (department_ids is None or str(membership.department_id) in department_ids)
+        membership
+        for membership in (user.user_departments or [])
+        if not membership.is_deleted
+        and (
+            department_ids is None
+            or str(membership.department_id) in department_ids
+        )
     ]
-    if memberships and getattr(memberships[0], "department", None):
-        return memberships[0].department.name
-    return "N/A"
+    department = memberships[0].department if memberships else None
+    return {
+        "Email": str(user.email),
+        "Employee Name": f"{user.first_name} {user.last_name}".strip(),
+        "Department": department.name if department else "N/A",
+        "Position": user.position.name if user.position else "N/A",
+        "Level": memberships[0].user_level if memberships else "N/A",
+    }
 
-async def _build_upload_rows(df: pd.DataFrame, db: AsyncSession, current_user: User):
-    emails = df["Email"].dropna().astype(str).str.strip().tolist()
-    department_ids = await get_authorized_department_ids(db, current_user)
-    statement = _scoped_active_users_statement(current_user, department_ids).with_only_columns(
-        User.id, User.email
-    ).where(User.email.in_(emails))
-    user_records = (await db.execute(statement)).all()
-    email_to_user_id = {email: user_id for user_id, email in user_records}
-    ignored_columns = {"email", "employee name", "name", "department", "id", "no", "no.", "sr", "sr."}
-    errors, valid_rows = [], []
-    for index, row in df.iterrows():
-        email = str(row["Email"]).strip() if pd.notna(row.get("Email")) else ""
-        if not email:
-            continue
-        user_id = email_to_user_id.get(email)
-        if not user_id:
-            errors.append(f"Row {index + 2}: Active user with email '{email}' not found.")
-            continue
-        task_data = {}
-        for column in df.columns:
-            if str(column).strip().lower() in ignored_columns:
-                continue
-            value = row[column]
-            if pd.isna(value) or not str(value).strip():
-                continue
-            value_text = str(value).strip()
-            if value_text in {"-", "N/A", "NA", "None", "null"}:
-                task_data[str(column).strip()] = 0.0
-                continue
-            try:
-                task_data[str(column).strip()] = float(value_text)
-            except ValueError:
-                errors.append(f"Row {index + 2}: Invalid metric number '{value_text}' in column '{column}'.")
-        valid_rows.append({"user_id": user_id, "task_data": task_data})
-    return valid_rows, errors
-# ==============================================================================
-# BACKGROUND WORKER FUNCTION (Non-Blocking Heavy Calculation Engine)
-# ==============================================================================
-async def process_kpi_in_background(valid_rows_data: list, period_start: datetime, period_end: datetime):
-    """
-    API Response (Background) DB Session Worker
-    """
-    async with AsyncSessionLocal() as bg_db:
-        # 🌟 FAULT TOLERANCE FIX: Try-Except moved inside the loop. 
-        # If one user fails, it won't crash the calculation for the remaining users.
-        for item in valid_rows_data:
-            try:
-                user_id = item["user_id"]
-                task_data = item["task_data"]
-                
-                # Background Session User 
-                stmt = select(User).options(
-                    selectinload(User.user_departments),
-                    selectinload(User.position)
-                ).where(User.id == user_id, User.is_active == True)
-                
-                user = (await bg_db.execute(stmt)).scalars().first()
-                if user:
-                    await KPICalculationEngine.execute_kpi_calculation(
-                        db=bg_db,
-                        user=user,
-                        period_start=period_start,
-                        period_end=period_end,
-                        period_type=PeriodType.MONTHLY,
-                        task_data=task_data
-                    )
-            except Exception as e:
-                print(f"[KPI Background Processing Error for User {item.get('user_id')}]: {str(e)}")
 
-# ==============================================================================
-# 1. EXPORT TEMPLATE API (Admin Template )
-# ==============================================================================
-@router.get(
-    "/export-template",
-    summary="Download KPI Excel Template with Detailed Attendance & Target",
-    responses={status.HTTP_500_INTERNAL_SERVER_ERROR: {"description": "Template generation error"}},
-)
-@limiter.limit("10/minute") 
+async def list_import_periods(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(admin_hr_checker),
+):
+    enforce_permission(current_user, "kpi.create")
+    periods = (
+        await db.execute(
+            select(KPIPeriod)
+            .where(
+                KPIPeriod.is_deleted.is_(False),
+                KPIPeriod.status.in_(EDITABLE_PERIOD_STATUSES),
+            )
+            .order_by(KPIPeriod.start_date.desc(), KPIPeriod.id)
+        )
+    ).scalars().all()
+    return [
+        {
+            "id": str(period.id),
+            "label": period.label,
+            "month": _period_month_range(period).start_inclusive.strftime("%Y-%m"),
+        }
+        for period in periods
+        if _period_month_range(period) is not None
+    ]
+
+
+@router.get("/periods", summary="List evaluation periods available for KPI import")
+@limiter.limit("30/minute")
+async def get_import_periods(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(admin_hr_checker),
+):
+    return await list_import_periods(request, db, current_user)
+
+
+@router.get("/export-template", summary="Download the official KPI import template")
+@limiter.limit("10/minute")
 async def export_kpi_template(
-    request: Request, # Rate limiter 
-    db: AsyncSession = Depends(get_db), 
-    current_user: User = Depends(admin_hr_checker)
+    request: Request,
+    period_id: UUID = Query(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(admin_hr_checker),
 ):
     enforce_permission(current_user, "report.export")
     try:
-        # Database Active 
+        period = _assert_importable_period(await db.get(KPIPeriod, period_id))
         department_ids = await get_authorized_department_ids(db, current_user)
-        stmt = _scoped_active_users_statement(current_user, department_ids)
-        
-        users = (await db.execute(stmt)).scalars().all()
-        
-        rows = []
-        for u in users:
-            dept_name = _visible_department_name(u, department_ids)
-                
-            rows.append({
-                "Email": u.email,
-                "Employee Name": f"{u.first_name} {u.last_name}",
-                "Department": dept_name,
-                "Late Attendance (Times)": 0,           # 
-                "Unauthorized Leave / AWOL (Days)": 0,  # 
-                "Authorized Leave (Days)": 0,           # 
-                "Compliance Violation (Times)": 0,      # 
-                "Actual Target Value": 0.0              # Target 
-            })
-            
-        df = pd.DataFrame(rows)
-        output = io.BytesIO()
-        
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df.to_excel(writer, sheet_name='KPI_Data', index=False)
-            
-            # Column (Width) 
-            worksheet = writer.sheets['KPI_Data']
-            worksheet.column_dimensions['A'].width = 28  # Email
-            worksheet.column_dimensions['B'].width = 25  # Name
-            worksheet.column_dimensions['C'].width = 22  # Department
-            worksheet.column_dimensions['D'].width = 25  # Late
-            worksheet.column_dimensions['E'].width = 32  # AWOL
-            worksheet.column_dimensions['F'].width = 25  # Auth Leave
-            worksheet.column_dimensions['G'].width = 30  # Compliance
-            worksheet.column_dimensions['H'].width = 22  # Target
-            
-        output.seek(0)
-        
-        headers = {
-            'Content-Disposition': 'attachment; filename="KPI_Monthly_Detailed_Template.xlsx"'
-        }
-        return StreamingResponse(
-            output, 
-            headers=headers, 
-            media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to generate template: {str(e)}")
+        users = (
+            await db.execute(_scoped_active_users_statement(department_ids))
+        ).scalars().unique().all()
+        formulas_by_user = {}
+        for user in users:
+            formula = await _resolve_user_formula(db, user, period)
+            if formula is not None:
+                formulas_by_user[user.id] = formula
+        if not formulas_by_user:
+            raise UploadValidationError(
+                "No active employees have an applicable KPI formula for this period."
+            )
+        try:
+            contract = build_header_contract(list(formulas_by_user.values()))
+        except HeaderContractError as exc:
+            raise UploadValidationError(str(exc)) from exc
 
-# ==============================================================================
-# 2. IMPORT DATA API (Admin Upload )
-# ==============================================================================
-@router.post(
-    "/monthly-data",
-    status_code=status.HTTP_200_OK,
-    responses={status.HTTP_500_INTERNAL_SERVER_ERROR: {"description": "System processing error"}},
-)
-@limiter.limit("3/minute") # DoS Upload 
+        workbook = Workbook()
+        worksheet = workbook.active
+        worksheet.title = "KPI_Data"
+        worksheet.append(contract.headers)
+        for user in users:
+            if user.id not in formulas_by_user:
+                continue
+            metadata = _user_metadata(user, department_ids)
+            worksheet.append(
+                [metadata.get(header, None) if header in EMPLOYEE_HEADERS else None
+                 for header in contract.headers]
+            )
+        worksheet.freeze_panes = "A2"
+        worksheet.auto_filter.ref = worksheet.dimensions
+        for column_index, header in enumerate(contract.headers, start=1):
+            worksheet.column_dimensions[get_column_letter(column_index)].width = min(
+                max(len(header) + 4, 18), 42
+            )
+        output = io.BytesIO()
+        workbook.save(output)
+        workbook.close()
+        output.seek(0)
+        return StreamingResponse(
+            output,
+            headers={
+                "Content-Disposition": 'attachment; filename="KPI_Master_Template.xlsx"'
+            },
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+    except UploadValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "validation_error", "errors": exc.errors},
+        ) from exc
+    except Exception:
+        logger.exception("Failed to generate KPI upload template.")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "code": "processing_error",
+                "message": "The server could not generate the template.",
+            },
+        ) from None
+
+
+@router.post("/monthly-data", status_code=status.HTTP_200_OK)
+@limiter.limit("3/minute")
 async def upload_monthly_kpi_data(
-    request: Request, # Rate limiter 
-    background_tasks: BackgroundTasks, # Heavy Calculation Non-blocking 
-    file: UploadFile = File(...), 
-    target_month: str = Form(..., description="Format: YYYY-MM (e.g., 2026-08)"), 
+    request: Request,
+    file: UploadFile = File(...),
+    period_id: Annotated[UUID | None, Form()] = None,
+    target_month: Annotated[str | None, Form()] = None,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(admin_hr_checker)
+    current_user: User = Depends(admin_hr_checker),
 ):
     enforce_permission(current_user, "kpi.create")
     try:
-        df = await _read_upload_dataframe(file)
-        try:
-            year, month = map(int, target_month.split('-'))
-            period_range = calendar_period_range(
-                PeriodType.MONTHLY, datetime(year, month, 1).date()
+        workbook = await _read_upload_dataframe(file)
+        period = await _resolve_period(
+            db, period_id=period_id, target_month=target_month
+        )
+        valid_rows, errors = await _build_upload_rows(
+            workbook, db, current_user, period
+        )
+        if errors:
+            raise UploadValidationError(errors)
+        if not valid_rows:
+            raise UploadValidationError("The workbook contains no valid employee rows.")
+
+        period_range = _period_month_range(period)
+        for row in valid_rows:
+            await KPICalculationEngine.execute_kpi_calculation(
+                db=db,
+                user=row.user,
+                period_start=period_range.start_inclusive,
+                period_end=period_range.end_exclusive,
+                period_type=PeriodType.MONTHLY,
+                task_data=row.task_data,
+                commit=False,
             )
-            period_start = period_range.start_inclusive
-            period_end = period_range.end_exclusive
-        except ValueError:
-            raise ValueError("Invalid target_month format. Must be YYYY-MM (e.g., 2026-08).")
-
-        valid_rows, error_logs = await _build_upload_rows(df, db, current_user)
-
-        if error_logs:
-            error_message = " | ".join(error_logs[:5])
-            if len(error_logs) > 5:
-                error_message += f" | ... and {len(error_logs) - 5} more errors."
-            raise ValueError(error_message)
-
-        # 5. PERFORMANCE & SCALABILITY FIX: Heavy Calculation Background 
-        background_tasks.add_task(process_kpi_in_background, valid_rows, period_start, period_end)
-        
+            await db.flush()
+            result = (
+                await db.execute(
+                    select(KPIRecord).where(
+                        KPIRecord.user_id == row.user.id,
+                        KPIRecord.kpi_period_id == period.id,
+                        KPIRecord.period_type == PeriodType.MONTHLY,
+                        KPIRecord.is_deleted.is_(False),
+                    )
+                )
+            ).scalars().first()
+            if result is None or result.formula_id != row.formula.id:
+                raise RuntimeError(
+                    f"KPI calculation did not persist expected context for {row.email}."
+                )
+        await db.commit()
         return {
-            "message": "Excel data uploaded successfully. KPI calculations are being processed in the background.",
+            "message": "KPI data was imported and calculated successfully.",
             "processed_count": len(valid_rows),
-            "status": "processing"
+            "status": "completed",
+            "period_id": str(period.id),
         }
-        
-    except ValueError as ve:
+    except UploadValidationError as exc:
         await db.rollback()
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(ve))
-        
-    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "validation_error", "errors": exc.errors},
+        ) from exc
+    except Exception:
         await db.rollback()
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"System Processing Error: {str(e)}")
+        logger.exception("KPI workbook import failed unexpectedly.")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "code": "processing_error",
+                "message": "The server could not process this file. Please try again.",
+            },
+        ) from None

@@ -71,8 +71,11 @@ unified dashboard summary. Super Admin sees the organization; Admin and L0/L1
 scope follows active department memberships; L2 and other department users
 remain limited to their existing personal scope. Employee detail returns 404
 when a result is absent or outside that scope. Department results are omitted
-for personal L2 scope. No new permission code or scope query parameter is
-introduced.
+for personal L2 scope. Super Admin period choices include every non-deleted
+finalized or locked period, even when no KPI record exists yet; the period is
+shown with unavailable result metrics rather than a fabricated score. Other
+roles see only finalized or locked periods with results in their authorized
+scope. No new permission code or scope query parameter is introduced.
 
 Soft-deleted periods cannot be selected. An omitted period selects the newest
 open period, then newest in-progress period, then newest finalized/locked
@@ -97,8 +100,10 @@ changed.
 
 ## Empty and failure states
 
-- No non-deleted periods: the API returns an empty period list and an
-  unavailable summary; the dashboard displays “No KPI periods available.”
+- No reportable finalized/locked periods: the API returns an empty period list
+  and an unavailable summary; the dashboard displays “No KPI periods
+  available.” For Super Admin, this message is not shown solely because a
+  reportable period has no KPI records.
 - Finalized period with no results: evaluated count is zero, average is
   unavailable, and status percentages are unavailable.
 - Open, draft, review, or cancelled period: KPI results and trend are

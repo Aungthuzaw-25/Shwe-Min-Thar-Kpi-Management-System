@@ -554,6 +554,7 @@ class KPICalculationEngine:
         task_data: dict | None = None,
         *,
         context: KPICalculationContext | None = None,
+        commit: bool = True,
     ):
         """
         Core Engine: Aggregates tasks, parses text-based deductions, calculates target completion, 
@@ -603,7 +604,8 @@ class KPICalculationEngine:
                     db, user, formula, period, period_type, period_start, period_end,
                     total_score, percentage, explicit_record_id=explicit_record_id,
                 )
-            await db.commit()
+            if commit:
+                await db.commit()
             return resolved.record if explicit_record_id is not None else None
         except Exception:
             await db.rollback()

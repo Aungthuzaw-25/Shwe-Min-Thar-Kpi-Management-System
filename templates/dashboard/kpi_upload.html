@@ -47,7 +47,7 @@
                     <h3 class="text-base sm:text-lg font-extrabold text-slate-900">Download Template</h3>
                 </div>
                 <p class="text-xs sm:text-sm text-slate-600 mb-5 sm:mb-6 font-medium leading-relaxed">
-                    Start by downloading the master Excel template. It contains all active employees and standardized columns mapped to your KPI engine.
+                    Select an open evaluation period first. The downloaded workbook includes active employees and KPI columns from the formulas used in that period.
                 </p>
                 <button onclick="downloadTemplate()" class="w-full bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl text-xs sm:text-sm font-bold shadow-sm transition-all flex items-center justify-center gap-2 group-hover:bg-blue-600 group-hover:text-white">
                     <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
@@ -61,12 +61,11 @@
                     <h3 class="text-base sm:text-lg font-extrabold text-slate-900">Prepare Data</h3>
                 </div>
                 <p class="text-xs sm:text-sm text-slate-600 mb-4 font-medium leading-relaxed">
-                    Fill in the template with manual HR data. Ensure the column headers <strong>exactly match</strong> the rule names defined in your KPI Formulas.
+                    Fill every KPI column that applies to the employee with a finite number. Keep the generated headers unchanged; they are derived from the selected period's active KPI formulas.
                 </p>
                 <div class="bg-slate-50 rounded-xl p-3 sm:p-4 border border-slate-100 space-y-2">
-                    <div class="flex items-center gap-2 text-[10px] sm:text-xs font-bold text-slate-700"><svg class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Late Attendance (Times)</div>
-                    <div class="flex items-center gap-2 text-[10px] sm:text-xs font-bold text-slate-700"><svg class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Compliance Violation (Times)</div>
-                    <div class="flex items-center gap-2 text-[10px] sm:text-xs font-bold text-slate-700"><svg class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg> Actual Target Value (Amount)</div>
+                    <div class="text-[10px] sm:text-xs font-bold text-slate-700">Employee identity columns are provided by the system.</div>
+                    <div class="text-[10px] sm:text-xs font-bold text-slate-700">KPI metric columns are formula-specific for the selected period.</div>
                 </div>
             </div>
 
@@ -82,11 +81,13 @@
 
                 <form id="uploadForm" class="space-y-6 sm:space-y-8">
                     
-                    <!-- Target Month -->
+                    <!-- Evaluation Period -->
                     <div>
-                        <label class="block text-[10px] sm:text-[11px] font-black text-slate-500 mb-2 uppercase tracking-widest" for="targetMonth">Evaluation Period <span class="text-red-500">*</span></label>
-                        <input type="month" id="targetMonth" required class="w-full sm:w-1/2 px-3 sm:px-4 py-3 sm:py-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 text-xs sm:text-sm font-bold text-slate-800 shadow-inner transition-all" onchange="validateFormState()">
-                        <p class="text-[10px] sm:text-xs text-slate-500 font-medium mt-2">Select the specific month to merge and generate KPI records.</p>
+                        <label class="block text-[10px] sm:text-[11px] font-black text-slate-500 mb-2 uppercase tracking-widest" for="targetPeriod">Evaluation Period <span class="text-red-500">*</span></label>
+                        <select id="targetPeriod" required class="w-full sm:w-1/2 px-3 sm:px-4 py-3 sm:py-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 text-xs sm:text-sm font-bold text-slate-800 shadow-inner transition-all" onchange="validateFormState()">
+                            <option value="">Loading evaluation periods…</option>
+                        </select>
+                        <p class="text-[10px] sm:text-xs text-slate-500 font-medium mt-2">Template generation and upload will use this exact period.</p>
                     </div>
 
                     <!-- Drag & Drop Zone -->
@@ -100,7 +101,7 @@
                             <p class="text-sm sm:text-base font-extrabold text-blue-950">Drag your spreadsheet here or click to browse</p>
                             <p class="text-[10px] sm:text-xs font-semibold text-slate-500 mt-1 sm:mt-2">Maximum file size: 5MB</p>
                         </button>
-                        <input type="file" id="fileInput" accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel" class="hidden">
+                        <input type="file" id="fileInput" accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" class="hidden">
 
                         <!-- Selected File Chip -->
                         <div id="filePreviewCard" class="hidden bg-white border border-emerald-200 rounded-2xl p-3 sm:p-4 shadow-sm flex justify-between items-center animate-fade-in-up ring-1 ring-emerald-50 mt-4">
@@ -144,6 +145,7 @@
     const filePreviewCard = document.getElementById('filePreviewCard');
     const form = document.getElementById('uploadForm');
     const uploadBtn = document.getElementById('uploadBtn');
+    const periodSelect = document.getElementById('targetPeriod');
     let selectedFile = null;
 
     // 🌟 GLOBAL HTML ESCAPE FUNCTION
@@ -157,19 +159,51 @@
             .replaceAll("'", "&#039;");
     }
 
-    async function downloadTemplate() {
+    async function loadPeriods() {
         try {
-            showToast("Generating template file...", "success");
-            const response = await fetch('/api/v1/kpi-uploads/export-template', { method: 'GET' });
-            
-            // 🛡️ API SECURITY: Check unauthorized
-            if (response.status === 401 || response.status === 403) {
+            const response = await fetch('/api/v1/kpi-uploads/periods');
+            if (response.status === 401) {
                 window.location.href = '/auth/login';
                 return;
             }
-            
+            if (response.status === 403) {
+                periodSelect.innerHTML = '<option value="">You do not have permission to import KPI data</option>';
+                showToast("You do not have permission to import KPI data.", "error");
+                return;
+            }
+            if (!response.ok) throw new Error("Period list unavailable");
+            const periods = await response.json();
+            periodSelect.innerHTML = '<option value="">Select an evaluation period</option>' +
+                periods.map(period => `<option value="${escapeHTML(period.id)}">${escapeHTML(period.label)} (${escapeHTML(period.month)})</option>`).join('');
+            if (periods.length === 0) {
+                periodSelect.innerHTML = '<option value="">No open evaluation periods</option>';
+            }
+            validateFormState();
+        } catch (error) {
+            periodSelect.innerHTML = '<option value="">Evaluation periods could not be loaded</option>';
+            showToast("Could not load evaluation periods. Please try again.", "error");
+        }
+    }
+
+    async function downloadTemplate() {
+        const periodId = periodSelect.value;
+        if (!periodId) {
+            showToast("Select an evaluation period first.", "error");
+            return;
+        }
+        try {
+            showToast("Generating template file...", "success");
+            const response = await fetch(`/api/v1/kpi-uploads/export-template?period_id=${encodeURIComponent(periodId)}`, { method: 'GET' });
+            if (response.status === 401) {
+                window.location.href = '/auth/login';
+                return;
+            }
+            if (response.status === 403) {
+                showToast("You do not have permission to download the template.", "error");
+                return;
+            }
             if (!response.ok) throw new Error("Failed to download template");
-            
+
             const blob = await response.blob();
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -204,7 +238,7 @@
         if (fileInput.files.length === 0) return;
         
         const file = fileInput.files[0];
-        const validExtensions = ['csv', 'xls', 'xlsx'];
+        const validExtensions = ['csv', 'xlsx'];
         const fileExt = file.name.split('.').pop().toLowerCase();
 
         if (!validExtensions.includes(fileExt)) {
@@ -238,8 +272,7 @@
     }
 
     function validateFormState() {
-        const month = document.getElementById('targetMonth').value;
-        uploadBtn.disabled = !(selectedFile && month);
+        uploadBtn.disabled = !(selectedFile && periodSelect.value);
     }
 
     function showToast(message, type = 'success') {
@@ -259,11 +292,13 @@
         setTimeout(() => toast.remove(), 4500);
     }
 
+    loadPeriods();
+
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
-        if (!selectedFile) return;
+        if (!selectedFile || !periodSelect.value) return;
 
-        const targetMonth = document.getElementById('targetMonth').value;
+        const periodId = periodSelect.value;
         const originalText = uploadBtn.innerHTML;
         const resultBox = document.getElementById('resultBox');
         
@@ -273,7 +308,7 @@
 
         const formData = new FormData();
         formData.append('file', selectedFile);
-        formData.append('target_month', targetMonth);
+        formData.append('period_id', periodId);
 
         try {
             const response = await fetch('/api/v1/kpi-uploads/monthly-data', {
@@ -282,8 +317,12 @@
             });
 
             // 🛡️ AUTH FIX
-            if (response.status === 401 || response.status === 403) {
+            if (response.status === 401) {
                 window.location.href = '/auth/login';
+                return;
+            }
+            if (response.status === 403) {
+                showToast("You do not have permission to import KPI data.", "error");
                 return;
             }
 
@@ -303,15 +342,15 @@
                     </div>
                 `;
                 removeFile(); 
-                document.getElementById('targetMonth').value = ""; 
                 validateFormState(); 
             } else {
                 let errorHtml = '';
-                if (result.detail) {
-                    const errors = result.detail.split('|').map(err => err.trim()).filter(err => err);
+                const detail = result.detail;
+                if (detail && detail.code === 'validation_error' && Array.isArray(detail.errors)) {
+                    const errors = detail.errors;
                     errorHtml = `
                         <div class="mt-4 bg-white p-4 sm:p-5 rounded-xl border border-red-100 shadow-inner max-h-40 sm:max-h-48 overflow-y-auto custom-scrollbar">
-                            <p class="text-[9px] sm:text-[10px] font-black text-red-800 mb-2 uppercase tracking-wider">Validation Errors Identified:</p>
+                            <p class="text-[9px] sm:text-[10px] font-black text-red-800 mb-2 uppercase tracking-wider">Please fix the following Excel validation errors:</p>
                             <ul class="text-[10px] sm:text-xs text-red-600 list-disc list-inside space-y-1.5 font-semibold">
                                 ${errors.map(err => `<li>${escapeHTML(err)}</li>`).join('')}
                             </ul>
@@ -326,7 +365,7 @@
                         </div>
                         <div class="w-full min-w-0">
                             <h3 class="text-lg sm:text-xl font-black text-red-900 tracking-tight">Upload Failed</h3>
-                            <p class="text-xs sm:text-sm text-red-700 font-semibold mt-1">Please fix the formatting or missing data issues in your Excel file and try again.</p>
+                            <p class="text-xs sm:text-sm text-red-700 font-semibold mt-1">${detail && detail.code === 'validation_error' ? 'Correct the listed workbook issues and upload again.' : 'The server could not process this file. Please try again.'}</p>
                             ${errorHtml}
                         </div>
                     </div>

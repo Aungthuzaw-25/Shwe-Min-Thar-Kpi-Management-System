@@ -9,7 +9,9 @@ from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.future import select
 
+from app.core.timezone import as_application_time
 from app.database.connection import Base
+from app.models.audit_log import AuditLog
 from app.modules.departments.models import Department, UserDepartment
 from app.modules.kpi.assignment_service import assign_kpi_to_user
 from app.modules.kpi.engine import KPICalculationEngine
@@ -29,7 +31,6 @@ from app.modules.kpi.period_service import change_period_status
 from app.modules.tasks.models.task import Task, TaskStatus
 from app.modules.tasks.models.task_review import TaskReview
 from app.modules.users.models import Position, Role, User
-from app.core.timezone import as_application_time
 
 
 async def _run_integrity_scenario(database_path):
@@ -40,6 +41,7 @@ async def _run_integrity_scenario(database_path):
         Role.__table__,
         Position.__table__,
         User.__table__,
+        AuditLog.__table__,
         KPIFormula.__table__,
         KPIPeriod.__table__,
         KPIAssignment.__table__,

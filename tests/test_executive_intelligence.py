@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.dependencies import get_current_user
 from app.database.connection import Base, get_db
+from app.models.audit_log import AuditLog
 from app.modules.departments.models import Department, UserDepartment
 from app.modules.kpi.dashboard_router import unified_router
 from app.modules.kpi.executive_intelligence_service import (
@@ -27,6 +28,7 @@ from app.modules.kpi.models import (
     KPIStatus,
     PeriodType,
 )
+from app.modules.kpi.period_router import router as kpi_period_router
 from app.modules.users.models import Position, Role, User
 
 TABLES = [
@@ -39,6 +41,7 @@ TABLES = [
     KPIPeriod.__table__,
     KPIRecord.__table__,
     KPIHistory.__table__,
+    AuditLog.__table__,
 ]
 
 
@@ -405,6 +408,156 @@ async def _test_finalized_period_without_records_is_not_a_fake_zero(db):
 def test_finalized_period_without_results_returns_empty_state(tmp_path):
     _run_isolated_test(
         tmp_path, _test_finalized_period_without_records_is_not_a_fake_zero
+    )
+
+
+async def _test_super_admin_can_select_locked_period_without_results(db):
+    await _create_fixture(db)
+    super_admin_role = Role(name="Super Admin")
+    db.add(super_admin_role)
+    await db.flush()
+    super_admin = User(
+        email=f"{uuid4()}@example.test",
+        hashed_password=uuid4().hex,
+        first_name="Super",
+        last_name="Admin",
+        role_id=super_admin_role.id,
+        role=super_admin_role,
+        is_active=True,
+        is_deleted=False,
+    )
+    locked_period = KPIPeriod(
+        label="Locked period without results",
+        start_date=datetime(2026, 10, 1, tzinfo=UTC),
+        end_date=datetime(2026, 11, 1, tzinfo=UTC),
+        status=KPIPeriodStatus.LOCKED,
+        is_deleted=False,
+    )
+    open_period = KPIPeriod(
+        label="Open period without results",
+        start_date=datetime(2026, 11, 1, tzinfo=UTC),
+        end_date=datetime(2026, 12, 1, tzinfo=UTC),
+        status=KPIPeriodStatus.OPEN,
+        is_deleted=False,
+    )
+    db.add_all([super_admin, locked_period, open_period])
+    await db.flush()
+
+    app = FastAPI()
+    app.include_router(unified_router, prefix="/api/v1/dashboard")
+
+    async def override_db():
+        yield db
+
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[get_current_user] = lambda: super_admin
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get(
+            "/api/v1/dashboard/executive/overview",
+            params={"period_id": str(locked_period.id)},
+        )
+        default_response = await client.get(
+            "/api/v1/dashboard/executive/overview"
+        )
+
+    assert response.status_code == 200
+    assert default_response.status_code == 200
+    overview = response.json()
+    locked_options = {
+        item["id"]: item for item in overview["periods"]
+    }
+    assert str(locked_period.id) in locked_options
+    assert locked_options[str(locked_period.id)]["status"] == "LOCKED"
+    assert locked_options[str(locked_period.id)]["period_type"] is None
+    assert str(open_period.id) not in locked_options
+    assert overview["selected_period"]["id"] == str(locked_period.id)
+    assert overview["summary"]["average_percentage"] is None
+    assert overview["summary"]["evaluated_employee_count"] == 0
+    assert default_response.json()["selected_period"]["id"] == str(locked_period.id)
+
+
+def test_super_admin_dashboard_lists_locked_period_without_results(tmp_path):
+    _run_isolated_test(
+        tmp_path, _test_super_admin_can_select_locked_period_without_results
+    )
+
+
+async def _test_reopening_locked_period_persists_without_dashboard_mutation(db):
+    super_admin_role = Role(name="Super Admin")
+    db.add(super_admin_role)
+    await db.flush()
+    super_admin = User(
+        email=f"{uuid4()}@example.test",
+        hashed_password=uuid4().hex,
+        first_name="Super",
+        last_name="Admin",
+        role_id=super_admin_role.id,
+        role=super_admin_role,
+        is_active=True,
+        is_deleted=False,
+    )
+    period = KPIPeriod(
+        label="Reopen lifecycle period",
+        start_date=datetime(2026, 9, 1, tzinfo=UTC),
+        end_date=datetime(2026, 10, 1, tzinfo=UTC),
+        status=KPIPeriodStatus.LOCKED,
+        is_deleted=False,
+    )
+    db.add_all([super_admin, period])
+    await db.flush()
+
+    app = FastAPI()
+    app.include_router(kpi_period_router, prefix="/api/v1/kpi")
+    app.include_router(unified_router, prefix="/api/v1/dashboard")
+
+    async def override_db():
+        yield db
+
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[get_current_user] = lambda: super_admin
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        reopen_response = await client.put(
+            f"/api/v1/kpi/periods/{period.id}/status",
+            params={"new_status": "OPEN", "reason": "Approved QA reopen"},
+        )
+        management_response = await client.get("/api/v1/kpi/periods/")
+        dashboard_response = await client.get(
+            "/api/v1/dashboard/executive/overview"
+        )
+
+    assert reopen_response.status_code == 200
+    assert reopen_response.json()["status"] == "OPEN"
+    assert management_response.status_code == 200
+    listed_period = next(
+        item
+        for item in management_response.json()
+        if item["id"] == str(period.id)
+    )
+    assert listed_period["status"] == "OPEN"
+    assert dashboard_response.status_code == 200
+    assert str(period.id) not in {
+        item["id"] for item in dashboard_response.json()["periods"]
+    }
+
+    fresh_session_factory = async_sessionmaker(db.bind, expire_on_commit=False)
+    async with fresh_session_factory() as fresh_db:
+        persisted_period = await fresh_db.get(KPIPeriod, period.id)
+        assert persisted_period.status == KPIPeriodStatus.OPEN
+        await build_executive_overview(
+            fresh_db,
+            scope_user_ids=None,
+            department_ids=None,
+            show_departments=True,
+        )
+        await fresh_db.refresh(persisted_period)
+        assert persisted_period.status == KPIPeriodStatus.OPEN
+
+
+def test_reopening_locked_period_persists_across_dashboard_load(tmp_path):
+    _run_isolated_test(
+        tmp_path, _test_reopening_locked_period_persists_without_dashboard_mutation
     )
 
 

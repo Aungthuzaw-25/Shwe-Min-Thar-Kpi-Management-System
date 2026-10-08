@@ -8,8 +8,8 @@ from app.core.dependencies import RoleChecker, enforce_permission, get_current_u
 from app.database.connection import get_db
 from app.modules.kpi import period_service
 from app.modules.kpi.models import KPIPeriod, KPIPeriodStatus
-from app.modules.kpi.period_schemas import KPIPeriodCreate, KPIPeriodResponse
 from app.modules.kpi.period_ranges import normalize_calendar_range
+from app.modules.kpi.period_schemas import KPIPeriodCreate, KPIPeriodResponse
 from app.modules.users.models import User
 
 router = APIRouter(prefix="/periods", tags=["KPI Periods"])
@@ -77,18 +77,14 @@ async def update_period_status(
 ):
     """Transition a period's state (e.g., DRAFT -> OPEN -> FINALIZED -> LOCKED)"""
     enforce_permission(current_user, "kpi.edit")
-    if (
-        new_status == KPIPeriodStatus.OPEN
-        and current_user.role
-        and current_user.role.name != "Super Admin"
-    ):
-        period = await db.get(KPIPeriod, period_id)
-        if period and period.status in {KPIPeriodStatus.FINALIZED, KPIPeriodStatus.LOCKED}:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only Super Admins can authorize reopening a finalized or locked KPI period.",
-            )
-    return await period_service.change_period_status(db, period_id, new_status, current_user.id, reason)
+    return await period_service.change_period_status(
+        db,
+        period_id,
+        new_status,
+        current_user.id,
+        reason,
+        current_user.role.name if current_user.role else None,
+    )
 
 # =======================================================================
 # 🌟 NEW FEATURE: DELETE DRAFT PERIOD (ယခင် မေးထားသော ဖျက်ခွင့်ပြုရန် API အသစ်)
