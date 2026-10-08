@@ -1,16 +1,52 @@
+import smtplib
+
 import httpx
 import pytest
 
 from app.background_jobs import notification_jobs
-from app.modules.system.router import _sanitize_setting_value
+from app.modules.system.router import _safe_backup_value, _sanitize_setting_value
 from app.modules.system.schemas import SystemSettingResponse
 from app.services import email_service
-from app.services.email_service import EmailConfiguration
+from app.services.email_service import (
+    EmailAuthenticationError,
+    EmailConfiguration,
+    EmailConfigurationError,
+    EmailMessage,
+    EmailProviderFactory,
+    EmailSecrets,
+    ResendProvider,
+    SMTPProvider,
+)
+from app.services.email_service import (
+    email_service as service,
+)
+
+
+def config(
+    provider="resend",
+    *,
+    from_email="noreply@example.com",
+    support_email="support@example.com",
+    smtp_host="smtp.example.com",
+    smtp_port=587,
+    smtp_username="mailer",
+    smtp_encryption="starttls",
+):
+    return EmailConfiguration(
+        email_provider=provider,
+        from_email=from_email,
+        from_name="KPI System",
+        support_email=support_email,
+        smtp_host=smtp_host,
+        smtp_port=smtp_port,
+        smtp_username=smtp_username,
+        smtp_encryption=smtp_encryption,
+    )
 
 
 class FakeResponse:
     def __init__(self, payload=None, status_code=200):
-        self.payload = payload or {}
+        self.payload = payload if payload is not None else {}
         self.status_code = status_code
 
     def raise_for_status(self):
@@ -23,12 +59,12 @@ class FakeResponse:
         return self.payload
 
 
-class FakeClient:
+class FakeAsyncClient:
     def __init__(self, *, get_response=None, post_response=None, exception=None, **_kwargs):
         self.get_response = get_response or FakeResponse(
             {"data": [{"name": "example.com", "status": "verified"}]}
         )
-        self.post_response = post_response or FakeResponse({"id": "email-id"})
+        self.post_response = post_response or FakeResponse({"id": "mock-email-id"})
         self.exception = exception
         self.requests = []
 
@@ -51,260 +87,339 @@ class FakeClient:
         return self.post_response
 
 
-def test_system_settings_email_sanitizer_rejects_smtp_fields_and_credentials():
-    value = _sanitize_setting_value(
-        "email",
-        {
-            "host": "smtp.example.com",
-            "username": "mailer@example.com",
-            "password": "not-a-real-password",
-            "from_email": "noreply@example.com",
-            "support_email": "support@example.com",
-        },
-    )
-    assert value == {
-        "email_provider": "resend",
-        "from_email": "noreply@example.com",
-        "from_name": "Shwe Min Thar KPI Management System",
-        "support_email": "support@example.com",
-    }
+class FakeSMTP:
+    instances = []
+    login_error = None
+
+    def __init__(self, host, port, **kwargs):
+        self.host = host
+        self.port = port
+        self.kwargs = kwargs
+        self.events = []
+        self.sent_message = None
+        self.sent_to = None
+        self.__class__.instances.append(self)
+
+    def ehlo(self):
+        self.events.append("ehlo")
+
+    def starttls(self, **kwargs):
+        self.events.append("starttls")
+
+    def login(self, username, password):
+        self.events.append(("login", username, password))
+        if self.login_error:
+            raise self.login_error
+
+    def send_message(self, message, *, to_addrs):
+        self.sent_message = message
+        self.sent_to = to_addrs
+        self.events.append("send")
+
+    def quit(self):
+        self.events.append("quit")
+
+    def close(self):
+        self.events.append("close")
 
 
-def test_system_settings_reject_api_keys_instead_of_persisting_them():
-    from fastapi import HTTPException
+def _mock_settings(monkeypatch, configuration, secrets=None):
+    if secrets is None:
+        secrets = EmailSecrets("fake-resend-key", None)
 
-    with pytest.raises(HTTPException) as exc:
-        _sanitize_setting_value(
-            "general", {"nested": {"RESEND_API_KEY": "not-a-real-key"}}
-        )
-    assert exc.value.status_code == 422
+    async def load_configuration():
+        return configuration
 
-
-def test_system_setting_response_never_exposes_email_credentials():
-    response = SystemSettingResponse.model_validate(
-        {
-            "id": "00000000-0000-0000-0000-000000000001",
-            "key": "email",
-            "value": {
-                "host": "smtp.example.com",
-                "password": "not-a-real-password",
-                "api_key": "not-a-real-key",
-                "from_email": "noreply@example.com",
-                "resend_api_key_configured": True,
-            },
-            "created_at": "2026-01-01T00:00:00Z",
-            "updated_at": "2026-01-01T00:00:00Z",
-        }
-    )
-    assert response.value == {
-        "from_email": "noreply@example.com",
-        "resend_api_key_configured": True,
-    }
+    monkeypatch.setattr(email_service, "_load_email_configuration", load_configuration)
+    monkeypatch.setattr(email_service, "_load_email_secrets", lambda: secrets)
 
 
-def test_support_footer_is_omitted_when_support_email_is_not_configured():
-    assert email_service._email_text_with_support(
-        "Message", None, "KPI System"
-    ) == "Message"
+def test_provider_factory_registers_only_implemented_providers():
+    assert set(EmailProviderFactory.available_providers()) == {"resend", "smtp"}
+    assert isinstance(EmailProviderFactory.create("resend"), ResendProvider)
+    assert isinstance(EmailProviderFactory.create("smtp"), SMTPProvider)
 
 
 @pytest.mark.asyncio
-async def test_notification_delivery_uses_resend_and_dynamic_support_email(monkeypatch):
-    monkeypatch.setattr(email_service.settings, "RESEND_API_KEY", "mock-resend-key")
+async def test_provider_neutral_notification_sends_same_message_through_resend(monkeypatch):
+    _mock_settings(monkeypatch, config())
+    client = FakeAsyncClient()
     monkeypatch.setattr(
-        email_service,
-        "_load_email_configuration",
-        _resolved(
-            EmailConfiguration(
-                from_email="noreply@example.com",
-                from_name="KPI System",
-                support_email="help@example.com",
-            )
-        ),
+        email_service.httpx, "AsyncClient", lambda **kwargs: client
     )
-    client = FakeClient()
-    monkeypatch.setattr(email_service.httpx, "AsyncClient", lambda **kwargs: client)
 
     sent = await notification_jobs.send_email_notification(
-        "user@example.com", "Notification", "A notification"
+        "person@example.com", "Notification", "A notification"
     )
 
     assert sent is True
     method, url, request = client.requests[0]
     assert method == "POST"
-    assert url == "https://api.resend.com/emails"
-    assert request["headers"]["Authorization"] == "Bearer mock-resend-key"
+    assert url.endswith("/emails")
+    assert request["headers"]["Authorization"] == "Bearer fake-resend-key"
     assert request["json"]["from"] == "KPI System <noreply@example.com>"
-    assert request["json"]["to"] == ["user@example.com"]
-    assert "help@example.com" in request["json"]["text"]
+    assert request["json"]["to"] == ["person@example.com"]
+    assert request["json"]["reply_to"] == "support@example.com"
+    assert "Need help? Contact support@example.com" in request["json"]["text"]
 
 
 @pytest.mark.asyncio
-async def test_email_is_skipped_when_api_key_missing(monkeypatch):
-    monkeypatch.setattr(email_service.settings, "RESEND_API_KEY", None)
-    client = FakeClient()
-    monkeypatch.setattr(email_service.httpx, "AsyncClient", lambda **kwargs: client)
-
-    assert await email_service.send_resend_email(
-        "user@example.com", "Subject", "Body"
-    ) is False
-    assert not client.requests
-
-
-@pytest.mark.asyncio
-async def test_email_is_skipped_when_sender_missing(monkeypatch):
-    monkeypatch.setattr(email_service.settings, "RESEND_API_KEY", "mock-resend-key")
-    monkeypatch.setattr(
-        email_service,
-        "_load_email_configuration",
-        _resolved(
-            EmailConfiguration(
-                from_email=None,
-                from_name="KPI System",
-                support_email=None,
-            )
-        ),
+async def test_provider_neutral_notification_sends_same_message_through_smtp(monkeypatch):
+    FakeSMTP.instances.clear()
+    FakeSMTP.login_error = None
+    smtp_configuration = config("smtp")
+    _mock_settings(
+        monkeypatch,
+        smtp_configuration,
+        EmailSecrets(resend_api_key=None, smtp_password="smtp-test-password"),  # noqa: S106 - mock-only credential
     )
-    client = FakeClient()
-    monkeypatch.setattr(email_service.httpx, "AsyncClient", lambda **kwargs: client)
+    monkeypatch.setattr(email_service.smtplib, "SMTP", FakeSMTP)
 
-    assert await email_service.send_resend_email(
-        "user@example.com", "Subject", "Body"
-    ) is False
-    assert not client.requests
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "error",
-    [
-        httpx.TimeoutException("timeout"),
-        httpx.ConnectError("network unavailable"),
-    ],
-)
-async def test_email_delivery_network_failures_are_reported_without_raising(monkeypatch, error):
-    monkeypatch.setattr(email_service.settings, "RESEND_API_KEY", "mock-resend-key")
-    monkeypatch.setattr(
-        email_service,
-        "_load_email_configuration",
-        _resolved(
-            EmailConfiguration(
-                from_email="noreply@example.com",
-                from_name="KPI System",
-                support_email=None,
-            )
-        ),
-    )
-    client = FakeClient(exception=error)
-    monkeypatch.setattr(email_service.httpx, "AsyncClient", lambda **kwargs: client)
-
-    assert await email_service.send_resend_email(
-        "user@example.com", "Subject", "Body"
-    ) is False
-
-
-@pytest.mark.asyncio
-async def test_email_delivery_resend_api_failure_is_reported(monkeypatch):
-    monkeypatch.setattr(email_service.settings, "RESEND_API_KEY", "mock-resend-key")
-    monkeypatch.setattr(
-        email_service,
-        "_load_email_configuration",
-        _resolved(EmailConfiguration("noreply@example.com", "KPI System", None)),
-    )
-    client = FakeClient(post_response=FakeResponse(status_code=503))
-    monkeypatch.setattr(email_service.httpx, "AsyncClient", lambda **kwargs: client)
-
-    assert await email_service.send_resend_email(
-        "user@example.com", "Subject", "Body"
-    ) is False
-
-
-@pytest.mark.asyncio
-async def test_test_connection_checks_auth_and_verified_sender_without_sending(monkeypatch):
-    monkeypatch.setattr(email_service.settings, "RESEND_API_KEY", "mock-resend-key")
-    client = FakeClient()
-    monkeypatch.setattr(email_service.httpx, "AsyncClient", lambda **kwargs: client)
-    configuration = EmailConfiguration(
-        from_email="noreply@example.com",
-        from_name="KPI System",
-        support_email=None,
+    sent = await notification_jobs.send_email_notification(
+        "person@example.com", "Notification", "A notification"
     )
 
-    ready, message = await email_service.test_resend_connection(configuration)
-
-    assert ready is True
-    assert "verified" in message
-    assert client.requests[0][0] == "GET"
-    assert len(client.requests) == 1
+    smtp = FakeSMTP.instances[-1]
+    assert sent is True
+    assert smtp.host == "smtp.example.com"
+    assert smtp.events[:3] == ["ehlo", "starttls", "ehlo"]
+    assert ("login", "mailer", "smtp-test-password") in smtp.events
+    assert smtp.sent_message["From"] == "KPI System <noreply@example.com>"
+    assert smtp.sent_message["Reply-To"] == "support@example.com"
+    assert "Need help? Contact support@example.com" in smtp.sent_message.get_body(
+        preferencelist=("plain",)
+    ).get_content()
+    assert smtp.sent_to == ["person@example.com"]
 
 
 @pytest.mark.asyncio
-async def test_test_connection_rejects_resend_api_failure_and_unverified_domain(monkeypatch):
-    monkeypatch.setattr(email_service.settings, "RESEND_API_KEY", "mock-resend-key")
-    configuration = EmailConfiguration("noreply@example.com", "KPI System", None)
-    failed_client = FakeClient(get_response=FakeResponse(status_code=401))
-    monkeypatch.setattr(
-        email_service.httpx, "AsyncClient", lambda **kwargs: failed_client
+async def test_smtp_without_authentication_does_not_require_a_password(monkeypatch):
+    FakeSMTP.instances.clear()
+    configuration = config("smtp", smtp_username=None)
+    _mock_settings(
+        monkeypatch,
+        configuration,
+        EmailSecrets(resend_api_key=None, smtp_password=None),
+    )
+    monkeypatch.setattr(email_service.smtplib, "SMTP", FakeSMTP)
+
+    assert await service.send(
+        EmailMessage(to=["person@example.com"], subject="Subject", text_body="Body")
+    )
+    assert not any(
+        isinstance(event, tuple) and event[0] == "login"
+        for event in FakeSMTP.instances[-1].events
     )
 
-    ready, message = await email_service.test_resend_connection(configuration)
-    assert ready is False
-    assert "verify" in message
 
-    unverified_client = FakeClient(
-        get_response=FakeResponse(
-            {"data": [{"name": "example.com", "status": "pending"}]}
+@pytest.mark.asyncio
+async def test_missing_provider_secrets_and_sender_fail_safely(monkeypatch):
+    _mock_settings(monkeypatch, config(), EmailSecrets(None, None))
+    assert not await service.send(
+        EmailMessage(to=["person@example.com"], subject="Subject", text_body="Body")
+    )
+
+    _mock_settings(
+        monkeypatch,
+        config(from_email=None),
+        EmailSecrets("fake-resend-key", None),
+    )
+    assert not await service.send(
+        EmailMessage(to=["person@example.com"], subject="Subject", text_body="Body")
+    )
+
+
+def test_smtp_configuration_validation_reports_missing_host_and_invalid_port():
+    provider = SMTPProvider()
+    secrets = EmailSecrets(None, None)
+    with pytest.raises(EmailConfigurationError, match="SMTP Host"):
+        provider.validate_configuration(config("smtp", smtp_host=None), secrets)
+    with pytest.raises(EmailConfigurationError, match="SMTP Port"):
+        provider.validate_configuration(config("smtp", smtp_port=70000), secrets)
+
+
+def test_smtp_authentication_failure_is_normalized(monkeypatch):
+    FakeSMTP.instances.clear()
+    FakeSMTP.login_error = smtplib.SMTPAuthenticationError(535, b"credentials rejected")
+    monkeypatch.setattr(email_service.smtplib, "SMTP", FakeSMTP)
+    provider = SMTPProvider()
+    with pytest.raises(EmailAuthenticationError, match="SMTP authentication failed"):
+        provider._connect(
+            config("smtp"),
+            EmailSecrets(resend_api_key=None, smtp_password="mock-password"),  # noqa: S106 - mock-only credential
         )
-    )
-    monkeypatch.setattr(
-        email_service.httpx, "AsyncClient", lambda **kwargs: unverified_client
-    )
-    ready, message = await email_service.test_resend_connection(configuration)
-    assert ready is False
-    assert "not verified" in message
-
-
-@pytest.mark.asyncio
-async def test_test_connection_fails_safely_for_missing_api_key_or_sender(monkeypatch):
-    configuration = EmailConfiguration(None, "KPI System", None)
-    monkeypatch.setattr(email_service.settings, "RESEND_API_KEY", None)
-    assert await email_service.test_resend_connection(configuration) == (
-        False,
-        "Resend API key is not configured.",
-    )
-
-    monkeypatch.setattr(email_service.settings, "RESEND_API_KEY", "mock-resend-key")
-    configuration = EmailConfiguration(None, "KPI System", None)
-    assert await email_service.test_resend_connection(configuration) == (
-        False,
-        "From Email is not configured.",
-    )
+    FakeSMTP.login_error = None
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "error",
-    [
-        httpx.TimeoutException("timeout"),
-        httpx.ConnectError("network unavailable"),
-    ],
+    [httpx.TimeoutException("timeout"), httpx.ConnectError("network unavailable")],
 )
-async def test_test_connection_handles_network_failures(monkeypatch, error):
-    monkeypatch.setattr(email_service.settings, "RESEND_API_KEY", "mock-resend-key")
+async def test_resend_connection_and_delivery_failures_are_normalized(monkeypatch, error):
+    _mock_settings(monkeypatch, config())
+    client = FakeAsyncClient(exception=error)
+    monkeypatch.setattr(email_service.httpx, "AsyncClient", lambda **kwargs: client)
+
+    assert not await service.send(
+        EmailMessage(to=["person@example.com"], subject="Subject", text_body="Body")
+    )
+    with pytest.raises(email_service.EmailConnectionError):
+        await ResendProvider().test_connection(
+            config(), EmailSecrets("fake-resend-key", None)
+        )
+
+
+@pytest.mark.asyncio
+async def test_resend_test_connection_verifies_sender_without_sending(monkeypatch):
+    client = FakeAsyncClient()
     monkeypatch.setattr(
-        email_service.httpx, "AsyncClient", lambda **kwargs: FakeClient(exception=error)
+        email_service.httpx, "AsyncClient", lambda **kwargs: client
+    )
+    result = await ResendProvider().test_connection(
+        config(), EmailSecrets("fake-resend-key", None)
+    )
+    assert result == "Ready"
+    assert len(client.requests) == 1
+    assert client.requests[0][0] == "GET"
+
+
+@pytest.mark.asyncio
+async def test_resend_test_mode_is_supported_without_verified_custom_domain(monkeypatch):
+    client = FakeAsyncClient(get_response=FakeResponse({"data": []}))
+    monkeypatch.setattr(
+        email_service.httpx, "AsyncClient", lambda **kwargs: client
+    )
+    result = await ResendProvider().test_connection(
+        config(from_email="onboarding@resend.dev"),
+        EmailSecrets("fake-resend-key", None),
+    )
+    assert result == "Ready — Resend Test Mode"
+
+
+@pytest.mark.asyncio
+async def test_smtp_test_connection_uses_current_provider_and_never_sends(monkeypatch):
+    FakeSMTP.instances.clear()
+    monkeypatch.setattr(email_service.smtplib, "SMTP", FakeSMTP)
+    _mock_settings(
+        monkeypatch,
+        config("smtp"),
+        EmailSecrets(None, "smtp-test-password"),
     )
 
-    ready, message = await email_service.test_resend_connection(
-        EmailConfiguration("noreply@example.com", "KPI System", None)
+    assert await service.test_connection() == "Ready"
+    assert "send" not in FakeSMTP.instances[-1].events
+
+
+@pytest.mark.asyncio
+async def test_resend_test_connection_uses_selected_provider_through_service(monkeypatch):
+    _mock_settings(monkeypatch, config("resend"))
+    client = FakeAsyncClient()
+    monkeypatch.setattr(email_service.httpx, "AsyncClient", lambda **kwargs: client)
+
+    assert await service.test_connection() == "Ready"
+    assert client.requests[0][0] == "GET"
+
+
+@pytest.mark.asyncio
+async def test_smtp_ssl_connection_uses_ssl_adapter_and_none_disables_tls(monkeypatch):
+    FakeSMTP.instances.clear()
+    monkeypatch.setattr(email_service.smtplib, "SMTP_SSL", FakeSMTP)
+    monkeypatch.setattr(email_service.smtplib, "SMTP", FakeSMTP)
+    provider = SMTPProvider()
+    secrets = EmailSecrets(None, None)
+
+    assert await provider.test_connection(
+        config("smtp", smtp_username=None, smtp_encryption="ssl"),
+        secrets,
+    ) == "Ready"
+    ssl_smtp = FakeSMTP.instances[-1]
+    assert "context" in ssl_smtp.kwargs
+    assert "starttls" not in ssl_smtp.events
+
+    assert await provider.test_connection(
+        config("smtp", smtp_username=None, smtp_encryption="none"),
+        secrets,
+    ) == "Ready"
+    plain_smtp = FakeSMTP.instances[-1]
+    assert "starttls" not in plain_smtp.events
+
+
+@pytest.mark.asyncio
+async def test_support_footer_is_omitted_when_not_configured(monkeypatch):
+    _mock_settings(
+        monkeypatch,
+        config(support_email=None),
+        EmailSecrets("fake-resend-key", None),
+    )
+    client = FakeAsyncClient()
+    monkeypatch.setattr(email_service.httpx, "AsyncClient", lambda **kwargs: client)
+
+    await service.send(
+        EmailMessage(to=["person@example.com"], subject="Subject", text_body="Body")
     )
 
-    assert ready is False
-    assert "Resend" in message
+    assert client.requests[0][2]["json"]["text"] == "Body"
+    assert "reply_to" not in client.requests[0][2]["json"]
 
 
-def _resolved(value):
-    async def resolve():
-        return value
+@pytest.mark.asyncio
+async def test_provider_failure_logs_do_not_expose_credentials(monkeypatch, caplog):
+    _mock_settings(
+        monkeypatch,
+        config(),
+        EmailSecrets("mock-only-resend-secret", "mock-only-smtp-secret"),
+    )
+    client = FakeAsyncClient(post_response=FakeResponse(status_code=503))
+    monkeypatch.setattr(email_service.httpx, "AsyncClient", lambda **kwargs: client)
 
-    return resolve
+    assert not await service.send(
+        EmailMessage(to=["person@example.com"], subject="Subject", text_body="Body")
+    )
+    assert "mock-only-resend-secret" not in caplog.text
+    assert "mock-only-smtp-secret" not in caplog.text
+
+
+def test_system_setting_api_filters_provider_secrets_and_old_smtp_settings():
+    response = SystemSettingResponse.model_validate(
+        {
+            "id": "00000000-0000-0000-0000-000000000001",
+            "key": "email",
+            "value": {
+                "email_provider": "smtp",
+                "smtp_host": "smtp.example.com",
+                "smtp_port": 587,
+                "smtp_username": "mailer",
+                "smtp_password": "not-a-real-password",
+                "resend_api_key": "not-a-real-api-key",
+                "smtp_password_configured": True,
+            },
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+        }
+    )
+    assert response.value["smtp_host"] == "smtp.example.com"
+    assert response.value["smtp_password_configured"] is True
+    assert "smtp_password" not in response.value
+    assert "resend_api_key" not in response.value
+    assert "not-a-real-password" not in str(response.model_dump())
+    assert "not-a-real-api-key" not in str(response.model_dump())
+
+
+def test_system_setting_update_rejects_provider_secrets_and_backup_redacts_legacy_values():
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException):
+        _sanitize_setting_value("email", {"SMTP_PASSWORD": "mock-only-secret"})
+    backup = _safe_backup_value(
+        "email",
+        {
+            "from_email": "noreply@example.com",
+            "smtp_password": "mock-only-secret",
+            "nested": {"resend_api_key": "mock-only-key"},
+        },
+    )
+    assert backup["smtp_password"] == "[REDACTED]"  # noqa: S105 - redaction marker
+    assert backup["nested"]["resend_api_key"] == "[REDACTED]"
+    assert "mock-only-secret" not in str(backup)
+    assert "mock-only-key" not in str(backup)

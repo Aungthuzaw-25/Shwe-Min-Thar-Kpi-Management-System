@@ -135,9 +135,52 @@ def test_email_configuration_allows_clearing_support_email():
     assert value["from_email"] == "noreply@example.com"
 
 
+def test_smtp_provider_settings_are_validated_and_preserved_without_password():
+    value = _sanitize_setting_value(
+        "email",
+        {
+            "email_provider": "SMTP",
+            "from_email": "noreply@example.com",
+            "from_name": "KPI System",
+            "support_email": None,
+            "smtp_host": " smtp.example.com ",
+            "smtp_port": 465,
+            "smtp_username": " relay-user ",
+            "smtp_encryption": "SSL",
+        },
+    )
+    assert value["email_provider"] == "smtp"
+    assert value["smtp_host"] == "smtp.example.com"
+    assert value["smtp_port"] == 465
+    assert value["smtp_username"] == "relay-user"
+    assert value["smtp_encryption"] == "ssl"
+    assert "smtp_password" not in value
+
+
+def test_email_configuration_rejects_invalid_smtp_port_and_encryption():
+    with pytest.raises(HTTPException):
+        _sanitize_setting_value(
+            "email",
+            {
+                "email_provider": "smtp",
+                "from_email": "noreply@example.com",
+                "smtp_port": 70000,
+            },
+        )
+    with pytest.raises(HTTPException):
+        _sanitize_setting_value(
+            "email",
+            {
+                "email_provider": "smtp",
+                "from_email": "noreply@example.com",
+                "smtp_encryption": "custom",
+            },
+        )
+
+
 def test_email_configuration_rejects_non_resend_provider_and_html_name():
     with pytest.raises(HTTPException):
-        _sanitize_setting_value("email", {"email_provider": "smtp"})
+        _sanitize_setting_value("email", {"email_provider": "unsupported"})
     with pytest.raises(HTTPException):
         _sanitize_setting_value("email", {"from_name": "<script>alert(1)</script>"})
 
@@ -181,6 +224,7 @@ async def test_email_setting_api_update_persists_support_email_and_audits_values
 
     monkeypatch.setattr(system_router.repo, "get_setting_by_key", find_setting)
     monkeypatch.setattr(system_router.repo, "update_setting", update_setting)
+    monkeypatch.setattr(system_router.settings, "RESEND_API_KEY", "fake-only-test-key")
     current_user = SimpleNamespace(
         id=uuid4(),
         role=SimpleNamespace(name="Super Admin"),

@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     SKIP_DATABASE_SEED: bool = False
     TIMEZONE: str = "Asia/Yangon"
     RESEND_API_KEY: str | None = None
+    SMTP_PASSWORD: str | None = None
     BOOTSTRAP_SUPERADMIN_EMAIL: str | None = None
     BOOTSTRAP_SUPERADMIN_PASSWORD: str | None = None
     SEED_SUPERADMIN_EMAIL: str | None = None

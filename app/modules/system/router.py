@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
@@ -24,18 +24,36 @@ from app.modules.system.schemas import (
     SystemSettingUpdate,
 )
 from app.modules.users.models import User
-from app.services.email_service import (
-    email_configuration_from_value,
-    test_resend_connection,
-)
+from app.services.email_service import EmailProviderError, email_service
 
 router = APIRouter(prefix="/system", tags=["System Settings & Logs"])
 logger = logging.getLogger(__name__)
 
-SENSITIVE_SETTING_TERMS = (
-    "password", "secret", "token", "api_key", "apikey", "private_key",
-    "database_url", "access_key", "encryption_key",
-)
+def _is_secret_field(field: str) -> bool:
+    normalized = field.lower().replace("-", "_")
+    if normalized.endswith("_configured"):
+        return False
+    return normalized in {
+        "password",
+        "secret",
+        "token",
+        "api_key",
+        "apikey",
+        "access_key",
+        "private_key",
+        "credential",
+    } or normalized.endswith(
+        (
+            "_password",
+            "_secret",
+            "_token",
+            "_api_key",
+            "_apikey",
+            "_access_key",
+            "_private_key",
+            "_credential",
+        )
+    )
 
 
 def _sanitize_setting_value(key: str, value: dict) -> dict:
@@ -51,6 +69,10 @@ def _sanitize_setting_value(key: str, value: dict) -> dict:
                         "from_email",
                         "from_name",
                         "support_email",
+                        "smtp_host",
+                        "smtp_port",
+                        "smtp_username",
+                        "smtp_encryption",
                     )
                     if field in sanitized
                 }
@@ -86,10 +108,10 @@ def _reject_resend_api_key_fields(value) -> None:
     if isinstance(value, dict):
         for field, nested in value.items():
             normalized = str(field).lower().replace("-", "_")
-            if normalized in {"api_key", "resend_api_key", "apikey", "resendapikey"}:
+            if _is_secret_field(normalized):
                 raise HTTPException(
                     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail="API keys must be configured through the environment.",
+                    detail="Credentials must be configured through the application environment.",
                 )
             _reject_resend_api_key_fields(nested)
     elif isinstance(value, list):
@@ -105,10 +127,54 @@ def _require_super_admin_email_settings(user: User) -> None:
         )
 
 
+def _validate_email_settings_for_save(value: dict) -> dict:
+    normalized = _sanitize_setting_value("email", value)
+    if not normalized.get("from_email"):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="From Email is required.",
+        )
+    if normalized["email_provider"] == "resend":
+        if not settings.RESEND_API_KEY or not settings.RESEND_API_KEY.strip():
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Resend API key is not configured in the application environment.",
+            )
+    else:
+        if not normalized.get("smtp_host"):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="SMTP Host is required.",
+            )
+        if normalized.get("smtp_port") is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="SMTP Port is required.",
+            )
+        if normalized.get("smtp_username") and not (
+            settings.SMTP_PASSWORD and settings.SMTP_PASSWORD.strip()
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="SMTP password is not configured in the application environment.",
+            )
+    return normalized
+
+
 def _safe_backup_value(key: str, value):
-    normalized = key.lower().replace("-", "_")
-    if any(term in normalized for term in SENSITIVE_SETTING_TERMS):
+    if _is_secret_field(key):
         return "[REDACTED]"
+    if isinstance(value, dict):
+        return {
+            name: (
+                "[REDACTED]"
+                if _is_secret_field(str(name))
+                else _safe_backup_value(str(name), item)
+            )
+            for name, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_safe_backup_value(key, item) for item in value]
     return value
 
 @router.get("/settings", response_model=list[SystemSettingResponse])
@@ -119,12 +185,17 @@ async def read_all_settings(
     """System Setting အားလုံးကို ဆွဲထုတ်ရန်"""
     enforce_permission(current_user, "system.settings.view")
     result = []
+    email_setting_found = False
     for setting in await repo.get_all_settings(db):
         value = setting.value
         if setting.key.lower() == "email":
+            email_setting_found = True
             value = _sanitize_setting_value(setting.key, value)
             value["resend_api_key_configured"] = bool(
                 settings.RESEND_API_KEY and settings.RESEND_API_KEY.strip()
+            )
+            value["smtp_password_configured"] = bool(
+                settings.SMTP_PASSWORD and settings.SMTP_PASSWORD.strip()
             )
         result.append(
             {
@@ -134,6 +205,24 @@ async def read_all_settings(
                 "description": setting.description,
                 "created_at": setting.created_at,
                 "updated_at": setting.updated_at,
+            }
+        )
+    if not email_setting_found:
+        value = _sanitize_setting_value("email", {})
+        value["resend_api_key_configured"] = bool(
+            settings.RESEND_API_KEY and settings.RESEND_API_KEY.strip()
+        )
+        value["smtp_password_configured"] = bool(
+            settings.SMTP_PASSWORD and settings.SMTP_PASSWORD.strip()
+        )
+        result.append(
+            {
+                "id": uuid4(),
+                "key": "email",
+                "value": value,
+                "description": "Email provider configuration",
+                "created_at": datetime.now(),
+                "updated_at": None,
             }
         )
     return result
@@ -156,7 +245,11 @@ async def create_new_setting(
     existing = await repo.get_setting_by_key(db, payload.key)
     if existing:
         raise HTTPException(status_code=400, detail="Setting key already exists.")
-    payload.value = _sanitize_setting_value(payload.key, payload.value)
+    payload.value = (
+        _validate_email_settings_for_save(payload.value)
+        if payload.key.lower() == "email"
+        else _sanitize_setting_value(payload.key, payload.value)
+    )
     return await repo.create_setting(db, payload)
 
 @router.put("/settings/{key}", response_model=SystemSettingResponse)
@@ -182,7 +275,11 @@ async def update_existing_setting(
         setting.key, _sanitize_setting_value(setting.key, setting.value)
     )
     if payload.value is not None:
-        payload.value = _sanitize_setting_value(key, payload.value)
+        payload.value = (
+            _validate_email_settings_for_save(payload.value)
+            if key.lower() == "email"
+            else _sanitize_setting_value(key, payload.value)
+        )
     updated = await repo.update_setting(db, setting, payload)
     db.add(AuditLog(
         user_id=current_user.id,
@@ -210,21 +307,19 @@ async def test_email_connection(
             detail="Email configuration is not saved.",
         )
     try:
-        value = _sanitize_setting_value("email", setting.value)
+        _sanitize_setting_value("email", setting.value)
+        diagnostic = await email_service.test_connection()
     except HTTPException as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Email configuration is invalid.",
         ) from exc
-    configured, message = await test_resend_connection(
-        email_configuration_from_value(value)
-    )
-    if not configured:
+    except EmailProviderError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=message,
-        )
-    return {"status": "ready", "message": message}
+            detail=str(exc),
+        ) from exc
+    return {"status": "ready", "message": diagnostic}
 
 @router.get("/logs", response_model=SystemEventLogPage)
 async def read_system_logs(

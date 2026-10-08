@@ -1,6 +1,12 @@
+import asyncio
+import html
 import logging
-from dataclasses import dataclass
+import smtplib
+import ssl
+from dataclasses import dataclass, field, replace
+from email.message import EmailMessage as MIMEEmailMessage
 from email.utils import formataddr
+from typing import Protocol
 
 import httpx
 from pydantic import ValidationError
@@ -16,23 +22,84 @@ from app.modules.system.schemas import EmailConfigurationValue
 logger = logging.getLogger(__name__)
 
 RESEND_API_BASE_URL = "https://api.resend.com"
-RESEND_TIMEOUT_SECONDS = 10.0
+EMAIL_PROVIDER_TIMEOUT_SECONDS = 10.0
 DEFAULT_FROM_NAME = "Shwe Min Thar KPI Management System"
+RESEND_TEST_SENDER = "onboarding@resend.dev"
+
+
+class EmailProviderError(Exception):
+    """Base class for normalized email delivery errors."""
+
+
+class EmailConfigurationError(EmailProviderError):
+    """The selected provider is missing required configuration."""
+
+
+class EmailAuthenticationError(EmailProviderError):
+    """The provider rejected its credentials."""
+
+
+class EmailConnectionError(EmailProviderError):
+    """The application could not connect to the provider."""
+
+
+class EmailSendError(EmailProviderError):
+    """The provider rejected the email message."""
+
+
+@dataclass(frozen=True)
+class EmailAttachment:
+    filename: str
+    content: bytes
+    content_type: str = "application/octet-stream"
+
+
+@dataclass(frozen=True)
+class EmailMessage:
+    to: list[str]
+    subject: str
+    text_body: str | None = None
+    html_body: str | None = None
+    cc: list[str] = field(default_factory=list)
+    bcc: list[str] = field(default_factory=list)
+    reply_to: str | None = None
+    from_email: str | None = None
+    from_name: str | None = None
+    attachments: list[EmailAttachment] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
 class EmailConfiguration:
+    email_provider: str
     from_email: str | None
     from_name: str
     support_email: str | None
+    smtp_host: str | None
+    smtp_port: int | None
+    smtp_username: str | None
+    smtp_encryption: str
+
+
+@dataclass(frozen=True)
+class EmailSecrets:
+    resend_api_key: str | None
+    smtp_password: str | None
 
 
 def email_configuration_from_value(value: dict | None) -> EmailConfiguration:
-    validated = EmailConfigurationValue.model_validate(value or {})
+    try:
+        validated = EmailConfigurationValue.model_validate(value or {})
+    except ValidationError as exc:
+        raise EmailConfigurationError("Saved email configuration is invalid.") from exc
     return EmailConfiguration(
+        email_provider=validated.email_provider,
         from_email=str(validated.from_email) if validated.from_email else None,
         from_name=validated.from_name,
         support_email=str(validated.support_email) if validated.support_email else None,
+        smtp_host=validated.smtp_host,
+        smtp_port=validated.smtp_port,
+        smtp_username=validated.smtp_username,
+        smtp_encryption=validated.smtp_encryption,
     )
 
 
@@ -43,102 +110,361 @@ async def get_email_configuration(db: AsyncSession) -> EmailConfiguration:
 
 
 async def _load_email_configuration() -> EmailConfiguration:
-    async with AsyncSessionLocal() as db:
-        return await get_email_configuration(db)
+    try:
+        async with AsyncSessionLocal() as db:
+            return await get_email_configuration(db)
+    except SQLAlchemyError as exc:
+        raise EmailConfigurationError("Saved email configuration is unavailable.") from exc
 
 
-def _email_text_with_support(
-    text: str, support_email: str | None, from_name: str
-) -> str:
-    if not support_email:
-        return text
-    return (
-        f"{text}\n\n"
-        "----------------------------------------\n"
-        f"{from_name}\n\n"
-        f"Need help? Contact {support_email}\n"
-        "----------------------------------------"
+def _load_email_secrets() -> EmailSecrets:
+    return EmailSecrets(
+        resend_api_key=(settings.RESEND_API_KEY or "").strip() or None,
+        smtp_password=(settings.SMTP_PASSWORD or "").strip() or None,
     )
 
 
-async def send_resend_email(to: str, subject: str, text: str) -> bool:
-    api_key = (settings.RESEND_API_KEY or "").strip()
-    if not api_key:
-        logger.warning("Email notification skipped because RESEND_API_KEY is not configured")
-        return False
+def _support_footer(message: EmailMessage, configuration: EmailConfiguration) -> EmailMessage:
+    if not configuration.support_email:
+        return message
 
-    try:
-        configuration = await _load_email_configuration()
-    except ValidationError:
-        logger.warning("Email notification skipped because the saved configuration is invalid")
-        return False
-    except SQLAlchemyError:
-        logger.warning("Email notification skipped because saved configuration is unavailable")
-        return False
-    if not configuration.from_email:
-        logger.warning("Email notification skipped because the sender address is not configured")
-        return False
-
-    payload = {
-        "from": formataddr((configuration.from_name, configuration.from_email)),
-        "to": [to],
-        "subject": subject,
-        "text": _email_text_with_support(
-            text, configuration.support_email, configuration.from_name
+    footer_text = (
+        "\n\n----------------------------------------\n"
+        f"{configuration.from_name}\n\n"
+        f"Need help? Contact {configuration.support_email}\n"
+        "----------------------------------------"
+    )
+    footer_html = (
+        "<hr><p>"
+        f"{html.escape(configuration.from_name)}<br><br>"
+        "Need help? Contact "
+        f'<a href="mailto:{html.escape(configuration.support_email, quote=True)}">'
+        f"{html.escape(configuration.support_email)}</a>"
+        "</p>"
+    )
+    return replace(
+        message,
+        text_body=(message.text_body or "") + footer_text,
+        html_body=(
+            (message.html_body or "") + footer_html
+            if message.html_body is not None
+            else None
         ),
-    }
-    try:
-        async with httpx.AsyncClient(timeout=RESEND_TIMEOUT_SECONDS) as client:
-            response = await client.post(
-                f"{RESEND_API_BASE_URL}/emails",
-                headers={"Authorization": f"Bearer {api_key}"},
-                json=payload,
-            )
-            response.raise_for_status()
-    except httpx.TimeoutException:
-        logger.warning("Resend email request timed out")
-        return False
-    except httpx.HTTPError:
-        logger.warning("Resend email request failed")
-        return False
-
-    logger.info("Email notification dispatched through Resend")
-    return True
+        reply_to=message.reply_to or configuration.support_email,
+        from_email=message.from_email or configuration.from_email,
+        from_name=message.from_name or configuration.from_name,
+    )
 
 
-async def test_resend_connection(
-    configuration: EmailConfiguration,
-) -> tuple[bool, str]:
-    api_key = (settings.RESEND_API_KEY or "").strip()
-    if not api_key:
-        return False, "Resend API key is not configured."
+class EmailProvider(Protocol):
+    def validate_configuration(
+        self, configuration: EmailConfiguration, secrets: EmailSecrets
+    ) -> None: ...
+
+    async def send(
+        self, message: EmailMessage, configuration: EmailConfiguration, secrets: EmailSecrets
+    ) -> None: ...
+
+    async def test_connection(
+        self, configuration: EmailConfiguration, secrets: EmailSecrets
+    ) -> str: ...
+
+
+class EmailProviderFactory:
+    _providers: dict[str, type[EmailProvider]] = {}
+
+    @classmethod
+    def register(cls, name: str):
+        def decorator(provider: type[EmailProvider]):
+            cls._providers[name] = provider
+            return provider
+
+        return decorator
+
+    @classmethod
+    def create(cls, name: str) -> EmailProvider:
+        provider = cls._providers.get(name)
+        if provider is None:
+            raise EmailConfigurationError("Selected email provider is not implemented.")
+        return provider()
+
+    @classmethod
+    def available_providers(cls) -> tuple[str, ...]:
+        return tuple(cls._providers)
+
+
+def _sender(configuration: EmailConfiguration, message: EmailMessage) -> str:
+    from_email = message.from_email or configuration.from_email
+    if not from_email:
+        raise EmailConfigurationError("From Email is required.")
+    from_name = message.from_name or configuration.from_name
+    return formataddr((from_name, from_email))
+
+
+def _require_sender(configuration: EmailConfiguration) -> None:
     if not configuration.from_email:
-        return False, "From Email is not configured."
+        raise EmailConfigurationError("From Email is required.")
 
-    sender_domain = configuration.from_email.rsplit("@", maxsplit=1)[-1].lower()
-    try:
-        async with httpx.AsyncClient(timeout=RESEND_TIMEOUT_SECONDS) as client:
-            response = await client.get(
-                f"{RESEND_API_BASE_URL}/domains",
-                headers={"Authorization": f"Bearer {api_key}"},
+
+@EmailProviderFactory.register("resend")
+class ResendProvider:
+    def _api_key(self, secrets: EmailSecrets) -> str:
+        if not secrets.resend_api_key:
+            raise EmailConfigurationError("Resend API key is not configured.")
+        return secrets.resend_api_key
+
+    def _validate(self, configuration: EmailConfiguration, secrets: EmailSecrets) -> None:
+        self._api_key(secrets)
+        _require_sender(configuration)
+
+    def validate_configuration(
+        self, configuration: EmailConfiguration, secrets: EmailSecrets
+    ) -> None:
+        self._validate(configuration, secrets)
+
+    async def send(
+        self, message: EmailMessage, configuration: EmailConfiguration, secrets: EmailSecrets
+    ) -> None:
+        self._validate(configuration, secrets)
+        payload = {
+            "from": _sender(configuration, message),
+            "to": message.to,
+            "subject": message.subject,
+            "reply_to": message.reply_to or configuration.support_email,
+        }
+        if message.cc:
+            payload["cc"] = message.cc
+        if message.bcc:
+            payload["bcc"] = message.bcc
+        if message.text_body is not None:
+            payload["text"] = message.text_body
+        if message.html_body is not None:
+            payload["html"] = message.html_body
+        if message.attachments:
+            import base64
+
+            payload["attachments"] = [
+                {
+                    "filename": attachment.filename,
+                    "content": base64.b64encode(attachment.content).decode("ascii"),
+                }
+                for attachment in message.attachments
+            ]
+        if not payload["reply_to"]:
+            payload.pop("reply_to")
+
+        try:
+            async with httpx.AsyncClient(timeout=EMAIL_PROVIDER_TIMEOUT_SECONDS) as client:
+                response = await client.post(
+                    f"{RESEND_API_BASE_URL}/emails",
+                    headers={"Authorization": f"Bearer {self._api_key(secrets)}"},
+                    json=payload,
+                )
+                if response.status_code in {401, 403}:
+                    raise EmailAuthenticationError("Resend rejected the configured credentials.")
+                if response.status_code in {400, 422}:
+                    raise EmailSendError("Resend rejected the sender or email message.")
+                response.raise_for_status()
+        except EmailProviderError:
+            raise
+        except httpx.TimeoutException as exc:
+            raise EmailConnectionError("Email provider connection timed out.") from exc
+        except httpx.HTTPError as exc:
+            raise EmailConnectionError("Unable to connect to the email provider.") from exc
+
+    async def test_connection(
+        self, configuration: EmailConfiguration, secrets: EmailSecrets
+    ) -> str:
+        self._validate(configuration, secrets)
+        api_key = self._api_key(secrets)
+        test_mode = configuration.from_email.lower() == RESEND_TEST_SENDER
+        endpoint = f"{RESEND_API_BASE_URL}/domains"
+        try:
+            async with httpx.AsyncClient(timeout=EMAIL_PROVIDER_TIMEOUT_SECONDS) as client:
+                response = await client.get(
+                    endpoint,
+                    headers={"Authorization": f"Bearer {api_key}"},
+                )
+                if response.status_code in {401, 403}:
+                    raise EmailAuthenticationError("Provider authentication failed.")
+                response.raise_for_status()
+                response_body = response.json()
+        except EmailProviderError:
+            raise
+        except httpx.TimeoutException as exc:
+            raise EmailConnectionError("Unable to connect to the email provider.") from exc
+        except (httpx.HTTPError, ValueError) as exc:
+            raise EmailConnectionError("Unable to connect to the email provider.") from exc
+
+        if not isinstance(response_body, dict) or not isinstance(
+            response_body.get("data"), list
+        ):
+            raise EmailConnectionError("Provider returned an invalid connection response.")
+        if test_mode:
+            return "Ready — Resend Test Mode"
+
+        domain = configuration.from_email.rsplit("@", maxsplit=1)[-1].lower()
+        if not any(
+            isinstance(item, dict)
+            and str(item.get("name", "")).lower() == domain
+            and item.get("status") == "verified"
+            for item in response_body["data"]
+        ):
+            raise EmailConfigurationError("Provider rejected the sender: domain is not verified.")
+        return "Ready"
+
+
+@EmailProviderFactory.register("smtp")
+class SMTPProvider:
+    def _validate(self, configuration: EmailConfiguration, secrets: EmailSecrets) -> None:
+        _require_sender(configuration)
+        if not configuration.smtp_host:
+            raise EmailConfigurationError("SMTP Host is required.")
+        if configuration.smtp_port is None or not 1 <= configuration.smtp_port <= 65535:
+            raise EmailConfigurationError("SMTP Port must be between 1 and 65535.")
+        if configuration.smtp_encryption not in {"starttls", "ssl", "none"}:
+            raise EmailConfigurationError("SMTP encryption setting is invalid.")
+        if configuration.smtp_username and not secrets.smtp_password:
+            raise EmailConfigurationError("SMTP password is not configured.")
+
+    def validate_configuration(
+        self, configuration: EmailConfiguration, secrets: EmailSecrets
+    ) -> None:
+        self._validate(configuration, secrets)
+
+    def _connect(self, configuration: EmailConfiguration, secrets: EmailSecrets):
+        self._validate(configuration, secrets)
+        smtp = None
+        try:
+            if configuration.smtp_encryption == "ssl":
+                smtp = smtplib.SMTP_SSL(
+                    configuration.smtp_host,
+                    configuration.smtp_port,
+                    timeout=EMAIL_PROVIDER_TIMEOUT_SECONDS,
+                    context=ssl.create_default_context(),
+                )
+            else:
+                smtp = smtplib.SMTP(
+                    configuration.smtp_host,
+                    configuration.smtp_port,
+                    timeout=EMAIL_PROVIDER_TIMEOUT_SECONDS,
+                )
+                smtp.ehlo()
+                if configuration.smtp_encryption == "starttls":
+                    smtp.starttls(context=ssl.create_default_context())
+                    smtp.ehlo()
+            if configuration.smtp_username:
+                smtp.login(configuration.smtp_username, secrets.smtp_password)
+            return smtp
+        except smtplib.SMTPAuthenticationError as exc:
+            if smtp is not None:
+                smtp.close()
+            raise EmailAuthenticationError("SMTP authentication failed.") from exc
+        except (OSError, smtplib.SMTPException) as exc:
+            if smtp is not None:
+                smtp.close()
+            raise EmailConnectionError("Unable to connect to the SMTP server.") from exc
+
+    async def send(
+        self, message: EmailMessage, configuration: EmailConfiguration, secrets: EmailSecrets
+    ) -> None:
+        def send_sync() -> None:
+            smtp = self._connect(configuration, secrets)
+            try:
+                mail = MIMEEmailMessage()
+                mail["Subject"] = message.subject
+                mail["From"] = _sender(configuration, message)
+                mail["To"] = ", ".join(message.to)
+                if message.cc:
+                    mail["Cc"] = ", ".join(message.cc)
+                if message.reply_to or configuration.support_email:
+                    mail["Reply-To"] = message.reply_to or configuration.support_email
+                if message.text_body is not None:
+                    mail.set_content(message.text_body)
+                if message.html_body is not None:
+                    mail.add_alternative(message.html_body, subtype="html")
+                for attachment in message.attachments:
+                    main_type, _, sub_type = attachment.content_type.partition("/")
+                    mail.add_attachment(
+                        attachment.content,
+                        maintype=main_type or "application",
+                        subtype=sub_type or "octet-stream",
+                        filename=attachment.filename,
+                    )
+                smtp.send_message(
+                    mail,
+                    to_addrs=message.to + message.cc + message.bcc,
+                )
+            except smtplib.SMTPAuthenticationError as exc:
+                raise EmailAuthenticationError("SMTP authentication failed.") from exc
+            except (OSError, smtplib.SMTPException) as exc:
+                raise EmailSendError("SMTP server rejected the email message.") from exc
+            finally:
+                try:
+                    smtp.quit()
+                except (OSError, smtplib.SMTPException):
+                    smtp.close()
+
+        await asyncio.to_thread(send_sync)
+
+    async def test_connection(
+        self, configuration: EmailConfiguration, secrets: EmailSecrets
+    ) -> str:
+        def test_sync() -> None:
+            smtp = self._connect(configuration, secrets)
+            try:
+                return None
+            finally:
+                try:
+                    smtp.quit()
+                except (OSError, smtplib.SMTPException):
+                    smtp.close()
+
+        await asyncio.to_thread(test_sync)
+        return "Ready"
+
+
+class EmailService:
+    async def _configuration(self) -> EmailConfiguration:
+        return await _load_email_configuration()
+
+    async def send(self, message: EmailMessage) -> bool:
+        provider_name = "unknown"
+        try:
+            configuration = await self._configuration()
+            provider_name = configuration.email_provider
+            secrets = _load_email_secrets()
+            provider = EmailProviderFactory.create(configuration.email_provider)
+            provider.validate_configuration(configuration, secrets)
+            message = _support_footer(message, configuration)
+            await provider.send(message, configuration, secrets)
+        except EmailProviderError as exc:
+            logger.warning(
+                "email provider=%s operation=send result=failed reason=%s",
+                provider_name,
+                str(exc),
             )
-            response.raise_for_status()
-            response_body = response.json()
-            if not isinstance(response_body, dict) or not isinstance(
-                response_body.get("data"), list
-            ):
-                return False, "Resend could not verify the configured sender."
-            domains = response_body["data"]
-    except httpx.TimeoutException:
-        return False, "Resend connection timed out."
-    except (httpx.HTTPError, ValueError, AttributeError):
-        return False, "Resend could not verify the configured sender."
+            return False
+        logger.info("email provider=%s operation=send result=success", configuration.email_provider)
+        return True
 
-    if not any(
-        isinstance(domain, dict)
-        and str(domain.get("name", "")).lower() == sender_domain
-        and domain.get("status") == "verified"
-        for domain in domains
-    ):
-        return False, "The From Email domain is not verified with Resend."
-    return True, "Resend is connected and the sender domain is verified."
+    async def test_connection(self) -> str:
+        configuration = await self._configuration()
+        provider = EmailProviderFactory.create(configuration.email_provider)
+        try:
+            result = await provider.test_connection(configuration, _load_email_secrets())
+        except EmailProviderError as exc:
+            logger.warning(
+                "email provider=%s operation=test_connection result=failed reason=%s",
+                configuration.email_provider,
+                str(exc),
+            )
+            raise
+        logger.info(
+            "email provider=%s operation=test_connection result=success",
+            configuration.email_provider,
+        )
+        return result
+
+
+email_service = EmailService()

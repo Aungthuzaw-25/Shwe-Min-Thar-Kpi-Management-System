@@ -97,19 +97,27 @@
                 <div id="content-email" class="setting-content space-y-6 hidden">
                     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-end border-b border-gray-100 pb-3 mb-4 sm:mb-6 gap-3 sm:gap-0">
                         <h3 class="text-base sm:text-lg font-extrabold text-blue-950">Email Configuration</h3>
-                        <button type="button" onclick="testEmailConnection()" class="w-full sm:w-auto text-xs font-bold bg-white text-blue-700 border border-blue-200 hover:bg-blue-50 px-4 py-2 rounded-lg shadow-sm transition-colors text-center">Test Connection</button>
+                        <div class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                            <button type="button" id="cancelEmailChangesBtn" onclick="cancelEmailChanges()" class="hidden w-full sm:w-auto text-xs font-bold bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 px-4 py-2 rounded-lg shadow-sm transition-colors text-center">Cancel</button>
+                            <button type="button" id="testEmailConnectionBtn" onclick="testEmailConnection()" disabled class="w-full sm:w-auto text-xs font-bold bg-white text-blue-700 border border-blue-200 hover:bg-blue-50 px-4 py-2 rounded-lg shadow-sm transition-colors text-center disabled:opacity-50 disabled:cursor-not-allowed">Test Connection</button>
+                        </div>
                     </div>
-                    <p class="text-xs sm:text-sm text-slate-500 mb-4">Configure Resend delivery, the sender identity, and the support contact address.</p>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+                    <p class="text-xs sm:text-sm text-slate-500">Configure the provider used by application email. You can switch providers without changing application code.</p>
+                    <div>
                         <div>
                             <label for="set_email_provider" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">Email Provider</label>
-                            <select id="set_email_provider" disabled class="w-full bg-slate-100 border border-gray-200 p-3 rounded-xl text-sm font-semibold text-slate-700">
+                            <select id="set_email_provider" class="w-full md:max-w-md bg-slate-50 border border-gray-200 p-3 rounded-xl text-sm font-semibold focus:outline-none focus:bg-white focus:border-blue-900 transition-all shadow-inner">
                                 <option value="resend" selected>Resend</option>
+                                <option value="smtp">SMTP</option>
                             </select>
                         </div>
+                    </div>
+                    <div class="border-t border-gray-100 pt-5">
+                        <h4 class="text-sm font-extrabold text-blue-950 mb-4">Sender Identity</h4>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
                         <div>
                             <label for="set_from_email" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">From Email</label>
-                            <input type="email" id="set_from_email" placeholder="noreply@yourdomain.com" autocomplete="email" class="w-full bg-slate-50 border border-gray-200 p-3 rounded-xl text-sm font-semibold focus:outline-none focus:bg-white focus:border-blue-900 transition-all shadow-inner">
+                            <input type="email" id="set_from_email" required placeholder="noreply@yourdomain.com" autocomplete="email" class="w-full bg-slate-50 border border-gray-200 p-3 rounded-xl text-sm font-semibold focus:outline-none focus:bg-white focus:border-blue-900 transition-all shadow-inner">
                         </div>
                         <div>
                             <label for="set_from_name" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">From Name</label>
@@ -121,16 +129,53 @@
                             <p class="text-xs text-slate-500 mt-2">Used for support/contact information in email messages. Leave blank to omit.</p>
                         </div>
                     </div>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 pt-2">
-                        <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                            <div class="text-[11px] font-bold uppercase tracking-wide text-slate-500">Resend API Key</div>
-                            <div id="resendApiKeyStatus" class="mt-2 text-sm font-bold text-slate-700">Not Configured</div>
+                    </div>
+                    <div class="border-t border-gray-100 pt-5">
+                        <h4 class="text-sm font-extrabold text-blue-950 mb-4">Provider Configuration</h4>
+                        <div id="resendProviderFields" class="space-y-4">
+                            <p class="text-xs text-slate-500">Resend sends email through its API using the application runtime credential.</p>
+                            <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                                <div class="text-[11px] font-bold uppercase tracking-wide text-slate-500">Resend API Key</div>
+                                <div id="resendApiKeyStatus" class="mt-2 text-sm font-bold text-slate-700">Not Configured</div>
+                            </div>
                         </div>
-                        <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                            <div class="text-[11px] font-bold uppercase tracking-wide text-slate-500">Email Status</div>
-                            <div id="emailStatus" class="mt-2 text-sm font-bold text-slate-700">Not Configured</div>
+                        <div id="smtpProviderFields" class="hidden grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+                            <div>
+                                <label for="set_smtp_host" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">SMTP Host</label>
+                                <input type="text" id="set_smtp_host" maxlength="255" placeholder="smtp.example.com" class="w-full bg-slate-50 border border-gray-200 p-3 rounded-xl text-sm font-semibold focus:outline-none focus:bg-white focus:border-blue-900 transition-all shadow-inner">
+                            </div>
+                            <div>
+                                <label for="set_smtp_port" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">SMTP Port</label>
+                                <input type="number" id="set_smtp_port" min="1" max="65535" value="587" class="w-full bg-slate-50 border border-gray-200 p-3 rounded-xl text-sm font-semibold focus:outline-none focus:bg-white focus:border-blue-900 transition-all shadow-inner">
+                            </div>
+                            <div>
+                                <label for="set_smtp_username" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">SMTP Username (optional)</label>
+                                <input type="text" id="set_smtp_username" maxlength="255" autocomplete="username" class="w-full bg-slate-50 border border-gray-200 p-3 rounded-xl text-sm font-semibold focus:outline-none focus:bg-white focus:border-blue-900 transition-all shadow-inner">
+                            </div>
+                            <div>
+                                <label for="set_smtp_encryption" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">Encryption</label>
+                                <select id="set_smtp_encryption" class="w-full bg-slate-50 border border-gray-200 p-3 rounded-xl text-sm font-semibold focus:outline-none focus:bg-white focus:border-blue-900 transition-all shadow-inner">
+                                    <option value="starttls">STARTTLS</option>
+                                    <option value="ssl">SSL/TLS</option>
+                                    <option value="none">None</option>
+                                </select>
+                            </div>
+                            <div class="md:col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                                <div class="text-[11px] font-bold uppercase tracking-wide text-slate-500">SMTP Password</div>
+                                <div id="smtpPasswordStatus" class="mt-2 text-sm font-bold text-slate-700">Not Configured</div>
+                                <p class="text-xs text-slate-500 mt-2">Set SMTP_PASSWORD in the application environment. The password is never stored in System Settings.</p>
+                            </div>
                         </div>
                     </div>
+                    <div class="border-t border-gray-100 pt-5">
+                        <h4 class="text-sm font-extrabold text-blue-950 mb-4">Email Status</h4>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+                        <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                            <div id="emailStatus" role="status" aria-live="polite" class="text-sm font-bold text-slate-700">Not Configured</div>
+                        </div>
+                    </div>
+                    </div>
+                    <div id="emailUnsavedChanges" class="hidden rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-800" role="status">Unsaved changes — save before testing or applying the selected provider.</div>
                 </div>
 
                 <!-- 3. SECURITY POLICY -->
@@ -205,10 +250,39 @@
 
     const activeTabStyle = "setting-tab-btn active-tab w-auto lg:w-full text-left px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center shrink-0 bg-blue-950 text-white shadow-md whitespace-nowrap";
     const inactiveTabStyle = "setting-tab-btn text-slate-500 hover:bg-slate-100 w-auto lg:w-full text-left px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center shrink-0 whitespace-nowrap";
+    let savedEmailSettings = {
+        email_provider: 'resend',
+        from_email: '',
+        from_name: 'Shwe Min Thar KPI Management System',
+        support_email: '',
+        smtp_host: '',
+        smtp_port: 587,
+        smtp_username: '',
+        smtp_encryption: 'starttls',
+        resend_api_key_configured: false,
+        smtp_password_configured: false
+    };
 
     document.addEventListener("DOMContentLoaded", () => {
         document.getElementById('tab-general').className = activeTabStyle;
-        loadSettings(); 
+        document.getElementById('set_email_provider').addEventListener('change', () => {
+            renderProviderFields();
+            updateEmailDirtyState();
+            updateEmailDiagnostic();
+        });
+        [
+            'set_from_email', 'set_from_name', 'set_support_email',
+            'set_smtp_host', 'set_smtp_port', 'set_smtp_username',
+            'set_smtp_encryption'
+        ].forEach(id => document.getElementById(id).addEventListener('input', () => {
+            updateEmailDirtyState();
+            updateEmailDiagnostic();
+        }));
+        document.getElementById('set_smtp_encryption').addEventListener('change', () => {
+            updateEmailDirtyState();
+            updateEmailDiagnostic();
+        });
+        loadSettings();
     });
 
     function switchSettingTab(tabId) {
@@ -259,10 +333,18 @@
                         if(data.date_format) document.getElementById('set_date_format').value = data.date_format;
                     } 
                     else if (setting.key === 'email') {
-                        document.getElementById('set_from_email').value = data.from_email || '';
-                        document.getElementById('set_from_name').value = data.from_name || 'Shwe Min Thar KPI Management System';
-                        document.getElementById('set_support_email').value = data.support_email || '';
-                        setEmailStatus(data.resend_api_key_configured === true);
+                        savedEmailSettings = {
+                            ...savedEmailSettings,
+                            ...data,
+                            from_email: data.from_email || '',
+                            from_name: data.from_name || 'Shwe Min Thar KPI Management System',
+                            support_email: data.support_email || '',
+                            smtp_host: data.smtp_host || '',
+                            smtp_port: data.smtp_port || 587,
+                            smtp_username: data.smtp_username || '',
+                            smtp_encryption: data.smtp_encryption || 'starttls'
+                        };
+                        applyEmailSettings(savedEmailSettings);
                     } 
                     else if (setting.key === 'security') {
                         if(data.minimum_password_length || data.min_length) document.getElementById('set_pwd_length').value = data.minimum_password_length || data.min_length;
@@ -279,14 +361,93 @@
         }
     }
 
-    function setEmailStatus(apiKeyConfigured) {
-        const keyStatus = document.getElementById('resendApiKeyStatus');
+    function readEmailForm() {
+        return {
+            email_provider: document.getElementById('set_email_provider').value,
+            from_email: document.getElementById('set_from_email').value.trim(),
+            from_name: document.getElementById('set_from_name').value.trim(),
+            support_email: document.getElementById('set_support_email').value.trim(),
+            smtp_host: document.getElementById('set_smtp_host').value.trim(),
+            smtp_port: Number(document.getElementById('set_smtp_port').value),
+            smtp_username: document.getElementById('set_smtp_username').value.trim(),
+            smtp_encryption: document.getElementById('set_smtp_encryption').value
+        };
+    }
+
+    function applyEmailSettings(data) {
+        document.getElementById('set_email_provider').value = data.email_provider || 'resend';
+        document.getElementById('set_from_email').value = data.from_email || '';
+        document.getElementById('set_from_name').value = data.from_name || 'Shwe Min Thar KPI Management System';
+        document.getElementById('set_support_email').value = data.support_email || '';
+        document.getElementById('set_smtp_host').value = data.smtp_host || '';
+        document.getElementById('set_smtp_port').value = data.smtp_port || 587;
+        document.getElementById('set_smtp_username').value = data.smtp_username || '';
+        document.getElementById('set_smtp_encryption').value = data.smtp_encryption || 'starttls';
+        document.getElementById('resendApiKeyStatus').textContent =
+            data.resend_api_key_configured ? 'Configured' : 'Not Configured';
+        document.getElementById('smtpPasswordStatus').textContent =
+            data.smtp_password_configured ? 'Configured' : 'Not Configured';
+        renderProviderFields();
+        updateEmailDirtyState();
+        updateEmailDiagnostic();
+    }
+
+    function renderProviderFields() {
+        const provider = document.getElementById('set_email_provider').value;
+        document.getElementById('resendProviderFields').classList.toggle('hidden', provider !== 'resend');
+        document.getElementById('smtpProviderFields').classList.toggle('hidden', provider !== 'smtp');
+    }
+
+    function updateEmailDirtyState() {
+        const current = readEmailForm();
+        const saved = {
+            email_provider: savedEmailSettings.email_provider || 'resend',
+            from_email: savedEmailSettings.from_email || '',
+            from_name: savedEmailSettings.from_name || 'Shwe Min Thar KPI Management System',
+            support_email: savedEmailSettings.support_email || '',
+            smtp_host: savedEmailSettings.smtp_host || '',
+            smtp_port: Number(savedEmailSettings.smtp_port || 587),
+            smtp_username: savedEmailSettings.smtp_username || '',
+            smtp_encryption: savedEmailSettings.smtp_encryption || 'starttls'
+        };
+        const dirty = JSON.stringify(current) !== JSON.stringify(saved);
+        document.getElementById('emailUnsavedChanges').classList.toggle('hidden', !dirty);
+        document.getElementById('cancelEmailChangesBtn').classList.toggle('hidden', !dirty);
+        document.getElementById('testEmailConnectionBtn').disabled = dirty;
+        return dirty;
+    }
+
+    function updateEmailDiagnostic(message = null, type = null) {
         const emailStatus = document.getElementById('emailStatus');
-        keyStatus.textContent = apiKeyConfigured ? 'Configured' : 'Not Configured';
-        const readyToTest = apiKeyConfigured && Boolean(document.getElementById('set_from_email').value.trim());
-        emailStatus.textContent = readyToTest ? 'Configured — test connection to verify' : 'Not Configured';
-        keyStatus.className = `mt-2 text-sm font-bold ${apiKeyConfigured ? 'text-green-700' : 'text-amber-700'}`;
-        emailStatus.className = `mt-2 text-sm font-bold ${readyToTest ? 'text-blue-700' : 'text-amber-700'}`;
+        if (message) {
+            emailStatus.textContent = message;
+            emailStatus.className = `text-sm font-bold ${type === 'success' ? 'text-green-700' : 'text-red-700'}`;
+            return;
+        }
+        if (updateEmailDirtyState()) {
+            emailStatus.textContent = 'Unsaved changes';
+            emailStatus.className = 'text-sm font-bold text-amber-700';
+            return;
+        }
+        const values = readEmailForm();
+        let reason = '';
+        if (!values.from_email) {
+            reason = 'From Email is required';
+        } else if (values.email_provider === 'resend' && !savedEmailSettings.resend_api_key_configured) {
+            reason = 'Resend API key is not configured';
+        } else if (values.email_provider === 'smtp' && !values.smtp_host) {
+            reason = 'SMTP Host is required';
+        } else if (values.email_provider === 'smtp' && !values.smtp_port) {
+            reason = 'SMTP Port is required';
+        } else if (values.email_provider === 'smtp' && values.smtp_username && !savedEmailSettings.smtp_password_configured) {
+            reason = 'SMTP credentials are not configured';
+        }
+        emailStatus.textContent = reason ? `Not Ready — ${reason}` : 'Configured — test connection to verify';
+        emailStatus.className = `text-sm font-bold ${reason ? 'text-amber-700' : 'text-blue-700'}`;
+    }
+
+    function cancelEmailChanges() {
+        applyEmailSettings(savedEmailSettings);
     }
 
     async function upsertSetting(key, valueObj) {
@@ -348,11 +509,15 @@
             date_format: document.getElementById('set_date_format').value
         };
 
+        const emailForm = readEmailForm();
         const emailVal = {
-            email_provider: 'resend',
-            from_email: document.getElementById('set_from_email').value.trim() || null,
-            from_name: document.getElementById('set_from_name').value.trim(),
-            support_email: document.getElementById('set_support_email').value.trim() || null
+            ...emailForm,
+            from_email: emailForm.from_email || null,
+            from_name: emailForm.from_name || 'Shwe Min Thar KPI Management System',
+            support_email: emailForm.support_email || null,
+            smtp_host: emailForm.smtp_host || null,
+            smtp_port: emailForm.smtp_port || null,
+            smtp_username: emailForm.smtp_username || null
         };
         const securityVal = {
             minimum_password_length: Number(document.getElementById('set_pwd_length').value),
@@ -372,7 +537,12 @@
 
             if (results.every(r => r === true)) {
                 showToast("System settings updated successfully.", "success");
-                setEmailStatus(document.getElementById('resendApiKeyStatus').textContent === 'Configured');
+                savedEmailSettings = {
+                    ...emailVal,
+                    resend_api_key_configured: savedEmailSettings.resend_api_key_configured,
+                    smtp_password_configured: savedEmailSettings.smtp_password_configured
+                };
+                applyEmailSettings(savedEmailSettings);
             } else {
                 showToast("Some settings failed to save. Check your permissions and field values.", "error");
             }
@@ -385,9 +555,13 @@
     }
 
     async function testEmailConnection() {
+        if (updateEmailDirtyState()) {
+            showToast("Save the email settings before testing the selected provider.", "error");
+            return;
+        }
         const status = document.getElementById('emailStatus');
-        status.textContent = 'Checking Resend configuration...';
-        status.className = 'mt-2 text-sm font-bold text-blue-700';
+        status.textContent = 'Checking email provider configuration...';
+        status.className = 'text-sm font-bold text-blue-700';
         try {
             const res = await fetch('/api/v1/system/settings/email/test-connection', { method: 'POST' });
             const result = await res.json();
@@ -397,18 +571,15 @@
                 return;
             }
             if (!res.ok) {
-                status.textContent = 'Configuration Error';
-                status.className = 'mt-2 text-sm font-bold text-red-700';
-                showToast(result.detail || "Resend configuration could not be verified.", "error");
+                updateEmailDiagnostic(result.detail || "Email provider could not be verified.", 'error');
+                showToast(result.detail || "Email provider could not be verified.", "error");
                 return;
             }
-            status.textContent = 'Ready';
-            status.className = 'mt-2 text-sm font-bold text-green-700';
+            updateEmailDiagnostic(result.message || 'Ready', 'success');
             showToast(result.message || "Resend connection verified.", "success");
         } catch (e) {
-            status.textContent = 'Configuration Error';
-            status.className = 'mt-2 text-sm font-bold text-red-700';
-            showToast("Network error while testing the Resend connection.", "error");
+            updateEmailDiagnostic("Not Ready — unable to connect to provider", 'error');
+            showToast("Network error while testing the email provider.", "error");
         }
     }
 
