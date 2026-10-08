@@ -481,12 +481,113 @@ async def test_provider_test_does_not_activate_and_enable_then_disable_clears_ac
         "smtp", EmailProviderLifecycleRequest(action="enable"), db, user
     )
     assert enabled["active_provider"] == "smtp"
+    assert enabled["is_active"] is True
+    assert enabled["status"] == "ready"
+    assert enabled["message"] == "SMTP enabled successfully."
     assert setting.value["providers"]["smtp"]["enabled"] is True
+    from app.services.email_service import EmailProviderResolver
+
+    assert (
+        EmailProviderResolver.resolve_value(setting.value).email_provider == "smtp"
+    )
     await system_router.update_email_provider_lifecycle(
         "smtp", EmailProviderLifecycleRequest(action="disable"), db, user
     )
     assert setting.value["active_provider"] is None
     assert setting.value["providers"]["smtp"]["enabled"] is False
+    from app.services.email_service import EmailDisabledError
+
+    with pytest.raises(EmailDisabledError):
+        EmailProviderResolver.resolve_value(setting.value)
+
+
+@pytest.mark.asyncio
+async def test_non_super_admin_cannot_enable_email_provider(monkeypatch):
+    from app.modules.system import router as system_router
+
+    monkeypatch.setattr(system_router, "enforce_permission", lambda *_args: None)
+    user = SimpleNamespace(
+        id=uuid4(),
+        role=SimpleNamespace(name="Department User"),
+        permission_overrides=[],
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await system_router.update_email_provider_lifecycle(
+            "resend",
+            EmailProviderLifecycleRequest(action="enable"),
+            FakeAuditDB(),
+            user,
+        )
+
+    assert exc.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_legacy_email_test_connection_returns_specific_configuration_diagnostic(
+    monkeypatch,
+):
+    from app.modules.system import router as system_router
+    from app.services.email_service import EmailConfigurationError
+
+    setting = SimpleNamespace(
+        value={
+            "providers": {
+                "resend": {
+                    "enabled": True,
+                    "from_email": None,
+                    "from_name": "KPI System",
+                    "support_email": None,
+                    "tested": True,
+                    "last_test_status": "ready",
+                }
+            },
+            "active_provider": "resend",
+        }
+    )
+
+    async def find_setting(_db, _key):
+        return setting
+
+    async def fail_test(_provider=None):
+        raise EmailConfigurationError("From Email is required.")
+
+    monkeypatch.setattr(system_router.repo, "get_setting_by_key", find_setting)
+    monkeypatch.setattr(system_router.email_service, "test_connection", fail_test)
+    user = SimpleNamespace(
+        role=SimpleNamespace(name="Super Admin"),
+        permission_overrides=[],
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await system_router.test_email_connection(FakeAuditDB(), user)
+
+    assert exc.value.status_code == 422
+    assert exc.value.detail == "From Email is required."
+
+
+@pytest.mark.asyncio
+async def test_legacy_email_test_connection_reports_no_active_provider(monkeypatch):
+    from app.modules.system import router as system_router
+
+    setting = SimpleNamespace(
+        value={"providers": {}, "active_provider": None}
+    )
+
+    async def find_setting(_db, _key):
+        return setting
+
+    monkeypatch.setattr(system_router.repo, "get_setting_by_key", find_setting)
+    user = SimpleNamespace(
+        role=SimpleNamespace(name="Super Admin"),
+        permission_overrides=[],
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await system_router.test_email_connection(FakeAuditDB(), user)
+
+    assert exc.value.status_code == 503
+    assert exc.value.detail == "No active email provider is configured."
 
 
 @pytest.mark.asyncio

@@ -29,6 +29,7 @@ from app.modules.users.models import User
 from app.services.email_service import (
     EmailAuthenticationError,
     EmailConfigurationError,
+    EmailDisabledError,
     EmailProviderError,
     EmailProviderFactory,
     EmailSendError,
@@ -501,12 +502,49 @@ async def update_email_provider_lifecycle(
         if state.get("active_provider") == provider_type:
             state["active_provider"] = None
 
-    await _persist_email_settings(db, current_user, state, setting)
+    try:
+        await _persist_email_settings(db, current_user, state, setting)
+    except SQLAlchemyError as exc:
+        logger.exception(
+            "Email provider lifecycle persistence failed for provider=%s",
+            provider_type,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to update email provider.",
+        ) from exc
+    active = state.get("active_provider")
+    provider_name = next(
+        (
+            definition["name"]
+            for definition in EmailProviderFactory.definitions()
+            if definition["key"] == provider_type
+        ),
+        provider_type,
+    )
+    is_active = active == provider_type
     return {
         "success": True,
         "provider": provider_type,
-        "enabled": payload.action == "enable",
-        "active_provider": state.get("active_provider"),
+        "enabled": provider_value["enabled"],
+        "is_active": is_active,
+        "active_provider": active,
+        "status": (
+            "ready"
+            if provider_value.get("tested")
+            and provider_value.get("last_test_status") == "ready"
+            else "not_ready"
+        ),
+        "service_status": (
+            f"Enabled — {provider_name}"
+            if is_active
+            else "Disabled — No active provider"
+        ),
+        "message": (
+            f"{provider_name} enabled successfully."
+            if is_active
+            else f"{provider_name} disabled successfully."
+        ),
     }
 
 
@@ -581,22 +619,34 @@ async def test_email_connection(
     if not setting:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Email configuration is not saved.",
+            detail="No active email provider is configured.",
         )
     try:
         state = normalize_email_settings(setting.value)
         provider_type = state.get("active_provider")
         if not provider_type and len(state["providers"]) == 1:
             provider_type = next(iter(state["providers"]))
+        if not provider_type:
+            raise EmailDisabledError("No active email provider is configured.")
         diagnostic = await email_service.test_connection(provider_type)
-    except HTTPException as exc:
+    except ValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Saved email provider configuration is invalid.",
+        ) from exc
+    except EmailDisabledError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Email configuration is invalid.",
+            detail="No active email provider is configured.",
+        ) from exc
+    except EmailConfigurationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
         ) from exc
     except EmailProviderError as exc:
         raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            status_code=status.HTTP_502_BAD_GATEWAY,
             detail=str(exc),
         ) from exc
     return {
