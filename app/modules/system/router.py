@@ -8,12 +8,14 @@ from pydantic import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.dependencies import enforce_permission, get_current_user
 from app.database.connection import get_db
 from app.models.audit_log import AuditLog
 from app.models.system import LogLevel
 from app.modules.system import repo
 from app.modules.system.schemas import (
+    EmailConfigurationValue,
     PasswordPolicyValue,
     SystemEventLogDetailResponse,
     SystemEventLogPage,
@@ -22,6 +24,10 @@ from app.modules.system.schemas import (
     SystemSettingUpdate,
 )
 from app.modules.users.models import User
+from app.services.email_service import (
+    email_configuration_from_value,
+    test_resend_connection,
+)
 
 router = APIRouter(prefix="/system", tags=["System Settings & Logs"])
 logger = logging.getLogger(__name__)
@@ -33,9 +39,24 @@ SENSITIVE_SETTING_TERMS = (
 
 
 def _sanitize_setting_value(key: str, value: dict) -> dict:
+    _reject_resend_api_key_fields(value)
     sanitized = dict(value)
     if key.lower() == "email":
-        sanitized.pop("password", None)
+        try:
+            sanitized = EmailConfigurationValue.model_validate(
+                {
+                    field: sanitized[field]
+                    for field in (
+                        "email_provider",
+                        "from_email",
+                        "from_name",
+                        "support_email",
+                    )
+                    if field in sanitized
+                }
+            ).model_dump(mode="json")
+        except ValidationError as exc:
+            raise HTTPException(status_code=422, detail=exc.errors()) from exc
     elif key.lower() == "security":
         try:
             policy = PasswordPolicyValue.model_validate({
@@ -61,6 +82,29 @@ def _sanitize_setting_value(key: str, value: dict) -> dict:
     return sanitized
 
 
+def _reject_resend_api_key_fields(value) -> None:
+    if isinstance(value, dict):
+        for field, nested in value.items():
+            normalized = str(field).lower().replace("-", "_")
+            if normalized in {"api_key", "resend_api_key", "apikey", "resendapikey"}:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="API keys must be configured through the environment.",
+                )
+            _reject_resend_api_key_fields(nested)
+    elif isinstance(value, list):
+        for nested in value:
+            _reject_resend_api_key_fields(nested)
+
+
+def _require_super_admin_email_settings(user: User) -> None:
+    if not user.role or user.role.name != "Super Admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only a Super Admin can manage email configuration.",
+        )
+
+
 def _safe_backup_value(key: str, value):
     normalized = key.lower().replace("-", "_")
     if any(term in normalized for term in SENSITIVE_SETTING_TERMS):
@@ -74,7 +118,25 @@ async def read_all_settings(
 ):
     """System Setting အားလုံးကို ဆွဲထုတ်ရန်"""
     enforce_permission(current_user, "system.settings.view")
-    return await repo.get_all_settings(db)
+    result = []
+    for setting in await repo.get_all_settings(db):
+        value = setting.value
+        if setting.key.lower() == "email":
+            value = _sanitize_setting_value(setting.key, value)
+            value["resend_api_key_configured"] = bool(
+                settings.RESEND_API_KEY and settings.RESEND_API_KEY.strip()
+            )
+        result.append(
+            {
+                "id": setting.id,
+                "key": setting.key,
+                "value": value,
+                "description": setting.description,
+                "created_at": setting.created_at,
+                "updated_at": setting.updated_at,
+            }
+        )
+    return result
 
 @router.post("/settings", response_model=SystemSettingResponse, status_code=status.HTTP_201_CREATED)
 async def create_new_setting(
@@ -84,6 +146,13 @@ async def create_new_setting(
 ):
     """System Setting အသစ်ထည့်ရန်"""
     enforce_permission(current_user, "system.settings.edit")
+    if "api_key" in payload.key.lower().replace("-", "_") or "apikey" in payload.key.lower():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="API keys must be configured through the environment.",
+        )
+    if payload.key.lower() == "email":
+        _require_super_admin_email_settings(current_user)
     existing = await repo.get_setting_by_key(db, payload.key)
     if existing:
         raise HTTPException(status_code=400, detail="Setting key already exists.")
@@ -99,9 +168,19 @@ async def update_existing_setting(
 ):
     """System Setting ပြင်ဆင်ရန် (ဥပမာ - Maintenance Mode ပိတ်/ဖွင့်)"""
     enforce_permission(current_user, "system.settings.edit")
+    if "api_key" in key.lower().replace("-", "_") or "apikey" in key.lower():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="API keys must be configured through the environment.",
+        )
+    if key.lower() == "email":
+        _require_super_admin_email_settings(current_user)
     setting = await repo.get_setting_by_key(db, key)
     if not setting:
         raise HTTPException(status_code=404, detail="Setting not found.")
+    old_value = _safe_backup_value(
+        setting.key, _sanitize_setting_value(setting.key, setting.value)
+    )
     if payload.value is not None:
         payload.value = _sanitize_setting_value(key, payload.value)
     updated = await repo.update_setting(db, setting, payload)
@@ -110,10 +189,42 @@ async def update_existing_setting(
         action="UPDATE",
         table_name="system_settings",
         record_id=str(updated.id),
+        old_value={"key": updated.key, "value": old_value},
         new_value={"key": updated.key, "value": _safe_backup_value(updated.key, updated.value)},
     ))
     await db.commit()
     return updated
+
+
+@router.post("/settings/email/test-connection")
+async def test_email_connection(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    enforce_permission(current_user, "system.settings.edit")
+    _require_super_admin_email_settings(current_user)
+    setting = await repo.get_setting_by_key(db, "email")
+    if not setting:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Email configuration is not saved.",
+        )
+    try:
+        value = _sanitize_setting_value("email", setting.value)
+    except HTTPException as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Email configuration is invalid.",
+        ) from exc
+    configured, message = await test_resend_connection(
+        email_configuration_from_value(value)
+    )
+    if not configured:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=message,
+        )
+    return {"status": "ready", "message": message}
 
 @router.get("/logs", response_model=SystemEventLogPage)
 async def read_system_logs(
@@ -215,7 +326,14 @@ async def generate_database_backup(
             "system_settings": [
                 {
                     "key": s.key,
-                    "value": _safe_backup_value(s.key, s.value),
+                    "value": _safe_backup_value(
+                        s.key,
+                        (
+                            _sanitize_setting_value(s.key, s.value)
+                            if s.key.lower() == "email"
+                            else s.value
+                        ),
+                    ),
                     "description": s.description
                 } for s in settings
             ]
