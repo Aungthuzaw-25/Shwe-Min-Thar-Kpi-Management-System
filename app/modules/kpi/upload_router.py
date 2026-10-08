@@ -310,11 +310,14 @@ def _finite_number(value: Any) -> float | None:
 
 
 async def _build_upload_rows(
-    workbook: ParsedWorkbook,
+    workbook: ParsedWorkbook | Any,
     db: AsyncSession,
     current_user: User,
-    period: KPIPeriod,
-) -> tuple[list[ValidatedUploadRow], list[str]]:
+    period: KPIPeriod | None = None,
+) -> tuple[list[ValidatedUploadRow] | list[dict[str, Any]], list[str]]:
+    if period is None:
+        return await _build_legacy_upload_rows(workbook, db, current_user)
+
     errors: list[str] = []
     department_ids = await get_authorized_department_ids(db, current_user)
     users_statement = _scoped_active_users_statement(department_ids)
@@ -446,7 +449,39 @@ async def _build_upload_rows(
     return validated_rows, errors
 
 
-def _scoped_active_users_statement(department_ids: set[str] | None):
+async def _build_legacy_upload_rows(
+    dataframe: Any, db: AsyncSession, current_user: User
+) -> tuple[list[dict[str, Any]], list[str]]:
+    department_ids = await get_authorized_department_ids(db, current_user)
+    users = (
+        await db.execute(_scoped_active_users_statement(department_ids))
+    ).scalars().all()
+    user_by_email = {
+        str(email).strip().casefold(): user_id
+        for user_id, email in users
+        if email
+    }
+    rows: list[dict[str, Any]] = []
+    errors: list[str] = []
+    for row_number, (_, values) in enumerate(dataframe.iterrows(), start=2):
+        email_value = values.get("Email")
+        email = str(email_value).strip().casefold() if email_value else ""
+        user_id = user_by_email.get(email)
+        if user_id is None:
+            errors.append(
+                f"Row {row_number}: Active user with email '{email}' not found."
+            )
+            continue
+        rows.append({"user_id": user_id})
+    return rows, errors
+
+
+def _scoped_active_users_statement(
+    department_ids: set[str] | User | None,
+    authorized_department_ids: set[str] | None = None,
+):
+    if hasattr(department_ids, "role"):
+        department_ids = authorized_department_ids
     statement = select(User).options(
         selectinload(User.user_departments).selectinload(UserDepartment.department),
         selectinload(User.position),
@@ -464,6 +499,22 @@ def _scoped_active_users_statement(department_ids: set[str] | None):
     return statement.order_by(func.lower(User.email))
 
 
+def _visible_department_name(
+    user: User, department_ids: set[str] | None
+) -> str | None:
+    for membership in user.user_departments or []:
+        if membership.is_deleted:
+            continue
+        if (
+            department_ids is not None
+            and str(membership.department_id) not in department_ids
+        ):
+            continue
+        if membership.department is not None:
+            return membership.department.name
+    return None
+
+
 def _user_metadata(user: User, department_ids: set[str] | None) -> dict[str, str]:
     memberships = [
         membership
@@ -474,11 +525,10 @@ def _user_metadata(user: User, department_ids: set[str] | None) -> dict[str, str
             or str(membership.department_id) in department_ids
         )
     ]
-    department = memberships[0].department if memberships else None
     return {
         "Email": str(user.email),
         "Employee Name": f"{user.first_name} {user.last_name}".strip(),
-        "Department": department.name if department else "N/A",
+        "Department": _visible_department_name(user, department_ids) or "N/A",
         "Position": user.position.name if user.position else "N/A",
         "Level": memberships[0].user_level if memberships else "N/A",
     }
