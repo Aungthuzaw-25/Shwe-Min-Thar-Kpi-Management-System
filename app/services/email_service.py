@@ -30,6 +30,13 @@ DEFAULT_FROM_NAME = "Shwe Min Thar KPI Management System"
 RESEND_TEST_SENDER = "onboarding@resend.dev"
 
 
+def _create_verified_ssl_context() -> ssl.SSLContext:
+    context = ssl.create_default_context(purpose=ssl.Purpose.SERVER_AUTH)
+    context.verify_mode = ssl.CERT_REQUIRED
+    context.check_hostname = True
+    return context
+
+
 class EmailProviderError(Exception):
     """Base class for normalized email delivery errors."""
 
@@ -426,7 +433,7 @@ class SMTPProvider:
                     configuration.smtp_host,
                     configuration.smtp_port,
                     timeout=EMAIL_PROVIDER_TIMEOUT_SECONDS,
-                    context=ssl.create_default_context(),
+                    context=_create_verified_ssl_context(),
                 )
             else:
                 smtp = smtplib.SMTP(
@@ -436,7 +443,7 @@ class SMTPProvider:
                 )
                 smtp.ehlo()
                 if configuration.smtp_encryption == "starttls":
-                    smtp.starttls(context=ssl.create_default_context())
+                    smtp.starttls(context=_create_verified_ssl_context())
                     smtp.ehlo()
             if configuration.smtp_username:
                 smtp.login(configuration.smtp_username, secrets.smtp_password)
