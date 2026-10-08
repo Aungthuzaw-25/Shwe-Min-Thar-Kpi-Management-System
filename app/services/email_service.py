@@ -17,7 +17,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.database.connection import AsyncSessionLocal
 from app.models.system import SystemSetting
-from app.modules.system.schemas import EmailConfigurationValue
+from app.modules.system.schemas import (
+    EmailConfigurationValue,
+    normalize_email_settings,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +48,10 @@ class EmailConnectionError(EmailProviderError):
 
 class EmailSendError(EmailProviderError):
     """The provider rejected the email message."""
+
+
+class EmailDisabledError(EmailProviderError):
+    """Email delivery is disabled because there is no active provider."""
 
 
 @dataclass(frozen=True)
@@ -87,12 +94,13 @@ class EmailSecrets:
 
 
 def email_configuration_from_value(value: dict | None) -> EmailConfiguration:
+    value = value or {}
     try:
         validated = EmailConfigurationValue.model_validate(value or {})
     except ValidationError as exc:
         raise EmailConfigurationError("Saved email configuration is invalid.") from exc
     return EmailConfiguration(
-        email_provider=validated.email_provider,
+        email_provider=str(value.get("email_provider") or "resend"),
         from_email=str(validated.from_email) if validated.from_email else None,
         from_name=validated.from_name,
         support_email=str(validated.support_email) if validated.support_email else None,
@@ -103,16 +111,31 @@ def email_configuration_from_value(value: dict | None) -> EmailConfiguration:
     )
 
 
+def provider_configuration_from_value(
+    provider_name: str, value: dict
+) -> EmailConfiguration:
+    return email_configuration_from_value(
+        {"email_provider": provider_name, **value}
+    )
+
+
 async def get_email_configuration(db: AsyncSession) -> EmailConfiguration:
     result = await db.execute(select(SystemSetting).where(SystemSetting.key == "email"))
     setting = result.scalar_one_or_none()
-    return email_configuration_from_value(setting.value if setting else None)
+    settings_value = normalize_email_settings(setting.value if setting else None)
+    return EmailProviderResolver.resolve_value(settings_value)
 
 
-async def _load_email_configuration() -> EmailConfiguration:
+async def _load_email_settings() -> dict:
     try:
         async with AsyncSessionLocal() as db:
-            return await get_email_configuration(db)
+            result = await db.execute(
+                select(SystemSetting).where(SystemSetting.key == "email")
+            )
+            setting = result.scalar_one_or_none()
+            return normalize_email_settings(setting.value if setting else None)
+    except ValidationError as exc:
+        raise EmailConfigurationError("Saved email configuration is invalid.") from exc
     except SQLAlchemyError as exc:
         raise EmailConfigurationError("Saved email configuration is unavailable.") from exc
 
@@ -192,6 +215,67 @@ class EmailProviderFactory:
     def available_providers(cls) -> tuple[str, ...]:
         return tuple(cls._providers)
 
+    @classmethod
+    def definitions(cls) -> tuple[dict, ...]:
+        definitions = {
+            "resend": {
+                "key": "resend",
+                "name": "Resend",
+                "fields": [],
+                "credential_label": "Resend API Key",
+            },
+            "smtp": {
+                "key": "smtp",
+                "name": "SMTP",
+                "fields": [
+                    {"key": "smtp_host", "label": "SMTP Host", "type": "text", "required": True},
+                    {"key": "smtp_port", "label": "SMTP Port", "type": "number", "required": True},
+                    {"key": "smtp_username", "label": "SMTP Username", "type": "text"},
+                    {
+                        "key": "smtp_encryption",
+                        "label": "Encryption",
+                        "type": "select",
+                        "options": [
+                            {"value": "starttls", "label": "STARTTLS"},
+                            {"value": "ssl", "label": "SSL/TLS"},
+                            {"value": "none", "label": "None"},
+                        ],
+                    },
+                ],
+                "credential_label": "SMTP Password",
+            },
+        }
+        return tuple(definitions[key] for key in cls._providers)
+
+
+class EmailProviderResolver:
+    @classmethod
+    def resolve_value(
+        cls, settings_value: dict, provider_name: str | None = None
+    ) -> EmailConfiguration:
+        normalized = normalize_email_settings(settings_value)
+        name = provider_name or normalized.get("active_provider")
+        if not name:
+            raise EmailDisabledError("Email delivery is disabled — no active provider.")
+        provider_settings = normalized["providers"].get(name)
+        if provider_settings is None:
+            raise EmailConfigurationError("Email provider is not configured.")
+        if provider_name is None and not provider_settings.get("enabled"):
+            raise EmailDisabledError("Email delivery is disabled — no active provider.")
+        return email_configuration_from_value(
+            {"email_provider": name, **provider_settings}
+        )
+
+    @classmethod
+    def resolve_provider(
+        cls, settings_value: dict, provider_name: str | None = None
+    ) -> tuple[EmailProvider, EmailConfiguration]:
+        configuration = cls.resolve_value(settings_value, provider_name)
+        return (
+            EmailProviderFactory.create(configuration.email_provider),
+            configuration,
+        )
+
 
 def _sender(configuration: EmailConfiguration, message: EmailMessage) -> str:
     from_email = message.from_email or configuration.from_email
@@ -214,8 +298,8 @@ class ResendProvider:
         return secrets.resend_api_key
 
     def _validate(self, configuration: EmailConfiguration, secrets: EmailSecrets) -> None:
-        self._api_key(secrets)
         _require_sender(configuration)
+        self._api_key(secrets)
 
     def validate_configuration(
         self, configuration: EmailConfiguration, secrets: EmailSecrets
@@ -226,6 +310,7 @@ class ResendProvider:
         self, message: EmailMessage, configuration: EmailConfiguration, secrets: EmailSecrets
     ) -> None:
         self._validate(configuration, secrets)
+        api_key = self._api_key(secrets)
         payload = {
             "from": _sender(configuration, message),
             "to": message.to,
@@ -257,7 +342,7 @@ class ResendProvider:
             async with httpx.AsyncClient(timeout=EMAIL_PROVIDER_TIMEOUT_SECONDS) as client:
                 response = await client.post(
                     f"{RESEND_API_BASE_URL}/emails",
-                    headers={"Authorization": f"Bearer {self._api_key(secrets)}"},
+                    headers={"Authorization": "Bearer " + api_key},
                     json=payload,
                 )
                 if response.status_code in {401, 403}:
@@ -283,7 +368,7 @@ class ResendProvider:
             async with httpx.AsyncClient(timeout=EMAIL_PROVIDER_TIMEOUT_SECONDS) as client:
                 response = await client.get(
                     endpoint,
-                    headers={"Authorization": f"Bearer {api_key}"},
+                    headers={"Authorization": "Bearer " + api_key},
                 )
                 if response.status_code in {401, 403}:
                     raise EmailAuthenticationError("Provider authentication failed.")
@@ -425,16 +510,45 @@ class SMTPProvider:
 
 
 class EmailService:
-    async def _configuration(self) -> EmailConfiguration:
-        return await _load_email_configuration()
+    async def _settings(self) -> dict:
+        return await _load_email_settings()
+
+    def validate_configuration(
+        self, provider: EmailProvider, configuration: EmailConfiguration
+    ) -> None:
+        provider.validate_configuration(configuration, _load_email_secrets())
+
+    def validate_provider_configuration(
+        self, provider_name: str, provider_value: dict
+    ) -> None:
+        provider, configuration = EmailProviderResolver.resolve_provider(
+            {
+                "providers": {provider_name: provider_value},
+                "active_provider": None,
+            },
+            provider_name,
+        )
+        self.validate_configuration(provider, configuration)
+
+    async def test_provider(self, provider_name: str, provider_value: dict) -> str:
+        provider, configuration = EmailProviderResolver.resolve_provider(
+            {
+                "providers": {provider_name: provider_value},
+                "active_provider": None,
+            },
+            provider_name,
+        )
+        return await self.test_configuration(provider, configuration)
 
     async def send(self, message: EmailMessage) -> bool:
         provider_name = "unknown"
         try:
-            configuration = await self._configuration()
+            settings_value = await self._settings()
+            provider, configuration = EmailProviderResolver.resolve_provider(
+                settings_value
+            )
             provider_name = configuration.email_provider
             secrets = _load_email_secrets()
-            provider = EmailProviderFactory.create(configuration.email_provider)
             provider.validate_configuration(configuration, secrets)
             message = _support_footer(message, configuration)
             await provider.send(message, configuration, secrets)
@@ -448,9 +562,16 @@ class EmailService:
         logger.info("email provider=%s operation=send result=success", configuration.email_provider)
         return True
 
-    async def test_connection(self) -> str:
-        configuration = await self._configuration()
-        provider = EmailProviderFactory.create(configuration.email_provider)
+    async def test_connection(self, provider_name: str | None = None) -> str:
+        settings_value = await self._settings()
+        provider, configuration = EmailProviderResolver.resolve_provider(
+            settings_value, provider_name
+        )
+        return await self.test_configuration(provider, configuration)
+
+    async def test_configuration(
+        self, provider: EmailProvider, configuration: EmailConfiguration
+    ) -> str:
         try:
             result = await provider.test_connection(configuration, _load_email_secrets())
         except EmailProviderError as exc:

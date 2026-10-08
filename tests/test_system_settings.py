@@ -15,6 +15,8 @@ from app.modules.system.router import (
 )
 from app.modules.system.schemas import (
     EmailConfigurationValue,
+    EmailProviderLifecycleRequest,
+    EmailProviderSaveRequest,
     PasswordPolicyValue,
     SystemSettingResponse,
     SystemSettingUpdate,
@@ -131,8 +133,9 @@ def test_email_configuration_allows_clearing_support_email():
             "support_email": "   ",
         },
     )
-    assert value["support_email"] is None
-    assert value["from_email"] == "noreply@example.com"
+    config = value["providers"]["resend"]
+    assert config["support_email"] is None
+    assert config["from_email"] == "noreply@example.com"
 
 
 def test_smtp_provider_settings_are_validated_and_preserved_without_password():
@@ -149,12 +152,29 @@ def test_smtp_provider_settings_are_validated_and_preserved_without_password():
             "smtp_encryption": "SSL",
         },
     )
-    assert value["email_provider"] == "smtp"
-    assert value["smtp_host"] == "smtp.example.com"
-    assert value["smtp_port"] == 465
-    assert value["smtp_username"] == "relay-user"
-    assert value["smtp_encryption"] == "ssl"
-    assert "smtp_password" not in value
+    config = value["providers"]["smtp"]
+    assert value["active_provider"] is None
+    assert config["smtp_host"] == "smtp.example.com"
+    assert config["smtp_port"] == 465
+    assert config["smtp_username"] == "relay-user"
+    assert config["smtp_encryption"] == "ssl"
+    assert "smtp_password" not in str(value)
+
+
+def test_legacy_email_setting_is_kept_as_disabled_provider_for_explicit_reactivation():
+    value = _sanitize_setting_value(
+        "email",
+        {
+            "email_provider": "resend",
+            "from_email": "onboarding@resend.dev",
+            "from_name": "KPI System",
+            "support_email": "support@example.com",
+        },
+    )
+    assert value["active_provider"] is None
+    assert value["providers"]["resend"]["enabled"] is False
+    assert value["providers"]["resend"]["from_email"] == "onboarding@resend.dev"
+    assert "smtp_host" not in value["providers"]["resend"]
 
 
 def test_email_configuration_rejects_invalid_smtp_port_and_encryption():
@@ -183,6 +203,22 @@ def test_email_configuration_rejects_non_resend_provider_and_html_name():
         _sanitize_setting_value("email", {"email_provider": "unsupported"})
     with pytest.raises(HTTPException):
         _sanitize_setting_value("email", {"from_name": "<script>alert(1)</script>"})
+
+
+def test_provider_save_schema_does_not_accept_runtime_secret_fields():
+    payload = EmailProviderSaveRequest.model_validate(
+        {
+            "provider": "resend",
+            "configuration": {
+                "from_email": "noreply@example.com",
+                "resend_api_key": "mock-only-secret",
+                "smtp_password": "mock-only-password",
+            },
+        }
+    )
+    serialized = payload.model_dump_json()
+    assert "mock-only-secret" not in serialized
+    assert "mock-only-password" not in serialized
 
 
 def test_only_super_admin_can_manage_email_settings():
@@ -246,10 +282,16 @@ async def test_email_setting_api_update_persists_support_email_and_audits_values
         current_user,
     )
 
-    assert setting.value["support_email"] == "new@example.com"
-    assert setting.value["from_email"] == "noreply@example.com"
-    assert db.audit_entries[0].old_value["value"]["support_email"] == "old@example.com"
-    assert db.audit_entries[0].new_value["value"]["support_email"] == "new@example.com"
+    assert setting.value["providers"]["resend"]["support_email"] == "new@example.com"
+    assert setting.value["providers"]["resend"]["from_email"] == "noreply@example.com"
+    assert (
+        db.audit_entries[0].old_value["value"]["providers"]["resend"]["support_email"]
+        == "old@example.com"
+    )
+    assert (
+        db.audit_entries[0].new_value["value"]["providers"]["resend"]["support_email"]
+        == "new@example.com"
+    )
 
 
 @pytest.mark.asyncio
@@ -277,11 +319,237 @@ async def test_email_settings_api_reports_key_status_without_exposing_secret(mon
 
     result = await read_all_settings(FakeAuditDB(), current_user)
 
-    assert result[0]["value"]["resend_api_key_configured"] is True
     response = SystemSettingResponse.model_validate(result[0])
-    assert response.value["support_email"] == "support@example.com"
+    assert response.value["providers"]["resend"]["support_email"] == "support@example.com"
     assert "RESEND_API_KEY" not in str(response.model_dump())
     assert "fake-only-test-key" not in str(response.model_dump())
+
+
+@pytest.mark.asyncio
+async def test_provider_registry_reports_credential_status_without_returning_secrets(monkeypatch):
+    from app.modules.system import router as system_router
+
+    setting = SimpleNamespace(
+        id=uuid4(),
+        key="email",
+        value={
+            "providers": {
+                "resend": {
+                    "enabled": False,
+                    "from_email": "noreply@example.com",
+                    "from_name": "KPI System",
+                    "support_email": None,
+                    "tested": False,
+                    "last_test_status": None,
+                }
+            },
+            "active_provider": None,
+        },
+    )
+    monkeypatch.setattr(
+        system_router.repo, "get_setting_by_key", lambda *_args: _return(setting)
+    )
+    monkeypatch.setattr(
+        system_router.settings, "RESEND_API_KEY", "mock-only-provider-secret"
+    )
+    user = SimpleNamespace(
+        role=SimpleNamespace(name="Super Admin"),
+        permission_overrides=[],
+    )
+    result = await system_router.list_email_providers(FakeAuditDB(), user)
+    assert result["configured_providers"][0]["credential_configured"] is True
+    assert "mock-only-provider-secret" not in str(result)
+
+
+@pytest.mark.asyncio
+async def test_saving_provider_stores_disabled_draft_and_clears_previous_active(monkeypatch):
+    from app.modules.system import router as system_router
+
+    setting = SimpleNamespace(
+        id=uuid4(),
+        key="email",
+        value={
+            "providers": {
+                "resend": {
+                    "enabled": True,
+                    "from_email": "noreply@example.com",
+                    "from_name": "KPI System",
+                    "support_email": None,
+                    "tested": True,
+                    "last_test_status": "ready",
+                }
+            },
+            "active_provider": "resend",
+        },
+        description="Email delivery",
+        created_at=datetime.now(UTC),
+        updated_at=None,
+    )
+    db = FakeAuditDB()
+    monkeypatch.setattr(system_router.repo, "get_setting_by_key", lambda *_args: _return(setting))
+
+    async def update_setting(_db, _setting, payload):
+        _setting.value = payload.value
+        return _setting
+
+    monkeypatch.setattr(system_router.repo, "update_setting", update_setting)
+    user = SimpleNamespace(
+        id=uuid4(),
+        role=SimpleNamespace(name="Super Admin"),
+        permission_overrides=[],
+    )
+
+    result = await system_router.save_email_provider(
+        "resend",
+        EmailProviderSaveRequest(
+            provider="resend",
+            configuration=EmailConfigurationValue(
+                from_email="noreply@example.com",
+                from_name="KPI System",
+            ),
+        ),
+        db,
+        user,
+    )
+    assert result["enabled"] is False
+    assert setting.value["active_provider"] is None
+    assert setting.value["providers"]["resend"]["enabled"] is False
+
+
+@pytest.mark.asyncio
+async def test_provider_test_does_not_activate_and_enable_then_disable_clears_active(monkeypatch):
+    from app.modules.system import router as system_router
+
+    setting = SimpleNamespace(
+        id=uuid4(),
+        key="email",
+        value={
+            "providers": {
+                "smtp": {
+                    "enabled": False,
+                    "from_email": "mailer@example.com",
+                    "from_name": "KPI System",
+                    "support_email": None,
+                    "smtp_host": "smtp.example.com",
+                    "smtp_port": 587,
+                    "smtp_username": None,
+                    "smtp_encryption": "starttls",
+                    "tested": False,
+                    "last_test_status": None,
+                }
+            },
+            "active_provider": None,
+        },
+        description="Email delivery",
+        created_at=datetime.now(UTC),
+        updated_at=None,
+    )
+    db = FakeAuditDB()
+    monkeypatch.setattr(
+        system_router.repo, "get_setting_by_key", lambda *_args: _return(setting)
+    )
+
+    async def update_setting(_db, _setting, payload):
+        _setting.value = payload.value
+        return _setting
+
+    async def test_configuration(_provider, _configuration):
+        return "Ready"
+
+    monkeypatch.setattr(system_router.repo, "update_setting", update_setting)
+    monkeypatch.setattr(
+        system_router.email_service, "test_configuration", test_configuration
+    )
+    monkeypatch.setattr(
+        system_router.email_service,
+        "validate_provider_configuration",
+        lambda *_args: None,
+    )
+    user = SimpleNamespace(
+        id=uuid4(),
+        role=SimpleNamespace(name="Super Admin"),
+        permission_overrides=[],
+    )
+
+    tested = await system_router.test_configured_email_provider(
+        "smtp", db, user
+    )
+    assert tested["success"] is True
+    assert setting.value["active_provider"] is None
+    assert setting.value["providers"]["smtp"]["tested"] is True
+    enabled = await system_router.update_email_provider_lifecycle(
+        "smtp", EmailProviderLifecycleRequest(action="enable"), db, user
+    )
+    assert enabled["active_provider"] == "smtp"
+    assert setting.value["providers"]["smtp"]["enabled"] is True
+    await system_router.update_email_provider_lifecycle(
+        "smtp", EmailProviderLifecycleRequest(action="disable"), db, user
+    )
+    assert setting.value["active_provider"] is None
+    assert setting.value["providers"]["smtp"]["enabled"] is False
+
+
+@pytest.mark.asyncio
+async def test_removed_provider_can_be_added_again_without_duplicate_entries(monkeypatch):
+    from app.modules.system import router as system_router
+
+    setting = SimpleNamespace(
+        id=uuid4(),
+        key="email",
+        value={
+            "providers": {
+                "resend": {
+                    "enabled": True,
+                    "from_email": "noreply@example.com",
+                    "from_name": "KPI System",
+                    "support_email": None,
+                    "tested": True,
+                    "last_test_status": "ready",
+                }
+            },
+            "active_provider": "resend",
+        },
+        description="Email delivery",
+        created_at=datetime.now(UTC),
+        updated_at=None,
+    )
+    db = FakeAuditDB()
+    monkeypatch.setattr(
+        system_router.repo, "get_setting_by_key", lambda *_args: _return(setting)
+    )
+
+    async def update_setting(_db, _setting, payload):
+        _setting.value = payload.value
+        return _setting
+
+    monkeypatch.setattr(system_router.repo, "update_setting", update_setting)
+    user = SimpleNamespace(
+        id=uuid4(),
+        role=SimpleNamespace(name="Super Admin"),
+        permission_overrides=[],
+    )
+
+    await system_router.remove_email_provider("resend", db, user)
+    assert setting.value["providers"] == {}
+    assert setting.value["active_provider"] is None
+    await system_router.save_email_provider(
+        "resend",
+        EmailProviderSaveRequest(
+            provider="resend",
+            configuration=EmailConfigurationValue(
+                from_email="noreply@example.com",
+                from_name="KPI System",
+            ),
+        ),
+        db,
+        user,
+    )
+    assert list(setting.value["providers"]) == ["resend"]
+    assert setting.value["providers"]["resend"]["enabled"] is False
+
+
+async def _return(value):
+    return value
 
 
 @pytest.mark.asyncio

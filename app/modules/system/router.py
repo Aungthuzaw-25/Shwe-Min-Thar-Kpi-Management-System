@@ -15,16 +15,25 @@ from app.models.audit_log import AuditLog
 from app.models.system import LogLevel
 from app.modules.system import repo
 from app.modules.system.schemas import (
-    EmailConfigurationValue,
+    EmailProviderLifecycleRequest,
+    EmailProviderSaveRequest,
     PasswordPolicyValue,
     SystemEventLogDetailResponse,
     SystemEventLogPage,
     SystemSettingCreate,
     SystemSettingResponse,
     SystemSettingUpdate,
+    normalize_email_settings,
 )
 from app.modules.users.models import User
-from app.services.email_service import EmailProviderError, email_service
+from app.services.email_service import (
+    EmailAuthenticationError,
+    EmailConfigurationError,
+    EmailProviderError,
+    EmailProviderFactory,
+    EmailSendError,
+    email_service,
+)
 
 router = APIRouter(prefix="/system", tags=["System Settings & Logs"])
 logger = logging.getLogger(__name__)
@@ -61,22 +70,7 @@ def _sanitize_setting_value(key: str, value: dict) -> dict:
     sanitized = dict(value)
     if key.lower() == "email":
         try:
-            sanitized = EmailConfigurationValue.model_validate(
-                {
-                    field: sanitized[field]
-                    for field in (
-                        "email_provider",
-                        "from_email",
-                        "from_name",
-                        "support_email",
-                        "smtp_host",
-                        "smtp_port",
-                        "smtp_username",
-                        "smtp_encryption",
-                    )
-                    if field in sanitized
-                }
-            ).model_dump(mode="json")
+            sanitized = normalize_email_settings(sanitized)
         except ValidationError as exc:
             raise HTTPException(status_code=422, detail=exc.errors()) from exc
     elif key.lower() == "security":
@@ -129,35 +123,11 @@ def _require_super_admin_email_settings(user: User) -> None:
 
 def _validate_email_settings_for_save(value: dict) -> dict:
     normalized = _sanitize_setting_value("email", value)
-    if not normalized.get("from_email"):
+    if "providers" in value:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="From Email is required.",
+            detail="Manage provider configuration through the email provider lifecycle actions.",
         )
-    if normalized["email_provider"] == "resend":
-        if not settings.RESEND_API_KEY or not settings.RESEND_API_KEY.strip():
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Resend API key is not configured in the application environment.",
-            )
-    else:
-        if not normalized.get("smtp_host"):
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="SMTP Host is required.",
-            )
-        if normalized.get("smtp_port") is None:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="SMTP Port is required.",
-            )
-        if normalized.get("smtp_username") and not (
-            settings.SMTP_PASSWORD and settings.SMTP_PASSWORD.strip()
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="SMTP password is not configured in the application environment.",
-            )
     return normalized
 
 
@@ -176,6 +146,87 @@ def _safe_backup_value(key: str, value):
     if isinstance(value, list):
         return [_safe_backup_value(key, item) for item in value]
     return value
+
+
+async def _email_settings_value(db: AsyncSession) -> tuple[dict, object | None]:
+    setting = await repo.get_setting_by_key(db, "email")
+    try:
+        value = normalize_email_settings(setting.value if setting else None)
+    except ValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Saved email provider configuration is invalid.",
+        ) from exc
+    return value, setting
+
+
+async def _persist_email_settings(
+    db: AsyncSession,
+    current_user: User,
+    value: dict,
+    setting=None,
+):
+    safe_value = _safe_backup_value("email", value)
+    if setting is None:
+        updated = await repo.create_setting(
+            db,
+            SystemSettingCreate(
+                key="email",
+                value=value,
+                description="Email provider configuration",
+            ),
+        )
+        old_value = None
+        action = "CREATE"
+    else:
+        old_value = _safe_backup_value(
+            "email", normalize_email_settings(setting.value)
+        )
+        updated = await repo.update_setting(
+            db, setting, SystemSettingUpdate(value=value)
+        )
+        action = "UPDATE"
+    db.add(
+        AuditLog(
+            user_id=current_user.id,
+            action=action,
+            table_name="system_settings",
+            record_id=str(updated.id),
+            old_value={"key": "email", "value": old_value},
+            new_value={"key": "email", "value": safe_value},
+        )
+    )
+    await db.commit()
+    return updated
+
+
+def _email_provider_secret_status(provider_type: str) -> bool:
+    if provider_type == "resend":
+        return bool(settings.RESEND_API_KEY and settings.RESEND_API_KEY.strip())
+    if provider_type == "smtp":
+        return bool(settings.SMTP_PASSWORD and settings.SMTP_PASSWORD.strip())
+    return False
+
+
+def _email_diagnostic_code(message: str) -> str:
+    normalized = message.lower()
+    if "from email" in normalized:
+        return "FROM_EMAIL_REQUIRED"
+    if "resend api key" in normalized:
+        return "RESEND_API_KEY_MISSING"
+    if "smtp password" in normalized:
+        return "SMTP_CREDENTIALS_MISSING"
+    if "smtp host" in normalized:
+        return "SMTP_HOST_REQUIRED"
+    if "smtp port" in normalized:
+        return "SMTP_PORT_INVALID"
+    if "authentication" in normalized or "credentials" in normalized:
+        return "PROVIDER_AUTHENTICATION_FAILED"
+    if "sender" in normalized or "verified" in normalized:
+        return "PROVIDER_SENDER_REJECTED"
+    if "connect" in normalized or "timed out" in normalized:
+        return "PROVIDER_CONNECTION_FAILED"
+    return "PROVIDER_NOT_READY"
 
 @router.get("/settings", response_model=list[SystemSettingResponse])
 async def read_all_settings(
@@ -252,6 +303,232 @@ async def create_new_setting(
     )
     return await repo.create_setting(db, payload)
 
+
+@router.get("/settings/email/providers")
+async def list_email_providers(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    enforce_permission(current_user, "system.settings.view")
+    state, _setting = await _email_settings_value(db)
+    configurations = state["providers"]
+    definitions = [
+        {
+            **definition,
+            "credential_configured": _email_provider_secret_status(
+                definition["key"]
+            ),
+        }
+        for definition in EmailProviderFactory.definitions()
+    ]
+    configured = []
+    for provider_type, configuration in configurations.items():
+        definition = next(
+            item
+            for item in definitions
+            if item["key"] == provider_type
+        )
+        configured.append(
+            {
+                "provider": provider_type,
+                "name": definition["name"],
+                "configuration": configuration,
+                "credential_configured": definition["credential_configured"],
+            }
+        )
+    active_provider = state.get("active_provider")
+    active_name = next(
+        (
+            item["name"]
+            for item in definitions
+            if item["key"] == active_provider
+        ),
+        None,
+    )
+    return {
+        "definitions": definitions,
+        "configured_providers": configured,
+        "active_provider": active_provider,
+        "service_status": (
+            f"Enabled — {active_name}"
+            if active_name
+            else "Disabled — No active provider"
+        ),
+    }
+
+
+@router.put("/settings/email/providers/{provider_type}")
+async def save_email_provider(
+    provider_type: str,
+    payload: EmailProviderSaveRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    enforce_permission(current_user, "system.settings.edit")
+    _require_super_admin_email_settings(current_user)
+    provider_type = provider_type.lower()
+    if provider_type != payload.provider:
+        raise HTTPException(status_code=422, detail="Provider does not match the URL.")
+    if provider_type not in EmailProviderFactory.available_providers():
+        raise HTTPException(status_code=404, detail="Email provider is not implemented.")
+
+    state, setting = await _email_settings_value(db)
+    provider_value = payload.configuration.model_dump(mode="json")
+    if provider_type == "resend":
+        for field in ("smtp_host", "smtp_port", "smtp_username", "smtp_encryption"):
+            provider_value.pop(field, None)
+    previous = state["providers"].get(provider_type)
+    was_tested = bool(
+        previous
+        and previous.get("tested")
+        and {
+            key: item
+            for key, item in previous.items()
+            if key not in {"enabled", "tested", "last_test_status"}
+        }
+        == {
+            key: item
+            for key, item in provider_value.items()
+            if key not in {"enabled", "tested", "last_test_status"}
+        }
+    )
+    provider_value.update(
+        {
+            "enabled": False,
+            "tested": was_tested,
+            "last_test_status": previous.get("last_test_status") if was_tested else None,
+        }
+    )
+    state["providers"][provider_type] = provider_value
+    if state.get("active_provider") == provider_type:
+        state["active_provider"] = None
+    await _persist_email_settings(db, current_user, state, setting)
+    return {
+        "success": True,
+        "provider": provider_type,
+        "enabled": False,
+        "tested": was_tested,
+        "message": "Provider configuration saved as disabled.",
+    }
+
+
+@router.post("/settings/email/providers/{provider_type}/test-connection")
+async def test_configured_email_provider(
+    provider_type: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    enforce_permission(current_user, "system.settings.edit")
+    _require_super_admin_email_settings(current_user)
+    provider_type = provider_type.lower()
+    state, setting = await _email_settings_value(db)
+    provider_value = state["providers"].get(provider_type)
+    if provider_value is None:
+        raise HTTPException(status_code=404, detail="Email provider is not configured.")
+    try:
+        diagnostic = await email_service.test_provider(
+            provider_type, provider_value
+        )
+    except EmailProviderError as exc:
+        provider_value["tested"] = False
+        provider_value["last_test_status"] = "not_ready"
+        if isinstance(
+            exc,
+            (
+                EmailAuthenticationError,
+                EmailConfigurationError,
+                EmailSendError,
+            ),
+        ):
+            provider_value["enabled"] = False
+            if state.get("active_provider") == provider_type:
+                state["active_provider"] = None
+        await _persist_email_settings(db, current_user, state, setting)
+        return {
+            "success": False,
+            "provider": provider_type,
+            "status": "not_ready",
+            "code": _email_diagnostic_code(str(exc)),
+            "message": str(exc),
+        }
+    provider_value["tested"] = True
+    provider_value["last_test_status"] = "ready"
+    await _persist_email_settings(db, current_user, state, setting)
+    return {
+        "success": True,
+        "provider": provider_type,
+        "status": "ready",
+        "code": "READY",
+        "message": diagnostic,
+    }
+
+
+@router.post("/settings/email/providers/{provider_type}/lifecycle")
+async def update_email_provider_lifecycle(
+    provider_type: str,
+    payload: EmailProviderLifecycleRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    enforce_permission(current_user, "system.settings.edit")
+    _require_super_admin_email_settings(current_user)
+    provider_type = provider_type.lower()
+    state, setting = await _email_settings_value(db)
+    provider_value = state["providers"].get(provider_type)
+    if provider_value is None:
+        raise HTTPException(status_code=404, detail="Email provider is not configured.")
+
+    if payload.action == "enable":
+        if not provider_value.get("tested"):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Test the provider successfully before enabling it.",
+            )
+        try:
+            email_service.validate_provider_configuration(
+                provider_type, provider_value
+            )
+        except EmailProviderError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(exc),
+            ) from exc
+        for other_type, other_config in state["providers"].items():
+            other_config["enabled"] = other_type == provider_type
+        state["active_provider"] = provider_type
+    else:
+        provider_value["enabled"] = False
+        if state.get("active_provider") == provider_type:
+            state["active_provider"] = None
+
+    await _persist_email_settings(db, current_user, state, setting)
+    return {
+        "success": True,
+        "provider": provider_type,
+        "enabled": payload.action == "enable",
+        "active_provider": state.get("active_provider"),
+    }
+
+
+@router.delete("/settings/email/providers/{provider_type}")
+async def remove_email_provider(
+    provider_type: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    enforce_permission(current_user, "system.settings.edit")
+    _require_super_admin_email_settings(current_user)
+    provider_type = provider_type.lower()
+    state, setting = await _email_settings_value(db)
+    if provider_type not in state["providers"]:
+        raise HTTPException(status_code=404, detail="Email provider is not configured.")
+    del state["providers"][provider_type]
+    if state.get("active_provider") == provider_type:
+        state["active_provider"] = None
+    await _persist_email_settings(db, current_user, state, setting)
+    return {"success": True, "provider": provider_type, "message": "Provider removed."}
+
+
 @router.put("/settings/{key}", response_model=SystemSettingResponse)
 async def update_existing_setting(
     key: str,
@@ -307,8 +584,11 @@ async def test_email_connection(
             detail="Email configuration is not saved.",
         )
     try:
-        _sanitize_setting_value("email", setting.value)
-        diagnostic = await email_service.test_connection()
+        state = normalize_email_settings(setting.value)
+        provider_type = state.get("active_provider")
+        if not provider_type and len(state["providers"]) == 1:
+            provider_type = next(iter(state["providers"]))
+        diagnostic = await email_service.test_connection(provider_type)
     except HTTPException as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -319,7 +599,11 @@ async def test_email_connection(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(exc),
         ) from exc
-    return {"status": "ready", "message": diagnostic}
+    return {
+        "status": "ready",
+        "provider": state.get("active_provider"),
+        "message": diagnostic,
+    }
 
 @router.get("/logs", response_model=SystemEventLogPage)
 async def read_system_logs(

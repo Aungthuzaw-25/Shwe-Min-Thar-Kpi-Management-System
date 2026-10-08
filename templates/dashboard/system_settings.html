@@ -95,87 +95,70 @@
 
                 <!-- 2. EMAIL CONFIGURATION -->
                 <div id="content-email" class="setting-content space-y-6 hidden">
-                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-end border-b border-gray-100 pb-3 mb-4 sm:mb-6 gap-3 sm:gap-0">
-                        <h3 class="text-base sm:text-lg font-extrabold text-blue-950">Email Configuration</h3>
-                        <div class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                            <button type="button" id="cancelEmailChangesBtn" onclick="cancelEmailChanges()" class="hidden w-full sm:w-auto text-xs font-bold bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 px-4 py-2 rounded-lg shadow-sm transition-colors text-center">Cancel</button>
-                            <button type="button" id="testEmailConnectionBtn" onclick="testEmailConnection()" disabled class="w-full sm:w-auto text-xs font-bold bg-white text-blue-700 border border-blue-200 hover:bg-blue-50 px-4 py-2 rounded-lg shadow-sm transition-colors text-center disabled:opacity-50 disabled:cursor-not-allowed">Test Connection</button>
-                        </div>
+                    <div class="flex items-center justify-between border-b border-gray-100 pb-3">
+                        <h3 class="text-base font-extrabold text-blue-950">Configured Email Providers</h3>
                     </div>
-                    <p class="text-xs sm:text-sm text-slate-500">Configure the provider used by application email. You can switch providers without changing application code.</p>
-                    <div>
-                        <div>
-                            <label for="set_email_provider" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">Email Provider</label>
-                            <select id="set_email_provider" class="w-full md:max-w-md bg-slate-50 border border-gray-200 p-3 rounded-xl text-sm font-semibold focus:outline-none focus:bg-white focus:border-blue-900 transition-all shadow-inner">
-                                <option value="resend" selected>Resend</option>
-                                <option value="smtp">SMTP</option>
-                            </select>
-                        </div>
+                    <p class="text-sm text-slate-500">Configure providers separately. Only one provider can be active for transactional email.</p>
+                    <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                        <div class="text-[11px] font-bold uppercase tracking-wide text-slate-500">Email Service Status</div>
+                        <div id="emailServiceStatus" role="status" class="mt-2 text-sm font-bold text-slate-700">Loading provider configuration...</div>
                     </div>
-                    <div class="border-t border-gray-100 pt-5">
-                        <h4 class="text-sm font-extrabold text-blue-950 mb-4">Sender Identity</h4>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
-                        <div>
-                            <label for="set_from_email" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">From Email</label>
-                            <input type="email" id="set_from_email" required placeholder="noreply@yourdomain.com" autocomplete="email" class="w-full bg-slate-50 border border-gray-200 p-3 rounded-xl text-sm font-semibold focus:outline-none focus:bg-white focus:border-blue-900 transition-all shadow-inner">
-                        </div>
-                        <div>
-                            <label for="set_from_name" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">From Name</label>
-                            <input type="text" id="set_from_name" value="Shwe Min Thar KPI Management System" maxlength="200" autocomplete="organization" class="w-full bg-slate-50 border border-gray-200 p-3 rounded-xl text-sm font-semibold focus:outline-none focus:bg-white focus:border-blue-900 transition-all shadow-inner">
-                        </div>
-                        <div>
-                            <label for="set_support_email" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">Support Email</label>
-                            <input type="email" id="set_support_email" placeholder="support@yourdomain.com" autocomplete="email" class="w-full bg-slate-50 border border-gray-200 p-3 rounded-xl text-sm font-semibold focus:outline-none focus:bg-white focus:border-blue-900 transition-all shadow-inner">
-                            <p class="text-xs text-slate-500 mt-2">Used for support/contact information in email messages. Leave blank to omit.</p>
-                        </div>
+                    <div id="emailProviderCards" class="space-y-4"></div>
+                    <div id="emailProviderEmpty" class="hidden rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center">
+                        <p class="font-bold text-slate-700">No email providers configured.</p>
+                        <p class="mt-2 text-sm text-slate-500">Add an email provider to enable application email delivery.</p>
                     </div>
-                    </div>
-                    <div class="border-t border-gray-100 pt-5">
-                        <h4 class="text-sm font-extrabold text-blue-950 mb-4">Provider Configuration</h4>
-                        <div id="resendProviderFields" class="space-y-4">
-                            <p class="text-xs text-slate-500">Resend sends email through its API using the application runtime credential.</p>
-                            <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                                <div class="text-[11px] font-bold uppercase tracking-wide text-slate-500">Resend API Key</div>
-                                <div id="resendApiKeyStatus" class="mt-2 text-sm font-bold text-slate-700">Not Configured</div>
+                    <button type="button" onclick="openAddEmailProvider()" class="inline-flex items-center gap-2 rounded-xl bg-blue-950 px-5 py-3 text-sm font-bold text-white shadow-sm hover:bg-blue-900">
+                        <span class="text-lg leading-none">+</span> Add Email Provider
+                    </button>
+                    <div id="emailProviderModal" class="fixed inset-0 z-[100] hidden items-center justify-center bg-slate-950/50 p-4" role="dialog" aria-modal="true" aria-labelledby="emailProviderModalTitle">
+                        <div class="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
+                            <div class="flex items-start justify-between gap-4 border-b border-slate-100 pb-4">
+                                <div>
+                                    <h3 id="emailProviderModalTitle" class="text-lg font-extrabold text-blue-950">Add Email Provider</h3>
+                                    <p id="emailProviderModalDescription" class="mt-1 text-sm text-slate-500">Choose an implemented provider to configure.</p>
+                                </div>
+                                <button type="button" onclick="closeEmailProviderModal()" aria-label="Close" class="rounded-lg px-2 py-1 text-xl text-slate-500 hover:bg-slate-100">&times;</button>
                             </div>
-                        </div>
-                        <div id="smtpProviderFields" class="hidden grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
-                            <div>
-                                <label for="set_smtp_host" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">SMTP Host</label>
-                                <input type="text" id="set_smtp_host" maxlength="255" placeholder="smtp.example.com" class="w-full bg-slate-50 border border-gray-200 p-3 rounded-xl text-sm font-semibold focus:outline-none focus:bg-white focus:border-blue-900 transition-all shadow-inner">
+                            <div id="emailProviderChoiceStep" class="space-y-5 py-5">
+                                <label class="block">
+                                    <span class="mb-2 block text-xs font-bold uppercase tracking-wide text-slate-700">Choose Provider</span>
+                                    <select id="emailProviderChoice" class="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm font-semibold"></select>
+                                </label>
                             </div>
-                            <div>
-                                <label for="set_smtp_port" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">SMTP Port</label>
-                                <input type="number" id="set_smtp_port" min="1" max="65535" value="587" class="w-full bg-slate-50 border border-gray-200 p-3 rounded-xl text-sm font-semibold focus:outline-none focus:bg-white focus:border-blue-900 transition-all shadow-inner">
+                            <div id="emailProviderFormStep" class="hidden space-y-5 py-5">
+                                <div class="flex items-center justify-between rounded-xl bg-slate-50 p-4">
+                                    <div>
+                                        <div class="text-xs font-bold uppercase tracking-wide text-slate-500">Provider Status</div>
+                                        <div id="emailProviderDraftStatus" class="mt-1 text-sm font-bold text-amber-700">Disabled</div>
+                                    </div>
+                                    <div id="emailProviderCredentialStatus" class="text-sm font-bold text-slate-700"></div>
+                                </div>
+                                <div class="border-t border-slate-100 pt-4">
+                                    <h4 class="mb-4 text-sm font-extrabold text-blue-950">Sender Identity</h4>
+                                    <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                        <label class="block"><span class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-700">From Email</span><input id="emailProviderFromEmail" type="email" autocomplete="email" class="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm"></label>
+                                        <label class="block"><span class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-700">From Name</span><input id="emailProviderFromName" type="text" maxlength="200" autocomplete="organization" class="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm"></label>
+                                        <label class="block"><span class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-700">Support Email</span><input id="emailProviderSupportEmail" type="email" autocomplete="email" class="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm"></label>
+                                    </div>
+                                </div>
+                                <div class="border-t border-slate-100 pt-4">
+                                    <h4 class="mb-4 text-sm font-extrabold text-blue-950">Provider Configuration</h4>
+                                    <div id="emailProviderDynamicFields" class="grid grid-cols-1 gap-4 md:grid-cols-2"></div>
+                                </div>
+                                <p class="text-xs text-slate-500">Testing never activates a provider. Changed configuration is saved as disabled before the test runs.</p>
+                                <div id="emailProviderTestStatus" class="hidden rounded-xl border px-4 py-3 text-sm font-bold" role="status"></div>
                             </div>
-                            <div>
-                                <label for="set_smtp_username" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">SMTP Username (optional)</label>
-                                <input type="text" id="set_smtp_username" maxlength="255" autocomplete="username" class="w-full bg-slate-50 border border-gray-200 p-3 rounded-xl text-sm font-semibold focus:outline-none focus:bg-white focus:border-blue-900 transition-all shadow-inner">
-                            </div>
-                            <div>
-                                <label for="set_smtp_encryption" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">Encryption</label>
-                                <select id="set_smtp_encryption" class="w-full bg-slate-50 border border-gray-200 p-3 rounded-xl text-sm font-semibold focus:outline-none focus:bg-white focus:border-blue-900 transition-all shadow-inner">
-                                    <option value="starttls">STARTTLS</option>
-                                    <option value="ssl">SSL/TLS</option>
-                                    <option value="none">None</option>
-                                </select>
-                            </div>
-                            <div class="md:col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-4">
-                                <div class="text-[11px] font-bold uppercase tracking-wide text-slate-500">SMTP Password</div>
-                                <div id="smtpPasswordStatus" class="mt-2 text-sm font-bold text-slate-700">Not Configured</div>
-                                <p class="text-xs text-slate-500 mt-2">Set SMTP_PASSWORD in the application environment. The password is never stored in System Settings.</p>
+                            <div class="flex flex-col-reverse justify-end gap-2 border-t border-slate-100 pt-4 sm:flex-row">
+                                <button type="button" onclick="closeEmailProviderModal()" class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50">Cancel</button>
+                                <button type="button" id="emailProviderBackButton" onclick="returnToProviderChoice()" class="hidden rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50">Back</button>
+                                <button type="button" id="emailProviderContinueButton" onclick="continueEmailProvider()" class="rounded-xl bg-blue-950 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-900">Continue</button>
+                                <button type="button" id="emailProviderTestButton" onclick="testEmailProviderDraft()" class="hidden rounded-xl border border-blue-200 px-4 py-2.5 text-sm font-bold text-blue-700 hover:bg-blue-50">Test Connection</button>
+                                <button type="button" id="emailProviderSaveButton" onclick="saveEmailProviderDraft()" class="hidden rounded-xl bg-blue-950 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-900">Save Provider</button>
                             </div>
                         </div>
                     </div>
-                    <div class="border-t border-gray-100 pt-5">
-                        <h4 class="text-sm font-extrabold text-blue-950 mb-4">Email Status</h4>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
-                        <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                            <div id="emailStatus" role="status" aria-live="polite" class="text-sm font-bold text-slate-700">Not Configured</div>
-                        </div>
-                    </div>
-                    </div>
-                    <div id="emailUnsavedChanges" class="hidden rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-800" role="status">Unsaved changes — save before testing or applying the selected provider.</div>
+
                 </div>
 
                 <!-- 3. SECURITY POLICY -->
@@ -250,40 +233,296 @@
 
     const activeTabStyle = "setting-tab-btn active-tab w-auto lg:w-full text-left px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center shrink-0 bg-blue-950 text-white shadow-md whitespace-nowrap";
     const inactiveTabStyle = "setting-tab-btn text-slate-500 hover:bg-slate-100 w-auto lg:w-full text-left px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center shrink-0 whitespace-nowrap";
-    let savedEmailSettings = {
-        email_provider: 'resend',
-        from_email: '',
-        from_name: 'Shwe Min Thar KPI Management System',
-        support_email: '',
-        smtp_host: '',
-        smtp_port: 587,
-        smtp_username: '',
-        smtp_encryption: 'starttls',
-        resend_api_key_configured: false,
-        smtp_password_configured: false
-    };
+    let emailProviderDefinitions = [];
+    let configuredEmailProviders = [];
+    let activeEmailProvider = null;
+    let editingEmailProvider = null;
 
     document.addEventListener("DOMContentLoaded", () => {
         document.getElementById('tab-general').className = activeTabStyle;
-        document.getElementById('set_email_provider').addEventListener('change', () => {
-            renderProviderFields();
-            updateEmailDirtyState();
-            updateEmailDiagnostic();
-        });
-        [
-            'set_from_email', 'set_from_name', 'set_support_email',
-            'set_smtp_host', 'set_smtp_port', 'set_smtp_username',
-            'set_smtp_encryption'
-        ].forEach(id => document.getElementById(id).addEventListener('input', () => {
-            updateEmailDirtyState();
-            updateEmailDiagnostic();
-        }));
-        document.getElementById('set_smtp_encryption').addEventListener('change', () => {
-            updateEmailDirtyState();
-            updateEmailDiagnostic();
-        });
+        loadEmailProviders();
         loadSettings();
     });
+
+    async function emailProviderRequest(path, method = 'GET', body = null) {
+        const options = { method, headers: {} };
+        if (body !== null) {
+            options.headers['Content-Type'] = 'application/json';
+            options.body = JSON.stringify(body);
+        }
+        const response = await fetch(`/api/v1/system${path}`, options);
+        if (response.status === 401) {
+            window.location.href = '/auth/login';
+            throw new Error('Your session has expired.');
+        }
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            if (response.status === 403) window.location.href = '/auth/login';
+            throw new Error(result.detail || `Request failed (${response.status}).`);
+        }
+        return result;
+    }
+
+    async function loadEmailProviders() {
+        try {
+            const result = await emailProviderRequest('/settings/email/providers');
+            emailProviderDefinitions = result.definitions || [];
+            configuredEmailProviders = result.configured_providers || [];
+            activeEmailProvider = result.active_provider || null;
+            document.getElementById('emailServiceStatus').textContent =
+                result.service_status || 'Disabled — No active provider';
+            renderEmailProviderCards();
+        } catch (error) {
+            document.getElementById('emailServiceStatus').textContent =
+                'Unable to load email provider configuration.';
+            showToast(error.message || 'Failed to load email provider configuration.', 'error');
+        }
+    }
+
+    function renderEmailProviderCards() {
+        const cards = document.getElementById('emailProviderCards');
+        const empty = document.getElementById('emailProviderEmpty');
+        empty.classList.toggle('hidden', configuredEmailProviders.length > 0);
+        cards.innerHTML = configuredEmailProviders.map(entry => {
+            const config = entry.configuration || {};
+            const active = entry.provider === activeEmailProvider && config.enabled;
+            const testStatus = config.last_test_status
+                ? (config.last_test_status === 'ready' ? 'Ready' : 'Not Ready — run Test Connection')
+                : (config.tested ? 'Ready' : 'Not tested');
+            const credentialStatus = entry.credential_configured
+                ? 'Credential configured'
+                : `${escapeHTML(emailProviderDefinitions.find(item => item.key === entry.provider)?.credential_label || 'Credential')}: Not Configured`;
+            return `<article class="rounded-2xl border ${active ? 'border-green-200 bg-green-50/40' : 'border-slate-200 bg-white'} p-5 shadow-sm">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                    <h5 class="text-base font-extrabold text-blue-950">${escapeHTML(entry.name)}</h5>
+                    <span class="rounded-full px-3 py-1 text-xs font-bold ${active ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-600'}">${active ? '● Active' : '○ Disabled'}</span>
+                </div>
+                <dl class="mt-4 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
+                    <div><dt class="inline font-bold text-slate-500">From: </dt><dd class="inline text-slate-800">${escapeHTML(config.from_email || 'Not configured')}</dd></div>
+                    <div><dt class="inline font-bold text-slate-500">From Name: </dt><dd class="inline text-slate-800">${escapeHTML(config.from_name || 'Not configured')}</dd></div>
+                    <div><dt class="inline font-bold text-slate-500">Support: </dt><dd class="inline text-slate-800">${escapeHTML(config.support_email || 'Not configured')}</dd></div>
+                    <div><dt class="inline font-bold text-slate-500">Credential: </dt><dd class="inline text-slate-800">${credentialStatus}</dd></div>
+                </dl>
+                <p class="mt-3 text-sm font-semibold ${config.tested ? 'text-green-700' : 'text-amber-700'}">Status: ${testStatus}</p>
+                <div class="mt-4 flex flex-wrap gap-2">
+                    <button type="button" onclick="editEmailProvider('${escapeHTML(entry.provider)}')" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">Edit</button>
+                    <button type="button" onclick="testSavedEmailProvider('${escapeHTML(entry.provider)}')" class="rounded-lg border border-blue-200 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-50">Test Connection</button>
+                    <button type="button" onclick="setEmailProviderEnabled('${escapeHTML(entry.provider)}', ${!active})" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50" ${!active && !config.tested ? 'title="Test successfully before enabling"' : ''}>${active ? 'Disable' : 'Enable'}</button>
+                    <button type="button" onclick="removeEmailProvider('${escapeHTML(entry.provider)}')" aria-label="Remove ${escapeHTML(entry.name)}" class="rounded-lg border border-red-200 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-50">&times; Remove</button>
+                </div>
+            </article>`;
+        }).join('');
+    }
+
+    function openAddEmailProvider() {
+        editingEmailProvider = null;
+        const choice = document.getElementById('emailProviderChoice');
+        choice.innerHTML = emailProviderDefinitions.map(definition =>
+            `<option value="${escapeHTML(definition.key)}">${escapeHTML(definition.name)}</option>`
+        ).join('');
+        document.getElementById('emailProviderModalTitle').textContent = 'Add Email Provider';
+        document.getElementById('emailProviderModalDescription').textContent =
+            'Choose an implemented provider. Existing configurations can be edited or restored.';
+        showProviderChoice();
+        document.getElementById('emailProviderModal').classList.remove('hidden');
+        document.getElementById('emailProviderModal').classList.add('flex');
+    }
+
+    function editEmailProvider(provider) {
+        editingEmailProvider = provider;
+        openProviderConfiguration(provider);
+        document.getElementById('emailProviderModalTitle').textContent = `Edit ${providerName(provider)}`;
+        document.getElementById('emailProviderModalDescription').textContent =
+            'Save changes as disabled, test the configuration, then explicitly enable it.';
+    }
+
+    function providerName(provider) {
+        return emailProviderDefinitions.find(definition => definition.key === provider)?.name || provider;
+    }
+
+    function showProviderChoice() {
+        document.getElementById('emailProviderChoiceStep').classList.remove('hidden');
+        document.getElementById('emailProviderFormStep').classList.add('hidden');
+        document.getElementById('emailProviderContinueButton').classList.remove('hidden');
+        document.getElementById('emailProviderBackButton').classList.add('hidden');
+        document.getElementById('emailProviderTestButton').classList.add('hidden');
+        document.getElementById('emailProviderSaveButton').classList.add('hidden');
+    }
+
+    function returnToProviderChoice() {
+        editingEmailProvider = null;
+        showProviderChoice();
+    }
+
+    function continueEmailProvider() {
+        openProviderConfiguration(document.getElementById('emailProviderChoice').value);
+    }
+
+    function openProviderConfiguration(provider) {
+        const definition = emailProviderDefinitions.find(item => item.key === provider);
+        if (!definition) {
+            showToast('That email provider is not implemented.', 'error');
+            return;
+        }
+        const existing = configuredEmailProviders.find(item => item.provider === provider);
+        const config = existing?.configuration || {};
+        editingEmailProvider = provider;
+        document.getElementById('emailProviderChoiceStep').classList.add('hidden');
+        document.getElementById('emailProviderFormStep').classList.remove('hidden');
+        document.getElementById('emailProviderContinueButton').classList.add('hidden');
+        document.getElementById('emailProviderBackButton').classList.toggle('hidden', !document.getElementById('emailProviderModalTitle').textContent.startsWith('Edit'));
+        document.getElementById('emailProviderTestButton').classList.remove('hidden');
+        document.getElementById('emailProviderSaveButton').classList.remove('hidden');
+        document.getElementById('emailProviderFromEmail').value = config.from_email || '';
+        document.getElementById('emailProviderFromName').value = config.from_name || 'Shwe Min Thar KPI Management System';
+        document.getElementById('emailProviderSupportEmail').value = config.support_email || '';
+        document.getElementById('emailProviderCredentialStatus').textContent =
+            `${definition.credential_label}: ${definition.credential_configured ? 'Configured' : 'Not Configured'}`;
+        const draftStatus = document.getElementById('emailProviderDraftStatus');
+        const isActive = provider === activeEmailProvider && config.enabled;
+        draftStatus.textContent = isActive ? 'Active — saving changes will disable it' : 'Disabled';
+        draftStatus.className = `mt-1 text-sm font-bold ${isActive ? 'text-green-700' : 'text-amber-700'}`;
+        renderEmailProviderFields(definition, config);
+        const testStatus = document.getElementById('emailProviderTestStatus');
+        testStatus.classList.add('hidden');
+        testStatus.textContent = '';
+    }
+
+    function renderEmailProviderFields(definition, config) {
+        const container = document.getElementById('emailProviderDynamicFields');
+        container.innerHTML = definition.fields.map(field => {
+            if (field.type === 'select') {
+                const options = field.options.map(option =>
+                    `<option value="${escapeHTML(option.value)}" ${config[field.key] === option.value ? 'selected' : ''}>${escapeHTML(option.label)}</option>`
+                ).join('');
+                return `<label class="block"><span class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-700">${escapeHTML(field.label)}</span><select data-email-provider-field="${escapeHTML(field.key)}" class="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">${options}</select></label>`;
+            }
+            const type = field.type === 'number' ? 'number' : 'text';
+            const attrs = field.type === 'number' ? 'min="1" max="65535"' : 'maxlength="255"';
+            return `<label class="block"><span class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-700">${escapeHTML(field.label)}</span><input data-email-provider-field="${escapeHTML(field.key)}" type="${type}" ${attrs} ${field.required ? 'required' : ''} value="${escapeHTML(config[field.key] ?? (field.key === 'smtp_port' ? 587 : ''))}" class="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm"></label>`;
+        }).join('');
+    }
+
+    function readEmailProviderDraft() {
+        const configuration = {
+            from_email: document.getElementById('emailProviderFromEmail').value.trim() || null,
+            from_name: document.getElementById('emailProviderFromName').value.trim() || 'Shwe Min Thar KPI Management System',
+            support_email: document.getElementById('emailProviderSupportEmail').value.trim() || null,
+            enabled: false,
+            tested: false
+        };
+        document.querySelectorAll('[data-email-provider-field]').forEach(field => {
+            const key = field.dataset.emailProviderField;
+            configuration[key] = field.type === 'number'
+                ? (field.value ? Number(field.value) : null)
+                : (field.value.trim() || null);
+        });
+        return configuration;
+    }
+
+    function sameEmailProviderConfiguration(left, right) {
+        const withoutLifecycle = value => Object.fromEntries(
+            Object.entries(value).filter(([key]) =>
+                !['enabled', 'tested', 'last_test_status'].includes(key)
+            )
+        );
+        return JSON.stringify(withoutLifecycle(left)) === JSON.stringify(withoutLifecycle(right));
+    }
+
+    function closeEmailProviderModal() {
+        const modal = document.getElementById('emailProviderModal');
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    }
+
+    async function saveEmailProviderDraft() {
+        if (!editingEmailProvider) return;
+        try {
+            await emailProviderRequest(
+                `/settings/email/providers/${editingEmailProvider}`,
+                'PUT',
+                { provider: editingEmailProvider, configuration: readEmailProviderDraft() }
+            );
+            await loadEmailProviders();
+            closeEmailProviderModal();
+            showToast(`${providerName(editingEmailProvider)} saved as disabled. Test and enable it when ready.`, 'success');
+        } catch (error) {
+            showToast(error.message || 'Could not save email provider.', 'error');
+        }
+    }
+
+    async function testEmailProviderDraft() {
+        if (!editingEmailProvider) return;
+        const provider = editingEmailProvider;
+        try {
+            const draft = readEmailProviderDraft();
+            const existing = configuredEmailProviders.find(item => item.provider === provider);
+            const isUnchanged = existing &&
+                sameEmailProviderConfiguration(draft, existing.configuration);
+            if (!isUnchanged) {
+                const active = provider === activeEmailProvider;
+                if (active && !(await window.appConfirm(
+                    'Saving this changed configuration will disable the currently active provider. You can test it and explicitly enable it again afterward.',
+                    { title: `Save and test ${providerName(provider)}?`, confirmText: 'Save Draft and Test' }
+                ))) return;
+                await emailProviderRequest(
+                    `/settings/email/providers/${provider}`,
+                    'PUT',
+                    { provider, configuration: draft }
+                );
+            }
+            const result = await emailProviderRequest(
+                `/settings/email/providers/${provider}/test-connection`,
+                'POST'
+            );
+            await loadEmailProviders();
+            const box = document.getElementById('emailProviderTestStatus');
+            box.textContent = result.message || 'Provider is not ready.';
+            box.className = `rounded-xl border px-4 py-3 text-sm font-bold ${result.success ? 'border-green-200 bg-green-50 text-green-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`;
+            box.classList.remove('hidden');
+        } catch (error) {
+            showToast(error.message || 'Email provider test failed.', 'error');
+        }
+    }
+
+    async function testSavedEmailProvider(provider) {
+        try {
+            const result = await emailProviderRequest(
+                `/settings/email/providers/${provider}/test-connection`,
+                'POST'
+            );
+            await loadEmailProviders();
+            showToast(result.message || 'Provider test completed.', result.success ? 'success' : 'error');
+        } catch (error) {
+            showToast(error.message || 'Email provider test failed.', 'error');
+        }
+    }
+
+    async function setEmailProviderEnabled(provider, enable) {
+        if (!enable && !(await window.appConfirm(`Email delivery through ${providerName(provider)} will stop. You can enable it again later.`, { title: `Disable ${providerName(provider)}?`, confirmText: 'Disable' }))) return;
+        try {
+            await emailProviderRequest(
+                `/settings/email/providers/${provider}/lifecycle`,
+                'POST',
+                { action: enable ? 'enable' : 'disable' }
+            );
+            await loadEmailProviders();
+            showToast(enable ? `${providerName(provider)} is active.` : `${providerName(provider)} is disabled.`, 'success');
+        } catch (error) {
+            showToast(error.message || `Could not ${enable ? 'enable' : 'disable'} provider.`, 'error');
+        }
+    }
+
+    async function removeEmailProvider(provider) {
+        if (!(await window.appConfirm(`This removes ${providerName(provider)} from active configuration. Email delivery through it will stop.`, { title: `Remove ${providerName(provider)}?`, confirmText: 'Remove Provider' }))) return;
+        try {
+            await emailProviderRequest(`/settings/email/providers/${provider}`, 'DELETE');
+            await loadEmailProviders();
+            showToast(`${providerName(provider)} was removed.`, 'success');
+        } catch (error) {
+            showToast(error.message || 'Could not remove email provider.', 'error');
+        }
+    }
 
     function switchSettingTab(tabId) {
         document.querySelectorAll('.setting-content').forEach(el => {
@@ -331,22 +570,7 @@
                         if(data.company_name) document.getElementById('set_company_name').value = data.company_name;
                         if(data.timezone) document.getElementById('set_timezone').value = data.timezone;
                         if(data.date_format) document.getElementById('set_date_format').value = data.date_format;
-                    } 
-                    else if (setting.key === 'email') {
-                        savedEmailSettings = {
-                            ...savedEmailSettings,
-                            ...data,
-                            from_email: data.from_email || '',
-                            from_name: data.from_name || 'Shwe Min Thar KPI Management System',
-                            support_email: data.support_email || '',
-                            smtp_host: data.smtp_host || '',
-                            smtp_port: data.smtp_port || 587,
-                            smtp_username: data.smtp_username || '',
-                            smtp_encryption: data.smtp_encryption || 'starttls'
-                        };
-                        applyEmailSettings(savedEmailSettings);
-                    } 
-                    else if (setting.key === 'security') {
+                    } else if (setting.key === 'security') {
                         if(data.minimum_password_length || data.min_length) document.getElementById('set_pwd_length').value = data.minimum_password_length || data.min_length;
                         if(data.require_complexity !== undefined) document.getElementById('set_pwd_complex').checked = data.require_complexity;
                         if(data.password_expiry !== undefined) document.getElementById('set_pwd_expire').checked = data.password_expiry;
@@ -359,95 +583,6 @@
             console.error("Error loading settings:", e); 
             showToast("Failed to connect to server to fetch settings.", "error");
         }
-    }
-
-    function readEmailForm() {
-        return {
-            email_provider: document.getElementById('set_email_provider').value,
-            from_email: document.getElementById('set_from_email').value.trim(),
-            from_name: document.getElementById('set_from_name').value.trim(),
-            support_email: document.getElementById('set_support_email').value.trim(),
-            smtp_host: document.getElementById('set_smtp_host').value.trim(),
-            smtp_port: Number(document.getElementById('set_smtp_port').value),
-            smtp_username: document.getElementById('set_smtp_username').value.trim(),
-            smtp_encryption: document.getElementById('set_smtp_encryption').value
-        };
-    }
-
-    function applyEmailSettings(data) {
-        document.getElementById('set_email_provider').value = data.email_provider || 'resend';
-        document.getElementById('set_from_email').value = data.from_email || '';
-        document.getElementById('set_from_name').value = data.from_name || 'Shwe Min Thar KPI Management System';
-        document.getElementById('set_support_email').value = data.support_email || '';
-        document.getElementById('set_smtp_host').value = data.smtp_host || '';
-        document.getElementById('set_smtp_port').value = data.smtp_port || 587;
-        document.getElementById('set_smtp_username').value = data.smtp_username || '';
-        document.getElementById('set_smtp_encryption').value = data.smtp_encryption || 'starttls';
-        document.getElementById('resendApiKeyStatus').textContent =
-            data.resend_api_key_configured ? 'Configured' : 'Not Configured';
-        document.getElementById('smtpPasswordStatus').textContent =
-            data.smtp_password_configured ? 'Configured' : 'Not Configured';
-        renderProviderFields();
-        updateEmailDirtyState();
-        updateEmailDiagnostic();
-    }
-
-    function renderProviderFields() {
-        const provider = document.getElementById('set_email_provider').value;
-        document.getElementById('resendProviderFields').classList.toggle('hidden', provider !== 'resend');
-        document.getElementById('smtpProviderFields').classList.toggle('hidden', provider !== 'smtp');
-    }
-
-    function updateEmailDirtyState() {
-        const current = readEmailForm();
-        const saved = {
-            email_provider: savedEmailSettings.email_provider || 'resend',
-            from_email: savedEmailSettings.from_email || '',
-            from_name: savedEmailSettings.from_name || 'Shwe Min Thar KPI Management System',
-            support_email: savedEmailSettings.support_email || '',
-            smtp_host: savedEmailSettings.smtp_host || '',
-            smtp_port: Number(savedEmailSettings.smtp_port || 587),
-            smtp_username: savedEmailSettings.smtp_username || '',
-            smtp_encryption: savedEmailSettings.smtp_encryption || 'starttls'
-        };
-        const dirty = JSON.stringify(current) !== JSON.stringify(saved);
-        document.getElementById('emailUnsavedChanges').classList.toggle('hidden', !dirty);
-        document.getElementById('cancelEmailChangesBtn').classList.toggle('hidden', !dirty);
-        document.getElementById('testEmailConnectionBtn').disabled = dirty;
-        return dirty;
-    }
-
-    function updateEmailDiagnostic(message = null, type = null) {
-        const emailStatus = document.getElementById('emailStatus');
-        if (message) {
-            emailStatus.textContent = message;
-            emailStatus.className = `text-sm font-bold ${type === 'success' ? 'text-green-700' : 'text-red-700'}`;
-            return;
-        }
-        if (updateEmailDirtyState()) {
-            emailStatus.textContent = 'Unsaved changes';
-            emailStatus.className = 'text-sm font-bold text-amber-700';
-            return;
-        }
-        const values = readEmailForm();
-        let reason = '';
-        if (!values.from_email) {
-            reason = 'From Email is required';
-        } else if (values.email_provider === 'resend' && !savedEmailSettings.resend_api_key_configured) {
-            reason = 'Resend API key is not configured';
-        } else if (values.email_provider === 'smtp' && !values.smtp_host) {
-            reason = 'SMTP Host is required';
-        } else if (values.email_provider === 'smtp' && !values.smtp_port) {
-            reason = 'SMTP Port is required';
-        } else if (values.email_provider === 'smtp' && values.smtp_username && !savedEmailSettings.smtp_password_configured) {
-            reason = 'SMTP credentials are not configured';
-        }
-        emailStatus.textContent = reason ? `Not Ready — ${reason}` : 'Configured — test connection to verify';
-        emailStatus.className = `text-sm font-bold ${reason ? 'text-amber-700' : 'text-blue-700'}`;
-    }
-
-    function cancelEmailChanges() {
-        applyEmailSettings(savedEmailSettings);
     }
 
     async function upsertSetting(key, valueObj) {
@@ -509,16 +644,6 @@
             date_format: document.getElementById('set_date_format').value
         };
 
-        const emailForm = readEmailForm();
-        const emailVal = {
-            ...emailForm,
-            from_email: emailForm.from_email || null,
-            from_name: emailForm.from_name || 'Shwe Min Thar KPI Management System',
-            support_email: emailForm.support_email || null,
-            smtp_host: emailForm.smtp_host || null,
-            smtp_port: emailForm.smtp_port || null,
-            smtp_username: emailForm.smtp_username || null
-        };
         const securityVal = {
             minimum_password_length: Number(document.getElementById('set_pwd_length').value),
             min_length: Number(document.getElementById('set_pwd_length').value),
@@ -530,19 +655,12 @@
 
         try {
             const p1 = upsertSetting('general', generalVal);
-            const p2 = upsertSetting('email', emailVal);
-            const p3 = upsertSetting('security', securityVal);
+            const p2 = upsertSetting('security', securityVal);
 
-            const results = await Promise.all([p1, p2, p3]);
+            const results = await Promise.all([p1, p2]);
 
             if (results.every(r => r === true)) {
                 showToast("System settings updated successfully.", "success");
-                savedEmailSettings = {
-                    ...emailVal,
-                    resend_api_key_configured: savedEmailSettings.resend_api_key_configured,
-                    smtp_password_configured: savedEmailSettings.smtp_password_configured
-                };
-                applyEmailSettings(savedEmailSettings);
             } else {
                 showToast("Some settings failed to save. Check your permissions and field values.", "error");
             }
@@ -551,35 +669,6 @@
         } finally {
             btn.innerHTML = originalHtml;
             btn.disabled = false;
-        }
-    }
-
-    async function testEmailConnection() {
-        if (updateEmailDirtyState()) {
-            showToast("Save the email settings before testing the selected provider.", "error");
-            return;
-        }
-        const status = document.getElementById('emailStatus');
-        status.textContent = 'Checking email provider configuration...';
-        status.className = 'text-sm font-bold text-blue-700';
-        try {
-            const res = await fetch('/api/v1/system/settings/email/test-connection', { method: 'POST' });
-            const result = await res.json();
-            if (res.status === 401) {
-                showToast("Your session has expired. Please sign in again.", "error");
-                window.location.href = '/auth/login';
-                return;
-            }
-            if (!res.ok) {
-                updateEmailDiagnostic(result.detail || "Email provider could not be verified.", 'error');
-                showToast(result.detail || "Email provider could not be verified.", "error");
-                return;
-            }
-            updateEmailDiagnostic(result.message || 'Ready', 'success');
-            showToast(result.message || "Resend connection verified.", "success");
-        } catch (e) {
-            updateEmailDiagnostic("Not Ready — unable to connect to provider", 'error');
-            showToast("Network error while testing the email provider.", "error");
         }
     }
 

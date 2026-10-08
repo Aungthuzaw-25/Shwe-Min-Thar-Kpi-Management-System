@@ -1,4 +1,5 @@
 import smtplib
+import ssl
 
 import httpx
 import pytest
@@ -11,8 +12,10 @@ from app.services.email_service import (
     EmailAuthenticationError,
     EmailConfiguration,
     EmailConfigurationError,
+    EmailDisabledError,
     EmailMessage,
     EmailProviderFactory,
+    EmailProviderResolver,
     EmailSecrets,
     ResendProvider,
     SMTPProvider,
@@ -104,6 +107,7 @@ class FakeSMTP:
         self.events.append("ehlo")
 
     def starttls(self, **kwargs):
+        self.starttls_kwargs = kwargs
         self.events.append("starttls")
 
     def login(self, username, password):
@@ -127,10 +131,27 @@ def _mock_settings(monkeypatch, configuration, secrets=None):
     if secrets is None:
         secrets = EmailSecrets("fake-resend-key", None)
 
-    async def load_configuration():
-        return configuration
+    provider_value = {
+        key: getattr(configuration, key)
+        for key in (
+            "from_email",
+            "from_name",
+            "support_email",
+            "smtp_host",
+            "smtp_port",
+            "smtp_username",
+            "smtp_encryption",
+        )
+    }
+    provider_value.update(enabled=True, tested=True, last_test_status="ready")
 
-    monkeypatch.setattr(email_service, "_load_email_configuration", load_configuration)
+    async def load_settings():
+        return {
+            "providers": {configuration.email_provider: provider_value},
+            "active_provider": configuration.email_provider,
+        }
+
+    monkeypatch.setattr(email_service, "_load_email_settings", load_settings)
     monkeypatch.setattr(email_service, "_load_email_secrets", lambda: secrets)
 
 
@@ -139,6 +160,63 @@ def test_provider_factory_registers_only_implemented_providers():
     assert isinstance(EmailProviderFactory.create("resend"), ResendProvider)
     assert isinstance(EmailProviderFactory.create("smtp"), SMTPProvider)
 
+
+def test_resolver_selects_only_enabled_provider_from_multiple_configurations():
+    state = {
+        "active_provider": "smtp",
+        "providers": {
+            "resend": {
+                "enabled": False,
+                "from_email": "resend@example.com",
+                "from_name": "KPI System",
+                "support_email": None,
+            },
+            "smtp": {
+                "enabled": True,
+                "from_email": "smtp@example.com",
+                "from_name": "KPI System",
+                "support_email": None,
+                "smtp_host": "smtp.example.com",
+                "smtp_port": 587,
+                "smtp_username": None,
+                "smtp_encryption": "starttls",
+                "tested": True,
+            },
+        },
+    }
+    selected = EmailProviderResolver.resolve_value(state)
+    assert selected.email_provider == "smtp"
+
+    state["active_provider"] = None
+    state["providers"]["smtp"]["enabled"] = False
+    with pytest.raises(EmailDisabledError):
+        EmailProviderResolver.resolve_value(state)
+
+
+@pytest.mark.asyncio
+async def test_no_active_provider_returns_disabled_without_instantiating_provider(monkeypatch):
+    async def no_active_provider():
+        return {
+            "providers": {
+                "resend": {
+                    "enabled": False,
+                    "from_email": "noreply@example.com",
+                    "from_name": "KPI System",
+                    "support_email": None,
+                }
+            },
+            "active_provider": None,
+        }
+
+    monkeypatch.setattr(email_service, "_load_email_settings", no_active_provider)
+    monkeypatch.setattr(
+        EmailProviderFactory,
+        "create",
+        classmethod(lambda cls, _name: pytest.fail("Disabled provider was instantiated")),
+    )
+    assert not await service.send(
+        EmailMessage(to=["person@example.com"], subject="Subject", text_body="Body")
+    )
 
 @pytest.mark.asyncio
 async def test_provider_neutral_notification_sends_same_message_through_resend(monkeypatch):
@@ -183,6 +261,10 @@ async def test_provider_neutral_notification_sends_same_message_through_smtp(mon
     assert sent is True
     assert smtp.host == "smtp.example.com"
     assert smtp.events[:3] == ["ehlo", "starttls", "ehlo"]
+    starttls_context = smtp.starttls_kwargs["context"]
+    assert isinstance(starttls_context, ssl.SSLContext)
+    assert starttls_context.verify_mode == ssl.CERT_REQUIRED
+    assert starttls_context.check_hostname is True
     assert ("login", "mailer", "smtp-test-password") in smtp.events
     assert smtp.sent_message["From"] == "KPI System <noreply@example.com>"
     assert smtp.sent_message["Reply-To"] == "support@example.com"
@@ -298,6 +380,14 @@ async def test_resend_test_mode_is_supported_without_verified_custom_domain(monk
 
 
 @pytest.mark.asyncio
+async def test_missing_from_email_has_specific_diagnostic_before_missing_api_key():
+    with pytest.raises(EmailConfigurationError, match="From Email is required"):
+        await ResendProvider().test_connection(
+            config(from_email=None), EmailSecrets(None, None)
+        )
+
+
+@pytest.mark.asyncio
 async def test_smtp_test_connection_uses_current_provider_and_never_sends(monkeypatch):
     FakeSMTP.instances.clear()
     monkeypatch.setattr(email_service.smtplib, "SMTP", FakeSMTP)
@@ -335,6 +425,10 @@ async def test_smtp_ssl_connection_uses_ssl_adapter_and_none_disables_tls(monkey
     ) == "Ready"
     ssl_smtp = FakeSMTP.instances[-1]
     assert "context" in ssl_smtp.kwargs
+    ssl_context = ssl_smtp.kwargs["context"]
+    assert isinstance(ssl_context, ssl.SSLContext)
+    assert ssl_context.verify_mode == ssl.CERT_REQUIRED
+    assert ssl_context.check_hostname is True
     assert "starttls" not in ssl_smtp.events
 
     assert await provider.test_connection(

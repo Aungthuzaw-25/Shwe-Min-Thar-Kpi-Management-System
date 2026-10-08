@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import (
@@ -10,6 +10,7 @@ from pydantic import (
     StrictBool,
     StrictInt,
     field_validator,
+    model_validator,
 )
 
 from app.models.system import LogLevel
@@ -32,7 +33,7 @@ class PasswordPolicyValue(BaseModel):
 
 
 class EmailConfigurationValue(BaseModel):
-    email_provider: str = "resend"
+    enabled: StrictBool = False
     from_email: EmailStr | None = None
     from_name: str = Field(default="Shwe Min Thar KPI Management System", max_length=200)
     support_email: EmailStr | None = None
@@ -40,6 +41,8 @@ class EmailConfigurationValue(BaseModel):
     smtp_port: StrictInt | None = Field(default=587, ge=1, le=65535)
     smtp_username: str | None = Field(default=None, max_length=255)
     smtp_encryption: str = "starttls"
+    tested: StrictBool = False
+    last_test_status: Literal["ready", "not_ready"] | None = None
 
     @field_validator("from_email", "support_email", mode="before")
     @classmethod
@@ -50,14 +53,6 @@ class EmailConfigurationValue(BaseModel):
             raise ValueError("Email addresses must be strings.")
         value = value.strip()
         return value or None
-
-    @field_validator("email_provider")
-    @classmethod
-    def require_resend(cls, value: str) -> str:
-        value = value.strip().lower()
-        if value not in {"resend", "smtp"}:
-            raise ValueError("Email provider must be Resend or SMTP.")
-        return value
 
     @field_validator("smtp_host", "smtp_username", mode="before")
     @classmethod
@@ -88,6 +83,105 @@ class EmailConfigurationValue(BaseModel):
         return value
 
 
+class EmailSettingsValue(BaseModel):
+    providers: dict[str, EmailConfigurationValue] = Field(default_factory=dict)
+    active_provider: str | None = None
+
+    @model_validator(mode="after")
+    def validate_active_provider(self):
+        if any(provider not in {"resend", "smtp"} for provider in self.providers):
+            raise ValueError("Email settings contain an unsupported provider.")
+        enabled_providers = [
+            provider
+            for provider, config in self.providers.items()
+            if config.enabled
+        ]
+        if self.active_provider is not None:
+            active = self.providers.get(self.active_provider)
+            if active is None or not active.enabled:
+                raise ValueError("The active email provider must be configured and enabled.")
+        if len(enabled_providers) > 1 or (
+            enabled_providers
+            and self.active_provider != enabled_providers[0]
+        ):
+            raise ValueError("Exactly one enabled provider must be the active provider.")
+        return self
+
+
+class EmailProviderSaveRequest(BaseModel):
+    provider: str
+    configuration: EmailConfigurationValue
+
+    @field_validator("provider")
+    @classmethod
+    def validate_provider(cls, value: str) -> str:
+        value = value.strip().lower()
+        if value not in {"resend", "smtp"}:
+            raise ValueError("Email provider must be Resend or SMTP.")
+        return value
+
+
+class EmailProviderLifecycleRequest(BaseModel):
+    action: str
+
+    @field_validator("action")
+    @classmethod
+    def validate_action(cls, value: str) -> str:
+        value = value.strip().lower()
+        if value not in {"enable", "disable"}:
+            raise ValueError("Provider action must be enable or disable.")
+        return value
+
+
+class LegacyEmailConfigurationValue(EmailConfigurationValue):
+    email_provider: str = "resend"
+
+    @field_validator("email_provider")
+    @classmethod
+    def require_resend(cls, value: str) -> str:
+        value = value.strip().lower()
+        if value not in {"resend", "smtp"}:
+            raise ValueError("Email provider must be Resend or SMTP.")
+        return value
+
+
+def normalize_email_settings(value: dict | None) -> dict:
+    value = value or {}
+    if "providers" in value or "active_provider" in value:
+        validated = EmailSettingsValue.model_validate(value)
+        providers = {}
+        for provider, configuration in validated.providers.items():
+            excluded = (
+                {"smtp_host", "smtp_port", "smtp_username", "smtp_encryption"}
+                if provider == "resend"
+                else set()
+            )
+            providers[provider] = configuration.model_dump(
+                mode="json", exclude=excluded
+            )
+        return {
+            "providers": providers,
+            "active_provider": validated.active_provider,
+        }
+
+    if not value:
+        return EmailSettingsValue().model_dump(mode="json")
+
+    legacy = LegacyEmailConfigurationValue.model_validate(value)
+    provider = legacy.email_provider
+    configuration = legacy.model_dump(
+        exclude={"email_provider", "enabled", "tested", "last_test_status"}
+    )
+    configuration["enabled"] = False
+    configuration["tested"] = False
+    configuration["last_test_status"] = None
+    normalized = EmailSettingsValue(
+        providers={provider: EmailConfigurationValue.model_validate(configuration)},
+        active_provider=None,
+    ).model_dump(mode="json")
+    return normalize_email_settings(normalized)
+
+
 class SystemSettingResponse(BaseModel):
     id: UUID
     key: str
@@ -107,18 +201,21 @@ class SystemSettingResponse(BaseModel):
             return {}
         if isinstance(value, dict) and setting_key == "email":
             allowed = {
-                "email_provider",
-                "from_email",
-                "from_name",
-                "support_email",
-                "smtp_host",
-                "smtp_port",
-                "smtp_username",
-                "smtp_encryption",
-                "resend_api_key_configured",
-                "smtp_password_configured",
+                "providers",
+                "active_provider",
             }
-            return {key: item for key, item in value.items() if key in allowed}
+            if "providers" in value:
+                return {
+                    key: cls._without_secrets(item)
+                    for key, item in value.items()
+                    if key in allowed
+                }
+            legacy_allowed = {
+                "email_provider", "from_email", "from_name", "support_email",
+                "smtp_host", "smtp_port", "smtp_username", "smtp_encryption",
+                "resend_api_key_configured", "smtp_password_configured",
+            }
+            return {key: item for key, item in value.items() if key in legacy_allowed}
         return cls._without_secrets(value)
 
     @classmethod
