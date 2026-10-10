@@ -121,7 +121,7 @@
   // ---- Notification Polling ----
   async function fetchNotifications() {
     try {
-      const res = await api('/api/v1/notifications/?limit=5');
+      const res = await api('/api/v1/notifications?limit=5');
       if (!res || !res.ok) return;
       const data = await res.json();
       const unreadCount = Array.isArray(data) ? data.filter(n => !n.is_read).length : 0;

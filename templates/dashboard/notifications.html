@@ -46,14 +46,16 @@ async function loadNotificationHistory(page = 1) {
     const container = document.getElementById("notificationHistory");
     container.innerHTML = '<div class="p-10 text-center text-slate-400 text-sm">Loading notifications...</div>';
     try {
-        const response = await fetch(`/api/v1/notifications/?skip=${(page - 1) * pageSize}&limit=${pageSize}`);
+        const [response, unreadResponse] = await Promise.all([
+            fetch(`/api/v1/notifications?skip=${(page - 1) * pageSize}&limit=${pageSize}`),
+            fetch("/api/v1/notifications/unread-count")
+        ]);
         if (response.status === 401) {
             window.location.href = "/auth/login";
             return;
         }
         if (!response.ok) throw new Error("Unable to load notifications");
         const items = await response.json();
-        const unreadResponse = await fetch("/api/v1/notifications/unread-count");
         const unread = unreadResponse.ok ? (await unreadResponse.json()).count : 0;
         document.getElementById("unreadSummary").textContent = `${unread} unread`;
         document.getElementById("pageSummary").textContent = `Page ${page}`;

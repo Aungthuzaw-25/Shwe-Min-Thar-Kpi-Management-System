@@ -499,10 +499,12 @@
 
         async function fetchNotifications() {
             try {
-                const res = await fetch(`${NOTIF_API_BASE}/?limit=15`);
+                const [res, countResponse] = await Promise.all([
+                    fetch(`${NOTIF_API_BASE}?limit=15`),
+                    fetch(`${NOTIF_API_BASE}/unread-count`)
+                ]);
                 if (!res.ok) throw new Error(`Notifications request failed (${res.status})`);
                 const notifications = await res.json();
-                const countResponse = await fetch(`${NOTIF_API_BASE}/unread-count`);
                 const unreadCount = countResponse.ok ? (await countResponse.json()).count : 0;
                 renderNotifications(notifications, unreadCount);
             } catch (err) {

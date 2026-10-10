@@ -487,12 +487,24 @@
       if (sequence !== requestSequence) return;
       const selectedPeriod = renderAvailablePeriods(intelligence);
       const periodType = selectedPeriod?.period_type || 'MONTHLY';
-      const response = await fetch(
+      const summaryPromise = fetch(
         `/api/v1/dashboard/summary?period_type=${encodeURIComponent(periodType)}`,
         { signal: controller.signal, credentials: 'same-origin' }
-      );
-      if (!response.ok) throw new Error('Dashboard operational data could not be loaded.');
-      const payload = await response.json();
+      ).then(response => {
+        if (!response.ok) throw new Error('Dashboard operational data could not be loaded.');
+        return response.json();
+      });
+      employeeOffset = 0;
+      let payload;
+      try {
+        [payload] = await Promise.all([
+          summaryPromise,
+          loadEmployeeResults(selectedPeriod?.id, controller.signal)
+        ]);
+      } catch (error) {
+        controller.abort();
+        throw error;
+      }
       if (sequence !== requestSequence) return;
       updateHeader(payload);
       renderScorecards(
@@ -508,8 +520,6 @@
       renderDiagnostics(payload.task_diagnostics || {}, payload.approval_diagnostics || {});
       renderLists(payload);
       renderDataQuality(intelligence);
-      employeeOffset = 0;
-      await loadEmployeeResults(selectedPeriod?.id, controller.signal);
       updated.textContent = `Last updated: ${formatTime(new Date().toISOString())}`;
       errorPanel.hidden = true;
     } catch (error) {
