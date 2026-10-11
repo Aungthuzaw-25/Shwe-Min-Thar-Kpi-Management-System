@@ -222,8 +222,8 @@ async def test_task_authorization_ignores_soft_deleted_department_memberships():
 
 def test_first_login_redirect_does_not_depend_on_stored_user_role_or_unsafe_csp():
     root = Path(__file__).resolve().parents[1]
-    login_template = (root / "templates" / "auth" / "login.html").read_text(encoding="utf-8")
-    password_template = (root / "templates" / "auth" / "change_password.html").read_text(encoding="utf-8")
+    login_template = (root / "templates" / "auth" / "login.njk").read_text(encoding="utf-8")
+    password_template = (root / "templates" / "auth" / "change_password.njk").read_text(encoding="utf-8")
     main_source = (root / "app" / "main.py").read_text(encoding="utf-8")
 
     assert "localStorage.setItem(\"user\", JSON.stringify(data.user));\n                        }\n                        window.location.href = '/auth/change-password'" not in login_template

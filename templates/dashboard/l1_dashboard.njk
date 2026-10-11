@@ -1,7 +1,7 @@
-{% extends "layouts/employee_base.html" %}
+{% extends "layouts/employee_base.njk" %}
 {% set active_page = "dashboard" %}
 {% set dashboard_variant = "executive" %}
 {% block title %}Team KPI Dashboard{% endblock %}
 {% block content %}
-{% include "dashboard/executive_dashboard_content.html" %}
+{% include "dashboard/executive_dashboard_content.njk" %}
 {% endblock %}

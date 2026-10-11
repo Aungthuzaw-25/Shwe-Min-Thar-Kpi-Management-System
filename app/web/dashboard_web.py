@@ -86,7 +86,7 @@ async def render_superadmin_dashboard_view(
 
     return templates.TemplateResponse(
         request=request,
-        name="dashboard/superadmin.html",
+        name="dashboard/superadmin.njk",
         context={
             "user_role": current_user.role.name,
             "user_name": f"{current_user.first_name} {current_user.last_name}",
@@ -113,7 +113,7 @@ async def render_admin_dashboard_view(
     employee_context = await get_employee_context(db, current_user)
     return templates.TemplateResponse(
         request=request,
-        name="dashboard/admin_dashboard.html",
+        name="dashboard/admin_dashboard.njk",
         context={
             **employee_context,
             "user_role": current_user.role.name,
@@ -148,14 +148,14 @@ async def render_normal_dashboard_view(
     if user_level == "L0":
         return templates.TemplateResponse(
             request=request,
-            name="dashboard/l0_dashboard.html",
+            name="dashboard/l0_dashboard.njk",
             context={**employee_context}
         )
 
     if user_level == "L1":
         return templates.TemplateResponse(
             request=request,
-            name="dashboard/l1_dashboard.html",
+            name="dashboard/l1_dashboard.njk",
             context={**employee_context}
         )
 
@@ -164,7 +164,7 @@ async def render_normal_dashboard_view(
 
     return templates.TemplateResponse(
         request=request,
-        name="dashboard/l2_dashboard.html",
+        name="dashboard/l2_dashboard.njk",
         context={**employee_context}
     )
 
@@ -204,7 +204,7 @@ async def render_employee_profile(
     )
     return templates.TemplateResponse(
         request=request,
-        name="dashboard/profile.html",
+        name="dashboard/profile.njk",
         context=context,
     )
 
@@ -225,7 +225,7 @@ async def render_superadmin_users_view(
         
     return templates.TemplateResponse(
         request=request, 
-        name="dashboard/users.html",
+        name="dashboard/users.njk",
         context={
             "user_role": current_user.role.name,
             "user_name": f"{current_user.first_name} {current_user.last_name}",
@@ -248,7 +248,7 @@ async def render_super_admin_management_view(
 
     return templates.TemplateResponse(
         request=request,
-        name="dashboard/super_admin_management.html",
+        name="dashboard/super_admin_management.njk",
         context={
             "user_role": current_user.role.name,
             "user_name": f"{current_user.first_name} {current_user.last_name}",
@@ -269,7 +269,7 @@ async def render_departments_view(
         
     return templates.TemplateResponse(
         request=request, 
-        name="dashboard/departments.html",  
+        name="dashboard/departments.njk",  
         context={
             "user_role": current_user.role.name,
             "user_name": f"{current_user.first_name} {current_user.last_name}",
@@ -288,7 +288,7 @@ async def render_permissions_view(
         return RedirectResponse(url="/dashboard")
     return templates.TemplateResponse(
         request=request,
-        name="dashboard/permissions.html",
+        name="dashboard/permissions.njk",
         context={
             "user_role": current_user.role.name,
             "user_name": f"{current_user.first_name} {current_user.last_name}",
@@ -312,7 +312,7 @@ async def render_user_profile_view(
         
     return templates.TemplateResponse(
         request=request, 
-        name="dashboard/user_profile.html", 
+        name="dashboard/user_profile.njk", 
         context={
             "user_role": current_user.role.name,
             "user_name": f"{current_user.first_name} {current_user.last_name}",
@@ -336,7 +336,7 @@ async def render_kpi_dashboard_view(
         
     return templates.TemplateResponse(
         request=request, 
-        name="dashboard/superadmin_kpi.html", 
+        name="dashboard/superadmin_kpi.njk", 
         context={
             "user_role": current_user.role.name,
             "user_name": f"{current_user.first_name} {current_user.last_name}",
@@ -359,7 +359,7 @@ async def render_kpi_upload_view(
         
     return templates.TemplateResponse(
         request=request, 
-        name="dashboard/kpi_upload.html",
+        name="dashboard/kpi_upload.njk",
         context={
             "user_role": current_user.role.name,
             "user_name": f"{current_user.first_name} {current_user.last_name}",
@@ -382,7 +382,7 @@ async def render_targets_view(
         
     return templates.TemplateResponse(
         request=request, 
-        name="dashboard/target.html", 
+        name="dashboard/target.njk", 
         context={
             "user_role": current_user.role.name,
             "user_name": f"{current_user.first_name} {current_user.last_name}",
@@ -405,7 +405,7 @@ async def render_kpi_reports_view(
         
     return templates.TemplateResponse(
         request=request, 
-        name="dashboard/report.html", 
+        name="dashboard/report.njk", 
         context={
             "user_role": current_user.role.name,
             "user_name": f"{current_user.first_name} {current_user.last_name}",
@@ -429,7 +429,7 @@ async def positions_page(
         
     return templates.TemplateResponse(
         request=request, 
-        name="dashboard/positions.html", 
+        name="dashboard/positions.njk", 
         context={
             "user_role": current_user.role.name,
             "user_name": f"{current_user.first_name} {current_user.last_name}",
@@ -453,7 +453,7 @@ async def kpi_periods_page(
         
     return templates.TemplateResponse(
         request=request, 
-        name="dashboard/kpi_periods.html", 
+        name="dashboard/kpi_periods.njk", 
         context={
             "user_role": current_user.role.name,
             "user_name": f"{current_user.first_name} {current_user.last_name}",
@@ -474,7 +474,7 @@ async def action_plans_page(
         
     return templates.TemplateResponse(
         request=request, 
-        name="dashboard/action_plans.html", 
+        name="dashboard/action_plans.njk", 
         context={
             "user_role": current_user.role.name,
             "user_name": f"{current_user.first_name} {current_user.last_name}",
@@ -498,7 +498,7 @@ async def system_settings_page(
         
     return templates.TemplateResponse(
         request=request, 
-        name="dashboard/system_settings.html", 
+        name="dashboard/system_settings.njk", 
         context={
             "user_role": current_user.role.name,
             "user_name": f"{current_user.first_name} {current_user.last_name}",
@@ -522,7 +522,7 @@ async def render_audit_logs_view(
         
     return templates.TemplateResponse(
         request=request, 
-        name="dashboard/audit_logs.html",
+        name="dashboard/audit_logs.njk",
         context={
             "user_role": current_user.role.name,
             "user_name": f"{current_user.first_name} {current_user.last_name}",
@@ -544,7 +544,7 @@ async def render_system_logs_view(
 
     return templates.TemplateResponse(
         request=request,
-        name="dashboard/system_logs.html",
+        name="dashboard/system_logs.njk",
         context={
             "user_role": current_user.role.name,
             "user_name": f"{current_user.first_name} {current_user.last_name}",
@@ -569,7 +569,7 @@ async def render_tasks_management_view(
         
     return templates.TemplateResponse(
         request=request, 
-        name="dashboard/tasks.html",
+        name="dashboard/tasks.njk",
         context={
             **employee_context
         }
@@ -591,7 +591,7 @@ async def render_process_tracking_view(
         
     return templates.TemplateResponse(
         request=request, 
-        name="dashboard/process_tracking.html",
+        name="dashboard/process_tracking.njk",
         context={
             "user_role": current_user.role.name,
             "user_name": f"{current_user.first_name} {current_user.last_name}",

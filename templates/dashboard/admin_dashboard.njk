@@ -1,7 +1,7 @@
-{% extends "layouts/base.html" %}
+{% extends "layouts/base.njk" %}
 {% set active_page = "dashboard" %}
 {% set dashboard_variant = "executive" %}
 {% block title %}Department KPI Dashboard{% endblock %}
 {% block content %}
-{% include "dashboard/executive_dashboard_content.html" %}
+{% include "dashboard/executive_dashboard_content.njk" %}
 {% endblock %}

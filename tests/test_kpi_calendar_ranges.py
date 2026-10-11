@@ -211,13 +211,13 @@ async def test_dashboard_summary_api_forwards_explicit_calendar_boundaries(monke
 def test_executive_period_picker_uses_existing_periods_and_creation_uses_exclusive_end():
     root = Path(__file__).parents[1]
     dashboard_template = (
-        root / "templates" / "dashboard" / "executive_dashboard_content.html"
+        root / "templates" / "dashboard" / "executive_dashboard_content.njk"
     ).read_text(encoding="utf-8")
     dashboard_script = (
         root / "static" / "js" / "executive-dashboard.js"
     ).read_text(encoding="utf-8")
     period_template = (
-        root / "templates" / "dashboard" / "kpi_periods.html"
+        root / "templates" / "dashboard" / "kpi_periods.njk"
     ).read_text(encoding="utf-8")
 
     assert 'id="dashboardPeriod"' in dashboard_template

@@ -183,7 +183,7 @@ async def test_notifications_choose_role_compatible_layout(monkeypatch):
     monkeypatch.setattr(activity_web, "templates", TemplateStub())
     result = await activity_web.notifications_page(request, db, user)
 
-    assert result["layout_template"] == "layouts/base.html"
+    assert result["layout_template"] == "layouts/base.njk"
     assert result["active_page"] == "notifications"
 
 

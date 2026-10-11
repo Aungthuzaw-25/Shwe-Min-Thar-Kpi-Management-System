@@ -6,7 +6,7 @@ def test_password_change_posts_the_csrf_cookie_in_the_expected_header():
         Path(__file__).resolve().parents[1]
         / "templates"
         / "auth"
-        / "change_password.html"
+        / "change_password.njk"
     ).read_text(encoding="utf-8")
 
     assert ".find((cookie) => cookie.startsWith('csrf_token='))" in template
