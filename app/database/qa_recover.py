@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 CONFIRMATION_TEXT = "RESET QA PASSWORD"
 QA_ACCOUNT_ALLOWLIST = {
-    "qa.superadmin@example.test": "Super Admin",
+    "qa.superadmin@example": "Super Admin",
 }
 
 

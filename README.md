@@ -1,6 +1,6 @@
 # 🚀 Enterprise KPI Management Platform
 
-A highly scalable, secure, and asynchronous Key Performance Indicator (KPI) Management System built with **FastAPI**, **PostgreSQL**, and **Jinja2**. Designed for enterprise-level organizations to track employee performance, manage multi-tier approval workflows, and generate dynamic reports.
+A highly scalable, secure, and asynchronous Key Performance Indicator (KPI) Management System built with **FastAPI**, **PostgreSQL**, and an **Express/Nunjucks** web UI. Designed for enterprise-level organizations to track employee performance, manage multi-tier approval workflows, and generate dynamic reports.
 
 ![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi)
 ![Python](https://img.shields.io/badge/Python-3.11+-blue?style=for-the-badge&logo=python)
@@ -29,7 +29,7 @@ A highly scalable, secure, and asynchronous Key Performance Indicator (KPI) Mana
 
 - Python 3.11 or newer
 - PostgreSQL, Redis, and an S3-compatible object store (MinIO for local use)
-- Node.js 20+ only when building Tailwind CSS outside Docker
+- Node.js 20+ for the Express/Nunjucks UI and Tailwind CSS
 - Docker Engine and the Docker Compose v2 plugin for the isolated QA stack
 - `libmagic` for `python-magic` (for example, `libmagic1` on Debian/Ubuntu)
 
@@ -62,20 +62,21 @@ database, set `DATABASE_SSL_REQUIRED=false`; keep database TLS enabled for
 production.
 
 Build the generated stylesheet, apply migrations, optionally seed a
-development database, then start the server:
+development database, then start the API:
 
 ```powershell
 npx -y tailwindcss@3 -i .\static\css\input.css -o .\static\css\output.css --minify
 python -m alembic upgrade head
 # Optional: only for a disposable local/test database.
 python -m app.database.seed
-python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8001
 ```
 
 The seed command is for a disposable local/test database only. Configure
 `SEED_SUPERADMIN_EMAIL` and `SEED_SUPERADMIN_PASSWORD` before running it.
-The UI is served at `http://127.0.0.1:8000`; the health endpoint is
-`http://127.0.0.1:8000/health`.
+The API health endpoint is `http://127.0.0.1:8001/health`. For the complete
+browser UI with same-origin API, static files, cookies, CSRF, and OAuth, use
+the Docker Compose proxy stack described below.
 
 ### Run tests
 
@@ -132,10 +133,11 @@ docker compose up --build -d
 docker compose ps
 ```
 
-The default `docker-compose.yml` starts the API, a dedicated scheduler,
-Redis, and MinIO. It expects a configured `.env` and a separately managed
-PostgreSQL database; it does not start PostgreSQL. The API is published on
-`127.0.0.1:8000`, while Redis and MinIO are bound to loopback. Follow
+The default `docker-compose.yml` starts the API, Express web UI, Nginx proxy,
+a dedicated scheduler, Redis, and MinIO. It expects a configured `.env` and a
+separately managed PostgreSQL database; it does not start PostgreSQL. The
+single browser origin is `http://127.0.0.1:8000`, with the API reachable only
+through the proxy. Redis and MinIO are bound to loopback. Follow
 [Production deployment](#production-deployment) before using this stack beyond
 a local machine.
 
@@ -190,7 +192,7 @@ different network exposure.
 *   **Backend:** Python 3.11+, FastAPI, Uvicorn
 *   **Database & ORM:** PostgreSQL, SQLAlchemy 2.0 (Async), Alembic
 *   **Storage:** MinIO (S3 Compatible), Boto3
-*   **Frontend:** Jinja2 Templates, Tailwind CSS, Vanilla JS, Chart.js
+*   **Frontend:** Express, Nunjucks templates, Tailwind CSS, Vanilla JS, Chart.js
 *   **Security:** Passlib (Bcrypt), PyJWT, python-magic
 *   **Deployment:** Docker and Docker Compose; terminate public HTTPS at a separately configured reverse proxy or load balancer
 
@@ -216,11 +218,11 @@ kpi-platform/
 │   │   ├── tasks/           # Task Schedulers, Reviews, Evidence
 │   │   └── users/
 │   ├── services/            # Global services (StorageService, DocumentService)
-│   ├── web/                 # FastAPI HTML Template Routers
+│   ├── web/                 # Express UI server and Nunjucks routes
 │   └── main.py              # Application entry point
 ├── migrations/              # Alembic migrations
 ├── static/                  # CSS, JS, Images, PWA Manifest
-├── templates/               # Jinja2 HTML Templates (Layouts, Dashboard, etc.)
+├── templates/               # Nunjucks HTML templates (Layouts, Dashboard, etc.)
 ├── tests/                   # Automated tests
 ├── docker-compose.yml       # Docker orchestration
 ├── Dockerfile               # Backend container build instructions

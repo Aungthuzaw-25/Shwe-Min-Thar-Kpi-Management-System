@@ -1,7 +1,8 @@
 # Template conversion report
 
 - Converted 29 templates in place, preserving directory and base names.
-- Changes inside Jinja delimiters are limited to path extensions, `.get()`, `.strftime()`, and the `[:1]` slice conversions listed above.
+- Mechanical changes inside Jinja delimiters cover path extensions, `.get()`, `.strftime()`, and the `[:1]` slice conversions listed above.
+- Manual Nunjucks compatibility changes in `templates/dashboard/profile.njk`: Python tuple pairs became nested array pairs, and `permission_map.items()` became `permission_map|items`. The latter uses a dedicated filter registered in the Node web server.
 - Verified text outside template delimiters remains byte-for-byte unchanged.
 - Updated 8 route, test, or Tailwind configuration files.
 

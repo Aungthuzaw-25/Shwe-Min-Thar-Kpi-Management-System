@@ -3,8 +3,8 @@ import os
 import pytest
 from playwright.sync_api import sync_playwright
 
-BASE_URL = "http://localhost:8000"
-SUPERADMIN_EMAIL = os.getenv("UI_TEST_SUPERADMIN_EMAIL", "superadmin@kpi.com")
+BASE_URL = os.getenv("UI_BASE_URL", "http://127.0.0.1:18000")
+SUPERADMIN_EMAIL = os.getenv("UI_TEST_SUPERADMIN_EMAIL", "qa.superadmin@example")
 
 
 def required_ui_password(name):
@@ -25,7 +25,7 @@ def playwright_context():
 
 
 def login(page, email, password):
-    page.goto(f"{BASE_URL}/auth/login")
+    page.goto(f"{BASE_URL}/auth/login", wait_until="domcontentloaded")
     page.fill("#email", email)
     page.fill("#password", password)
     page.click('button[type="submit"]')
@@ -57,7 +57,7 @@ def test_l2_user_dashboard_flow(playwright_context):
     page = playwright_context.new_page()
     login(
         page,
-        os.getenv("UI_TEST_L2_EMAIL", "cashier.mdy@kpi.com"),
+        os.getenv("UI_TEST_L2_EMAIL", "qa.l2@example.test"),
         required_ui_password("UI_TEST_L2_PASSWORD"),
     )
     page.wait_for_selector("#currentScore", timeout=60000)
@@ -73,7 +73,7 @@ def test_l0_user_dashboard_flow(playwright_context):
     page = playwright_context.new_page()
     login(
         page,
-        os.getenv("UI_TEST_L0_EMAIL", "finance.l0@kpi.com"),
+        os.getenv("UI_TEST_L0_EMAIL", "qa.l0@example.test"),
         required_ui_password("UI_TEST_L0_PASSWORD"),
     )
     page.wait_for_selector("#currentScore", timeout=60000)
@@ -85,7 +85,7 @@ def test_l1_user_dashboard_flow(playwright_context):
     page = playwright_context.new_page()
     login(
         page,
-        os.getenv("UI_TEST_L1_EMAIL", "finance.l1@kpi.com"),
+        os.getenv("UI_TEST_L1_EMAIL", "qa.l1@example.test"),
         required_ui_password("UI_TEST_L1_PASSWORD"),
     )
     page.wait_for_selector("#currentScore", timeout=60000)

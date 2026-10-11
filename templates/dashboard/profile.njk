@@ -49,7 +49,7 @@
       <h2 class="font-black text-slate-900 text-lg mb-4">Permission Summary</h2>
       <p class="text-xs text-slate-500 mb-3">Effective permissions for your current role, level, and overrides.</p>
       <div class="space-y-2 max-h-64 overflow-y-auto">
-        {% for code, allowed in permission_map.items() %}
+        {% for code, allowed in permission_map|items %}
         <div class="flex items-center justify-between text-sm">
           <span class="text-slate-600">{{ code }}</span>
           {% if allowed %}<span class="text-emerald-600 font-bold">Allowed</span>{% else %}<span class="text-slate-400 font-bold">Not available</span>{% endif %}
@@ -65,7 +65,7 @@
         <p class="text-xs text-slate-500 mt-1">Use only provider accounts explicitly connected to this internal user account.</p>
       </div>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {% for provider, label in [('google', 'Google'), ('microsoft', 'Microsoft')] %}
+        {% for provider, label in [['google', 'Google'], ['microsoft', 'Microsoft']] %}
         {% set account = connected_accounts[provider] %}
         <div class="rounded-2xl border border-slate-200 p-4 flex items-center justify-between gap-4">
           <div class="min-w-0">

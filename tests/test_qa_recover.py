@@ -78,7 +78,7 @@ def _settings(**overrides):
     return SimpleNamespace(**values)
 
 
-def _target(*, email="qa.superadmin@example.test", role="Super Admin", deleted=False):
+def _target(*, email="qa.superadmin@example", role="Super Admin", deleted=False):
     return SimpleNamespace(
         id=uuid4(),
         email=email,
@@ -94,8 +94,8 @@ def _target(*, email="qa.superadmin@example.test", role="Super Admin", deleted=F
 
 def test_qa_environment_is_accepted():
     assert qa_recover.validate_recovery_target(
-        "qa.superadmin@example.test", _settings()
-    ) == ("qa.superadmin@example.test", "Super Admin")
+        "qa.superadmin@example", _settings()
+    ) == ("qa.superadmin@example", "Super Admin")
 
 
 @pytest.mark.parametrize(
@@ -109,7 +109,7 @@ def test_qa_environment_is_accepted():
 def test_non_qa_or_wrong_database_is_rejected(configuration):
     with pytest.raises(RuntimeError):
         qa_recover.validate_recovery_target(
-            "qa.superadmin@example.test", configuration
+            "qa.superadmin@example", configuration
         )
 
 
@@ -126,7 +126,7 @@ async def test_missing_target_account_is_rejected(monkeypatch):
     monkeypatch.setattr(qa_recover, "get_password_policy", _password_policy)
     with pytest.raises(qa_recover.RecoveryFailure, match="TARGET_ACCOUNT_NOT_FOUND"):
         await qa_recover.recover_qa_password(
-            "qa.superadmin@example.test",
+            "qa.superadmin@example",
             "StrongPassword123!",
             qa_recover.CONFIRMATION_TEXT,
             session_factory=lambda: db,
@@ -140,7 +140,7 @@ async def test_deleted_target_account_is_rejected(monkeypatch):
     monkeypatch.setattr(qa_recover, "get_password_policy", _password_policy)
     with pytest.raises(qa_recover.RecoveryFailure, match="TARGET_VALIDATION_FAILED"):
         await qa_recover.recover_qa_password(
-            "qa.superadmin@example.test",
+            "qa.superadmin@example",
             "StrongPassword123!",
             qa_recover.CONFIRMATION_TEXT,
             session_factory=lambda: db,
@@ -154,7 +154,7 @@ async def test_wrong_role_is_rejected(monkeypatch):
     monkeypatch.setattr(qa_recover, "get_password_policy", _password_policy)
     with pytest.raises(qa_recover.RecoveryFailure, match="ROLE_VALIDATION_FAILED"):
         await qa_recover.recover_qa_password(
-            "qa.superadmin@example.test",
+            "qa.superadmin@example",
             "StrongPassword123!",
             qa_recover.CONFIRMATION_TEXT,
             session_factory=lambda: db,
@@ -169,7 +169,7 @@ async def test_weak_password_is_rejected_before_mutation(monkeypatch):
     monkeypatch.setattr(qa_recover, "get_password_policy", _password_policy)
     with pytest.raises(qa_recover.RecoveryFailure, match="PASSWORD_POLICY_FAILED"):
         await qa_recover.recover_qa_password(
-            "qa.superadmin@example.test",
+            "qa.superadmin@example",
             "weak",
             qa_recover.CONFIRMATION_TEXT,
             session_factory=lambda: db,
@@ -186,7 +186,7 @@ async def test_missing_confirmation_is_rejected_before_session_open():
 
     with pytest.raises(qa_recover.RecoveryFailure, match="CONFIRMATION_FAILED"):
         await qa_recover.recover_qa_password(
-            "qa.superadmin@example.test",
+            "qa.superadmin@example",
             "StrongPassword123!",
             None,
             session_factory=session_factory,
@@ -213,7 +213,7 @@ async def test_valid_qa_reset_changes_only_target_password_state(monkeypatch, ca
     monkeypatch.setattr(qa_recover, "get_password_hash", lambda password: "new-test-hash")
 
     await qa_recover.recover_qa_password(
-        "qa.superadmin@example.test",
+        "qa.superadmin@example",
         "StrongPassword123!",
         qa_recover.CONFIRMATION_TEXT,
         session_factory=lambda: db,
@@ -253,7 +253,7 @@ async def test_operator_confirmation_is_requested_after_account_validation(monke
         return qa_recover.CONFIRMATION_TEXT
 
     await qa_recover.recover_qa_password(
-        "qa.superadmin@example.test",
+        "qa.superadmin@example",
         "StrongPassword123!",
         None,
         confirm=confirm,
@@ -272,7 +272,7 @@ async def test_wrong_role_name_on_loaded_target_is_rejected(monkeypatch):
     monkeypatch.setattr(qa_recover, "get_password_policy", _password_policy)
     with pytest.raises(qa_recover.RecoveryFailure, match="ROLE_VALIDATION_FAILED"):
         await qa_recover.recover_qa_password(
-            "qa.superadmin@example.test",
+            "qa.superadmin@example",
             "StrongPassword123!",
             qa_recover.CONFIRMATION_TEXT,
             session_factory=lambda: db,
@@ -290,7 +290,7 @@ async def test_target_query_reads_role_without_lazy_relationship(monkeypatch):
     monkeypatch.setattr(qa_recover, "get_password_hash", lambda _password: "new-test-hash")
 
     await qa_recover.recover_qa_password(
-        "qa.superadmin@example.test",
+        "qa.superadmin@example",
         "StrongPassword123!",
         qa_recover.CONFIRMATION_TEXT,
         session_factory=lambda: db,
@@ -315,7 +315,7 @@ async def test_password_history_failure_is_categorized(monkeypatch):
         qa_recover.RecoveryFailure, match="PASSWORD_HISTORY_CHECK_FAILED"
     ):
         await qa_recover.recover_qa_password(
-            "qa.superadmin@example.test",
+            "qa.superadmin@example",
             "StrongPassword123!",
             qa_recover.CONFIRMATION_TEXT,
             session_factory=lambda: db,
@@ -328,7 +328,7 @@ def test_unexpected_cli_failure_is_safely_categorized(monkeypatch, caplog):
         raise ValueError("plaintext password and password hash")
 
     monkeypatch.setattr(qa_recover, "_run_interactive", fail_recovery)
-    monkeypatch.setattr("sys.argv", ["qa_recover", "--email", "qa.superadmin@example.test"])
+    monkeypatch.setattr("sys.argv", ["qa_recover", "--email", "qa.superadmin@example"])
 
     assert qa_recover.main() == 1
     assert "QA_RECOVERY_ERROR=UNEXPECTED_RECOVERY_ERROR" in caplog.text
@@ -347,7 +347,7 @@ async def test_unexpected_recovery_exception_is_safely_categorized(monkeypatch):
         qa_recover.RecoveryFailure, match="UNEXPECTED_RECOVERY_ERROR"
     ):
         await qa_recover.recover_qa_password(
-            "qa.superadmin@example.test",
+            "qa.superadmin@example",
             "StrongPassword123!",
             qa_recover.CONFIRMATION_TEXT,
             session_factory=_BrokenSessionFactory(),

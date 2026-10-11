@@ -21,23 +21,25 @@ from app.modules.kpi.models import (
     FormulaScope,
     FormulaStatus,
     KPIAssignment,
+    KpiCategory,
     KPIFormula,
     KPIPeriod,
     KPIPeriodStatus,
-    KpiCategory,
     KpiRule,
     KPIScoringRuleItem,
 )
-from app.modules.users.models import Permission, Position, Role, User
+from app.modules.users.models import Permission, Position, User
 
 QA_DEPARTMENT = "QA Finance Department"
 QA_PERIOD = "QA September 2026"
 QA_PERIOD_START = datetime(2026, 9, 1, tzinfo=UTC)
 QA_PERIOD_END = datetime(2026, 9, 30, 23, 59, 59, tzinfo=UTC)
 TIMELINESS = "အချိန်မှီမတင်ပြခြင်း"
+QA_SUPERADMIN_EMAIL = "qa.superadmin@example"
+LEGACY_QA_SUPERADMIN_EMAIL = "qa.superadmin@example.test"
 
 QA_USERS = {
-    "qa.superadmin@example.test": ("Super Admin", None, "QA HOD Position", "L0"),
+    QA_SUPERADMIN_EMAIL: ("Super Admin", None, "QA HOD Position", "L0"),
     "qa.admin@example.test": ("Admin", None, "QA HOD Position", "L0"),
     "qa.hr@example.test": ("HR", None, "QA HOD Position", "L0"),
     "qa.l0@example.test": ("Department User", "L0", "QA HOD Position", "L0"),
@@ -102,23 +104,40 @@ async def seed_qa() -> dict[str, int]:
             )
 
         users = {}
-        for email, (role_name, level, position_name, membership_level) in QA_USERS.items():
-            user = await _get_or_create(
-                db,
-                User,
-                {"email": email},
-                {
-                    "first_name": email.split(".")[1].split("@")[0].title(),
-                    "last_name": "QA",
-                    "hashed_password": get_password_hash(_password_for(email)),
-                    "local_password_enabled": True,
-                    "role_id": roles[role_name].id,
-                    "position_id": positions[position_name].id,
-                    "is_active": True,
-                    "is_locked": False,
-                    "must_change_password": False,
-                },
-            )
+        for email, (role_name, _level, position_name, membership_level) in QA_USERS.items():
+            user = (
+                await db.execute(select(User).where(User.email == email))
+            ).scalar_one_or_none()
+            if user is None and email == QA_SUPERADMIN_EMAIL:
+                user = (
+                    await db.execute(
+                        select(User).where(
+                            User.email == LEGACY_QA_SUPERADMIN_EMAIL
+                        )
+                    )
+                ).scalar_one_or_none(                )
+                if user is not None:
+                    user.email = email
+
+            if user is None:
+                user = await _get_or_create(
+                    db,
+                    User,
+                    {"email": email},
+                    {
+                        "first_name": email.split(".")[1].split("@")[0].title(),
+                        "last_name": "QA",
+                        "hashed_password": get_password_hash(_password_for(email)),
+                        "local_password_enabled": True,
+                        "role_id": roles[role_name].id,
+                        "position_id": positions[position_name].id,
+                        "is_active": True,
+                        "is_locked": False,
+                        "must_change_password": False,
+                    },
+                )
+            user.hashed_password = get_password_hash(_password_for(email))
+            user.local_password_enabled = True
             user.role_id = roles[role_name].id
             user.position_id = positions[position_name].id
             user.is_active = True
@@ -185,7 +204,7 @@ async def seed_qa() -> dict[str, int]:
                     "status": FormulaStatus.ACTIVE,
                     "version": 1,
                     "effective_month": "2026-09",
-                    "created_by_id": users["qa.superadmin@example.test"].id,
+                    "created_by_id": users[QA_SUPERADMIN_EMAIL].id,
                 },
             )
             formula.categories = category_payload
@@ -218,7 +237,7 @@ async def seed_qa() -> dict[str, int]:
                 {
                     "department_id": department.id,
                     "position_id": positions[position_name].id,
-                    "assigned_by_id": users["qa.superadmin@example.test"].id,
+                    "assigned_by_id": users[QA_SUPERADMIN_EMAIL].id,
                     "assigned_at": QA_PERIOD_START,
                 },
             )

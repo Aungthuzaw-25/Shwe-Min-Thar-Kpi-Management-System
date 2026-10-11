@@ -162,6 +162,36 @@ async def get_current_user_context(db: AsyncSession = Depends(get_db), current_u
         "kpi_level": user_level,
     }
 
+
+@router.get("/me/accounts")
+async def get_current_user_accounts(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    rows = (
+        await db.execute(
+            select(OAuthAccount)
+            .where(
+                OAuthAccount.user_id == current_user.id,
+                OAuthAccount.revoked_at.is_(None),
+            )
+            .order_by(OAuthAccount.provider)
+        )
+    ).scalars().all()
+    return {
+        "user_email": current_user.email,
+        "local_password_enabled": bool(current_user.local_password_enabled),
+        "created_at": current_user.created_at,
+        "connected_accounts": {
+            row.provider: {
+                "email": row.provider_email,
+                "connected_at": row.linked_at or row.created_at,
+            }
+            for row in rows
+        },
+    }
+
+
 # ==============================================================================
 # 🌟 ORIGINAL JSON LOGIN API (Frontend အတွက်)
 # ==============================================================================

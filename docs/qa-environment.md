@@ -32,11 +32,12 @@ docker volume create kpi_management_system_minio_qa_data
 docker compose --env-file .env.qa -f docker-compose.qa.yml config
 docker compose --env-file .env.qa -f docker-compose.qa.yml up -d postgres-qa redis-qa minio-qa
 docker compose --env-file .env.qa -f docker-compose.qa.yml run --rm --entrypoint python api-qa -m alembic upgrade head
-docker compose --env-file .env.qa -f docker-compose.qa.yml up -d api-qa scheduler-qa
+docker compose --env-file .env.qa -f docker-compose.qa.yml up -d api-qa web-qa proxy-qa scheduler-qa
 ```
 
-The API is available at `http://127.0.0.1:18000`. The QA PostgreSQL,
-Redis, and MinIO services are exposed on ports `55432`, `16379`, and `19000`
+The application UI and API are available through the same-origin proxy at
+`http://127.0.0.1:18000`; the API is no longer published directly. The QA PostgreSQL,
+Redis, and MinIO services are exposed on ports `55472`, `16379`, and `19000`
 only for local diagnostics.
 
 ## Seed the controlled QA dataset
@@ -53,14 +54,15 @@ docker compose --env-file .env.qa -f docker-compose.qa.yml exec -T api-qa `
 ```
 
 The seed is idempotent: running it again reuses the stable QA names and email
-addresses. It fails closed unless `ENV=qa`, the host is `postgres-qa`, and the
-database is `kpi_qa`.
+addresses and resets every seeded QA user's local password to the current
+`QA_SEED_PASSWORD`. It fails closed unless `ENV=qa`, the host is `postgres-qa`,
+and the database is `kpi_qa`.
 
 ## Recover the allowlisted QA Super Admin
 
 If the existing QA Super Admin password is unknown, use the separate
 interactive recovery command. It is allowlisted only for
-`qa.superadmin@example.test` and refuses to run unless `ENV=qa` and the
+`qa.superadmin@example` and refuses to run unless `ENV=qa` and the
 configured database URL targets `postgres-qa:5432/kpi_qa`. It validates the
 new password against the application policy, requires the exact confirmation
 `RESET QA PASSWORD`, records password history, and revokes the account's
@@ -74,7 +76,7 @@ do not rebuild from a dirty worktree:
 ```powershell
 docker cp .\app\database\qa_recover.py kpi_api_qa:/code/app/database/qa_recover.py
 docker exec -it kpi_api_qa `
-  python -m app.database.qa_recover --email qa.superadmin@example.test
+  python -m app.database.qa_recover --email qa.superadmin@example
 ```
 
 The command prompts for the new password twice without echoing it, then
@@ -87,7 +89,7 @@ accounts. Do not run it through the default Compose project.
 ```powershell
 docker compose --env-file .env.qa -f docker-compose.qa.yml ps
 Invoke-WebRequest http://127.0.0.1:18000/health
-docker compose --env-file .env.qa -f docker-compose.qa.yml logs api-qa scheduler-qa
+docker compose --env-file .env.qa -f docker-compose.qa.yml logs api-qa web-qa proxy-qa scheduler-qa
 docker compose --env-file .env.qa -f docker-compose.qa.yml down
 ```
 

@@ -10,7 +10,7 @@ services:
       POSTGRES_USER: ${QA_POSTGRES_USER:-kpi_qa}
       POSTGRES_PASSWORD: ${QA_POSTGRES_PASSWORD:?QA_POSTGRES_PASSWORD must be set}
     ports:
-      - "127.0.0.1:55432:5432"
+      - "127.0.0.1:55472:5432"
     volumes:
       - postgres_qa_data:/var/lib/postgresql/data
     healthcheck:
@@ -35,8 +35,6 @@ services:
       PORT: 8000
       ENABLE_SCHEDULER: "true"
       RUN_SCHEDULER: "false"
-    ports:
-      - "127.0.0.1:18000:8000"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
       interval: 30s
@@ -49,6 +47,36 @@ services:
       redis-qa:
         condition: service_healthy
       minio-qa:
+        condition: service_healthy
+
+  web-qa:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    container_name: kpi_web_qa
+    restart: "no"
+    environment:
+      PORT: 3000
+      ENV: qa
+      API_BASE_URL: http://api-qa:8000
+      S3_ENDPOINT: http://minio-qa:9000
+      TIMEZONE: ${TIMEZONE:-Asia/Yangon}
+    depends_on:
+      api-qa:
+        condition: service_healthy
+
+  proxy-qa:
+    image: nginx:1.27-alpine
+    container_name: kpi_proxy_qa
+    restart: "no"
+    ports:
+      - "127.0.0.1:18000:80"
+    volumes:
+      - ./proxy/qa.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      api-qa:
+        condition: service_healthy
+      web-qa:
         condition: service_healthy
 
   scheduler-qa:
