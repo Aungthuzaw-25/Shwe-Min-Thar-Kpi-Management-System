@@ -5,8 +5,8 @@ from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from jwt import PyJWTError as JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
-from sqlalchemy.orm import selectinload
+from sqlalchemy import exists, select
+from sqlalchemy.orm import joinedload
 
 from app.core import security
 from app.core.exceptions import PermissionDeniedException
@@ -214,45 +214,63 @@ async def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token expired or invalid."
         )
-    # Decode အောင်မြင်မှသာ Blacklist ဝင်နေသလား စစ်ဆေးမည်
-    is_blacklisted = await db.execute(
-        select(TokenBlacklist).where(
+    now = datetime.now(UTC).replace(tzinfo=None)
+    blacklist_exists = exists(
+        select(TokenBlacklist.id).where(
             TokenBlacklist.token_hash == security.token_digest(token)
         )
     )
-    if is_blacklisted.scalars().first():
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, 
-            detail="Token has been revoked. Please log in again."
-        )
-
-    session_result = await db.execute(
-        select(AuthSession).where(
+    session_exists = exists(
+        select(AuthSession.id).where(
             AuthSession.id == session_id,
             AuthSession.user_id == session_user_id,
             AuthSession.revoked_at.is_(None),
-            AuthSession.expires_at > datetime.now(UTC).replace(tzinfo=None),
+            AuthSession.expires_at > now,
         )
     )
-    if session_result.scalars().first() is None:
+    stmt = (
+        select(
+            User,
+            blacklist_exists.label("token_blacklisted"),
+            session_exists.label("session_valid"),
+        )
+        .options(
+            joinedload(User.role).joinedload(Role.permissions),
+            joinedload(User.permission_overrides).joinedload(
+                UserPermissionOverride.permission
+            ),
+            joinedload(User.user_departments),
+        )
+        .where(User.email == email)
+    )
+    result = await db.execute(stmt)
+    row = result.unique().one_or_none()
+
+    if row is None:
+        # Keep the established error precedence when the subject does not
+        # resolve to a user: blacklist, then session, then account lookup.
+        state_result = await db.execute(
+            select(
+                blacklist_exists.label("token_blacklisted"),
+                session_exists.label("session_valid"),
+            )
+        )
+        is_blacklisted, valid_session = state_result.one()
+        user = None
+    else:
+        user, is_blacklisted, valid_session = row
+
+    if is_blacklisted:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has been revoked. Please log in again.",
+        )
+    if not valid_session:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Session has been revoked or expired.",
         )
-    # 🌟 PERFORMANCE FIX (DBA): User ကို ဆွဲထုတ်စဉ် Role နှင့် ၎င်း၏ Permissions များကို 
-    # တစ်ပါတည်း (Eager Load) ဆွဲထုတ်ထားခြင်းဖြင့် RequirePermission တွင် DB ထပ်ခေါ်စရာ မလိုတော့ပါ။
-    stmt = select(User).options(
-        selectinload(User.role).selectinload(Role.permissions),
-        selectinload(User.permission_overrides).selectinload(UserPermissionOverride.permission),
-        selectinload(User.user_departments),
-    ).where(
-        User.email == email, 
-        User.is_deleted == False
-    )
-    result = await db.execute(stmt)
-    user = result.scalars().first()
-    
-    if not user or not user.is_active:
+    if not user or user.is_deleted or not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, 
             detail="User not found or account disabled."
