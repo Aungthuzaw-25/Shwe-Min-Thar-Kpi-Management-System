@@ -250,11 +250,11 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             storage_origins += " http://localhost:9000 http://minio:9000"
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
-            f"script-src 'self' 'nonce-{csp_nonce}' https://cdn.jsdelivr.net; "
+            f"script-src 'self' 'nonce-{csp_nonce}'; "
             f"style-src 'self' 'nonce-{csp_nonce}' https://fonts.googleapis.com; "
             "font-src 'self' https://fonts.gstatic.com; "
             f"img-src 'self' data: blob:{storage_origins}; "
-            f"connect-src 'self' https://cdn.jsdelivr.net{storage_origins}; "
+            f"connect-src 'self'{storage_origins}; "
             "frame-ancestors 'none';"
         )
         return response

@@ -74,11 +74,11 @@ describe("Express pages and CSP middleware", () => {
     expect(nonce).toBeTruthy();
     expect(response.headers["content-security-policy"]).toBe([
       "default-src 'self';",
-      `script-src 'self' 'nonce-${nonce}' https://cdn.jsdelivr.net;`,
+      `script-src 'self' 'nonce-${nonce}';`,
       `style-src 'self' 'nonce-${nonce}' https://fonts.googleapis.com;`,
       "font-src 'self' https://fonts.gstatic.com;",
       "img-src 'self' data: blob: https://storage.example:9443 http://localhost:9000 http://minio:9000;",
-      "connect-src 'self' https://cdn.jsdelivr.net https://storage.example:9443 http://localhost:9000 http://minio:9000;",
+      "connect-src 'self' https://storage.example:9443 http://localhost:9000 http://minio:9000;",
       "frame-ancestors 'none';",
     ].join(" "));
     expect(response.text).toContain(`<script nonce="${nonce}"`);

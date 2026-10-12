@@ -30,7 +30,9 @@
     <link rel="stylesheet" href="/static/css/enterprise-ui.css">
     <link rel="stylesheet" href="/static/css/executive-dashboard.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    {% if dashboard_variant == "executive" %}
+    <script src="/static/vendor/chart.umd.min.js" defer></script>
+    {% endif %}
     <script src="/static/js/csp-event-bridge.js"></script>
     <script src="/static/js/csrf.js"></script>
     
