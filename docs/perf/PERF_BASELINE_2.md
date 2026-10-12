@@ -208,6 +208,72 @@ migration requires approval.
    endpoint cohort, but this does not prove absence of N+1 behavior at larger
    production volumes.
 
-No backend optimization, cache, or migration was applied. Backend fixes beyond
-the safe Chart.js asset change remain gated on more representative repeated
-page captures and approval for migrations/caches.
+The initial populated baseline did not apply a backend optimization, cache,
+or migration. A separate injected-database-latency follow-up below now
+documents one safe authentication query consolidation. No cache or migration
+was added.
+
+## Injected database-latency follow-up
+
+After the baseline capture, an isolated Toxiproxy path added 50 ms in each
+direction between the API and the disposable PostgreSQL container (about
+100 ms RTT). The 3x fixture was used. This deliberately models cross-region
+database latency; it is not evidence of Railway's actual region or RTT.
+Measurements below are application timing headers from the temporary
+instrumentation. `p95` is nearest-rank and the first comparison uses five
+samples on each side.
+
+| Endpoint | Before p50 / p95 ms | After p50 / p95 ms | SQL statements before → after |
+|---|---:|---:|---:|
+| `GET /api/v1/auth/me` | 2,053 / 3,287 | 1,508 / 2,105 | 13 → 7 |
+| `GET /api/v1/dashboard/executive/overview` | 3,122 / 5,288 | 2,521 / 4,614 | 15 → 9 |
+| `GET /api/v1/dashboard/summary?period_type=MONTHLY` | 3,245 / 5,627 | 4,862 / 5,124 | 23 → 17 |
+| `GET /api/v1/users/super-admins` | 2,014 / 2,156 | 1,407 / 2,940 | 13 → 7 |
+
+The five-sample dashboard-summary p50 regressed and prompted a second
+post-change run rather than accepting the initial result. With 15 after
+samples, summary p50 was 2,596 ms with 17 SQL statements each; executive
+overview p50 was 1,674 ms with 9 statements each; and `/auth/me` p50 was
+1,330 ms with 7 statements each. The comparison baseline has five observations,
+so the 15-sample post-change p95 values are not directly comparable. The
+additional observations support a repeated median improvement but do not
+establish production latency or the stated <=300 ms target under 100 ms RTT.
+
+The request-level SQL count includes both `get_current_user` and endpoint
+work. The authentication dependency itself now performs one SQL statement on
+the valid-user path (down from separate blacklist, session, user, and eager
+relationship queries). Missing users still use a second state-check query to
+preserve the existing blacklist/session/account error precedence. Immediate
+blacklist, session-revocation/expiry, deleted/inactive-user, locked-account,
+role-permission, override, and department behavior is preserved. No
+authentication cache or schema change was introduced.
+
+For the Super Admin management page, five cold Fast 4G navigations at 170 ms
+browser RTT, 9 Mbps down / 1.5 Mbps up, and 1x CPU measured median LCP
+3,380 → 3,040 ms, FCP 2,848 → 2,096 ms, and table-data-visible
+4,806 → 3,724 ms. Median request count was 15 in both runs; encoded transfer
+was 140,366 → 142,585 bytes. One after observation had a 21.8 s LCP/data
+outlier, so the p50 improvement does not imply a better tail. A separate
+warm-cache/4x-CPU run is not directly comparable and is retained only as raw
+diagnostic data.
+
+Canonical JSON SHA-256 hashes and top-level response shapes matched for all
+five before/after observations of `/auth/me`, executive overview, monthly
+summary, and the Super Admin list. All tested calls returned HTTP 200. The
+focused auth/permission regression suite passed 46 tests. These checks do
+not replace the unrun full write-workflow suite.
+
+Selected raw evidence:
+
+- [Before endpoint samples](./production-condition-endpoints-db-rtt.json)
+- [After five-sample endpoint comparison](./production-condition-auth-consolidated-db-rtt.json)
+- [After 15-sample endpoint follow-up](./production-condition-auth-consolidated-db-rtt-15samples.json)
+- [Before target-page navigation](./production-condition-fast4g-page-nav-db-rtt.json)
+- [After matched target-page navigation](./production-condition-auth-consolidated-page-nav-matched-db-rtt.json)
+- [After endpoint summary](./production-condition-auth-consolidated-db-rtt-15samples-summary.json)
+- [Warm-cache/4x-CPU diagnostic navigation](./production-condition-auth-consolidated-page-nav-db-rtt-4x-cpu.json)
+
+The injected-RTT run reproduces multi-second API latency but cannot attribute
+the real Railway report to database RTT. Verify region placement, private
+database connectivity, app sleeping, and actual in-container RTT using the
+[`Railway checklist`](./RAILWAY_CHECKLIST.md).

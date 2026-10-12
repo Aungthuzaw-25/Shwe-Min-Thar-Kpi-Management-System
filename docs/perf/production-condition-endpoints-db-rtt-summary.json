@@ -1,0 +1,590 @@
+[
+  {
+    "path": "/api/v1/auth/me",
+    "statuses": [
+      200,
+      200,
+      200,
+      200,
+      200
+    ],
+    "server_p50_ms": 2053.11,
+    "server_p95_ms": 3287.07,
+    "sql_counts": [
+      13,
+      13,
+      13,
+      13,
+      13
+    ],
+    "pre_ping_counts": [
+      0,
+      1,
+      1,
+      1,
+      1
+    ],
+    "browser_p50_ms": 2089.2999999821186,
+    "body_bytes_p50": 944
+  },
+  {
+    "path": "/api/v1/auth/me/accounts",
+    "statuses": [
+      200,
+      200,
+      200,
+      200,
+      200
+    ],
+    "server_p50_ms": 1434.75,
+    "server_p95_ms": 1513.14,
+    "sql_counts": [
+      8,
+      8,
+      8,
+      8,
+      8
+    ],
+    "pre_ping_counts": [
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "browser_p50_ms": 1512.1000000238419,
+    "body_bytes_p50": 138
+  },
+  {
+    "path": "/api/v1/dashboard/executive/overview",
+    "statuses": [
+      200,
+      200,
+      200,
+      200,
+      200
+    ],
+    "server_p50_ms": 3122.2,
+    "server_p95_ms": 5287.63,
+    "sql_counts": [
+      15,
+      15,
+      15,
+      15,
+      15
+    ],
+    "pre_ping_counts": [
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "browser_p50_ms": 3138.4000000059605,
+    "body_bytes_p50": 15952
+  },
+  {
+    "path": "/api/v1/dashboard/summary?period_type=MONTHLY",
+    "statuses": [
+      200,
+      200,
+      200,
+      200,
+      200
+    ],
+    "server_p50_ms": 3245.24,
+    "server_p95_ms": 5627.38,
+    "sql_counts": [
+      23,
+      23,
+      23,
+      23,
+      23
+    ],
+    "pre_ping_counts": [
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "browser_p50_ms": 3278.7000000178814,
+    "body_bytes_p50": 6336
+  },
+  {
+    "path": "/api/v1/users/super-admins",
+    "statuses": [
+      200,
+      200,
+      200,
+      200,
+      200
+    ],
+    "server_p50_ms": 2014.07,
+    "server_p95_ms": 2156.12,
+    "sql_counts": [
+      13,
+      13,
+      13,
+      13,
+      13
+    ],
+    "pre_ping_counts": [
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "browser_p50_ms": 2035.5,
+    "body_bytes_p50": 500
+  },
+  {
+    "path": "/api/v1/users/",
+    "statuses": [
+      200,
+      200,
+      200,
+      200,
+      200
+    ],
+    "server_p50_ms": 2932.21,
+    "server_p95_ms": 3127.48,
+    "sql_counts": [
+      14,
+      14,
+      14,
+      14,
+      14
+    ],
+    "pre_ping_counts": [
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "browser_p50_ms": 2945.2000000178814,
+    "body_bytes_p50": 50971
+  },
+  {
+    "path": "/api/v1/users/roles/list",
+    "statuses": [
+      200,
+      200,
+      200,
+      200,
+      200
+    ],
+    "server_p50_ms": 1584.73,
+    "server_p95_ms": 1702.03,
+    "sql_counts": [
+      9,
+      9,
+      9,
+      9,
+      9
+    ],
+    "pre_ping_counts": [
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "browser_p50_ms": 1633.800000011921,
+    "body_bytes_p50": 258
+  },
+  {
+    "path": "/api/v1/departments/",
+    "statuses": [
+      200,
+      200,
+      200,
+      200,
+      200
+    ],
+    "server_p50_ms": 1524.78,
+    "server_p95_ms": 1565.26,
+    "sql_counts": [
+      8,
+      8,
+      8,
+      8,
+      8
+    ],
+    "pre_ping_counts": [
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "browser_p50_ms": 1534.699999988079,
+    "body_bytes_p50": 1219
+  },
+  {
+    "path": "/api/v1/permissions/",
+    "statuses": [
+      200,
+      200,
+      200,
+      200,
+      200
+    ],
+    "server_p50_ms": 1493.66,
+    "server_p95_ms": 1546.7,
+    "sql_counts": [
+      8,
+      8,
+      8,
+      8,
+      8
+    ],
+    "pre_ping_counts": [
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "browser_p50_ms": 1516.9000000059605,
+    "body_bytes_p50": 3834
+  },
+  {
+    "path": "/api/v1/permissions/users",
+    "statuses": [
+      200,
+      200,
+      200,
+      200,
+      200
+    ],
+    "server_p50_ms": 2098.89,
+    "server_p95_ms": 2161.1,
+    "sql_counts": [
+      12,
+      12,
+      12,
+      12,
+      12
+    ],
+    "pre_ping_counts": [
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "browser_p50_ms": 2125.5,
+    "body_bytes_p50": 51698
+  },
+  {
+    "path": "/api/v1/tasks",
+    "statuses": [
+      200,
+      200,
+      200,
+      200,
+      200
+    ],
+    "server_p50_ms": 3152.15,
+    "server_p95_ms": 3399.95,
+    "sql_counts": [
+      12,
+      12,
+      12,
+      12,
+      12
+    ],
+    "pre_ping_counts": [
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "browser_p50_ms": 3171.9000000059605,
+    "body_bytes_p50": 49192
+  },
+  {
+    "path": "/api/v1/tasks/approval-queue",
+    "statuses": [
+      200,
+      200,
+      200,
+      200,
+      200
+    ],
+    "server_p50_ms": 1505.29,
+    "server_p95_ms": 1547.17,
+    "sql_counts": [
+      8,
+      8,
+      8,
+      8,
+      8
+    ],
+    "pre_ping_counts": [
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "browser_p50_ms": 1542,
+    "body_bytes_p50": 2
+  },
+  {
+    "path": "/api/v1/tasks/categories/available",
+    "statuses": [
+      200,
+      200,
+      200,
+      200,
+      200
+    ],
+    "server_p50_ms": 2832.54,
+    "server_p95_ms": 2993.52,
+    "sql_counts": [
+      11,
+      11,
+      11,
+      11,
+      11
+    ],
+    "pre_ping_counts": [
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "browser_p50_ms": 2843.9000000059605,
+    "body_bytes_p50": 267
+  },
+  {
+    "path": "/api/v1/kpi/periods/",
+    "statuses": [
+      200,
+      200,
+      200,
+      200,
+      200
+    ],
+    "server_p50_ms": 1473.4,
+    "server_p95_ms": 1517.52,
+    "sql_counts": [
+      8,
+      8,
+      8,
+      8,
+      8
+    ],
+    "pre_ping_counts": [
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "browser_p50_ms": 1488.9000000059605,
+    "body_bytes_p50": 2595
+  },
+  {
+    "path": "/api/v1/kpi/formulas",
+    "statuses": [
+      200,
+      200,
+      200,
+      200,
+      200
+    ],
+    "server_p50_ms": 1721.74,
+    "server_p95_ms": 1742.85,
+    "sql_counts": [
+      9,
+      9,
+      9,
+      9,
+      9
+    ],
+    "pre_ping_counts": [
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "browser_p50_ms": 1752.5,
+    "body_bytes_p50": 33901
+  },
+  {
+    "path": "/api/v1/notifications",
+    "statuses": [
+      200,
+      200,
+      200,
+      200,
+      200
+    ],
+    "server_p50_ms": 1433.82,
+    "server_p95_ms": 1459.84,
+    "sql_counts": [
+      8,
+      8,
+      8,
+      8,
+      8
+    ],
+    "pre_ping_counts": [
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "browser_p50_ms": 1463.699999988079,
+    "body_bytes_p50": 13993
+  },
+  {
+    "path": "/api/v1/notifications/unread-count",
+    "statuses": [
+      200,
+      200,
+      200,
+      200,
+      200
+    ],
+    "server_p50_ms": 1400.19,
+    "server_p95_ms": 1414.38,
+    "sql_counts": [
+      8,
+      8,
+      8,
+      8,
+      8
+    ],
+    "pre_ping_counts": [
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "browser_p50_ms": 1418,
+    "body_bytes_p50": 11
+  },
+  {
+    "path": "/api/v1/system/settings",
+    "statuses": [
+      200,
+      200,
+      200,
+      200,
+      200
+    ],
+    "server_p50_ms": 1550.16,
+    "server_p95_ms": 1652.22,
+    "sql_counts": [
+      8,
+      8,
+      8,
+      8,
+      8
+    ],
+    "pre_ping_counts": [
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "browser_p50_ms": 1578.7000000178814,
+    "body_bytes_p50": 342
+  },
+  {
+    "path": "/api/v1/system/settings/email/providers",
+    "statuses": [
+      200,
+      200,
+      200,
+      200,
+      200
+    ],
+    "server_p50_ms": 1469.24,
+    "server_p95_ms": 1547.63,
+    "sql_counts": [
+      8,
+      8,
+      8,
+      8,
+      8
+    ],
+    "pre_ping_counts": [
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "browser_p50_ms": 1500.2000000178814,
+    "body_bytes_p50": 947
+  },
+  {
+    "path": "/api/v1/targets/",
+    "statuses": [
+      200,
+      200,
+      200,
+      200,
+      200
+    ],
+    "server_p50_ms": 2136.34,
+    "server_p95_ms": 2231.0,
+    "sql_counts": [
+      8,
+      8,
+      8,
+      8,
+      8
+    ],
+    "pre_ping_counts": [
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "browser_p50_ms": 2159.2999999821186,
+    "body_bytes_p50": 2
+  },
+  {
+    "path": "/api/v1/positions/",
+    "statuses": [
+      405,
+      405,
+      405,
+      405,
+      405
+    ],
+    "server_p50_ms": 3.63,
+    "server_p95_ms": 3.81,
+    "sql_counts": [
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "pre_ping_counts": [
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "browser_p50_ms": 14.799999982118607,
+    "body_bytes_p50": 31
+  }
+]

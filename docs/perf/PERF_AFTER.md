@@ -218,3 +218,49 @@ No Alembic migration or cache was added or proposed. No decision is currently
 needed on migrations or caches. A populated disposable QA database and a full
 authenticated page/workflow matrix are required before making claims about
 scaled performance or declaring all Phase 4 targets complete.
+
+## Delayed-database auth follow-up
+
+This later, separate follow-up used the 3x disposable fixture and an isolated
+Toxiproxy latency of 50 ms in each direction. It did not connect to Railway or
+use production credentials. The prior auth implementation was measured before
+the code change, then the same endpoints were measured after it.
+
+| Endpoint | SQL statements before → after | Five-sample server p50 before → after | Notes |
+|---|---:|---:|---|
+| `GET /api/v1/auth/me` | 13 → 7 | 2,053 → 1,508 ms | 15 after samples later gave 1,330 ms p50 |
+| `GET /api/v1/dashboard/executive/overview` | 15 → 9 | 3,122 → 2,521 ms | 15 after samples later gave 1,674 ms p50 |
+| `GET /api/v1/dashboard/summary?period_type=MONTHLY` | 23 → 17 | 3,245 → 4,862 ms | Five-sample p50 was noisy; 15 after samples gave 2,596 ms |
+| `GET /api/v1/users/super-admins` | 13 → 7 | 2,014 → 1,407 ms | Five samples per side |
+
+`get_current_user` now fetches the user, blacklist state, valid-session state,
+role permissions, permission overrides, and user departments in one SQL
+statement on the valid-user path. For an unresolved subject it performs a
+second state check so the established blacklist → session → account failure
+precedence remains unchanged. No caching, migration/index, permission change,
+pool configuration change, or token/session semantic change was made.
+
+Five before/after populated response hashes and shapes matched for `/auth/me`,
+executive overview, monthly summary, and the Super Admin list; tested status
+codes were all 200. The focused auth, JWT/session, and permission suites passed
+**46 tests**. The complete integration/write workflow suite was not run.
+
+On five cold Fast 4G page navigations for `/superadmin/super-admins`
+(170 ms browser RTT, 9 Mbps down / 1.5 Mbps up, 1x CPU), median LCP changed
+from 3,380 to 3,040 ms, FCP from 2,848 to 2,096 ms, and table-data-visible
+from 4,806 to 3,724 ms. Median request count remained 15; transfer changed
+from 140,366 to 142,585 bytes. One after sample had a 21.8 s outlier. This is
+an improvement in the median, not the tail, and this single page is not a
+five-navigation/all-roles matrix.
+
+### Still outstanding
+
+- The delayed DB profile reproduces multi-second API time only under a
+  deliberately injected ~100 ms RTT. It does not establish that Railway's
+  actual service/database region or public/private URL is the production
+  cause. Use [`RAILWAY_CHECKLIST.md`](./RAILWAY_CHECKLIST.md) to verify that.
+- The <=300 ms API p95 target at <=5 ms DB RTT has not been evaluated.
+- The full per-role/per-page five-navigation matrix, every requested write
+  transaction, and the Playwright write-workflow suite remain unmeasured.
+- No additional broad dashboard redesign or changes to API fetch flows are
+  included in this follow-up.
