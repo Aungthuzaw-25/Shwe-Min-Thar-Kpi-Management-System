@@ -1,0 +1,35 @@
+{
+  "metadata": {
+    "base_url": "http://127.0.0.1:13000",
+    "navigation_samples_per_accessible_page_role_profile": 1,
+    "network_profile": {
+      "download_kbps": 1600,
+      "rtt_ms": 150,
+      "cpu_slowdown": 4
+    },
+    "third_party_blocked": [
+      "https://fonts.googleapis.com/*",
+      "https://fonts.gstatic.com/*",
+      "https://cdn.jsdelivr.net/**"
+    ]
+  },
+  "profiles": {
+    "current_warm": {
+      "superadmin": {
+        "screenshots": 3
+      },
+      "admin": {
+        "screenshots": 3
+      },
+      "l0": {
+        "screenshots": 3
+      },
+      "l1": {
+        "screenshots": 3
+      },
+      "l2": {
+        "screenshots": 3
+      }
+    }
+  }
+}
