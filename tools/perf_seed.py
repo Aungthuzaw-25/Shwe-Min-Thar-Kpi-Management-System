@@ -276,7 +276,7 @@ async def seed(args: argparse.Namespace) -> dict[str, int]:
                 level = LEVELS[index % len(LEVELS)]
                 department = departments[index % len(departments)]
                 position = position_by_department_level[(department.name, level)]
-                email = f"{EMAIL_PREFIX}{index + 1:04d}@perf.test"
+                email = f"{EMAIL_PREFIX}{index + 1:04d}@perf.example.com"
                 user = User(
                     email=email,
                     hashed_password=password_hash,
