@@ -14,7 +14,7 @@ This was a read-only reconciliation of existing evidence. No login, reload, navi
 
 ## Existing evidence reviewed
 
-The prior report, `qa-evidence/phase5h-controlled-auth-verification-20261009.md`, records:
+The prior report, `security-docs/phase5h-controlled-auth-verification-20261009.md`, records:
 
 - The operator reported submitting one authorized login attempt and said login continued normally.
 - The accessible browser snapshot at that time remained on the sign-in page.

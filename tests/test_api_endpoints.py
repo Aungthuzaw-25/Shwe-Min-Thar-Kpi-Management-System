@@ -20,6 +20,9 @@ class FakeResult:
     def scalars(self):
         return self
 
+    def unique(self):
+        return self
+
     def first(self):
         return self.value
 

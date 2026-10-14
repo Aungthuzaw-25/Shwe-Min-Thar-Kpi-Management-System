@@ -61,7 +61,7 @@ Observed result: **8 passed, 1463 warnings in 13.68s**. The warnings were emitte
 - Modified: `templates/auth/change_password.html`
 - Modified: `tests/test_csrf_middleware.py`
 - Added: `tests/test_password_change_csrf.py`
-- Added: `qa-evidence/phase5h-password-change-csrf-fix-20261009.md`
+- Added: `security-docs/phase5h-password-change-csrf-fix-20261009.md`
 
 No application API, middleware, configuration, database, auth/session behavior, Docker, dependency, or Phase 5C instrumentation code changed. The five previously approved frontend files were untouched.
 

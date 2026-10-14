@@ -169,6 +169,6 @@ Treat the CSRF/password-change mismatch as a separate, reproducible source-level
 - SHA-256 checks of the nine existing QA reports listed in the phase request and the existing Phase 5H-N reconciliation report matched their values captured before report creation.
 - SHA-256 checks of all five approved frontend files matched their pre-review values.
 - `app/phase5c_diagnostics.py` remains absent; no Phase 5C instrumentation was introduced.
-- The only new file in this phase is `qa-evidence/phase5h-auth-source-review-20261009.md`.
+- The only new file in this phase is `security-docs/phase5h-auth-source-review-20261009.md`.
 - Nothing was staged or committed. No existing report was modified.
 - No HTTP/authentication request, login attempt, browser interaction, database mutation, credential reset, production access, deployment, performance test, or test execution occurred.

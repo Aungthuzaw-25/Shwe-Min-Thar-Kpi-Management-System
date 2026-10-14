@@ -20,6 +20,9 @@ from app.modules.users.models import Role, User, UserPermissionOverride
 SUPER_ADMIN_ROLE = "Super Admin"
 GLOBAL_SCOPE_ROLES = {"Super Admin", "HR"}
 LEVEL_RESTRICTED_TASK_PERMISSIONS = {"tasks.approve", "tasks.reject", "tasks.return"}
+PERMISSION_DENIED_DETAIL = (
+    "Access Denied. You do not have permission to perform this action."
+)
 
 
 async def get_authorized_department_ids(
@@ -154,7 +157,7 @@ def enforce_permission(
         user, permission_code, owner_id=owner_id, department_id=department_id
     ):
         raise PermissionDeniedException(
-            detail="Access Denied. You do not have permission to perform this action."
+            detail=PERMISSION_DENIED_DETAIL
         )
     return user
 
@@ -177,43 +180,35 @@ def get_permission_map(user: User) -> dict[str, bool]:
 # 🌟 KEY FIX: Swagger UI မှ Auth ဝင်ရန် လမ်းကြောင်းကို swagger-login သို့ ပြောင်းထားပါသည်
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/swagger-login", auto_error=False)
 
-async def get_current_user(
-    request: Request, 
-    token: str = Depends(oauth2_scheme), 
-    db: AsyncSession = Depends(get_db)
-) -> User:
-    """
-    Cookie (Web), Header (Mobile App), နှင့် Swagger UI အားလုံးကို Support ပေးသော 
-    Universal Authentication Function
-    """
-    # ၁။ Swagger UI သို့မဟုတ် Authorization Header မှ Token ကို အရင်ရှာမည်
-    if not token:
-        auth_header = request.headers.get("Authorization")
-        if auth_header and auth_header.startswith("Bearer "):
-            token = auth_header.split(" ")[1]
-        else:
-            # ၂။ မရှိပါက Browser ၏ HttpOnly Cookie မှ access_token ကို ရှာမည်
-            cookie_token = request.cookies.get("access_token")
-            if cookie_token:
-                token = cookie_token.removeprefix("Bearer ").strip()
 
-    if not token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, 
-            detail="Not authenticated. Token missing."
-        )
+def _request_access_token(request: Request, token: str | None) -> str | None:
+    if token:
+        return token
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        return auth_header.split(" ")[1]
+    cookie_token = request.cookies.get("access_token")
+    return cookie_token.removeprefix("Bearer ").strip() if cookie_token else None
 
-    # 🌟 SECURITY & PERFORMANCE FIX: Hacker မှ Token အမှားများဖြင့် DB ကို DoS မလုပ်နိုင်ရန် JWT ကို အရင် Decode လုပ်မည်
+
+def _decode_access_token(token: str) -> tuple[str, UUID, UUID]:
     try:
         payload = security.decode_token(token, "access", require_session=True)
-        email = payload["sub"]
-        session_id = UUID(payload["sid"])
-        session_user_id = UUID(payload["user_id"])
-    except (JWTError, ValueError, TypeError):
+        return payload["sub"], UUID(payload["sid"]), UUID(payload["user_id"])
+    except (JWTError, ValueError, TypeError) as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token expired or invalid."
-        )
+            detail="Token expired or invalid.",
+        ) from exc
+
+
+async def _load_authentication_state(
+    db: AsyncSession,
+    token: str,
+    email: str,
+    session_id: UUID,
+    session_user_id: UUID,
+) -> tuple[User | None, bool, bool]:
     now = datetime.now(UTC).replace(tzinfo=None)
     blacklist_exists = exists(
         select(TokenBlacklist.id).where(
@@ -247,8 +242,7 @@ async def get_current_user(
     row = result.unique().one_or_none()
 
     if row is None:
-        # Keep the established error precedence when the subject does not
-        # resolve to a user: blacklist, then session, then account lookup.
+        # Preserve blacklist/session error precedence when no user matches.
         state_result = await db.execute(
             select(
                 blacklist_exists.label("token_blacklisted"),
@@ -256,10 +250,14 @@ async def get_current_user(
             )
         )
         is_blacklisted, valid_session = state_result.one()
-        user = None
-    else:
-        user, is_blacklisted, valid_session = row
+        return None, is_blacklisted, valid_session
+    user, is_blacklisted, valid_session = row
+    return user, is_blacklisted, valid_session
 
+
+def _validate_authenticated_user(
+    user: User | None, is_blacklisted: bool, valid_session: bool
+) -> User:
     if is_blacklisted:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -272,17 +270,38 @@ async def get_current_user(
         )
     if not user or user.is_deleted or not user.is_active:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, 
-            detail="User not found or account disabled."
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found or account disabled.",
         )
-        
     if user.is_locked:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, 
-            detail="Account is temporarily locked."
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account is temporarily locked.",
         )
-        
     return user
+
+
+async def get_current_user(
+    request: Request,
+    token: str = Depends(oauth2_scheme),
+    db: AsyncSession = Depends(get_db)
+) -> User:
+    """
+    Cookie (Web), Header (Mobile App), နှင့် Swagger UI အားလုံးကို Support ပေးသော
+    Universal Authentication Function
+    """
+    token = _request_access_token(request, token)
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated. Token missing."
+        )
+
+    email, session_id, session_user_id = _decode_access_token(token)
+    user, is_blacklisted, valid_session = await _load_authentication_state(
+        db, token, email, session_id, session_user_id
+    )
+    return _validate_authenticated_user(user, is_blacklisted, valid_session)
 
 
 # =====================================================================
@@ -295,7 +314,7 @@ class RoleChecker:
     def __call__(self, user: User = Depends(get_current_user)):
         if not user.role or user.role.name not in self.allowed_roles:
             raise PermissionDeniedException(
-                detail="Access Denied. You do not have permission to perform this action."
+                detail=PERMISSION_DENIED_DETAIL
             )
         return user
 
@@ -310,6 +329,65 @@ class RequirePermission:
     """
     def __init__(self, required_permissions: list[str]):
         self.required_permissions = required_permissions
+
+    async def _resolve_owner_scope(self, db: AsyncSession, owner_param):
+        if owner_param is None:
+            return None, None
+        try:
+            from app.modules.departments.models import UserDepartment
+
+            row = (
+                await db.execute(
+                    select(UserDepartment.department_id).where(
+                        UserDepartment.user_id == owner_param,
+                        UserDepartment.is_deleted == False,
+                    )
+                )
+            ).first()
+            return owner_param, row[0] if row else None
+        except Exception:
+            return owner_param, None
+
+    async def _resolve_resource_scope(
+        self, db: AsyncSession, params, owner_id, department_id
+    ):
+        try:
+            resource_id = params.get("task_id")
+            if resource_id:
+                from app.modules.departments.models import UserDepartment
+                from app.modules.tasks.models.task import Task
+
+                task = await db.get(Task, resource_id)
+                if task:
+                    owner_id = task.owner_id
+                    row = (
+                        await db.execute(
+                            select(UserDepartment.department_id).where(
+                                UserDepartment.user_id == task.owner_id,
+                                UserDepartment.is_deleted == False,
+                            )
+                        )
+                    ).first()
+                    department_id = department_id or (row[0] if row else None)
+            resource_id = params.get("record_id")
+            if resource_id:
+                from app.modules.kpi.models import KPIRecord
+
+                record = await db.get(KPIRecord, resource_id)
+                if record:
+                    owner_id = record.user_id
+                    department_id = department_id or record.department_id
+            resource_id = params.get("batch_id")
+            if resource_id:
+                from app.modules.tasks.models.submission_batch import SubmissionBatch
+
+                batch = await db.get(SubmissionBatch, resource_id)
+                if batch:
+                    owner_id = batch.submitter_id
+        except Exception:  # noqa: S110 - malformed scope hints remain fail-closed
+            # Unresolved scope hints cannot satisfy OWN/DEPARTMENT overrides.
+            pass
+        return owner_id, department_id
 
     # 🌟 FIX: DB ကို ထပ်မံ Query လုပ်စရာ မလိုတော့ဘဲ get_current_user မှရလာသော Data ပေါ်မှ တိုက်ရိုက် စစ်ဆေးမည်
     async def __call__(
@@ -327,19 +405,7 @@ class RequirePermission:
              if params.get(name) is not None),
             None,
         )
-        if owner_param is not None:
-            owner_id = owner_param
-            try:
-                from app.modules.departments.models import UserDepartment
-                row = (await db.execute(
-                    select(UserDepartment.department_id).where(
-                        UserDepartment.user_id == owner_param,
-                        UserDepartment.is_deleted == False,
-                    )
-                )).first()
-                department_id = row[0] if row else None
-            except Exception:
-                department_id = None
+        owner_id, department_id = await self._resolve_owner_scope(db, owner_param)
 
         department_id = (
             params.get("department_id")
@@ -349,39 +415,9 @@ class RequirePermission:
 
         # Resolve task/KPI/batch resources so OWN and DEPARTMENT overrides work
         # on routes that expose only a resource UUID.
-        try:
-            resource_id = params.get("task_id")
-            if resource_id:
-                from app.modules.departments.models import UserDepartment
-                from app.modules.tasks.models.task import Task
-                task = await db.get(Task, resource_id)
-                if task:
-                    owner_id = task.owner_id
-                    row = (await db.execute(
-                        select(UserDepartment.department_id).where(
-                            UserDepartment.user_id == task.owner_id,
-                            UserDepartment.is_deleted == False,
-                        )
-                    )).first()
-                    department_id = department_id or (row[0] if row else None)
-            resource_id = params.get("record_id")
-            if resource_id:
-                from app.modules.kpi.models import KPIRecord
-                record = await db.get(KPIRecord, resource_id)
-                if record:
-                    owner_id = record.user_id
-                    department_id = department_id or record.department_id
-            resource_id = params.get("batch_id")
-            if resource_id:
-                from app.modules.tasks.models.submission_batch import SubmissionBatch
-                batch = await db.get(SubmissionBatch, resource_id)
-                if batch:
-                    owner_id = batch.submitter_id
-        except Exception:  # noqa: S110 - malformed scope hints remain fail-closed
-            # Scope resolution must never turn a malformed resource into an
-            # authorization bypass; unresolved scoped overrides simply don't
-            # match and the normal role decision remains fail-closed.
-            pass
+        owner_id, department_id = await self._resolve_resource_scope(
+            db, params, owner_id, department_id
+        )
 
         # Required permissions are OR semantics.  A deny only vetoes its own
         # permission; another explicitly granted required permission may still
@@ -395,5 +431,5 @@ class RequirePermission:
             ):
                 return current_user
         raise PermissionDeniedException(
-            detail="Access Denied. You do not have permission to perform this action."
+            detail=PERMISSION_DENIED_DETAIL
         )

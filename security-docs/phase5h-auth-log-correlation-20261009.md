@@ -78,7 +78,7 @@ Minimum additional evidence needed is the operator’s local existing Network en
 - Existing report hashes remained unchanged:
   - `qa-evidence/phase5d-performance-baseline.md`: `68B72CAEE9BE75A20E43EFD0E8DE3265BE677BCB0E8547205F70A568B6EE7937`
   - `qa-evidence/phase5h-performance-baseline-20261009-1158.md`: `6C131DA132E1709F431A1E1C9B0C8C6A6CD57856921920B09C00AA8C48CED42D`
-  - `qa-evidence/phase5h-auth-verification-20261009.md`: `7C99851D3BF0B6E3C205F9888427B2A7D303FF9D4501A70B5D7F10FF4A426E97`
+  - `security-docs/phase5h-auth-verification-20261009.md`: `7C99851D3BF0B6E3C205F9888427B2A7D303FF9D4501A70B5D7F10FF4A426E97`
 - `app/phase5c_diagnostics.py` remains absent.
 - No tests were run. No application, configuration, migration, dependency, or deployment file was changed.
 - This phase made no authentication requests, retries, password/recovery actions, cookie/session/account changes, performance measurements, or production accesses. The database inspection used a read-only transaction.

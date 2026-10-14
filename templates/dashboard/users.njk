@@ -4,6 +4,9 @@
 {% block title %}Users Management - KPI Dashboard{% endblock %}
 
 {% block content %}
+<link rel="stylesheet" href="/static/css/avatar.css">
+<script src="/static/js/avatar-renderer.js"></script>
+<script src="/static/js/avatar.js"></script>
 <style>
     @keyframes fadeInUp {
         from { opacity: 0; transform: translateY(10px); }
@@ -493,8 +496,6 @@
 
         // 🌟 SECURITY FIX: Applied escapeHTML() to user inputs and safe JSON Encoding for the Edit Button
         tbody.innerHTML = users.map((user, index) => {
-            const initial1 = user.first_name ? escapeHTML(user.first_name.charAt(0).toUpperCase()) : '';
-            const initial2 = user.last_name ? escapeHTML(user.last_name.charAt(0).toUpperCase()) : '';
             const roleName = user.role ? escapeHTML(user.role.name) : 'N/A';
             const isSuperAdmin = user.role && user.role.name === 'Super Admin';
             const isUserDeleted = currentTab === 'deleted';
@@ -552,9 +553,7 @@
                 <tr class="hover:bg-blue-50/30 transition-colors group ${isUserDeleted ? 'opacity-80 bg-red-50/30' : 'bg-white'} animate-fade-in-up">
                     <td class="px-4 sm:px-6 py-4 sm:py-5 min-w-[220px]">
                         <div class="flex items-center">
-                            <div class="w-9 h-9 sm:w-11 sm:h-11 rounded-2xl bg-gradient-to-tr ${isUserDeleted ? 'from-slate-200 to-slate-300' : 'from-blue-100 to-blue-200'} flex items-center justify-center ${isUserDeleted ? 'text-slate-500' : 'text-blue-800'} font-extrabold text-xs sm:text-sm shrink-0 mr-3 sm:mr-4 shadow-sm border border-white">
-                                ${initial1}${initial2}
-                            </div>
+                            <span class="mr-3 sm:mr-4">${window.kpiAvatarMarkup(user, 40)}</span>
                             <div class="min-w-0 pr-2">
                                 <div class="font-extrabold ${isUserDeleted ? 'text-slate-500 line-through' : 'text-blue-950'} text-sm sm:text-base truncate">${escapeHTML(user.first_name)} ${escapeHTML(user.last_name)}</div>
                                 <div class="text-[9px] sm:text-[11px] font-semibold text-slate-500 mt-0.5 sm:mt-1 tracking-wide truncate">${positionName} • ${regionTown}</div>

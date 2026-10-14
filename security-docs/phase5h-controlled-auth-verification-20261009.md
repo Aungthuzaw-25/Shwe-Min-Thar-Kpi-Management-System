@@ -44,11 +44,11 @@ Before and after the attempt:
 - Seven prior report hashes matched the values recorded in the Phase 5H-L plan:
   - `qa-evidence/phase5d-performance-baseline.md`: `68B72CAEE9BE75A20E43EFD0E8DE3265BE677BCB0E8547205F70A568B6EE7937`
   - `qa-evidence/phase5h-performance-baseline-20261009-1158.md`: `6C131DA132E1709F431A1E1C9B0C8C6A6CD57856921920B09C00AA8C48CED42D`
-  - `qa-evidence/phase5h-auth-verification-20261009.md`: `7C99851D3BF0B6E3C205F9888427B2A7D303FF9D4501A70B5D7F10FF4A426E97`
-  - `qa-evidence/phase5h-auth-log-correlation-20261009.md`: `6BD375D7D10383344B1ABEBC95F1AF6F9FCEAD951ADA380D6E7846C46E8FCB49`
-  - `qa-evidence/phase5h-auth-blocker-closure-plan-20261009.md`: `42EDEA0A787655A4769534B1A472325665D547B8A23F8F9047CE6BF74AFFD6B6`
+  - `security-docs/phase5h-auth-verification-20261009.md`: `7C99851D3BF0B6E3C205F9888427B2A7D303FF9D4501A70B5D7F10FF4A426E97`
+  - `security-docs/phase5h-auth-log-correlation-20261009.md`: `6BD375D7D10383344B1ABEBC95F1AF6F9FCEAD951ADA380D6E7846C46E8FCB49`
+  - `security-docs/phase5h-auth-blocker-closure-plan-20261009.md`: `42EDEA0A787655A4769534B1A472325665D547B8A23F8F9047CE6BF74AFFD6B6`
   - `qa-evidence/phase5h-network-history-inspection-20261009.md`: `2A243A41FB3244AD3B7EEC063E4739DA9044C1A2CEBA51780E22777AB773B4AE`
-  - `qa-evidence/phase5h-auth-root-cause-diagnosis-20261009.md`: `2B071B395573DA580A1F69EF10E4937A9D487C997367C55591BB496C2E10EE2C`
+  - `security-docs/phase5h-auth-root-cause-diagnosis-20261009.md`: `2B071B395573DA580A1F69EF10E4937A9D487C997367C55591BB496C2E10EE2C`
 - `app/phase5c_diagnostics.py` remains absent.
 
 ## Sanitized attempt evidence

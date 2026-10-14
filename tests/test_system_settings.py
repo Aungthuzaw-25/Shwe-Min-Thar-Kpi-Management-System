@@ -8,11 +8,13 @@ from pydantic import ValidationError
 
 from app.core.password_policy import get_password_policy, validate_password_strength
 from app.modules.system.router import (
+    _require_super_admin_audit_retention,
     _require_super_admin_email_settings,
     _sanitize_setting_value,
     read_all_settings,
     update_existing_setting,
 )
+from app.modules.system.audit_log_retention import normalize_audit_log_retention
 from app.modules.system.schemas import (
     EmailConfigurationValue,
     EmailProviderLifecycleRequest,
@@ -228,6 +230,29 @@ def test_only_super_admin_can_manage_email_settings():
     with pytest.raises(HTTPException) as exc:
         _require_super_admin_email_settings(
             SimpleNamespace(role=SimpleNamespace(name="Department User"))
+        )
+    assert exc.value.status_code == 403
+
+
+def test_audit_log_retention_accepts_only_supported_days_or_none():
+    assert normalize_audit_log_retention({"retention_days": None}) == {
+        "retention_days": None
+    }
+    assert normalize_audit_log_retention({"retention_days": 90}) == {
+        "retention_days": 90
+    }
+    for value in (True, 0, 31, "90", {"retention_days": 90, "extra": True}):
+        with pytest.raises(ValueError):
+            normalize_audit_log_retention({"retention_days": value})
+
+
+def test_only_super_admin_can_manage_audit_log_retention():
+    _require_super_admin_audit_retention(
+        SimpleNamespace(role=SimpleNamespace(name="Super Admin"))
+    )
+    with pytest.raises(HTTPException) as exc:
+        _require_super_admin_audit_retention(
+            SimpleNamespace(role=SimpleNamespace(name="Admin"))
         )
     assert exc.value.status_code == 403
 

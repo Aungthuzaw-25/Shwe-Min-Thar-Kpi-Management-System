@@ -205,7 +205,7 @@ def main() -> int:
     try:
         asyncio.run(_run_interactive(args.email))
     except RecoveryFailure as exc:
-        logger.error("QA_RECOVERY_ERROR=%s", exc.category)
+        logger.exception("QA_RECOVERY_ERROR=%s", exc.category)
         return 1
     except Exception as exc:
         logger.error(

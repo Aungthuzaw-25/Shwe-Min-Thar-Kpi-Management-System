@@ -25,6 +25,12 @@ export async function loadBaseContext(request, backend) {
       user_name: user.full_name,
       user_email: accountData.user_email,
       user_id: user.user_id,
+      user_avatar: {
+        display_name: user.display_name || user.full_name,
+        avatar_url: user.avatar_url || null,
+        initials: user.initials || null,
+        avatar_color_index: user.avatar_color_index ?? 0,
+      },
       user_level: normalizeUserLevel(user.kpi_level),
       department_id: user.department_id,
       department_name: departmentName,

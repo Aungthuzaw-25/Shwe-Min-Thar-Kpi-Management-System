@@ -6,9 +6,7 @@
     <title>KPI Dashboard - Sign In</title>
     
     <link rel="stylesheet" href="/static/css/output.css">
-    <link rel="stylesheet" href="/static/css/design-system.css">
-    <link rel="stylesheet" href="/static/css/notifications.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/portal-shell.css">
     <style>
         :root {
             color-scheme: light;
@@ -20,7 +18,7 @@
         }
 
         body {
-            font-family: 'Inter', sans-serif;
+            font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
             background: var(--kpi-cream);
         }
 
@@ -235,17 +233,17 @@
                     </button>
                 </form>
 
-                <div class="flex items-center gap-3 my-5" aria-hidden="true">
+                <div class="flex items-center gap-3 my-5" data-oauth-divider aria-hidden="true" hidden>
                     <div class="h-px bg-gray-200 flex-1"></div>
                     <span class="text-xs text-gray-400">or continue with</span>
                     <div class="h-px bg-gray-200 flex-1"></div>
                 </div>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <button type="button" data-oauth-provider="google"
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" data-oauth-buttons hidden>
+                    <button type="button" data-oauth-provider="google" hidden
                             class="oauth-provider-btn w-full flex justify-center items-center py-2.5 px-4 border border-gray-300 rounded-lg text-xs sm:text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors">
                         Continue with Google
                     </button>
-                    <button type="button" data-oauth-provider="microsoft"
+                    <button type="button" data-oauth-provider="microsoft" hidden
                             class="oauth-provider-btn w-full flex justify-center items-center py-2.5 px-4 border border-gray-300 rounded-lg text-xs sm:text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors">
                         Continue with Microsoft
                     </button>
@@ -385,7 +383,27 @@
             document.getElementById('remember-me').checked = true;
         }
 
-        document.querySelectorAll('.oauth-provider-btn').forEach((button) => {
+        const oauthButtons = [...document.querySelectorAll('.oauth-provider-btn')];
+        const oauthArea = document.querySelector('[data-oauth-buttons]');
+        const oauthDivider = document.querySelector('[data-oauth-divider]');
+        fetch('/api/v1/auth/oauth/providers', { credentials: 'same-origin' })
+            .then((response) => response.ok ? response.json() : Promise.reject(new Error('Provider configuration unavailable')))
+            .then((providers) => {
+                let configuredCount = 0;
+                oauthButtons.forEach((button) => {
+                    const configured = providers[button.dataset.oauthProvider] === true;
+                    button.hidden = !configured;
+                    configuredCount += configured ? 1 : 0;
+                });
+                oauthArea.hidden = configuredCount === 0;
+                oauthDivider.hidden = configuredCount === 0;
+            })
+            .catch(() => {
+                oauthArea.hidden = true;
+                oauthDivider.hidden = true;
+            });
+
+        oauthButtons.forEach((button) => {
             button.addEventListener('click', () => {
                 document.querySelectorAll('.oauth-provider-btn').forEach((item) => {
                     item.disabled = true;

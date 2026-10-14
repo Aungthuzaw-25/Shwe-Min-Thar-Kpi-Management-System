@@ -128,7 +128,7 @@ describe("Express pages and CSP middleware", () => {
   });
 
   it("renders the profile page using the authenticated context and account data", async () => {
-    const response = await request(createApp({ backend: fakeBackend() }))
+    const response = await request(createApp({ backend: fakeBackend("Super Admin") }))
       .get("/profile")
       .set("Cookie", "access_token=qa-token");
 
@@ -136,6 +136,15 @@ describe("Express pages and CSP middleware", () => {
     expect(response.text).toContain("qa.user@example.com");
     expect(response.text).toContain("qa.user@gmail.com");
     expect(response.text).toContain("Connected on 2024-05-06");
+  });
+
+  it("does not render the legacy Connected Accounts card for other roles", async () => {
+    const response = await request(createApp({ backend: fakeBackend("Department User") }))
+      .get("/profile")
+      .set("Cookie", "access_token=qa-token");
+
+    expect(response.status).toBe(200);
+    expect(response.text).not.toContain("Connected Accounts");
   });
 
   it("returns the backend authentication status and body unchanged", async () => {
@@ -151,5 +160,23 @@ describe("Express pages and CSP middleware", () => {
     const response = await request(createApp({ backend })).get("/dashboard");
     expect(response.status).toBe(401);
     expect(response.body).toEqual({ detail: "Token expired or invalid." });
+  });
+
+  it("does not serve backend error strings as executable HTML", async () => {
+    const { BackendResponseError } = await import("../src/lib/backendClient.js");
+    const backend = {
+      get: vi.fn(async () => {
+        throw new BackendResponseError(
+          502,
+          "text/html",
+          '<script>globalThis.xssExecuted = true</script>',
+        );
+      }),
+    };
+
+    const response = await request(createApp({ backend })).get("/dashboard");
+    expect(response.status).toBe(502);
+    expect(response.headers["content-type"]).toContain("text/plain");
+    expect(response.text).toContain("<script>globalThis.xssExecuted = true</script>");
   });
 });

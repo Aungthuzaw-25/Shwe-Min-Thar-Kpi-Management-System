@@ -55,7 +55,7 @@ export function sendBackendError(error, response) {
   if (error.body === null) {
     response.end();
   } else if (typeof error.body === "string") {
-    if (error.contentType) response.type(error.contentType);
+    response.type("text/plain");
     response.send(error.body);
   } else {
     response.type("application/json").send(JSON.stringify(error.body));

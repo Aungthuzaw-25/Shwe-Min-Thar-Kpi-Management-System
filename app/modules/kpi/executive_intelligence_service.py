@@ -1,8 +1,10 @@
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.timezone import as_application_time
 from app.modules.departments.models import Department, UserDepartment
 from app.modules.kpi.executive_intelligence_schemas import (
     ExecutiveAttentionArea,
@@ -11,6 +13,7 @@ from app.modules.kpi.executive_intelligence_schemas import (
     ExecutiveEmployeeHistoryPoint,
     ExecutiveEmployeePage,
     ExecutiveEmployeeResult,
+    ExecutiveMonthlyAverage,
     ExecutiveOverview,
     ExecutivePeriodOption,
     ExecutiveSignal,
@@ -29,6 +32,8 @@ from app.modules.kpi.models import (
     KPIStatus,
     PeriodType,
 )
+from app.modules.kpi.period_ranges import normalize_calendar_range
+from app.modules.users.avatar import avatar_color_index, avatar_initials, avatar_url
 from app.modules.users.models import Position, User
 
 STATUS_ORDER = (
@@ -40,6 +45,58 @@ STATUS_ORDER = (
 )
 FINAL_PERIOD_STATUSES = (KPIPeriodStatus.FINALIZED, KPIPeriodStatus.LOCKED)
 TREND_PERIOD_LIMIT = 12
+
+
+async def build_monthly_average_series(
+    db: AsyncSession,
+    *,
+    year: int,
+    scope_user_ids: list[UUID] | None,
+    department_ids: list[UUID] | None,
+) -> list[ExecutiveMonthlyAverage]:
+    date_range = normalize_calendar_range(
+        datetime(year, 1, 1, tzinfo=UTC),
+        datetime(year + 1, 1, 1, tzinfo=UTC),
+    )
+    records = _ranked_records(
+        period_type=PeriodType.MONTHLY,
+        period_start=date_range.start_inclusive,
+        period_end=date_range.end_exclusive,
+    )
+    rows = (
+        await db.execute(
+            select(
+                KPIPeriod.start_date.label("period_start"),
+                func.avg(records.c.percentage).label("average_percentage"),
+                func.count(records.c.id).label("evaluated_count"),
+            )
+            .join(KPIPeriod, KPIPeriod.id == records.c.kpi_period_id)
+            .where(*_record_filters(records, scope_user_ids, department_ids))
+            .group_by(KPIPeriod.id, KPIPeriod.start_date)
+        )
+    ).all()
+
+    monthly_totals: dict[int, tuple[float, int]] = {}
+    for row in rows:
+        month = as_application_time(row.period_start).month
+        total, count = monthly_totals.get(month, (0.0, 0))
+        evaluated_count = int(row.evaluated_count or 0)
+        monthly_totals[month] = (
+            total + float(row.average_percentage or 0) * evaluated_count,
+            count + evaluated_count,
+        )
+
+    monthly_averages = []
+    for month in range(1, 13):
+        total, count = monthly_totals.get(month, (0.0, 0))
+        monthly_averages.append(
+            ExecutiveMonthlyAverage(
+                month=month,
+                average_percentage=_round_metric(total / count) if count else None,
+                evaluated_employee_count=count,
+            )
+        )
+    return monthly_averages
 
 
 def _round_metric(value: float | None) -> float | None:
@@ -78,6 +135,8 @@ def _record_filters(records, user_ids: list[UUID] | None, department_ids: list[U
 def _ranked_records(
     period_ids: list[UUID] | None = None,
     period_type: PeriodType | None = None,
+    period_start: datetime | None = None,
+    period_end: datetime | None = None,
 ):
     rank = func.row_number().over(
         partition_by=[KPIRecord.kpi_period_id, KPIRecord.user_id],
@@ -116,6 +175,10 @@ def _ranked_records(
         statement = statement.where(KPIRecord.kpi_period_id.in_(period_ids))
     if period_type is not None:
         statement = statement.where(KPIRecord.period_type == period_type)
+    if period_start is not None:
+        statement = statement.where(KPIRecord.period_start >= period_start)
+    if period_end is not None:
+        statement = statement.where(KPIRecord.period_end < period_end)
     return statement.subquery()
 
 
@@ -274,15 +337,85 @@ async def _load_period_aggregate(
     return row
 
 
-async def _load_department_metrics(
+async def _load_range_summary(
     db: AsyncSession,
-    period_id: UUID,
+    period_ids: list[UUID],
     scope_user_ids: list[UUID] | None,
     department_ids: list[UUID] | None,
+    active_count: int,
+) -> ExecutiveSummary:
+    records = _ranked_records(period_ids, PeriodType.MONTHLY)
+    filters = _record_filters(records, scope_user_ids, department_ids)
+    average, evaluated_count = (
+        await db.execute(
+            select(
+                func.avg(records.c.percentage),
+                func.count(func.distinct(records.c.user_id)),
+            ).where(*filters)
+        )
+    ).one()
+    latest_records = (
+        select(
+            records.c.user_id,
+            records.c.status_bucket,
+            func.row_number()
+            .over(
+                partition_by=records.c.user_id,
+                order_by=[KPIPeriod.start_date.desc(), KPIPeriod.id.desc()],
+            )
+            .label("latest_rank"),
+        )
+        .join(KPIPeriod, KPIPeriod.id == records.c.kpi_period_id)
+        .where(*filters)
+        .subquery()
+    )
+    status_rows = (
+        await db.execute(
+            select(
+                latest_records.c.status_bucket,
+                func.count(latest_records.c.user_id).label("count"),
+            )
+            .where(latest_records.c.latest_rank == 1)
+            .group_by(latest_records.c.status_bucket)
+        )
+    ).all()
+    status_counts = {
+        row.status_bucket: int(row.count or 0) for row in status_rows
+    }
+    unique_evaluated = int(evaluated_count or 0)
+    distribution = [
+        ExecutiveStatusCount(
+            status=status,
+            count=status_counts.get(status, 0),
+            percentage=(
+                _round_metric(status_counts.get(status, 0) / unique_evaluated * 100)
+                if unique_evaluated
+                else None
+            ),
+        )
+        for status in STATUS_ORDER
+    ]
+    return ExecutiveSummary(
+        status="available" if unique_evaluated else "unavailable",
+        average_percentage=_round_metric(average),
+        evaluated_employee_count=unique_evaluated,
+        no_result_employee_count=max(active_count - unique_evaluated, 0),
+        active_employee_count=active_count,
+        status_distribution=distribution,
+    )
+
+
+async def _load_department_metrics(
+    db: AsyncSession,
+    period_id: UUID | list[UUID],
+    scope_user_ids: list[UUID] | None,
+    department_ids: list[UUID] | None,
+    period_type: PeriodType | None = None,
 ) -> list[ExecutiveDepartment]:
     if department_ids == []:
         return []
-    records = _ranked_records([period_id])
+    period_ids = period_id if isinstance(period_id, list) else [period_id]
+    records = _ranked_records(period_ids, period_type)
     statement = (
         select(
             Department.id.label("department_id"),
@@ -500,6 +633,45 @@ async def _load_trend(
     )
 
 
+async def _load_range_trend(
+    db: AsyncSession,
+    selected_period: KPIPeriod,
+    period_ids: list[UUID],
+    scope_user_ids: list[UUID] | None,
+    department_ids: list[UUID] | None,
+) -> ExecutiveTrend:
+    trend = await _load_trend(
+        db,
+        selected_period,
+        PeriodType.MONTHLY,
+        scope_user_ids,
+        department_ids,
+    )
+    selected_ids = set(period_ids)
+    points = [point for point in trend.points if point.period_id in selected_ids]
+    if len(points) == 1:
+        selected_index = next(
+            (index for index, point in enumerate(trend.points)
+             if point.period_id == points[0].period_id),
+            None,
+        )
+        if selected_index is not None and selected_index > 0:
+            points.insert(0, trend.points[selected_index - 1])
+    delta = None
+    direction = "UNAVAILABLE"
+    if len(points) > 1:
+        current = points[-1].average_percentage
+        previous = points[-2].average_percentage
+        if current is not None and previous is not None:
+            delta, direction = _trend_change(float(current), float(previous))
+    return ExecutiveTrend(
+        points=points,
+        delta=delta,
+        direction=direction,
+        comparison_available=direction != "UNAVAILABLE",
+    )
+
+
 def _build_signals(
     period: KPIPeriod,
     summary: ExecutiveSummary,
@@ -617,33 +789,95 @@ def _build_signals(
 async def list_executive_employee_results(
     db: AsyncSession,
     *,
-    period_id: UUID,
+    period_id: UUID | None,
+    period_start: datetime | None = None,
+    period_end: datetime | None = None,
     scope_user_ids: list[UUID] | None,
     department_ids: list[UUID] | None,
     offset: int,
     limit: int,
 ) -> ExecutiveEmployeePage:
-    period = await db.scalar(
-        select(KPIPeriod).where(
-            KPIPeriod.id == period_id,
-            KPIPeriod.is_deleted.is_(False),
-            KPIPeriod.status.in_(FINAL_PERIOD_STATUSES),
+    if period_id is not None:
+        period = await db.scalar(
+            select(KPIPeriod).where(
+                KPIPeriod.id == period_id,
+                KPIPeriod.is_deleted.is_(False),
+                KPIPeriod.status.in_(FINAL_PERIOD_STATUSES),
+            )
         )
-    )
-    if period is None:
-        return ExecutiveEmployeePage(items=[], total=0, offset=offset, limit=limit)
-    period_types = await _load_period_types(
-        db, [period], scope_user_ids, department_ids
-    )
-    period_type_values = period_types.get(period.id, set())
-    if len(period_type_values) > 1:
-        return ExecutiveEmployeePage(items=[], total=0, offset=offset, limit=limit)
-    period_type = next(iter(period_type_values)) if period_type_values else None
-    if period_type is None:
-        return ExecutiveEmployeePage(items=[], total=0, offset=offset, limit=limit)
-
-    records = _ranked_records([period_id], period_type)
-    filters = _record_filters(records, scope_user_ids, department_ids)
+        if period is None:
+            return ExecutiveEmployeePage(items=[], total=0, offset=offset, limit=limit)
+        period_types = await _load_period_types(
+            db, [period], scope_user_ids, department_ids
+        )
+        period_type_values = period_types.get(period.id, set())
+        if len(period_type_values) > 1:
+            return ExecutiveEmployeePage(items=[], total=0, offset=offset, limit=limit)
+        period_type = next(iter(period_type_values)) if period_type_values else None
+        if period_type is None:
+            return ExecutiveEmployeePage(items=[], total=0, offset=offset, limit=limit)
+        records = _ranked_records([period_id], period_type)
+        filters = _record_filters(records, scope_user_ids, department_ids)
+        order_by = [User.first_name, User.last_name, User.id]
+    else:
+        if period_start is None or period_end is None:
+            return ExecutiveEmployeePage(items=[], total=0, offset=offset, limit=limit)
+        records = _ranked_records(
+            period_type=PeriodType.MONTHLY,
+            period_start=period_start,
+            period_end=period_end,
+        )
+        filters = _record_filters(records, scope_user_ids, department_ids)
+        average_records = (
+            select(
+                records.c.user_id,
+                func.avg(records.c.percentage).label("average_percentage"),
+            )
+            .where(*filters)
+            .group_by(records.c.user_id)
+            .subquery()
+        )
+        latest_records = (
+            select(
+                records,
+                func.row_number()
+                .over(
+                    partition_by=records.c.user_id,
+                    order_by=[KPIPeriod.start_date.desc(), KPIPeriod.id.desc()],
+                )
+                .label("range_rank"),
+            )
+            .join(KPIPeriod, KPIPeriod.id == records.c.kpi_period_id)
+            .where(*filters)
+            .subquery()
+        )
+        records = (
+            select(
+                latest_records.c.id,
+                latest_records.c.kpi_period_id,
+                latest_records.c.user_id,
+                latest_records.c.department_id,
+                average_records.c.average_percentage.label("percentage"),
+                latest_records.c.weighted_score,
+                latest_records.c.raw_score,
+                latest_records.c.status_bucket,
+                latest_records.c.formula_id,
+                latest_records.c.record_rank,
+            )
+            .join(
+                average_records,
+                average_records.c.user_id == latest_records.c.user_id,
+            )
+            .where(latest_records.c.range_rank == 1)
+            .subquery()
+        )
+        filters = [records.c.record_rank == 1]
+        order_by = [
+            records.c.percentage.desc(),
+            User.first_name,
+            User.last_name,
+            User.id,
+        ]
     total = int(
         (
             await db.execute(
@@ -660,6 +894,9 @@ async def list_executive_employee_results(
                 records.c.status_bucket,
                 User.first_name,
                 User.last_name,
+                User.email,
+                User.avatar_path,
+                User.avatar_updated_at,
                 Position.name.label("position_name"),
                 Department.name.label("department_name"),
                 UserDepartment.user_level,
@@ -676,7 +913,7 @@ async def list_executive_employee_results(
                 ),
             )
             .where(*filters)
-            .order_by(User.first_name, User.last_name, User.id)
+            .order_by(*order_by)
             .offset(offset)
             .limit(limit)
         )
@@ -691,12 +928,120 @@ async def list_executive_employee_results(
                 level=row.user_level,
                 percentage=round(float(row.percentage), 2),
                 status=row.status_bucket,
+                avatar_url=avatar_url(row.avatar_path, row.avatar_updated_at),
+                initials=avatar_initials(
+                    f"{row.first_name} {row.last_name}".strip(),
+                    row.email,
+                ),
+                avatar_color_index=avatar_color_index(row.user_id),
             )
             for row in rows
         ],
         total=total,
         offset=offset,
         limit=limit,
+    )
+
+
+def _empty_executive_summary() -> ExecutiveSummary:
+    return ExecutiveSummary(
+        status="unavailable",
+        average_percentage=None,
+        evaluated_employee_count=None,
+        no_result_employee_count=None,
+        active_employee_count=None,
+    )
+
+
+async def _build_date_range_overview(
+    db: AsyncSession,
+    *,
+    periods: list[KPIPeriod],
+    period_types: dict[UUID, set[PeriodType]],
+    scope_user_ids: list[UUID] | None,
+    department_ids: list[UUID] | None,
+    show_departments: bool,
+    period_start: datetime,
+    period_end: datetime,
+) -> ExecutiveOverview:
+    selected_periods = [
+        period
+        for period in periods
+        if period.start_date >= period_start
+        and period.end_date < period_end
+        and PeriodType.MONTHLY in period_types.get(period.id, set())
+    ]
+    selected_period = selected_periods[0] if selected_periods else None
+    active_count = await _load_active_employee_count(db, scope_user_ids)
+    period_options = [
+        _period_option(
+            period,
+            next(iter(period_types[period.id]))
+            if len(period_types.get(period.id, set())) == 1
+            else None,
+        )
+        for period in periods
+    ]
+    if not selected_period:
+        return ExecutiveOverview(
+            periods=period_options,
+            selected_period=None,
+            summary=_empty_executive_summary(),
+            trend=ExecutiveTrend(
+                points=[],
+                delta=None,
+                direction="UNAVAILABLE",
+                comparison_available=False,
+            ),
+            category_intelligence=ExecutiveUnavailableData(
+                reason="Finalized category results are not independently persisted."
+            ),
+            target_intelligence=ExecutiveUnavailableData(
+                reason="Authoritative target-versus-actual results are not independently persisted."
+            ),
+        )
+
+    period_ids = [period.id for period in selected_periods]
+    summary = await _load_range_summary(
+        db,
+        period_ids,
+        scope_user_ids,
+        department_ids,
+        active_count,
+    )
+    departments = (
+        await _load_department_metrics(
+            db,
+            period_ids,
+            scope_user_ids,
+            department_ids,
+            PeriodType.MONTHLY,
+        )
+        if show_departments
+        else []
+    )
+    trend = await _load_range_trend(
+        db,
+        selected_period,
+        period_ids,
+        scope_user_ids,
+        department_ids,
+    )
+    signals, attention = _build_signals(selected_period, summary, trend)
+    return ExecutiveOverview(
+        periods=period_options,
+        selected_period=_period_option(selected_period, PeriodType.MONTHLY),
+        summary=summary,
+        departments=departments,
+        trend=trend,
+        signals=signals,
+        attention_areas=attention,
+        category_intelligence=ExecutiveUnavailableData(
+            reason="Finalized category results are not independently persisted."
+        ),
+        target_intelligence=ExecutiveUnavailableData(
+            reason="Authoritative target-versus-actual results are not independently persisted."
+        ),
     )
 
 
@@ -707,11 +1052,26 @@ async def build_executive_overview(
     department_ids: list[UUID] | None,
     show_departments: bool,
     period_id: UUID | None = None,
+    period_start: datetime | None = None,
+    period_end: datetime | None = None,
 ) -> ExecutiveOverview:
     periods = await _load_periods(db, scope_user_ids, department_ids)
     period_types = await _load_period_types(
         db, periods, scope_user_ids, department_ids
     )
+    if period_start is not None or period_end is not None:
+        if period_start is None or period_end is None or period_start >= period_end:
+            raise ValueError("A valid period_start/period_end range is required.")
+        return await _build_date_range_overview(
+            db,
+            periods=periods,
+            period_types=period_types,
+            scope_user_ids=scope_user_ids,
+            department_ids=department_ids,
+            show_departments=show_departments,
+            period_start=period_start,
+            period_end=period_end,
+        )
     selected_period = None
     if period_id is not None:
         selected_period = next((period for period in periods if period.id == period_id), None)
@@ -720,13 +1080,7 @@ async def build_executive_overview(
     else:
         selected_period = _default_period(periods)
     active_count = await _load_active_employee_count(db, scope_user_ids)
-    empty_summary = ExecutiveSummary(
-        status="unavailable",
-        average_percentage=None,
-        evaluated_employee_count=None,
-        no_result_employee_count=None,
-        active_employee_count=None,
-    )
+    empty_summary = _empty_executive_summary()
     if selected_period is None:
         return ExecutiveOverview(
             periods=[],

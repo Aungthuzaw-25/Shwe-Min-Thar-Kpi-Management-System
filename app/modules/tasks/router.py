@@ -46,6 +46,7 @@ from app.modules.tasks.workflow_schemas import (
     BatchSubmitResponse,
     QueueItemResponse,
 )
+from app.modules.users.avatar import avatar_color_index, avatar_initials, avatar_url
 from app.modules.users.models import Position, User
 from app.services.activity_service import record_activity
 from app.services.storage_service import storage_service
@@ -789,12 +790,22 @@ async def get_approval_queue(db: AsyncSession = Depends(get_db), current_user: U
     
     for q in queues:
         full_identity = "Unknown Submitter"
+        submitter_id = None
+        submitter_name = None
+        submitter_avatar_url = None
+        submitter_initials = "?"
+        submitter_color_index = 0
         
         # 🌟 PERFORMANCE FIX: Because 'workflow_repo.get_my_approval_queue' already uses 
         # joinedload(ApprovalQueue.batch).joinedload(SubmissionBatch.submitter), 
         # the user object is already in memory. NO database queries needed here!
         if q.batch and q.batch.submitter:
             owner = q.batch.submitter
+            submitter_id = owner.id
+            submitter_name = f"{owner.first_name} {owner.last_name or ''}".strip() or owner.email
+            submitter_avatar_url = avatar_url(owner.avatar_path, owner.avatar_updated_at)
+            submitter_initials = avatar_initials(submitter_name, owner.email)
+            submitter_color_index = avatar_color_index(owner.id)
             if owner.first_name:
                 full_identity = f"{owner.first_name} {owner.last_name or ''} ({owner.email})".strip()
             else:
@@ -802,6 +813,9 @@ async def get_approval_queue(db: AsyncSession = Depends(get_db), current_user: U
 
         result.append(QueueItemResponse(
             queue_id=q.id, batch_id=q.batch_id, submitter_email=full_identity,
+            submitter_id=submitter_id, submitter_name=submitter_name,
+            avatar_url=submitter_avatar_url, initials=submitter_initials,
+            avatar_color_index=submitter_color_index,
             total_tasks=q.batch.total_tasks, pending_count=q.pending_count, submitted_at=q.batch.created_at
         ))
     return result

@@ -1,12 +1,13 @@
 {% extends "layouts/employee_base.njk" %}
+{% from "components/avatar.njk" import avatar %}
 {% block title %}Account Profile{% endblock %}
 {% block content %}
+<link rel="stylesheet" href="/static/css/avatar.css">
+<script src="/static/js/avatar.js"></script>
 <div class="p-4 sm:p-6 lg:p-8 space-y-6 overflow-y-auto">
   <section class="app-surface p-6 sm:p-8">
     <div class="flex flex-col sm:flex-row sm:items-center gap-5">
-      <div class="app-user-avatar profile-hero-avatar">
-        {{ user_name|first|upper }}
-      </div>
+      {{ avatar(user_avatar, 96) }}
       <div>
         <h1 class="text-2xl sm:text-3xl font-bold text-slate-900">{{ user_name }}</h1>
         <p class="text-slate-500 mt-1">{{ user_email }}</p>
@@ -59,6 +60,7 @@
         {% endfor %}
       </div>
     </section>
+    {% if user_role == 'Super Admin' %}
     <section class="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm lg:col-span-2">
       <div class="mb-4">
         <h2 class="font-black text-slate-900 text-lg">Connected Accounts</h2>
@@ -94,11 +96,13 @@
       </div>
       <p id="connectedAccountsMessage" class="hidden mt-4 rounded-xl px-4 py-3 text-sm"></p>
     </section>
+    {% endif %}
   </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
+<script src="/static/js/avatar.js"></script>
 <script>
 document.querySelectorAll('[data-unlink-provider]').forEach((button) => {
   button.addEventListener('click', async () => {

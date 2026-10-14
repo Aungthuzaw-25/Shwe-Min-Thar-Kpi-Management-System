@@ -9,7 +9,7 @@ from fastapi import HTTPException, status
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload, lazyload
 
 from app.core import security
 from app.core.config import settings
@@ -17,7 +17,7 @@ from app.core.password_policy import get_password_expiry_days
 from app.models.audit_log import AuditLog
 from app.modules.auth.models import AuthSession, LoginHistory, PasswordHistory
 from app.modules.departments.models import UserDepartment
-from app.modules.users.models import User
+from app.modules.users.models import Role, User
 
 INVALID_CREDENTIALS_MESSAGE = "Invalid email or password."
 
@@ -26,6 +26,81 @@ INVALID_CREDENTIALS_MESSAGE = "Invalid email or password."
 TIMING_EQUALIZATION_HASH = security.pwd_context.handler("bcrypt").hash(
     secrets.token_urlsafe(32),
 )
+
+
+async def _load_authentication_user(db: AsyncSession, email: str) -> User | None:
+    stmt = select(User).options(
+        joinedload(User.role).lazyload(Role.permissions),
+        joinedload(User.position),
+        joinedload(User.user_departments).joinedload(UserDepartment.department),
+    ).where(User.email == email).with_for_update(of=User)
+    result = await db.execute(stmt)
+    return result.unique().scalars().first()
+
+
+async def _verify_login_password(
+    db: AsyncSession,
+    user: User,
+    password: str,
+    ip_address: str,
+    user_agent: str,
+    now: datetime,
+) -> None:
+    if not getattr(user, "local_password_enabled", True) or not user.hashed_password:
+        await run_in_threadpool(security.verify_password, password, TIMING_EQUALIZATION_HASH)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=INVALID_CREDENTIALS_MESSAGE,
+        )
+
+    is_valid_password = await run_in_threadpool(
+        security.verify_password, password, user.hashed_password
+    )
+    if is_valid_password:
+        return
+
+    user.failed_login_attempts += 1
+    if user.failed_login_attempts >= 5:
+        user.is_locked = True
+        user.lockout_until = now + timedelta(minutes=30)
+    db.add(
+        LoginHistory(
+            user_id=user.id,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            is_success=False,
+            attempted_at=now,
+        )
+    )
+    await db.commit()
+
+    if user.is_locked:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account locked due to multiple failed login attempts.",
+        )
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail=INVALID_CREDENTIALS_MESSAGE,
+    )
+
+
+async def _mark_expired_password(
+    db: AsyncSession, user: User, now: datetime
+) -> None:
+    expiry_days = await get_password_expiry_days(db)
+    if not expiry_days:
+        return
+    latest_password = (await db.execute(
+        select(PasswordHistory)
+        .where(PasswordHistory.user_id == user.id)
+        .order_by(PasswordHistory.created_at.desc())
+        .limit(1)
+    )).scalars().first()
+    password_changed_at = getattr(latest_password, "created_at", None)
+    if password_changed_at and now - password_changed_at >= timedelta(days=expiry_days):
+        user.must_change_password = True
+
 
 class AuthService:
     @staticmethod
@@ -38,22 +113,20 @@ class AuthService:
         remember_me: bool = False,
     ) -> dict[str, Any]:
         now = datetime.now(UTC).replace(tzinfo=None)
-
-        stmt = select(User).options(
-            selectinload(User.role),
-            selectinload(User.position),
-            selectinload(User.user_departments).selectinload(UserDepartment.department)
-        ).where(User.email == email).with_for_update()
-        
-        result = await db.execute(stmt)
-        user = result.scalars().first()
+        user = await _load_authentication_user(db, email)
 
         if not user:
             await run_in_threadpool(security.verify_password, password, TIMING_EQUALIZATION_HASH)
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=INVALID_CREDENTIALS_MESSAGE)
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=INVALID_CREDENTIALS_MESSAGE,
+            )
 
         if not user.is_active or user.is_deleted:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account disabled. Please contact your administrator.")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Account disabled. Please contact your administrator.",
+            )
 
         if user.is_locked:
             if user.lockout_until and user.lockout_until > now:
@@ -65,41 +138,12 @@ class AuthService:
                 user.lockout_until = None
                 await db.commit()
 
-        if not getattr(user, "local_password_enabled", True) or not user.hashed_password:
-            await run_in_threadpool(security.verify_password, password, TIMING_EQUALIZATION_HASH)
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=INVALID_CREDENTIALS_MESSAGE)
-        is_valid_password = await run_in_threadpool(security.verify_password, password, user.hashed_password)
-
-        if not is_valid_password:
-            user.failed_login_attempts += 1
-            if user.failed_login_attempts >= 5:
-                user.is_locked = True
-                user.lockout_until = now + timedelta(minutes=30)
-                
-            failed_history = LoginHistory(user_id=user.id, ip_address=ip_address, user_agent=user_agent, is_success=False, attempted_at=now)
-            db.add(failed_history)
-            await db.commit()
-            
-            if user.is_locked:
-                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account locked due to multiple failed login attempts.")
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=INVALID_CREDENTIALS_MESSAGE)
+        await _verify_login_password(db, user, password, ip_address, user_agent, now)
 
         user.failed_login_attempts = 0
         user.is_locked = False
         user.lockout_until = None
-        expiry_days = await get_password_expiry_days(db)
-        if expiry_days:
-            latest_password = (await db.execute(
-                select(PasswordHistory)
-                .where(PasswordHistory.user_id == user.id)
-                .order_by(PasswordHistory.created_at.desc())
-                .limit(1)
-            )).scalars().first()
-            password_changed_at = getattr(latest_password, "created_at", None)
-            if password_changed_at:
-                age = now - password_changed_at
-                if age >= timedelta(days=expiry_days):
-                    user.must_change_password = True
+        await _mark_expired_password(db, user, now)
         
         success_history = LoginHistory(user_id=user.id, ip_address=ip_address, user_agent=user_agent, is_success=True, attempted_at=now)
         db.add(success_history)
@@ -181,7 +225,8 @@ class AuthService:
                 expires_at=now + timedelta(
                     days=settings.REFRESH_TOKEN_EXPIRE_DAYS if remember_me else 1
                 ),
-                last_used_at=now, refresh_token_hash="pending",  # noqa: S106 - server-side placeholder, never a credential
+                last_used_at=now,
+                refresh_token_hash=security.token_digest(secrets.token_urlsafe(32)),
             )
             db.add(session)
             await db.flush()

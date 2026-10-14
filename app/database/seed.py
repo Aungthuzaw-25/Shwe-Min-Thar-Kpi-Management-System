@@ -266,6 +266,266 @@ async def _ensure_super_admin(db, role_id):
     return True
 
 
+async def _seed_departments(db):
+    departments = [
+        {"name": "Human Resources"},
+        {"name": "Information Technology"},
+        {"name": "Finance"},
+        {"name": "Finance & Account"},
+    ]
+    dept_dict = {}
+    for dept_data in departments:
+        stmt = select(Department).where(Department.name == dept_data["name"])
+        existing_dept = (await db.execute(stmt)).scalar_one_or_none()
+        if not existing_dept:
+            dept = Department(**dept_data)
+            db.add(dept)
+            await db.commit()
+            await db.refresh(dept)
+            dept_dict[dept.name] = dept
+        else:
+            dept_dict[existing_dept.name] = existing_dept
+    print("Departments seeded!")
+    return dept_dict
+
+
+async def _get_active_super_admin(db, role_id):
+    await _ensure_super_admin(db, role_id)
+    sa_user = (
+        await db.execute(
+            select(User)
+            .join(Role, User.role_id == Role.id)
+            .where(
+                Role.name == "Super Admin",
+                User.is_deleted.is_(False),
+                User.is_active.is_(True),
+            )
+            .order_by(User.created_at.asc())
+            .limit(1)
+        )
+    ).scalars().first()
+    if sa_user is None:
+        raise RuntimeError(
+            "KPI seeding requires an active Super Admin creator. "
+            "Configure the seed/bootstrap Super Admin credentials."
+        )
+    return sa_user
+
+
+async def _get_or_create_active_period(db):
+    target_date = datetime.now(UTC)
+    year, month = target_date.year, target_date.month
+    period_start = datetime(year, month, 1, 0, 0, 0, tzinfo=UTC)
+    last_day = calendar.monthrange(year, month)[1]
+    period_end = datetime(year, month, last_day, 23, 59, 59, tzinfo=UTC)
+    period_label = target_date.strftime("%B %Y")
+
+    stmt = select(KPIPeriod).where(KPIPeriod.label == period_label)
+    period = (await db.execute(stmt)).scalars().first()
+    if not period:
+        period = KPIPeriod(
+            label=period_label,
+            start_date=period_start,
+            end_date=period_end,
+            status=KPIPeriodStatus.OPEN,
+        )
+        db.add(period)
+        await db.commit()
+        await db.refresh(period)
+        print(f"Active KPI Period '{period_label}' created!")
+    return period
+
+
+async def _ensure_formula_position(db, position_name, department_id):
+    position = (
+        await db.execute(select(Position).where(Position.name == position_name))
+    ).scalars().first()
+    if not position:
+        position = Position(name=position_name, department_id=department_id)
+        db.add(position)
+        await db.commit()
+        await db.refresh(position)
+    return position
+
+
+async def _ensure_formula_category_and_rule(
+    db, category, department_id, position_id, level
+):
+    category_name = category.get("name")
+    if not category_name:
+        return
+
+    stmt_cat = select(KpiCategory).where(KpiCategory.name == category_name)
+    existing_cat = (await db.execute(stmt_cat)).scalar_one_or_none()
+    if not existing_cat:
+        new_cat = KpiCategory(name=category_name)
+        db.add(new_cat)
+        await db.commit()
+        await db.refresh(new_cat)
+
+    stmt_rule = select(KpiRule).where(
+        KpiRule.department_id == department_id,
+        KpiRule.position_id == position_id,
+        KpiRule.level == level,
+        KpiRule.category_name == category_name,
+    )
+    existing_rule = (await db.execute(stmt_rule)).scalar_one_or_none()
+    if not existing_rule:
+        new_rule = KpiRule(
+            department_id=department_id,
+            position_id=position_id,
+            level=level,
+            category_name=category_name,
+            weight=category.get("weight", 0.0),
+            is_active=True,
+        )
+        db.add(new_rule)
+        await db.commit()
+        await db.refresh(new_rule)
+
+
+def _scoring_rule_items(formula_id, categories):
+    rule_items = []
+    for category in categories:
+        category_name = category.get("name")
+        for deduction in category.get("deductions", []):
+            rule_name = deduction.get("name", "Unknown Rule")
+            measure_type = deduction.get("measure_type", "count")
+            for rule in deduction.get("rules", []):
+                rule_items.append(
+                    KPIScoringRuleItem(
+                        formula_id=formula_id,
+                        category_name=category_name,
+                        rule_name=rule_name,
+                        measure_type=measure_type,
+                        operator=rule.get("operator", "=="),
+                        target_value=float(rule.get("value", 0)),
+                        deduct_score=float(rule.get("deduct_score", 0)),
+                    )
+                )
+    return rule_items
+
+
+async def _prepare_formula(db, formula_data, finance_dept_id, creator_id):
+    with db.no_autoflush:
+        position = await _ensure_formula_position(
+            db, formula_data["pos"], finance_dept_id
+        )
+        stmt = select(KPIFormula).where(
+            KPIFormula.department_id == finance_dept_id,
+            KPIFormula.position_name == formula_data["pos"],
+            KPIFormula.region_town == formula_data["region"],
+        )
+        existing = (await db.execute(stmt)).scalars().first()
+
+        if existing:
+            print(f"Skipped: {formula_data['formula_title']} (Already Exists)")
+            return (
+                None,
+                [],
+                {
+                    "formula_id": existing.id,
+                    "position_id": position.id,
+                },
+            )
+
+        formula = KPIFormula()
+        formula.id = uuid.uuid4()
+        formula.name = formula_data["formula_title"]
+        formula.description = (
+            f"KPI formula for {formula_data['pos']} in {formula_data['region']}"
+        )
+        formula.expression = None
+        formula.department_id = finance_dept_id
+        formula.position_name = formula_data["pos"]
+        formula.position_id = position.id
+        formula.region_town = formula_data["region"]
+        formula.user_level = formula_data["lvl"]
+        formula.categories = formula_data["cats"]
+        formula.status = FormulaStatus.ACTIVE
+        formula.scope = FormulaScope.DEPARTMENT
+        formula.is_active = True
+        formula.version = 1
+        formula.created_by_id = creator_id
+
+        for category in formula_data["cats"]:
+            await _ensure_formula_category_and_rule(
+                db,
+                category,
+                finance_dept_id,
+                position.id,
+                formula_data["lvl"],
+            )
+
+        rule_items = _scoring_rule_items(formula.id, formula_data["cats"])
+        print(f"Prepared Formula & Rules: {formula_data['formula_title']}")
+        return (
+            formula,
+            rule_items,
+            {
+                "formula_id": formula.id,
+                "position_id": position.id,
+            },
+        )
+
+
+async def _prepare_formulas(db, formulas, finance_dept_id, creator_id):
+    formulas_to_add = []
+    rules_to_add = []
+    created_formula_maps = {}
+    for formula_data in formulas:
+        formula, rule_items, formula_map = await _prepare_formula(
+            db, formula_data, finance_dept_id, creator_id
+        )
+        if formula is not None:
+            formulas_to_add.append(formula)
+        rules_to_add.extend(rule_items)
+        created_formula_maps[formula_data["formula_title"]] = formula_map
+    return formulas_to_add, rules_to_add, created_formula_maps
+
+
+async def _insert_formulas_and_scoring_rules(db, formulas, rule_items):
+    for formula in formulas:
+        db.add(formula)
+        await db.commit()
+
+    batch_size = 100
+    for start in range(0, len(rule_items), batch_size):
+        db.add_all(rule_items[start:start + batch_size])
+        await db.commit()
+
+
+async def _backfill_formula_categories(db):
+    all_formulas = (await db.execute(select(KPIFormula))).scalars().all()
+    missing_categories = set()
+    for formula in all_formulas:
+        for category in formula.categories or []:
+            category_name = (
+                category.get("name", "").strip()
+                if isinstance(category, dict)
+                else ""
+            )
+            if category_name:
+                missing_categories.add(category_name)
+    if not missing_categories:
+        return
+
+    existing_categories = set(
+        (
+            await db.execute(
+                select(KpiCategory.name).where(
+                    KpiCategory.name.in_(missing_categories)
+                )
+            )
+        ).scalars().all()
+    )
+    db.add_all(
+        KpiCategory(name=name)
+        for name in sorted(missing_categories - existing_categories)
+    )
+    await db.commit()
+
+
 async def _run_seed():
     async with AsyncSessionLocal() as db:
         print("Starting database seed...")

@@ -39,7 +39,7 @@ async def log_audit_trail(
             await db.commit()
             await db.refresh(log_entry)
         return log_entry
-    except Exception as e:
+    except Exception:
         await db.rollback()
-        logger.error(f"Failed to record audit trail for {table_name}: {e}")
+        logger.exception("Failed to record audit trail for %s", table_name)
         return None

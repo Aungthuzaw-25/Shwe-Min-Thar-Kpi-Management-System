@@ -53,6 +53,7 @@ def password_needs_rehash(hashed_password: str) -> bool:
 
 TOKEN_TYPES = {"access", "refresh"}
 REQUIRED_TOKEN_CLAIMS = ("sub", "type", "exp", "iat", "jti")
+INVALID_TOKEN_DETAIL = "Invalid token."
 
 
 def _create_token(data: dict, token_type: str, expires_delta: timedelta) -> str:
@@ -95,16 +96,16 @@ def decode_token(
     for claim in REQUIRED_TOKEN_CLAIMS:
         value = payload.get(claim)
         if value is None or (isinstance(value, str) and not value.strip()):
-            raise JWTError("Invalid token.")
+            raise JWTError(INVALID_TOKEN_DETAIL)
     if not isinstance(payload["sub"], str) or not isinstance(payload["jti"], str):
-        raise JWTError("Invalid token.")
+        raise JWTError(INVALID_TOKEN_DETAIL)
     if payload.get("type") != expected_type:
         raise JWTError("Invalid token type.")
     if require_session:
         for claim in ("sid", "user_id"):
             value = payload.get(claim)
             if not isinstance(value, str) or not value.strip():
-                raise JWTError("Invalid token.")
+                raise JWTError(INVALID_TOKEN_DETAIL)
     return payload
 def token_digest(token: str) -> str:
     """Return a non-reversible digest suitable for revocation/session lookup."""

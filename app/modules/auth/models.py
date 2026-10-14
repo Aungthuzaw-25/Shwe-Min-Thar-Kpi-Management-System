@@ -47,6 +47,7 @@ class AuthSession(Base):
     remember_me = Column(Boolean, nullable=False, default=False, server_default="false")
     expires_at = Column(DateTime, nullable=False, index=True)
     last_used_at = Column(DateTime, nullable=False)
+    last_reauthenticated_at = Column(DateTime, nullable=True)
     revoked_at = Column(DateTime, nullable=True, index=True)
 
     __table_args__ = (

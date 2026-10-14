@@ -2,7 +2,9 @@ import base64
 import hashlib
 import json
 import time
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from urllib.parse import parse_qs, urlparse
 
 import jwt
 import pytest
@@ -184,12 +186,17 @@ async def test_shared_google_callback_dispatches_link_state_to_link_flow(monkeyp
     marker = object()
     calls = {}
 
-    async def consume(_redis, _state):
+    browser_binding = "A" * 43
+
+    async def consume(_redis, _state, provided_binding):
+        assert provided_binding == browser_binding
         return {
             "provider": "google",
             "flow_type": "LINK",
             "pkce_verifier": "verifier",
             "nonce": "nonce",
+            "user_id": "superadmin-a",
+            "session_id": "session-a",
         }
 
     async def complete_link(*args, **kwargs):
@@ -197,12 +204,29 @@ async def test_shared_google_callback_dispatches_link_state_to_link_flow(monkeyp
         calls["current_user"] = args[6]
         return marker
 
+    current_user = SimpleNamespace(
+        id="superadmin-a",
+        role=SimpleNamespace(name="Super Admin"),
+    )
+
+    async def authenticated_user(_request, _token, _db):
+        return current_user
+
     monkeypatch.setattr(auth_router, "get_oauth_redis", lambda _request: object())
     monkeypatch.setattr(auth_router, "consume_oauth_state", consume)
     monkeypatch.setattr(auth_router, "_provider", lambda _name: Provider())
     monkeypatch.setattr(auth_router, "_complete_link", complete_link)
+    monkeypatch.setattr(auth_router, "get_current_user", authenticated_user)
+    monkeypatch.setattr(auth_router, "_request_session_id", lambda *_args: "session-a")
 
-    request = SimpleNamespace(query_params={"iss": "https://accounts.google.com"})
+    request = SimpleNamespace(
+        query_params={"iss": "https://accounts.google.com"},
+        cookies={
+            auth_router.OAUTH_BINDING_COOKIE_NAME: (
+                f"{browser_binding}.{auth_router._oauth_binding_signature(browser_binding)}"
+            ),
+        },
+    )
     result = await auth_router._complete_oauth_login(
         request,
         object(),
@@ -215,7 +239,21 @@ async def test_shared_google_callback_dispatches_link_state_to_link_flow(monkeyp
 
     assert result is marker
     assert calls["state_data"]["flow_type"] == "LINK"
-    assert calls["current_user"] is None
+    assert calls["current_user"] is current_user
+
+
+def test_oauth_browser_binding_cookie_rejects_forged_value():
+    request = SimpleNamespace(
+        cookies={
+            auth_router.OAUTH_BINDING_COOKIE_NAME: f"{'A' * 43}.forged",
+        }
+    )
+
+    binding, cookie_value = auth_router._oauth_browser_binding(request)
+
+    assert len(binding) == 43
+    assert binding != "A" * 43
+    assert cookie_value.endswith(auth_router._oauth_binding_signature(binding))
 
 
 def test_link_flow_auth_cookies_remain_usable_after_oauth_redirect():
@@ -247,3 +285,78 @@ def test_link_flow_auth_cookies_remain_usable_after_oauth_redirect():
     assert "Secure" in cookies
     assert "SameSite=lax" in cookies
     assert "Max-Age=0" not in cookies
+
+
+@pytest.mark.asyncio
+async def test_provider_reauthentication_forces_interactive_prompt_and_max_age():
+    provider = OIDCProvider(
+        name="google",
+        client_id="client",
+        client_secret="secret",
+        redirect_uri="https://app.test/callback",
+        discovery_url="https://accounts.google.com/.well-known/openid-configuration",
+        scopes=("openid", "email", "profile"),
+    )
+
+    async def metadata():
+        return {"authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth"}
+
+    provider.metadata = metadata
+    url = await provider.authorization_url(
+        "state", "nonce", "verifier", force_reauthentication=True
+    )
+    query = parse_qs(urlparse(url).query)
+
+    assert query["prompt"] == ["login"]
+    assert query["max_age"] == ["0"]
+
+
+@pytest.mark.asyncio
+async def test_provider_reauthentication_requires_fresh_auth_time():
+    provider = OIDCProvider(
+        name="google",
+        client_id="client",
+        client_secret="secret",
+        redirect_uri="https://app.test/callback",
+        discovery_url="https://accounts.google.com/.well-known/openid-configuration",
+        scopes=("openid", "email", "profile"),
+    )
+
+    async def metadata():
+        return {"issuer": "https://accounts.google.com"}
+
+    async def claims(_token, _metadata):
+        return {
+            "auth_time": (datetime.now(UTC) - timedelta(minutes=2)).timestamp(),
+            "nonce": "nonce",
+            "sub": "provider-subject",
+            "email": "user@example.com",
+            "email_verified": True,
+            "name": "Test User",
+        }
+
+    provider.metadata = metadata
+    provider._decode_identity_claims = claims
+    identity = await provider.validate_identity(
+        {"id_token": "token"},
+        "nonce",
+        require_recent_authentication=True,
+    )
+    assert identity.subject == "provider-subject"
+
+    async def stale_claims(_token, _metadata):
+        return {
+            "auth_time": (datetime.now(UTC) - timedelta(minutes=11)).timestamp(),
+            "nonce": "nonce",
+            "sub": "provider-subject",
+            "email": "user@example.com",
+            "email_verified": True,
+        }
+
+    provider._decode_identity_claims = stale_claims
+    with pytest.raises(OIDCValidationError, match="not recent"):
+        await provider.validate_identity(
+            {"id_token": "token"},
+            "nonce",
+            require_recent_authentication=True,
+        )

@@ -82,7 +82,7 @@ The available evidence cannot distinguish a rejected login, missing or blocked c
 ## Tests and changes
 
 - Tests run: none.
-- New file created: `qa-evidence/phase5h-auth-verification-20261009.md`
+- New file created: `security-docs/phase5h-auth-verification-20261009.md`
 - No source files changed.
 - No performance benchmarks, warmups, or target-route measurements were run. While identifying existing browser history, the automation surfaced a resource timing field incidentally; it was not analyzed or included as performance evidence.
 - No production access, deployment, recovery, password reset/change, refresh, or logout occurred.

@@ -2,12 +2,15 @@ import base64
 import hashlib
 import secrets
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import urlencode
 
 import httpx
 import jwt
 from jwt import PyJWTError as JWTError
+
+SUPPORTED_ID_TOKEN_ALGORITHMS = ("RS256", "RS384", "RS512", "ES256", "ES384", "ES512")
 
 
 class OIDCValidationError(ValueError):
@@ -73,7 +76,14 @@ class OIDCProvider:
         if not expected_issuer or callback_issuer != expected_issuer:
             raise OIDCValidationError("Authorization response issuer validation failed.")
 
-    async def authorization_url(self, state: str, nonce: str, verifier: str) -> str:
+    async def authorization_url(
+        self,
+        state: str,
+        nonce: str,
+        verifier: str,
+        *,
+        force_reauthentication: bool = False,
+    ) -> str:
         metadata = await self.metadata()
         params = {
             "client_id": self.client_id,
@@ -85,7 +95,12 @@ class OIDCProvider:
             "code_challenge": create_pkce_challenge(verifier),
             "code_challenge_method": "S256",
             "access_type": "offline" if self.name == "google" else None,
-            "prompt": "select_account" if self.name == "google" else None,
+            "prompt": (
+                "login" if force_reauthentication
+                else "select_account" if self.name == "google"
+                else None
+            ),
+            "max_age": "0" if force_reauthentication else None,
         }
         return f"{metadata['authorization_endpoint']}?{urlencode({k: v for k, v in params.items() if v is not None})}"
 
@@ -107,16 +122,37 @@ class OIDCProvider:
                 raise OIDCValidationError("Authorization code exchange failed.")
             return response.json()
 
-    async def validate_identity(self, token_response: dict[str, Any], nonce: str) -> OIDCIdentity:
+    async def validate_identity(
+        self,
+        token_response: dict[str, Any],
+        nonce: str,
+        *,
+        require_recent_authentication: bool = False,
+    ) -> OIDCIdentity:
         id_token = token_response.get("id_token")
         if not id_token:
             raise OIDCValidationError("Provider did not return an ID token.")
         metadata = await self.metadata()
+        claims = await self._decode_identity_claims(id_token, metadata)
+        if require_recent_authentication:
+            auth_time = claims.get("auth_time")
+            now = datetime.now(UTC).timestamp()
+            if (
+                isinstance(auth_time, bool)
+                or not isinstance(auth_time, (int, float))
+                or auth_time > now + 60
+                or auth_time < now - timedelta(minutes=10).total_seconds()
+            ):
+                raise OIDCValidationError("Provider authentication is not recent.")
+        return self._identity_from_claims(claims, metadata, nonce)
+
+    async def _decode_identity_claims(
+        self, id_token: str, metadata: dict[str, Any]
+    ) -> dict[str, Any]:
         try:
             header = jwt.get_unverified_header(id_token)
-            allowed_algorithms = ["RS256", "RS384", "RS512", "ES256", "ES384", "ES512"]
             algorithm = header.get("alg")
-            if algorithm not in allowed_algorithms:
+            if algorithm not in SUPPORTED_ID_TOKEN_ALGORITHMS:
                 raise OIDCValidationError("Unsupported ID token algorithm.")
             supported_algorithms = metadata.get("id_token_signing_alg_values_supported")
             if (
@@ -158,6 +194,12 @@ class OIDCProvider:
             )
         except (JWTError, KeyError, TypeError) as exc:
             raise OIDCValidationError("Provider identity validation failed.") from exc
+
+        return claims
+
+    def _identity_from_claims(
+        self, claims: dict[str, Any], metadata: dict[str, Any], nonce: str
+    ) -> OIDCIdentity:
         if claims.get("nonce") != nonce:
             raise OIDCValidationError("Provider nonce validation failed.")
         audiences = claims.get("aud")

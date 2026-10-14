@@ -275,7 +275,14 @@
     activity.innerHTML = data.activity?.length ? data.activity.map(item => `
       <div class="executive-list-item">
         <strong>${escapeHTML(item.action || 'Activity')}</strong>
-        <span>${escapeHTML(item.actor_name || 'System')} · ${escapeHTML(formatTime(item.created_at))}</span>
+        <span class="inline-flex items-center gap-2">${item.actor_name && item.actor_name !== 'System' ? window.kpiAvatarMarkup({
+          ...item,
+          id: item.actor_id || item.user_id,
+          display_name: item.actor_name,
+          avatar_url: item.actor_avatar_url || item.avatar_url,
+          initials: item.actor_initials || item.initials,
+          avatar_color_index: item.actor_avatar_color_index ?? item.avatar_color_index
+        }, 32) : ''}${escapeHTML(item.actor_name || 'System')} · ${escapeHTML(formatTime(item.created_at))}</span>
       </div>`).join('') : listEmpty('No recent activity.');
 
     const activitySummary = data.activity_summary || {};
@@ -411,7 +418,11 @@
         <caption class="sr-only">Authorized employee KPI results, alphabetically ordered</caption>
         <thead><tr><th>Employee</th><th>Department</th><th>Position</th><th>Level</th><th>KPI %</th><th>Status</th><th>Details</th></tr></thead>
         <tbody>${page.items.map(item => `<tr>
-          <td>${escapeHTML(item.employee_name)}</td><td>${escapeHTML(item.department_name || '—')}</td>
+          <td><span class="inline-flex items-center gap-2">${window.kpiAvatarMarkup({
+            ...item,
+            id: item.user_id,
+            display_name: item.employee_name
+          }, 32)}<span>${escapeHTML(item.employee_name)}</span></span></td><td>${escapeHTML(item.department_name || '—')}</td>
           <td>${escapeHTML(item.position_name || '—')}</td><td>${escapeHTML(item.level || '—')}</td>
           <td>${Number(item.percentage).toFixed(2)}%</td><td>${escapeHTML(item.status)}</td>
           <td><button type="button" class="executive-link-button" data-user-id="${escapeHTML(item.user_id)}">View details</button></td>

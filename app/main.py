@@ -28,8 +28,10 @@ from app.middleware.logging_middleware import RequestLoggingMiddleware
 from app.models.system import LogLevel
 from app.modules.activity_router import router as activity_router
 from app.modules.activity_web import router as activity_web_router
+from app.modules.auth.profile_router import account_router
 
 # Backend API Routers (DDD Modules)
+from app.modules.auth.profile_router import router as auth_profile_router
 from app.modules.auth.router import router as auth_router
 from app.modules.departments.router import router as dept_router
 from app.modules.kpi import upload_router
@@ -155,41 +157,6 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
-def _http_exception_handler(request: Request, exc: HTTPException):
-    """Keep internal exception details out of production HTTP responses."""
-    if exc.status_code >= status.HTTP_500_INTERNAL_SERVER_ERROR:
-        logger.error(
-            "HTTP %s while handling %s %s: %s",
-            exc.status_code,
-            request.method,
-            request.url.path,
-            exc.detail,
-        )
-        return JSONResponse(
-            status_code=exc.status_code,
-            content={"detail": "Internal server error."},
-        )
-    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
-
-
-app.add_exception_handler(HTTPException, _http_exception_handler)
-
-# ==============================================================================
-# 🛡️ 4. SECURITY & PERFORMANCE MIDDLEWARES
-# ==============================================================================
-
-# A. GZip Compression (API Response Payload ကို ချုံ့ပေး၍ Speed မြန်စေသည်)
-app.add_middleware(GZipMiddleware, minimum_size=1000)
-app.add_middleware(RequestLoggingMiddleware)
-
-# B. Strict CORS Policy
-ALLOWED_ORIGINS = [
-    origin.strip()
-    for origin in settings.ALLOWED_ORIGINS.split(",")
-    if origin.strip()
-]
-
-# C. Bank-Grade HTTP Security Headers & Content Security Policy (CSP)
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         csp_nonce = secrets.token_urlsafe(16)
@@ -251,15 +218,56 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
             f"script-src 'self' 'nonce-{csp_nonce}'; "
-            f"style-src 'self' 'nonce-{csp_nonce}' https://fonts.googleapis.com; "
-            "font-src 'self' https://fonts.gstatic.com; "
+            f"style-src 'self' 'nonce-{csp_nonce}'; "
+            "font-src 'self'; "
             f"img-src 'self' data: blob:{storage_origins}; "
             f"connect-src 'self'{storage_origins}; "
             "frame-ancestors 'none';"
         )
         return response
 
+
+def _http_exception_handler(request: Request, exc: HTTPException):
+    """Keep internal exception details out of production HTTP responses."""
+    if exc.status_code >= status.HTTP_500_INTERNAL_SERVER_ERROR:
+        logger.error(
+            "HTTP %s while handling %s %s: %s",
+            exc.status_code,
+            request.method,
+            request.url.path,
+            exc.detail,
+        )
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": "Internal server error."},
+        )
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+
+
+app.add_exception_handler(HTTPException, _http_exception_handler)
+
+# ==============================================================================
+# 🛡️ 4. SECURITY & PERFORMANCE MIDDLEWARES
+# ==============================================================================
+
+# A. GZip Compression (API Response Payload ကို ချုံ့ပေး၍ Speed မြန်စေသည်)
+# Keep HTML rewrite work ahead of gzip so we do not decompress-and-recompress
+# every page response just to inject the CSP nonce.
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(RequestLoggingMiddleware)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+# B. Strict CORS Policy
+ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in settings.ALLOWED_ORIGINS.split(",")
+    if origin.strip()
+]
+
+# C. Bank-Grade HTTP Security Headers & Content Security Policy (CSP)
+
+# SecurityHeadersMiddleware is already registered above; keeping the single
+# registration avoids duplicate HTML rewriting and redundant header writes.
 
 
 class CSRFMiddleware(BaseHTTPMiddleware):
@@ -321,6 +329,8 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 # 🔌 6. BACKEND API ROUTERS (Domain-Driven Design)
 # ==============================================================================
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["Authentication"])
+app.include_router(auth_profile_router, prefix="/api/v1/auth", tags=["Account Profile"])
+app.include_router(account_router, prefix="/api/v1/account", tags=["Account"])
 app.include_router(dept_router, prefix="/api/v1/departments", tags=["Departments"])
 app.include_router(user_router, prefix="/api/v1/users", tags=["Users"]) 
 app.include_router(position_router, prefix="/api/v1", tags=["Positions"]) 

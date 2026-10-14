@@ -1,11 +1,11 @@
 export function registerFilters(environment, nunjucks) {
   environment.addFilter("tojson", (value) => {
     const json = JSON.stringify(value)
-      .replace(/</g, "\\u003c")
-      .replace(/>/g, "\\u003e")
-      .replace(/&/g, "\\u0026")
-      .replace(/\u2028/g, "\\u2028")
-      .replace(/\u2029/g, "\\u2029");
+      .replaceAll("<", String.raw`\u003c`)
+      .replaceAll(">", String.raw`\u003e`)
+      .replaceAll("&", String.raw`\u0026`)
+      .replaceAll("\u2028", String.raw`\u2028`)
+      .replaceAll("\u2029", String.raw`\u2029`);
     return new nunjucks.runtime.SafeString(json);
   });
 
@@ -20,7 +20,7 @@ export function registerFilters(environment, nunjucks) {
     }
 
     const match = typeof value === "string"
-      ? value.match(/^(\d{4})-(\d{2})-(\d{2})/)
+      ? /^(\d{4})-(\d{2})-(\d{2})/.exec(value)
       : null;
     const parts = match
       ? { year: match[1], month: match[2], day: match[3] }
@@ -31,9 +31,9 @@ export function registerFilters(environment, nunjucks) {
         };
 
     return String(format)
-      .replace(/%Y/g, parts.year)
-      .replace(/%m/g, parts.month)
-      .replace(/%d/g, parts.day);
+      .replaceAll("%Y", parts.year)
+      .replaceAll("%m", parts.month)
+      .replaceAll("%d", parts.day);
   });
 
   environment.addFilter("items", (value) => (

@@ -30,7 +30,7 @@ Sources reviewed:
 - `app/main.py::CSRFMiddleware`
 - `tests/test_csrf_middleware.py`
 - `tests/test_password_change_csrf.py`
-- `qa-evidence/phase5h-password-change-csrf-fix-20261009.md`
+- `security-docs/phase5h-password-change-csrf-fix-20261009.md`
 - `app/middleware/logging_middleware.py`
 
 ### Findings

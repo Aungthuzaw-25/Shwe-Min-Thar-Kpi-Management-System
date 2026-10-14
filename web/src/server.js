@@ -6,6 +6,7 @@ import { createBackendClient } from "./lib/backendClient.js";
 import { registerFilters } from "./lib/nunjucks_filters.js";
 import { cspMiddleware } from "./middleware/csp.js";
 import { registerActivityRoutes } from "./routes/activity.js";
+import { registerAccountRoutes } from "./routes/account.js";
 import { registerAuthRoutes } from "./routes/auth.js";
 import { registerDashboardRoutes } from "./routes/dashboard.js";
 
@@ -36,11 +37,17 @@ export function createApp({
     response.redirect(307, "/auth/login");
   });
   registerAuthRoutes(app);
+  registerAccountRoutes(app);
   registerDashboardRoutes(app);
   registerActivityRoutes(app);
 
   app.use((error, request, response, _next) => {
-    console.error(`Web request failed for ${request.method} ${request.path}:`, error);
+    console.error(JSON.stringify({
+      message: "Web request failed",
+      method: request.method,
+      path: request.path,
+      error: error instanceof Error ? error.stack || error.message : String(error),
+    }));
     if (response.headersSent) return;
     response.status(502).json({ detail: "The application service is temporarily unavailable." });
   });

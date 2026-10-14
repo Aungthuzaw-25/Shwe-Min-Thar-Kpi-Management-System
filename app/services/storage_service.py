@@ -142,11 +142,11 @@ class StorageService:
 
         except HTTPException:
             raise
-        except ClientError as e:
-            logger.error(f"AWS ClientError during upload: {str(e)}")
+        except ClientError:
+            logger.exception("AWS ClientError during upload")
             raise HTTPException(status_code=500, detail="Storage service error during upload")
-        except Exception as e:
-            logger.error(f"File upload failed: {str(e)}")
+        except Exception:
+            logger.exception("File upload failed")
             raise HTTPException(status_code=500, detail="Could not upload file to storage")
 
     def get_presigned_url(self, object_name: str, expiration: int = 3600) -> str:
@@ -167,8 +167,8 @@ class StorageService:
                 ExpiresIn=expiration
             )
             return response
-        except ClientError as e:
-            logger.error(f"Generate presigned URL failed: {str(e)}")
+        except ClientError:
+            logger.exception("Generate presigned URL failed")
             raise HTTPException(status_code=500, detail="Could not generate file access link")
 
     # 🌟 ADDED: Missing delete_file function required by router.py
@@ -184,8 +184,8 @@ class StorageService:
                 Bucket=self.bucket_name,
                 Key=safe_object_name
             )
-        except Exception as e:
-            logger.error(f"Failed to delete file {object_name}: {str(e)}")
-            raise RuntimeError("Storage deletion failed") from e
+        except Exception as exc:
+            logger.exception("Failed to delete file %s", object_name)
+            raise RuntimeError("Storage deletion failed") from exc
 
 storage_service = StorageService()

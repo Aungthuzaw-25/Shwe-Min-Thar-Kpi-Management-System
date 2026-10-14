@@ -15,15 +15,18 @@ from app.modules.kpi.dashboard_service import build_dashboard_summary
 from app.modules.kpi.executive_intelligence_schemas import (
     ExecutiveEmployeeDetail,
     ExecutiveEmployeePage,
+    ExecutiveMonthlyAverageResponse,
     ExecutiveOverview,
 )
 from app.modules.kpi.executive_intelligence_service import (
+    build_monthly_average_series,
     build_executive_overview,
     get_executive_employee_detail,
     list_executive_employee_results,
 )
 from app.modules.kpi.models import KPIRecord, KPIStatus, PeriodType
 from app.modules.notifications.models import Notification
+from app.modules.kpi.period_ranges import normalize_calendar_range
 from app.modules.tasks.models.task import Task, TaskStatus
 from app.modules.users.models import Position, User
 
@@ -196,23 +199,87 @@ async def _get_executive_scope(
 )
 async def fetch_executive_overview(
     period_id: UUID | None = Query(None),
+    period_start: datetime | None = Query(None),
+    period_end: datetime | None = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> ExecutiveOverview:
     """Return read-only KPI intelligence within the existing dashboard scope."""
+    if period_id is not None and (period_start is not None or period_end is not None):
+        raise HTTPException(
+            status_code=422,
+            detail="Use either period_id or a complete period_start/period_end range.",
+        )
+    if (period_start is None) != (period_end is None):
+        raise HTTPException(
+            status_code=422,
+            detail="period_start and period_end must be provided together.",
+        )
     scope_user_ids, department_ids, show_departments = await _get_executive_scope(
         db, current_user
     )
     try:
+        date_range = (
+            normalize_calendar_range(period_start, period_end)
+            if period_start is not None and period_end is not None
+            else None
+        )
         return await build_executive_overview(
             db,
             scope_user_ids=scope_user_ids,
             department_ids=department_ids,
             show_departments=show_departments,
             period_id=period_id,
+            period_start=date_range.start_inclusive if date_range else None,
+            period_end=date_range.end_exclusive if date_range else None,
         )
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@unified_router.get(
+    "/executive/monthly-averages",
+    response_model=ExecutiveMonthlyAverageResponse,
+    tags=["Executive KPI Intelligence"],
+)
+async def fetch_executive_monthly_averages(
+    year: int = Query(..., ge=1900, le=9998),
+    department_id: UUID | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> ExecutiveMonthlyAverageResponse:
+    """Return authorized department choices and monthly KPI averages."""
+    scope_user_ids, department_ids, _ = await _get_executive_scope(db, current_user)
+    visible_departments_query = select(Department.id, Department.name).where(
+        Department.is_deleted.is_(False)
+    )
+    if department_ids is not None:
+        visible_departments_query = visible_departments_query.where(
+            Department.id.in_(department_ids) if department_ids else false()
+        )
+    visible_departments = (
+        await db.execute(
+            visible_departments_query.order_by(Department.name, Department.id)
+        )
+    ).all()
+    visible_department_ids = {row.id for row in visible_departments}
+    if department_id is not None and department_id not in visible_department_ids:
+        raise HTTPException(status_code=404, detail="Department not found.")
+
+    averages = await build_monthly_average_series(
+        db,
+        year=year,
+        scope_user_ids=scope_user_ids,
+        department_ids=[department_id] if department_id is not None else department_ids,
+    )
+    return ExecutiveMonthlyAverageResponse(
+        departments=[
+            {"id": row.id, "name": row.name} for row in visible_departments
+        ],
+        monthly_averages=averages,
+    )
 
 
 @unified_router.get(
@@ -246,17 +313,39 @@ async def fetch_executive_employee_detail(
     tags=["Executive KPI Intelligence"],
 )
 async def fetch_executive_employee_results(
-    period_id: UUID = Query(...),
+    period_id: UUID | None = Query(None),
+    period_start: datetime | None = Query(None),
+    period_end: datetime | None = Query(None),
     offset: int = Query(0, ge=0),
     limit: int = Query(25, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> ExecutiveEmployeePage:
-    """List evaluated employees alphabetically within the viewer's dashboard scope."""
+    """List evaluated employees within the viewer's dashboard scope and time range."""
+    if (period_id is None) == (period_start is None and period_end is None):
+        raise HTTPException(
+            status_code=422,
+            detail="Provide either period_id or a complete period_start/period_end range.",
+        )
+    if (period_start is None) != (period_end is None):
+        raise HTTPException(
+            status_code=422,
+            detail="period_start and period_end must be provided together.",
+        )
     scope_user_ids, department_ids, _ = await _get_executive_scope(db, current_user)
+    try:
+        date_range = (
+            normalize_calendar_range(period_start, period_end)
+            if period_start is not None and period_end is not None
+            else None
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     return await list_executive_employee_results(
         db,
         period_id=period_id,
+        period_start=date_range.start_inclusive if date_range else None,
+        period_end=date_range.end_exclusive if date_range else None,
         scope_user_ids=scope_user_ids,
         department_ids=department_ids,
         offset=offset,

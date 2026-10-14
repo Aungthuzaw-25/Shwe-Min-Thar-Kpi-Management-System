@@ -11,6 +11,7 @@ from app.database.connection import get_db
 from app.models.audit_log import AuditLog
 from app.modules.departments.models import Department, UserDepartment
 from app.modules.users import permission_repo
+from app.modules.users.avatar import avatar_color_index, avatar_initials, avatar_url
 from app.modules.users.models import Permission, Role, User, UserPermissionOverride
 from app.modules.users.permission_schemas import (
     AssignPermissionsRequest,
@@ -180,6 +181,9 @@ async def list_permission_users(
             "id": str(u.id),
             "name": f"{u.first_name} {u.last_name}",
             "email": u.email,
+            "avatar_url": avatar_url(u.avatar_path, u.avatar_updated_at),
+            "initials": avatar_initials(f"{u.first_name} {u.last_name}", u.email),
+            "avatar_color_index": avatar_color_index(u.id),
             "role_id": str(u.role_id),
             "role_name": u.role.name if u.role else None,
             "department_name": ", ".join(dept_names) if dept_names else None,
@@ -440,24 +444,50 @@ async def permission_audit_history(
 
     # Fetch actor names
     actor_map = {}
+    actor_avatar_map = {}
     if actor_ids:
         actors = (await db.execute(
-            select(User.id, User.first_name, User.last_name, User.email)
+            select(
+                User.id,
+                User.first_name,
+                User.last_name,
+                User.email,
+                User.avatar_path,
+                User.avatar_updated_at,
+            )
             .where(User.id.in_(actor_ids))
         )).all()
-        for uid, fn, ln, email in actors:
+        for uid, fn, ln, email, avatar_path, avatar_updated_at in actors:
             actor_map[str(uid)] = f"{fn} {ln} ({email})"
+            actor_avatar_map[str(uid)] = {
+                "avatar_url": avatar_url(avatar_path, avatar_updated_at),
+                "initials": avatar_initials(f"{fn} {ln}", email),
+                "avatar_color_index": avatar_color_index(uid),
+            }
 
     # Fetch target names (users or roles)
     target_map = {}
+    target_avatar_map = {}
     if target_ids:
         # Try users first
         users = (await db.execute(
-            select(User.id, User.first_name, User.last_name, User.email)
+            select(
+                User.id,
+                User.first_name,
+                User.last_name,
+                User.email,
+                User.avatar_path,
+                User.avatar_updated_at,
+            )
             .where(User.id.in_([uid for uid in target_ids]))
         )).all()
-        for uid, fn, ln, email in users:
+        for uid, fn, ln, email, avatar_path, avatar_updated_at in users:
             target_map[str(uid)] = f"{fn} {ln} ({email})"
+            target_avatar_map[str(uid)] = {
+                "avatar_url": avatar_url(avatar_path, avatar_updated_at),
+                "initials": avatar_initials(f"{fn} {ln}", email),
+                "avatar_color_index": avatar_color_index(uid),
+            }
         # Try roles
         remaining = target_ids - set(target_map.keys())
         if remaining:
@@ -475,8 +505,10 @@ async def permission_audit_history(
             "action": log.action,
             "actor_id": actor_id_str,
             "actor_name": actor_map.get(actor_id_str, "System"),
+            "actor_avatar": actor_avatar_map.get(actor_id_str),
             "target_id": log.record_id,
             "target_name": target_map.get(log.record_id, log.record_id),
+            "target_avatar": target_avatar_map.get(log.record_id),
             "old_value": log.old_value,
             "new_value": log.new_value,
             "created_at": f"{log.created_at.isoformat()}Z" if log.created_at else None,

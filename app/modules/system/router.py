@@ -13,6 +13,10 @@ from app.core.dependencies import enforce_permission, get_current_user
 from app.database.connection import get_db
 from app.models.audit_log import AuditLog
 from app.models.system import LogLevel
+from app.modules.system.audit_log_retention import (
+    AUDIT_LOG_RETENTION_KEY,
+    normalize_audit_log_retention,
+)
 from app.modules.system import repo
 from app.modules.system.schemas import (
     EmailProviderLifecycleRequest,
@@ -74,6 +78,11 @@ def _sanitize_setting_value(key: str, value: dict) -> dict:
             sanitized = normalize_email_settings(sanitized)
         except ValidationError as exc:
             raise HTTPException(status_code=422, detail=exc.errors()) from exc
+    elif key.lower() == AUDIT_LOG_RETENTION_KEY:
+        try:
+            sanitized = normalize_audit_log_retention(sanitized)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
     elif key.lower() == "security":
         try:
             policy = PasswordPolicyValue.model_validate({
@@ -119,6 +128,14 @@ def _require_super_admin_email_settings(user: User) -> None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only a Super Admin can manage email configuration.",
+        )
+
+
+def _require_super_admin_audit_retention(user: User) -> None:
+    if not user.role or user.role.name != "Super Admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only a Super Admin can manage audit log retention.",
         )
 
 
@@ -287,6 +304,8 @@ async def create_new_setting(
 ):
     """System Setting အသစ်ထည့်ရန်"""
     enforce_permission(current_user, "system.settings.edit")
+    if payload.key.lower() == AUDIT_LOG_RETENTION_KEY:
+        _require_super_admin_audit_retention(current_user)
     if "api_key" in payload.key.lower().replace("-", "_") or "apikey" in payload.key.lower():
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -576,6 +595,8 @@ async def update_existing_setting(
 ):
     """System Setting ပြင်ဆင်ရန် (ဥပမာ - Maintenance Mode ပိတ်/ဖွင့်)"""
     enforce_permission(current_user, "system.settings.edit")
+    if key.lower() == AUDIT_LOG_RETENTION_KEY:
+        _require_super_admin_audit_retention(current_user)
     if "api_key" in key.lower().replace("-", "_") or "apikey" in key.lower():
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
