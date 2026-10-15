@@ -1,7 +1,13 @@
 import os
+from types import SimpleNamespace
+from uuid import uuid4
 
 import pytest
+from fastapi.testclient import TestClient
 from playwright.sync_api import sync_playwright
+
+from app.main import app
+from app.web import dashboard_web
 
 BASE_URL = os.getenv("UI_BASE_URL", "http://127.0.0.1:18000")
 SUPERADMIN_EMAIL = os.getenv("UI_TEST_SUPERADMIN_EMAIL", "qa.superadmin@example")
@@ -42,6 +48,65 @@ def login(page, email, password):
         """,
         timeout=60000,
     )
+
+
+class _TemplateDBResult:
+    def scalars(self):
+        return self
+
+    def first(self):
+        return None
+
+    def scalar_one_or_none(self):
+        return None
+
+
+class _TemplateDB:
+    async def execute(self, _statement):
+        return _TemplateDBResult()
+
+
+@pytest.mark.parametrize(
+    ("path", "role_name"),
+    [
+        ("/superadmin/dashboard", "Super Admin"),
+        ("/admin/dashboard", "Admin"),
+    ],
+)
+def test_fastapi_dashboard_templates_render_with_user_context(path, role_name):
+    user = SimpleNamespace(
+        id=uuid4(),
+        first_name="Test",
+        last_name="User",
+        email="test.user@example.test",
+        role=SimpleNamespace(name=role_name, permissions=[]),
+        position_id=None,
+        avatar_path=None,
+        avatar_updated_at=None,
+    )
+    app.dependency_overrides[dashboard_web.get_current_user] = lambda: user
+    app.dependency_overrides[dashboard_web.get_db] = _TemplateDB
+
+    try:
+        response = TestClient(app).get(path)
+    finally:
+        app.dependency_overrides.pop(dashboard_web.get_current_user, None)
+        app.dependency_overrides.pop(dashboard_web.get_db, None)
+
+    assert response.status_code == 200
+    assert "Test User" in response.text
+    assert "kpi-avatar" in response.text
+
+
+def test_avatar_macro_accepts_missing_user():
+    avatar_macro = dashboard_web.templates.get_template(
+        "components/avatar.njk"
+    ).module.avatar
+
+    rendered = str(avatar_macro(None, 32))
+
+    assert 'aria-label="User"' in rendered
+    assert "kpi-avatar--color-0" in rendered
 
 
 def test_superadmin_dashboard_access(playwright_context):

@@ -238,7 +238,7 @@
                     <span id="topbarNotificationCount" class="app-notification-count" hidden></span>
                 </a>
                 <a href="/account/profile" class="app-topbar__identity" style="color: inherit; text-decoration: none;" aria-label="My profile">
-                    {{ avatar(user_avatar, 32) }}
+                    {{ avatar(user_avatar|default(current_user|default(none)), 32) }}
                     <div class="app-topbar__user">
                         <strong>{{ user_name or 'User' }}</strong>
                         <span>{{ user_role or 'Authorized user' }}</span>

@@ -1,11 +1,15 @@
 {% macro avatar(user, size=32) %}
-{% set display_name = user.display_name or user.full_name or user.name or 'User' %}
-<span class="kpi-avatar kpi-avatar--{{ size }}{% if user.avatar_url %} kpi-avatar--photo{% else %} kpi-avatar--color-{{ user.avatar_color_index or 0 }}{% endif %}" role="img" aria-label="{{ display_name }}">
-  {% if user.avatar_url %}
-  <img class="kpi-avatar__image" src="{{ user.avatar_url }}" alt="{{ display_name }}" loading="lazy" width="{{ size }}" height="{{ size }}" data-kpi-avatar-image>
-  <span class="kpi-avatar__initials kpi-avatar__fallback" aria-hidden="true">{{ user.initials or '?' }}</span>
+{% set avatar_user = user|default(none) %}
+{% set display_name = avatar_user.display_name|default(avatar_user.full_name|default(avatar_user.name|default('User', true), true), true) %}
+{% set image_url = avatar_user.avatar_url|default(none, true) %}
+{% set color_index = avatar_user.avatar_color_index|default(0, true) %}
+{% set initials = avatar_user.initials|default('?', true) %}
+<span class="kpi-avatar kpi-avatar--{{ size }}{% if image_url %} kpi-avatar--photo{% else %} kpi-avatar--color-{{ color_index }}{% endif %}" role="img" aria-label="{{ display_name }}">
+  {% if image_url %}
+  <img class="kpi-avatar__image" src="{{ image_url }}" alt="{{ display_name }}" loading="lazy" width="{{ size }}" height="{{ size }}" data-kpi-avatar-image>
+  <span class="kpi-avatar__initials kpi-avatar__fallback" aria-hidden="true">{{ initials }}</span>
   {% else %}
-  <span class="kpi-avatar__initials" aria-hidden="true">{{ user.initials or '?' }}</span>
+  <span class="kpi-avatar__initials" aria-hidden="true">{{ initials }}</span>
   {% endif %}
 </span>
 {% endmacro %}
