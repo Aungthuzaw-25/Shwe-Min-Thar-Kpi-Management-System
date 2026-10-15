@@ -4,6 +4,9 @@
 {% block title %}Super Admin Management{% endblock %}
 
 {% block content %}
+<link rel="stylesheet" href="/static/css/avatar.css">
+<script src="/static/js/avatar-renderer.js"></script>
+<script src="/static/js/avatar.js"></script>
 <div class="workspace-page min-h-full overflow-y-auto">
     <div class="app-page-header">
         <div>
@@ -92,6 +95,11 @@ const modal = document.getElementById('superAdminModal');
 const form = document.getElementById('superAdminForm');
 const modalTitle = document.getElementById('modalTitle');
 const submitButton = form.querySelector('button[type="submit"]');
+function escapeHTML(value) {
+    return String(value ?? '').replace(/[&<>"']/g, (character) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[character]);
+}
 
 function showToast(message, kind = 'success') {
     const existing = document.getElementById('globalToast');
@@ -139,7 +147,7 @@ function renderRow(user) {
 
     return `
         <tr class="border-t border-slate-100 hover:bg-slate-50">
-            <td class="px-4 py-3 font-semibold text-slate-800">${fullName}</td>
+            <td class="px-4 py-3 font-semibold text-slate-800"><span class="inline-flex items-center gap-3">${window.kpiAvatarMarkup(user, 32)}<span>${escapeHTML(fullName)}</span></span></td>
             <td class="px-4 py-3">${user.email}</td>
             <td class="px-4 py-3">${getStatusBadge(user.is_active)}</td>
             <td class="px-4 py-3">${formatDate(createdAt)}</td>

@@ -1,5 +1,5 @@
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field, StrictStr
 
 
 class LoginRequest(BaseModel):
@@ -19,8 +19,10 @@ class RefreshTokenRequest(BaseModel):
     refresh_token: str
     
 class ChangePasswordRequest(BaseModel):
-    old_password: str
-    new_password: str
+    model_config = ConfigDict(extra="forbid")
+
+    old_password: StrictStr = Field(min_length=1, max_length=256)
+    new_password: StrictStr = Field(min_length=1, max_length=256)
     # Optional for API compatibility; supported clients send it and the router
     # rejects a mismatch before any password state is changed.
-    confirm_new_password: str | None = None
+    confirm_new_password: StrictStr | None = Field(default=None, max_length=256)

@@ -191,11 +191,20 @@ async def test_refresh_rotation_replay_and_logout_revocation():
 @pytest.mark.asyncio
 async def test_password_change_revokes_existing_sessions(monkeypatch):
     user_id = uuid4()
+    current_session_id = uuid4()
     user = SimpleNamespace(
         id=user_id, hashed_password="old-hash", local_password_enabled=True,  # noqa: S106 - synthetic test fixture; not a production credential
         must_change_password=True,
     )
-    db = SimpleNamespace(commits=0)
+    statements = []
+    audit_entries = []
+
+    class _UpdateResult:
+        rowcount = 2
+
+    async def execute(statement):
+        statements.append(statement)
+        return _UpdateResult()
 
     async def commit():
         db.commits += 1
@@ -212,24 +221,27 @@ async def test_password_change_revokes_existing_sessions(monkeypatch):
     async def add_history(*_args, **_kwargs):
         return None
 
-    async def revoke(_db, revoked_user_id):
-        revoked.append(revoked_user_id)
-
+    db = SimpleNamespace(commits=0, execute=execute, add=audit_entries.append)
     db.commit = commit
-    revoked = []
     monkeypatch.setattr(auth_router, "run_in_threadpool", threadpool)
     monkeypatch.setattr(auth_router.security, "verify_password", lambda *_: True)
     monkeypatch.setattr(auth_router.security, "get_password_hash", lambda *_: "new-hash")
     monkeypatch.setattr(auth_router, "get_password_policy", policy)
     monkeypatch.setattr(auth_router.password_repo, "check_password_history", history)
     monkeypatch.setattr(auth_router.password_repo, "add_password_history", add_history)
-    monkeypatch.setattr(auth_router, "revoke_user_authentication", revoke)
+    monkeypatch.setattr(
+        auth_router.security,
+        "decode_token",
+        lambda *_args, **_kwargs: {"sid": str(current_session_id), "user_id": str(user_id)},
+    )
 
     await auth_router.self_change_password(
         _request(), ChangePasswordRequest(old_password="old", new_password="StrongPass!123"), user, db  # noqa: S106 - synthetic test fixture; not a production credential
     )
     assert user.hashed_password == "new-hash"  # noqa: S105 - synthetic test fixture; not a production credential
-    assert revoked == [user_id]
+    assert current_session_id in statements[0].compile().params.values()
+    assert audit_entries[0].action == "PASSWORD_CHANGED"
+    assert audit_entries[0].new_value == {"other_sessions_revoked": 2}
     assert db.commits == 1
 
 

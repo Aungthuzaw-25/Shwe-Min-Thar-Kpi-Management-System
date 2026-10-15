@@ -7,6 +7,7 @@ from sqlalchemy.future import select
 
 from app.modules.departments.models import Department
 from app.modules.kpi.models import KPIFormula, KPIRecord
+from app.modules.users.avatar import avatar_color_index, avatar_initials, avatar_url
 from app.modules.users.models import User
 
 
@@ -69,6 +70,9 @@ async def get_kpi_report_data(
             User.id.label("user_id"),
             # ⚡ LOGICAL BUG FIX: Use concat_ws to prevent NULL results if last_name is missing
             func.concat_ws(" ", User.first_name, User.last_name).label("full_name"),
+            User.email.label("email"),
+            User.avatar_path.label("avatar_path"),
+            User.avatar_updated_at.label("avatar_updated_at"),
             Department.name.label("department_name"),
             KPIRecord.weighted_score.label("total_score"),
             KPIRecord.status_bucket.label("grade"), 
@@ -102,6 +106,9 @@ async def get_kpi_report_data(
         report_data.append({
             "user_id": row.user_id,
             "full_name": row.full_name,
+            "avatar_url": avatar_url(row.avatar_path, row.avatar_updated_at),
+            "initials": avatar_initials(row.full_name, row.email),
+            "avatar_color_index": avatar_color_index(row.user_id),
             # Handle null departments safely
             "department_name": row.department_name if row.department_name else "N/A",
             "total_score": float(row.total_score) if row.total_score is not None else 0.0,

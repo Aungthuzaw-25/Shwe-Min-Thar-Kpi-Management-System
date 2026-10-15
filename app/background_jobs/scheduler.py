@@ -22,6 +22,7 @@ from app.modules.tasks.scheduler import (
     send_task_reminders,
 )
 from app.modules.departments.models import UserDepartment
+from app.modules.system.audit_log_retention import run_audit_log_retention_cleanup
 from app.modules.users.models import User
 
 logger = logging.getLogger(__name__)
@@ -75,8 +76,23 @@ async def _locked_notifications():
     )
 
 
+async def _locked_audit_log_retention():
+    await _run_with_lock("audit_logs.retention", run_audit_log_retention_job)
+
+
 async def _run_sync_notification_job():
     await asyncio.to_thread(process_batch_notifications)
+
+
+async def run_audit_log_retention_job():
+    try:
+        deleted_count = await run_audit_log_retention_cleanup()
+        if deleted_count:
+            logger.info("Deleted %s expired audit log records.", deleted_count)
+    except Exception:
+        logger.exception("Audit log retention cleanup failed.")
+        raise
+
 
 # ==============================================================================
 # 1. KPI Rollup Tasks (Weekly & Monthly)
@@ -231,6 +247,17 @@ def start_scheduler():
             "Batch notification job is disabled; set ENABLE_BATCH_NOTIFICATIONS=true "
             "to register it (delivery is not implemented)."
         )
+
+    scheduler.add_job(
+        _locked_audit_log_retention,
+        "cron",
+        hour=3,
+        minute=0,
+        id="audit_log_retention_cleanup",
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+    )
 
     scheduler.start()
     logger.info("🚀 System Scheduler (KPI & Workflow Engine) started successfully.")

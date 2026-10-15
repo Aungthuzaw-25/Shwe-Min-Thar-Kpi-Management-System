@@ -2,12 +2,15 @@ import base64
 import hashlib
 import secrets
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import urlencode
 
 import httpx
 import jwt
 from jwt import PyJWTError as JWTError
+
+SUPPORTED_ID_TOKEN_ALGORITHMS = ("RS256", "RS384", "RS512", "ES256", "ES384", "ES512")
 
 
 class OIDCValidationError(ValueError):
@@ -73,7 +76,14 @@ class OIDCProvider:
         if not expected_issuer or callback_issuer != expected_issuer:
             raise OIDCValidationError("Authorization response issuer validation failed.")
 
-    async def authorization_url(self, state: str, nonce: str, verifier: str) -> str:
+    async def authorization_url(
+        self,
+        state: str,
+        nonce: str,
+        verifier: str,
+        *,
+        force_reauthentication: bool = False,
+    ) -> str:
         metadata = await self.metadata()
         params = {
             "client_id": self.client_id,
@@ -85,7 +95,12 @@ class OIDCProvider:
             "code_challenge": create_pkce_challenge(verifier),
             "code_challenge_method": "S256",
             "access_type": "offline" if self.name == "google" else None,
-            "prompt": "select_account" if self.name == "google" else None,
+            "prompt": (
+                "login" if force_reauthentication
+                else "select_account" if self.name == "google"
+                else None
+            ),
+            "max_age": "0" if force_reauthentication else None,
         }
         return f"{metadata['authorization_endpoint']}?{urlencode({k: v for k, v in params.items() if v is not None})}"
 
@@ -161,7 +176,9 @@ class OIDCProvider:
             return item
         return None
 
-    def _identity_from_claims(self, claims: dict, nonce: str) -> OIDCIdentity:
+    def _identity_from_claims(
+        self, claims: dict, nonce: str, issuer: str | None = None
+    ) -> OIDCIdentity:
         if claims.get("nonce") != nonce:
             raise OIDCValidationError("Provider nonce validation failed.")
         self._validate_authorized_party(claims)
@@ -175,7 +192,7 @@ class OIDCProvider:
         first_name, last_name = self._identity_name(claims, email)
         return OIDCIdentity(
             provider=self.name,
-            issuer=claims["iss"],
+            issuer=claims.get("iss", issuer),
             subject=subject,
             email=email,
             email_verified=email_verified is True,
@@ -215,13 +232,29 @@ class OIDCProvider:
         last_name = parts[1] if len(parts) > 1 else ""
         return first_name, last_name
 
-    async def validate_identity(self, token_response: dict[str, Any], nonce: str) -> OIDCIdentity:
+    async def validate_identity(
+        self,
+        token_response: dict[str, Any],
+        nonce: str,
+        *,
+        require_recent_authentication: bool = False,
+    ) -> OIDCIdentity:
         id_token = token_response.get("id_token")
         if not id_token:
             raise OIDCValidationError("Provider did not return an ID token.")
         metadata = await self.metadata()
         claims = await self._decode_identity_claims(id_token, metadata)
-        return self._identity_from_claims(claims, nonce)
+        if require_recent_authentication:
+            auth_time = claims.get("auth_time")
+            now = datetime.now(UTC).timestamp()
+            if (
+                isinstance(auth_time, bool)
+                or not isinstance(auth_time, (int, float))
+                or auth_time > now + 60
+                or auth_time < now - timedelta(minutes=10).total_seconds()
+            ):
+                raise OIDCValidationError("Provider authentication is not recent.")
+        return self._identity_from_claims(claims, nonce, metadata.get("issuer"))
 
     async def _jwks(self, url: str) -> dict[str, Any]:
         async with httpx.AsyncClient(timeout=10.0) as client:

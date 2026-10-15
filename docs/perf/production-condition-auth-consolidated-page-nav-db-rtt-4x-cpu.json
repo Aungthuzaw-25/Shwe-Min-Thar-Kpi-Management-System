@@ -1,0 +1,1821 @@
+[
+  {
+    "sample": 1,
+    "navigation_status": 200,
+    "super_admin_api_statuses": [
+      200
+    ],
+    "api_metrics": [
+      {
+        "method": "GET",
+        "path": "/api/v1/notifications/unread-count",
+        "status": 200,
+        "instrumentation": {
+          "server-timing": "app;dur=850.58, db;dur=361.81",
+          "x-perf-sql-count": "2",
+          "x-perf-pre-ping-count": "1",
+          "x-perf-transaction-begins": "1",
+          "x-perf-transaction-commits": "0",
+          "x-perf-transaction-rollbacks": "0"
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/notifications",
+        "status": 200,
+        "instrumentation": {
+          "server-timing": "app;dur=1012.39, db;dur=470.61",
+          "x-perf-sql-count": "2",
+          "x-perf-pre-ping-count": "1",
+          "x-perf-transaction-begins": "1",
+          "x-perf-transaction-commits": "0",
+          "x-perf-transaction-rollbacks": "0"
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/dashboard/executive/overview",
+        "status": 200,
+        "instrumentation": {
+          "server-timing": "app;dur=2062.89, db;dur=1479.62",
+          "x-perf-sql-count": "9",
+          "x-perf-pre-ping-count": "1",
+          "x-perf-transaction-begins": "1",
+          "x-perf-transaction-commits": "0",
+          "x-perf-transaction-rollbacks": "0"
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/notifications/unread-count",
+        "status": 200,
+        "instrumentation": {
+          "server-timing": "app;dur=860.26, db;dur=405.52",
+          "x-perf-sql-count": "2",
+          "x-perf-pre-ping-count": "1",
+          "x-perf-transaction-begins": "1",
+          "x-perf-transaction-commits": "0",
+          "x-perf-transaction-rollbacks": "0"
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/notifications",
+        "status": 200,
+        "instrumentation": {
+          "server-timing": "app;dur=868.40, db;dur=376.82",
+          "x-perf-sql-count": "2",
+          "x-perf-pre-ping-count": "1",
+          "x-perf-transaction-begins": "1",
+          "x-perf-transaction-commits": "0",
+          "x-perf-transaction-rollbacks": "0"
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/users/super-admins",
+        "status": 200,
+        "instrumentation": {
+          "server-timing": "app;dur=1414.94, db;dur=941.12",
+          "x-perf-sql-count": "7",
+          "x-perf-pre-ping-count": "1",
+          "x-perf-transaction-begins": "1",
+          "x-perf-transaction-commits": "0",
+          "x-perf-transaction-rollbacks": "0"
+        }
+      }
+    ],
+    "data_visible_ms": 4404.2,
+    "table_rows": 1,
+    "request_count": 20,
+    "transfer_bytes": 61642,
+    "api_calls": [
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/dashboard/executive/overview",
+        "type": "Fetch",
+        "start_ms": -64.6,
+        "duration_ms": 2115.6,
+        "transfer_bytes": 3563,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/notifications",
+        "type": "Fetch",
+        "start_ms": -54.1,
+        "duration_ms": 1088.6,
+        "transfer_bytes": 1930,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/notifications/unread-count",
+        "type": "Fetch",
+        "start_ms": -52.8,
+        "duration_ms": 917.0,
+        "transfer_bytes": 1149,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/dashboard/summary",
+        "type": "Fetch",
+        "start_ms": 2060.0,
+        "duration_ms": null,
+        "transfer_bytes": 0,
+        "status": null
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/dashboard/executive/employees",
+        "type": "Fetch",
+        "start_ms": 2061.5,
+        "duration_ms": null,
+        "transfer_bytes": 0,
+        "status": null
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/users/super-admins",
+        "type": "Fetch",
+        "start_ms": 2846.7,
+        "duration_ms": 1541.3,
+        "transfer_bytes": 1641,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/notifications",
+        "type": "Fetch",
+        "start_ms": 2851.8,
+        "duration_ms": 1029.9,
+        "transfer_bytes": 1928,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/notifications/unread-count",
+        "type": "Fetch",
+        "start_ms": 2852.2,
+        "duration_ms": 958.7,
+        "transfer_bytes": 1149,
+        "status": 200
+      }
+    ],
+    "requests": [
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/dashboard/executive/overview",
+        "type": "Fetch",
+        "start_ms": -64.6,
+        "duration_ms": 2115.6,
+        "transfer_bytes": 3563,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/notifications",
+        "type": "Fetch",
+        "start_ms": -54.1,
+        "duration_ms": 1088.6,
+        "transfer_bytes": 1930,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/notifications/unread-count",
+        "type": "Fetch",
+        "start_ms": -52.8,
+        "duration_ms": 917.0,
+        "transfer_bytes": 1149,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/superadmin/super-admins",
+        "type": "Document",
+        "start_ms": 771.5,
+        "duration_ms": 1771.6,
+        "transfer_bytes": 50282,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/dashboard/summary",
+        "type": "Fetch",
+        "start_ms": 2060.0,
+        "duration_ms": null,
+        "transfer_bytes": 0,
+        "status": null
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/dashboard/executive/employees",
+        "type": "Fetch",
+        "start_ms": 2061.5,
+        "duration_ms": null,
+        "transfer_bytes": 0,
+        "status": null
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/static/css/output.css",
+        "type": "Stylesheet",
+        "start_ms": 2786.8,
+        "duration_ms": 1.4,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/static/css/design-system.css",
+        "type": "Stylesheet",
+        "start_ms": 2788.1,
+        "duration_ms": 0.3,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/static/css/notifications.css",
+        "type": "Stylesheet",
+        "start_ms": 2788.7,
+        "duration_ms": 1.7,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/static/css/dashboard.css",
+        "type": "Stylesheet",
+        "start_ms": 2790.5,
+        "duration_ms": 0.4,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/static/css/enterprise-ui.css",
+        "type": "Stylesheet",
+        "start_ms": 2791.1,
+        "duration_ms": 0.3,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/static/css/executive-dashboard.css",
+        "type": "Stylesheet",
+        "start_ms": 2791.7,
+        "duration_ms": 0.8,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "https://fonts.googleapis.com",
+        "path": "/css2",
+        "type": "Stylesheet",
+        "start_ms": 2792.4,
+        "duration_ms": 0.5,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/static/js/csp-event-bridge.js",
+        "type": "Script",
+        "start_ms": 2793.2,
+        "duration_ms": 0.5,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/static/js/csrf.js",
+        "type": "Script",
+        "start_ms": 2793.7,
+        "duration_ms": 0.4,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/static/js/notifications.js",
+        "type": "Script",
+        "start_ms": 2794.3,
+        "duration_ms": 0.5,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/users/super-admins",
+        "type": "Fetch",
+        "start_ms": 2846.7,
+        "duration_ms": 1541.3,
+        "transfer_bytes": 1641,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/notifications",
+        "type": "Fetch",
+        "start_ms": 2851.8,
+        "duration_ms": 1029.9,
+        "transfer_bytes": 1928,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/notifications/unread-count",
+        "type": "Fetch",
+        "start_ms": 2852.2,
+        "duration_ms": 958.7,
+        "transfer_bytes": 1149,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "https://fonts.gstatic.com",
+        "path": "/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2",
+        "type": "Font",
+        "start_ms": 2854.0,
+        "duration_ms": 0.3,
+        "transfer_bytes": 0,
+        "status": 200
+      }
+    ],
+    "ttfb_ms": 1712.5999999940395,
+    "fcp_ms": 2300,
+    "lcp": {
+      "time": 3792,
+      "size": 3008,
+      "tag": "td",
+      "classes": "px-4 py-3",
+      "text": "qa.superadmin@example.com"
+    },
+    "cls": 0
+  },
+  {
+    "sample": 2,
+    "navigation_status": 200,
+    "super_admin_api_statuses": [
+      200
+    ],
+    "api_metrics": [
+      {
+        "method": "GET",
+        "path": "/api/v1/notifications/unread-count",
+        "status": 200,
+        "instrumentation": {
+          "server-timing": "app;dur=758.63, db;dur=321.56",
+          "x-perf-sql-count": "2",
+          "x-perf-pre-ping-count": "1",
+          "x-perf-transaction-begins": "1",
+          "x-perf-transaction-commits": "0",
+          "x-perf-transaction-rollbacks": "0"
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/notifications",
+        "status": 200,
+        "instrumentation": {
+          "server-timing": "app;dur=785.52, db;dur=325.90",
+          "x-perf-sql-count": "2",
+          "x-perf-pre-ping-count": "1",
+          "x-perf-transaction-begins": "1",
+          "x-perf-transaction-commits": "0",
+          "x-perf-transaction-rollbacks": "0"
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/notifications/unread-count",
+        "status": 200,
+        "instrumentation": {
+          "server-timing": "app;dur=875.20, db;dur=417.45",
+          "x-perf-sql-count": "2",
+          "x-perf-pre-ping-count": "1",
+          "x-perf-transaction-begins": "1",
+          "x-perf-transaction-commits": "0",
+          "x-perf-transaction-rollbacks": "0"
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/notifications",
+        "status": 200,
+        "instrumentation": {
+          "server-timing": "app;dur=887.83, db;dur=458.65",
+          "x-perf-sql-count": "2",
+          "x-perf-pre-ping-count": "1",
+          "x-perf-transaction-begins": "1",
+          "x-perf-transaction-commits": "0",
+          "x-perf-transaction-rollbacks": "0"
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/users/super-admins",
+        "status": 200,
+        "instrumentation": {
+          "server-timing": "app;dur=1429.06, db;dur=992.84",
+          "x-perf-sql-count": "7",
+          "x-perf-pre-ping-count": "1",
+          "x-perf-transaction-begins": "1",
+          "x-perf-transaction-commits": "0",
+          "x-perf-transaction-rollbacks": "0"
+        }
+      }
+    ],
+    "data_visible_ms": 3392.3,
+    "table_rows": 1,
+    "request_count": 18,
+    "transfer_bytes": 58077,
+    "api_calls": [
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/dashboard/executive/overview",
+        "type": "Fetch",
+        "start_ms": -40.6,
+        "duration_ms": null,
+        "transfer_bytes": 0,
+        "status": null
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/notifications",
+        "type": "Fetch",
+        "start_ms": -34.0,
+        "duration_ms": 852.7,
+        "transfer_bytes": 1928,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/notifications/unread-count",
+        "type": "Fetch",
+        "start_ms": -33.3,
+        "duration_ms": 798.5,
+        "transfer_bytes": 1149,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/users/super-admins",
+        "type": "Fetch",
+        "start_ms": 1886.5,
+        "duration_ms": 1486.9,
+        "transfer_bytes": 1641,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/notifications",
+        "type": "Fetch",
+        "start_ms": 1951.1,
+        "duration_ms": 987.6,
+        "transfer_bytes": 1928,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/notifications/unread-count",
+        "type": "Fetch",
+        "start_ms": 1951.7,
+        "duration_ms": 985.6,
+        "transfer_bytes": 1149,
+        "status": 200
+      }
+    ],
+    "requests": [
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/dashboard/executive/overview",
+        "type": "Fetch",
+        "start_ms": -40.6,
+        "duration_ms": null,
+        "transfer_bytes": 0,
+        "status": null
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/notifications",
+        "type": "Fetch",
+        "start_ms": -34.0,
+        "duration_ms": 852.7,
+        "transfer_bytes": 1928,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/notifications/unread-count",
+        "type": "Fetch",
+        "start_ms": -33.3,
+        "duration_ms": 798.5,
+        "transfer_bytes": 1149,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/superadmin/super-admins",
+        "type": "Document",
+        "start_ms": 424.3,
+        "duration_ms": 1463.3,
+        "transfer_bytes": 50282,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/static/css/output.css",
+        "type": "Stylesheet",
+        "start_ms": 1857.2,
+        "duration_ms": 0.4,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/static/css/design-system.css",
+        "type": "Stylesheet",
+        "start_ms": 1857.9,
+        "duration_ms": 0.3,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/static/css/notifications.css",
+        "type": "Stylesheet",
+        "start_ms": 1858.3,
+        "duration_ms": 0.5,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/static/css/dashboard.css",
+        "type": "Stylesheet",
+        "start_ms": 1859.0,
+        "duration_ms": 2.2,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/static/css/enterprise-ui.css",
+        "type": "Stylesheet",
+        "start_ms": 1861.3,
+        "duration_ms": 0.7,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/static/css/executive-dashboard.css",
+        "type": "Stylesheet",
+        "start_ms": 1862.0,
+        "duration_ms": 0.2,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "https://fonts.googleapis.com",
+        "path": "/css2",
+        "type": "Stylesheet",
+        "start_ms": 1862.3,
+        "duration_ms": 0.3,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/static/js/csp-event-bridge.js",
+        "type": "Script",
+        "start_ms": 1862.7,
+        "duration_ms": 0.2,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/static/js/csrf.js",
+        "type": "Script",
+        "start_ms": 1863.1,
+        "duration_ms": 0.5,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/users/super-admins",
+        "type": "Fetch",
+        "start_ms": 1886.5,
+        "duration_ms": 1486.9,
+        "transfer_bytes": 1641,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "https://fonts.gstatic.com",
+        "path": "/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2",
+        "type": "Font",
+        "start_ms": 1896.3,
+        "duration_ms": 0.9,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/static/js/notifications.js",
+        "type": "Script",
+        "start_ms": 1947.6,
+        "duration_ms": 0.2,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/notifications",
+        "type": "Fetch",
+        "start_ms": 1951.1,
+        "duration_ms": 987.6,
+        "transfer_bytes": 1928,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/notifications/unread-count",
+        "type": "Fetch",
+        "start_ms": 1951.7,
+        "duration_ms": 985.6,
+        "transfer_bytes": 1149,
+        "status": 200
+      }
+    ],
+    "ttfb_ms": 1380.8999999761581,
+    "fcp_ms": 1552,
+    "lcp": {
+      "time": 2988,
+      "size": 3008,
+      "tag": "td",
+      "classes": "px-4 py-3",
+      "text": "qa.superadmin@example.com"
+    },
+    "cls": 0
+  },
+  {
+    "sample": 3,
+    "navigation_status": 200,
+    "super_admin_api_statuses": [
+      200
+    ],
+    "api_metrics": [
+      {
+        "method": "GET",
+        "path": "/api/v1/notifications/unread-count",
+        "status": 200,
+        "instrumentation": {
+          "server-timing": "app;dur=877.36, db;dur=393.72",
+          "x-perf-sql-count": "2",
+          "x-perf-pre-ping-count": "1",
+          "x-perf-transaction-begins": "1",
+          "x-perf-transaction-commits": "0",
+          "x-perf-transaction-rollbacks": "0"
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/notifications",
+        "status": 200,
+        "instrumentation": {
+          "server-timing": "app;dur=948.46, db;dur=374.65",
+          "x-perf-sql-count": "2",
+          "x-perf-pre-ping-count": "1",
+          "x-perf-transaction-begins": "1",
+          "x-perf-transaction-commits": "0",
+          "x-perf-transaction-rollbacks": "0"
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/dashboard/executive/overview",
+        "status": 200,
+        "instrumentation": {
+          "server-timing": "app;dur=2337.38, db;dur=1500.56",
+          "x-perf-sql-count": "9",
+          "x-perf-pre-ping-count": "1",
+          "x-perf-transaction-begins": "1",
+          "x-perf-transaction-commits": "0",
+          "x-perf-transaction-rollbacks": "0"
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/notifications/unread-count",
+        "status": 200,
+        "instrumentation": {
+          "server-timing": "app;dur=977.54, db;dur=420.12",
+          "x-perf-sql-count": "2",
+          "x-perf-pre-ping-count": "1",
+          "x-perf-transaction-begins": "1",
+          "x-perf-transaction-commits": "0",
+          "x-perf-transaction-rollbacks": "0"
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/notifications",
+        "status": 200,
+        "instrumentation": {
+          "server-timing": "app;dur=1039.40, db;dur=506.61",
+          "x-perf-sql-count": "2",
+          "x-perf-pre-ping-count": "1",
+          "x-perf-transaction-begins": "1",
+          "x-perf-transaction-commits": "0",
+          "x-perf-transaction-rollbacks": "0"
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/users/super-admins",
+        "status": 200,
+        "instrumentation": {
+          "server-timing": "app;dur=1607.12, db;dur=1056.30",
+          "x-perf-sql-count": "7",
+          "x-perf-pre-ping-count": "1",
+          "x-perf-transaction-begins": "1",
+          "x-perf-transaction-commits": "0",
+          "x-perf-transaction-rollbacks": "0"
+        }
+      }
+    ],
+    "data_visible_ms": 4440.1,
+    "table_rows": 1,
+    "request_count": 20,
+    "transfer_bytes": 61643,
+    "api_calls": [
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/dashboard/executive/overview",
+        "type": "Fetch",
+        "start_ms": -11.2,
+        "duration_ms": 2451.2,
+        "transfer_bytes": 3563,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/notifications",
+        "type": "Fetch",
+        "start_ms": -9.3,
+        "duration_ms": 1007.3,
+        "transfer_bytes": 1928,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/notifications/unread-count",
+        "type": "Fetch",
+        "start_ms": -8.9,
+        "duration_ms": 952.5,
+        "transfer_bytes": 1149,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/dashboard/summary",
+        "type": "Fetch",
+        "start_ms": 2472.2,
+        "duration_ms": null,
+        "transfer_bytes": 0,
+        "status": null
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/dashboard/executive/employees",
+        "type": "Fetch",
+        "start_ms": 2473.0,
+        "duration_ms": null,
+        "transfer_bytes": 0,
+        "status": null
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/users/super-admins",
+        "type": "Fetch",
+        "start_ms": 2683.3,
+        "duration_ms": 1745.2,
+        "transfer_bytes": 1642,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/notifications",
+        "type": "Fetch",
+        "start_ms": 2697.4,
+        "duration_ms": 1186.8,
+        "transfer_bytes": 1930,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/notifications/unread-count",
+        "type": "Fetch",
+        "start_ms": 2698.1,
+        "duration_ms": 1162.5,
+        "transfer_bytes": 1149,
+        "status": 200
+      }
+    ],
+    "requests": [
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/dashboard/executive/overview",
+        "type": "Fetch",
+        "start_ms": -11.2,
+        "duration_ms": 2451.2,
+        "transfer_bytes": 3563,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/notifications",
+        "type": "Fetch",
+        "start_ms": -9.3,
+        "duration_ms": 1007.3,
+        "transfer_bytes": 1928,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/notifications/unread-count",
+        "type": "Fetch",
+        "start_ms": -8.9,
+        "duration_ms": 952.5,
+        "transfer_bytes": 1149,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/superadmin/super-admins",
+        "type": "Document",
+        "start_ms": 329.2,
+        "duration_ms": 2321.3,
+        "transfer_bytes": 50282,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/dashboard/summary",
+        "type": "Fetch",
+        "start_ms": 2472.2,
+        "duration_ms": null,
+        "transfer_bytes": 0,
+        "status": null
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/dashboard/executive/employees",
+        "type": "Fetch",
+        "start_ms": 2473.0,
+        "duration_ms": null,
+        "transfer_bytes": 0,
+        "status": null
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/static/css/output.css",
+        "type": "Stylesheet",
+        "start_ms": 2656.8,
+        "duration_ms": 0.2,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/static/css/design-system.css",
+        "type": "Stylesheet",
+        "start_ms": 2657.2,
+        "duration_ms": 0.7,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/static/css/notifications.css",
+        "type": "Stylesheet",
+        "start_ms": 2658.4,
+        "duration_ms": 0.8,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/static/css/dashboard.css",
+        "type": "Stylesheet",
+        "start_ms": 2659.8,
+        "duration_ms": 0.6,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/static/css/enterprise-ui.css",
+        "type": "Stylesheet",
+        "start_ms": 2660.1,
+        "duration_ms": 0.2,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/static/css/executive-dashboard.css",
+        "type": "Stylesheet",
+        "start_ms": 2660.4,
+        "duration_ms": 0.3,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "https://fonts.googleapis.com",
+        "path": "/css2",
+        "type": "Stylesheet",
+        "start_ms": 2660.8,
+        "duration_ms": 0.3,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/static/js/csp-event-bridge.js",
+        "type": "Script",
+        "start_ms": 2661.2,
+        "duration_ms": 0.3,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/static/js/csrf.js",
+        "type": "Script",
+        "start_ms": 2661.5,
+        "duration_ms": 0.2,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/users/super-admins",
+        "type": "Fetch",
+        "start_ms": 2683.3,
+        "duration_ms": 1745.2,
+        "transfer_bytes": 1642,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/static/js/notifications.js",
+        "type": "Script",
+        "start_ms": 2695.2,
+        "duration_ms": 0.4,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/notifications",
+        "type": "Fetch",
+        "start_ms": 2697.4,
+        "duration_ms": 1186.8,
+        "transfer_bytes": 1930,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/notifications/unread-count",
+        "type": "Fetch",
+        "start_ms": 2698.1,
+        "duration_ms": 1162.5,
+        "transfer_bytes": 1149,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "https://fonts.gstatic.com",
+        "path": "/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2",
+        "type": "Font",
+        "start_ms": 2700.5,
+        "duration_ms": 4.0,
+        "transfer_bytes": 0,
+        "status": 200
+      }
+    ],
+    "ttfb_ms": 2217.9000000059605,
+    "fcp_ms": 2456,
+    "lcp": {
+      "time": 4132,
+      "size": 3008,
+      "tag": "td",
+      "classes": "px-4 py-3",
+      "text": "qa.superadmin@example.com"
+    },
+    "cls": 0
+  },
+  {
+    "sample": 4,
+    "navigation_status": 200,
+    "super_admin_api_statuses": [
+      200
+    ],
+    "api_metrics": [
+      {
+        "method": "GET",
+        "path": "/api/v1/notifications",
+        "status": 200,
+        "instrumentation": {
+          "server-timing": "app;dur=811.73, db;dur=366.03",
+          "x-perf-sql-count": "2",
+          "x-perf-pre-ping-count": "1",
+          "x-perf-transaction-begins": "1",
+          "x-perf-transaction-commits": "0",
+          "x-perf-transaction-rollbacks": "0"
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/notifications/unread-count",
+        "status": 200,
+        "instrumentation": {
+          "server-timing": "app;dur=819.30, db;dur=368.69",
+          "x-perf-sql-count": "2",
+          "x-perf-pre-ping-count": "1",
+          "x-perf-transaction-begins": "1",
+          "x-perf-transaction-commits": "0",
+          "x-perf-transaction-rollbacks": "0"
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/dashboard/executive/overview",
+        "status": 200,
+        "instrumentation": {
+          "server-timing": "app;dur=2016.26, db;dur=1456.24",
+          "x-perf-sql-count": "9",
+          "x-perf-pre-ping-count": "1",
+          "x-perf-transaction-begins": "1",
+          "x-perf-transaction-commits": "0",
+          "x-perf-transaction-rollbacks": "0"
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/notifications",
+        "status": 200,
+        "instrumentation": {
+          "server-timing": "app;dur=800.46, db;dur=347.83",
+          "x-perf-sql-count": "2",
+          "x-perf-pre-ping-count": "1",
+          "x-perf-transaction-begins": "1",
+          "x-perf-transaction-commits": "0",
+          "x-perf-transaction-rollbacks": "0"
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/notifications/unread-count",
+        "status": 200,
+        "instrumentation": {
+          "server-timing": "app;dur=795.61, db;dur=336.95",
+          "x-perf-sql-count": "2",
+          "x-perf-pre-ping-count": "1",
+          "x-perf-transaction-begins": "1",
+          "x-perf-transaction-commits": "0",
+          "x-perf-transaction-rollbacks": "0"
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/users/super-admins",
+        "status": 200,
+        "instrumentation": {
+          "server-timing": "app;dur=1392.98, db;dur=880.47",
+          "x-perf-sql-count": "7",
+          "x-perf-pre-ping-count": "1",
+          "x-perf-transaction-begins": "1",
+          "x-perf-transaction-commits": "0",
+          "x-perf-transaction-rollbacks": "0"
+        }
+      }
+    ],
+    "data_visible_ms": 3982.8,
+    "table_rows": 1,
+    "request_count": 20,
+    "transfer_bytes": 61640,
+    "api_calls": [
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/dashboard/executive/overview",
+        "type": "Fetch",
+        "start_ms": -25.2,
+        "duration_ms": 2251.5,
+        "transfer_bytes": 3563,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/notifications",
+        "type": "Fetch",
+        "start_ms": -19.8,
+        "duration_ms": 966.5,
+        "transfer_bytes": 1928,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/notifications/unread-count",
+        "type": "Fetch",
+        "start_ms": -18.7,
+        "duration_ms": 965.7,
+        "transfer_bytes": 1149,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/dashboard/summary",
+        "type": "Fetch",
+        "start_ms": 2237.9,
+        "duration_ms": null,
+        "transfer_bytes": 0,
+        "status": null
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/dashboard/executive/employees",
+        "type": "Fetch",
+        "start_ms": 2238.7,
+        "duration_ms": null,
+        "transfer_bytes": 0,
+        "status": null
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/users/super-admins",
+        "type": "Fetch",
+        "start_ms": 2460.1,
+        "duration_ms": 1497.0,
+        "transfer_bytes": 1641,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/notifications",
+        "type": "Fetch",
+        "start_ms": 2545.3,
+        "duration_ms": 870.5,
+        "transfer_bytes": 1928,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/notifications/unread-count",
+        "type": "Fetch",
+        "start_ms": 2545.6,
+        "duration_ms": 875.1,
+        "transfer_bytes": 1149,
+        "status": 200
+      }
+    ],
+    "requests": [
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/dashboard/executive/overview",
+        "type": "Fetch",
+        "start_ms": -25.2,
+        "duration_ms": 2251.5,
+        "transfer_bytes": 3563,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/notifications",
+        "type": "Fetch",
+        "start_ms": -19.8,
+        "duration_ms": 966.5,
+        "transfer_bytes": 1928,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/notifications/unread-count",
+        "type": "Fetch",
+        "start_ms": -18.7,
+        "duration_ms": 965.7,
+        "transfer_bytes": 1149,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/superadmin/super-admins",
+        "type": "Document",
+        "start_ms": 436.4,
+        "duration_ms": 2007.3,
+        "transfer_bytes": 50282,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/dashboard/summary",
+        "type": "Fetch",
+        "start_ms": 2237.9,
+        "duration_ms": null,
+        "transfer_bytes": 0,
+        "status": null
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/dashboard/executive/employees",
+        "type": "Fetch",
+        "start_ms": 2238.7,
+        "duration_ms": null,
+        "transfer_bytes": 0,
+        "status": null
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/static/css/output.css",
+        "type": "Stylesheet",
+        "start_ms": 2424.3,
+        "duration_ms": 1.0,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/static/css/design-system.css",
+        "type": "Stylesheet",
+        "start_ms": 2425.1,
+        "duration_ms": 0.3,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/static/css/notifications.css",
+        "type": "Stylesheet",
+        "start_ms": 2425.5,
+        "duration_ms": 0.3,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/static/css/dashboard.css",
+        "type": "Stylesheet",
+        "start_ms": 2425.9,
+        "duration_ms": 0.4,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/static/css/enterprise-ui.css",
+        "type": "Stylesheet",
+        "start_ms": 2426.3,
+        "duration_ms": 0.2,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/static/css/executive-dashboard.css",
+        "type": "Stylesheet",
+        "start_ms": 2426.5,
+        "duration_ms": 0.2,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "https://fonts.googleapis.com",
+        "path": "/css2",
+        "type": "Stylesheet",
+        "start_ms": 2426.8,
+        "duration_ms": 0.2,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/static/js/csp-event-bridge.js",
+        "type": "Script",
+        "start_ms": 2427.1,
+        "duration_ms": 0.2,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/static/js/csrf.js",
+        "type": "Script",
+        "start_ms": 2427.3,
+        "duration_ms": 0.2,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/users/super-admins",
+        "type": "Fetch",
+        "start_ms": 2460.1,
+        "duration_ms": 1497.0,
+        "transfer_bytes": 1641,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/static/js/notifications.js",
+        "type": "Script",
+        "start_ms": 2464.4,
+        "duration_ms": 0.3,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "https://fonts.gstatic.com",
+        "path": "/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2",
+        "type": "Font",
+        "start_ms": 2473.9,
+        "duration_ms": 1.9,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/notifications",
+        "type": "Fetch",
+        "start_ms": 2545.3,
+        "duration_ms": 870.5,
+        "transfer_bytes": 1928,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/notifications/unread-count",
+        "type": "Fetch",
+        "start_ms": 2545.6,
+        "duration_ms": 875.1,
+        "transfer_bytes": 1149,
+        "status": 200
+      }
+    ],
+    "ttfb_ms": 1928.5999999940395,
+    "fcp_ms": 2136,
+    "lcp": {
+      "time": 3552,
+      "size": 3008,
+      "tag": "td",
+      "classes": "px-4 py-3",
+      "text": "qa.superadmin@example.com"
+    },
+    "cls": 0
+  },
+  {
+    "sample": 5,
+    "navigation_status": 200,
+    "super_admin_api_statuses": [
+      200
+    ],
+    "api_metrics": [
+      {
+        "method": "GET",
+        "path": "/api/v1/notifications",
+        "status": 200,
+        "instrumentation": {
+          "server-timing": "app;dur=808.13, db;dur=371.96",
+          "x-perf-sql-count": "2",
+          "x-perf-pre-ping-count": "1",
+          "x-perf-transaction-begins": "1",
+          "x-perf-transaction-commits": "0",
+          "x-perf-transaction-rollbacks": "0"
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/notifications/unread-count",
+        "status": 200,
+        "instrumentation": {
+          "server-timing": "app;dur=863.52, db;dur=421.58",
+          "x-perf-sql-count": "2",
+          "x-perf-pre-ping-count": "1",
+          "x-perf-transaction-begins": "1",
+          "x-perf-transaction-commits": "0",
+          "x-perf-transaction-rollbacks": "0"
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/notifications/unread-count",
+        "status": 200,
+        "instrumentation": {
+          "server-timing": "app;dur=769.93, db;dur=349.18",
+          "x-perf-sql-count": "2",
+          "x-perf-pre-ping-count": "1",
+          "x-perf-transaction-begins": "1",
+          "x-perf-transaction-commits": "0",
+          "x-perf-transaction-rollbacks": "0"
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/notifications",
+        "status": 200,
+        "instrumentation": {
+          "server-timing": "app;dur=770.47, db;dur=342.69",
+          "x-perf-sql-count": "2",
+          "x-perf-pre-ping-count": "1",
+          "x-perf-transaction-begins": "1",
+          "x-perf-transaction-commits": "0",
+          "x-perf-transaction-rollbacks": "0"
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/users/super-admins",
+        "status": 200,
+        "instrumentation": {
+          "server-timing": "app;dur=1316.18, db;dur=858.86",
+          "x-perf-sql-count": "7",
+          "x-perf-pre-ping-count": "1",
+          "x-perf-transaction-begins": "1",
+          "x-perf-transaction-commits": "0",
+          "x-perf-transaction-rollbacks": "0"
+        }
+      }
+    ],
+    "data_visible_ms": 3389.8,
+    "table_rows": 1,
+    "request_count": 18,
+    "transfer_bytes": 58077,
+    "api_calls": [
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/dashboard/executive/overview",
+        "type": "Fetch",
+        "start_ms": -16.9,
+        "duration_ms": null,
+        "transfer_bytes": 0,
+        "status": null
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/notifications",
+        "type": "Fetch",
+        "start_ms": -10.0,
+        "duration_ms": 886.1,
+        "transfer_bytes": 1928,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/notifications/unread-count",
+        "type": "Fetch",
+        "start_ms": -8.5,
+        "duration_ms": 917.6,
+        "transfer_bytes": 1149,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/users/super-admins",
+        "type": "Fetch",
+        "start_ms": 2017.5,
+        "duration_ms": 1351.0,
+        "transfer_bytes": 1641,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/notifications",
+        "type": "Fetch",
+        "start_ms": 2108.3,
+        "duration_ms": 816.7,
+        "transfer_bytes": 1928,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/notifications/unread-count",
+        "type": "Fetch",
+        "start_ms": 2108.6,
+        "duration_ms": 800.7,
+        "transfer_bytes": 1149,
+        "status": 200
+      }
+    ],
+    "requests": [
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/dashboard/executive/overview",
+        "type": "Fetch",
+        "start_ms": -16.9,
+        "duration_ms": null,
+        "transfer_bytes": 0,
+        "status": null
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/notifications",
+        "type": "Fetch",
+        "start_ms": -10.0,
+        "duration_ms": 886.1,
+        "transfer_bytes": 1928,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/notifications/unread-count",
+        "type": "Fetch",
+        "start_ms": -8.5,
+        "duration_ms": 917.6,
+        "transfer_bytes": 1149,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/superadmin/super-admins",
+        "type": "Document",
+        "start_ms": 322.7,
+        "duration_ms": 1582.7,
+        "transfer_bytes": 50282,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/static/css/output.css",
+        "type": "Stylesheet",
+        "start_ms": 1907.0,
+        "duration_ms": 0.4,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/static/css/design-system.css",
+        "type": "Stylesheet",
+        "start_ms": 1908.1,
+        "duration_ms": 0.9,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/static/css/notifications.css",
+        "type": "Stylesheet",
+        "start_ms": 1909.4,
+        "duration_ms": 1.6,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/static/css/dashboard.css",
+        "type": "Stylesheet",
+        "start_ms": 1913.0,
+        "duration_ms": 1.0,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/static/css/enterprise-ui.css",
+        "type": "Stylesheet",
+        "start_ms": 1914.2,
+        "duration_ms": 0.3,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/static/css/executive-dashboard.css",
+        "type": "Stylesheet",
+        "start_ms": 1915.3,
+        "duration_ms": 0.6,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "https://fonts.googleapis.com",
+        "path": "/css2",
+        "type": "Stylesheet",
+        "start_ms": 1916.1,
+        "duration_ms": 2.7,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/static/js/csp-event-bridge.js",
+        "type": "Script",
+        "start_ms": 1919.2,
+        "duration_ms": 0.7,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/static/js/csrf.js",
+        "type": "Script",
+        "start_ms": 1920.4,
+        "duration_ms": 0.6,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "https://fonts.gstatic.com",
+        "path": "/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2",
+        "type": "Font",
+        "start_ms": 1977.2,
+        "duration_ms": 4.5,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/users/super-admins",
+        "type": "Fetch",
+        "start_ms": 2017.5,
+        "duration_ms": 1351.0,
+        "transfer_bytes": 1641,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/static/js/notifications.js",
+        "type": "Script",
+        "start_ms": 2106.4,
+        "duration_ms": 0.4,
+        "transfer_bytes": 0,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/notifications",
+        "type": "Fetch",
+        "start_ms": 2108.3,
+        "duration_ms": 816.7,
+        "transfer_bytes": 1928,
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "origin": "http://127.0.0.1:13000",
+        "path": "/api/v1/notifications/unread-count",
+        "type": "Fetch",
+        "start_ms": 2108.6,
+        "duration_ms": 800.7,
+        "transfer_bytes": 1149,
+        "status": 200
+      }
+    ],
+    "ttfb_ms": 1499.9000000059605,
+    "fcp_ms": 1808,
+    "lcp": {
+      "time": 3080,
+      "size": 3008,
+      "tag": "td",
+      "classes": "px-4 py-3",
+      "text": "qa.superadmin@example.com"
+    },
+    "cls": 0
+  }
+]

@@ -2,6 +2,9 @@
 {% set active_page = "permissions" %}
 {% block title %}Permission Management - KPI Platform{% endblock %}
 {% block content %}
+<link rel="stylesheet" href="/static/css/avatar.css">
+<script src="/static/js/avatar-renderer.js"></script>
+<script src="/static/js/avatar.js"></script>
 <div class="workspace-page">
     <header class="workspace-header">
         <div>
@@ -93,7 +96,7 @@
             <!-- User info card -->
             <div id="userInfoCard" class="mb-5 hidden rounded-2xl border border-slate-100 bg-gradient-to-r from-blue-50 to-indigo-50 p-5">
                 <div class="flex flex-wrap items-center gap-4">
-                    <div class="flex h-12 w-12 items-center justify-center rounded-full bg-blue-950 text-lg font-bold text-white" id="userAvatar">?</div>
+                    <span id="userAvatar"></span>
                     <div class="flex-1">
                         <p class="text-base font-bold text-blue-950" id="userInfoName">—</p>
                         <p class="text-sm text-slate-500" id="userInfoEmail">—</p>
@@ -457,12 +460,16 @@ async function loadUserEffective() {
 function renderUserInfo(data) {
     const card = document.getElementById("userInfoCard");
     card.classList.remove("hidden");
-    document.getElementById("userAvatar").textContent = (data.user_name || "?")[0].toUpperCase();
+    const selectedUser = allUsers.find(user => String(user.id) === String(userSelect.value));
+    document.getElementById("userAvatar").innerHTML = window.kpiAvatarMarkup({
+        ...(selectedUser || {}),
+        display_name: data.user_name || userDisplayName(selectedUser || {}),
+        email: data.user_email || selectedUser?.email
+    }, 40);
     document.getElementById("userInfoName").textContent = data.user_name || "—";
     document.getElementById("userInfoEmail").textContent = data.user_email || "—";
     document.getElementById("userInfoRole").textContent = data.role_name || "No Role";
     document.getElementById("userInfoDept").textContent = data.department_name || "No Department";
-    const selectedUser = allUsers.find(user => String(user.id) === String(userSelect.value));
     const selectedDepartment = selectedUser?.departments?.[0];
     document.getElementById("userInfoLevel").textContent = selectedDepartment?.level || "Level —";
     document.getElementById("userInfoPosition").textContent = selectedUser?.position?.name || "Position —";
@@ -728,11 +735,25 @@ function renderAuditTable(logs, reset) {
             changes = `<span class="text-slate-400">—</span>`;
         }
 
+        const actorAvatar = log.actor_avatar
+            ? window.kpiAvatarMarkup({
+                user_id: log.actor_id,
+                display_name: log.actor_name,
+                ...log.actor_avatar
+            }, 32)
+            : "";
+        const targetAvatar = log.target_avatar
+            ? window.kpiAvatarMarkup({
+                user_id: log.target_id,
+                display_name: log.target_name,
+                ...log.target_avatar
+            }, 32)
+            : "";
         tableHtml += `<tr class="border-t border-slate-50 hover:bg-slate-50/50 transition-colors">
             <td class="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">${date}</td>
             <td class="px-4 py-3"><span class="rounded-lg px-2 py-1 text-xs font-bold ${badgeClass}">${badge}</span></td>
-            <td class="px-4 py-3 text-xs text-slate-600">${esc(log.actor_name || "System")}</td>
-            <td class="px-4 py-3 text-xs text-slate-600 font-medium">${esc(log.target_name || log.target_id || "—")}</td>
+            <td class="px-4 py-3 text-xs text-slate-600"><div class="flex items-center gap-2">${actorAvatar}${esc(log.actor_name || "System")}</div></td>
+            <td class="px-4 py-3 text-xs text-slate-600 font-medium"><div class="flex items-center gap-2">${targetAvatar}${esc(log.target_name || log.target_id || "—")}</div></td>
             <td class="px-4 py-3 text-xs">${changes}</td>
         </tr>`;
     }

@@ -6,6 +6,7 @@ import { createBackendClient } from "./lib/backendClient.js";
 import { registerFilters } from "./lib/nunjucks_filters.js";
 import { cspMiddleware } from "./middleware/csp.js";
 import { registerActivityRoutes } from "./routes/activity.js";
+import { registerAccountRoutes } from "./routes/account.js";
 import { registerAuthRoutes } from "./routes/auth.js";
 import { registerDashboardRoutes } from "./routes/dashboard.js";
 
@@ -40,6 +41,7 @@ export function createApp({
     response.redirect(307, "/auth/login");
   });
   registerAuthRoutes(app);
+  registerAccountRoutes(app);
   registerDashboardRoutes(app);
   registerActivityRoutes(app);
 

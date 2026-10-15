@@ -1,8 +1,9 @@
 from types import SimpleNamespace
 
 import pytest
+from fastapi import HTTPException
 
-from app.modules.auth.router import _resolve_oauth_user
+from app.modules.auth.router import _link_start, _resolve_oauth_user, _unlink_provider
 from app.modules.users.models import OAuthAccount
 
 
@@ -94,3 +95,23 @@ def test_oauth_accounts_is_the_single_canonical_oauth_table():
         constraint.name == "uq_oauth_account_provider_subject"
         for constraint in table.constraints
     )
+
+
+@pytest.mark.asyncio
+async def test_only_super_admin_can_start_provider_linking():
+    user = SimpleNamespace(role=SimpleNamespace(name="Admin"))
+
+    with pytest.raises(HTTPException) as error:
+        await _link_start(object(), "google", user, object(), object())
+
+    assert error.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_only_super_admin_can_unlink_provider_identity():
+    user = SimpleNamespace(id="user-a", role=SimpleNamespace(name="Admin"))
+
+    with pytest.raises(HTTPException) as error:
+        await _unlink_provider(object(), user, "google", object())
+
+    assert error.value.status_code == 403

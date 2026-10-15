@@ -18,6 +18,11 @@ class QueueItemResponse(BaseModel):
     queue_id: UUID
     batch_id: UUID
     submitter_email: str
+    submitter_id: UUID | None = None
+    submitter_name: str | None = None
+    avatar_url: str | None = None
+    initials: str = "?"
+    avatar_color_index: int = 0
     total_tasks: int
     pending_count: int
     submitted_at: datetime

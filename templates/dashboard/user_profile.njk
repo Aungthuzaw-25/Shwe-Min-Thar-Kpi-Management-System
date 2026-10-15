@@ -4,6 +4,9 @@
 {% block title %}User Profile - KPI Platform{% endblock %}
 
 {% block content %}
+<link rel="stylesheet" href="/static/css/avatar.css">
+<script src="/static/js/avatar-renderer.js"></script>
+<script src="/static/js/avatar.js"></script>
 <!-- HEADER -->
 <header class="bg-white px-4 sm:px-6 md:px-8 py-4 sm:py-6 border-b border-gray-100 shrink-0 shadow-sm animate-fade-in-up">
     <div class="flex flex-wrap items-center text-xs sm:text-sm text-slate-500 mb-1.5 sm:mb-2 gap-1.5 sm:space-x-2">
@@ -20,9 +23,7 @@
         <!-- 🌟 Identity Card (ဘယ်ဘက်) -->
         <div class="lg:col-span-4 bg-white rounded-3xl shadow-sm border border-gray-100 p-5 sm:p-8 flex flex-col items-center text-center animate-fade-in-up csp-delay-2">
             <!-- Avatar -->
-            <div class="w-24 h-24 sm:w-32 sm:h-32 bg-gradient-to-tr from-blue-100 to-blue-200 rounded-full flex items-center justify-center text-blue-900 text-3xl sm:text-5xl font-extrabold mb-4 sm:mb-5 shadow-inner border-4 border-white ring-4 ring-slate-50 shrink-0" id="profileAvatar">
-                ?
-            </div>
+            <div class="mb-4 sm:mb-5 shrink-0" id="profileAvatar" aria-label="Profile photo"></div>
             
             <!-- User Info -->
             <h3 class="text-xl sm:text-2xl font-extrabold text-blue-950 mb-1 break-words w-full px-2" id="infoName">-</h3>
@@ -100,6 +101,8 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="/static/js/avatar-renderer.js"></script>
+<script src="/static/js/avatar.js"></script>
 <script>
     // 🌟 SECURITY FIX: Global HTML Escape Function to prevent XSS
     function escapeHTML(str) {
@@ -144,9 +147,7 @@
                 
             document.getElementById("infoRole").innerText = user.role?.name || 'User';
             
-            const initial1 = user.first_name ? user.first_name.charAt(0).toUpperCase() : '';
-            const initial2 = user.last_name ? user.last_name.charAt(0).toUpperCase() : '';
-            document.getElementById("profileAvatar").innerText = initial1 + initial2;
+            document.getElementById("profileAvatar").innerHTML = window.kpiAvatarMarkup(user, 128);
 
             const statusEl = document.getElementById("infoStatus");
             if(user.is_active) {

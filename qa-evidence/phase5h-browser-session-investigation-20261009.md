@@ -43,10 +43,10 @@ The available evidence supports a tooling/share/reference access limitation. It 
 
 The following reports were read without modification:
 
-- `qa-evidence/phase5h-controlled-auth-runtime-evidence-20261009.md`
-- `qa-evidence/phase5h-auth-verification-preparation-20261009.md`
-- `qa-evidence/phase5h-controlled-auth-verification-20261009.md`
-- `qa-evidence/phase5h-auth-evidence-reconciliation-20261009.md`
+- `security-docs/phase5h-controlled-auth-runtime-evidence-20261009.md`
+- `security-docs/phase5h-auth-verification-preparation-20261009.md`
+- `security-docs/phase5h-controlled-auth-verification-20261009.md`
+- `security-docs/phase5h-auth-evidence-reconciliation-20261009.md`
 
 ### Phase 5H-R timeline
 

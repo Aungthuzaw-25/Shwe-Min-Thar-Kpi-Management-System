@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.dependencies import GLOBAL_SCOPE_ROLES
 from app.modules.departments.models import UserDepartment
 from app.modules.tasks.models.activity_timeline import ActivityTimeline
+from app.modules.users.avatar import avatar_color_index, avatar_initials, avatar_url
 from app.modules.users.models import User
 
 
@@ -90,13 +91,27 @@ async def get_activity_scope_user_ids(
 
 
 def activity_payload(activity: ActivityTimeline, actor: User | None) -> dict[str, Any]:
+    actor_name = (
+        f"{actor.first_name} {actor.last_name}".strip()
+        if actor
+        else "System"
+    )
     return {
         "id": activity.id,
         "actor_id": activity.user_id,
-        "actor_name": (
-            f"{actor.first_name} {actor.last_name}".strip()
+        "actor_name": actor_name,
+        "actor_avatar_url": avatar_url(
+            getattr(actor, "avatar_path", None),
+            getattr(actor, "avatar_updated_at", None),
+        ),
+        "actor_initials": avatar_initials(
+            actor_name,
+            getattr(actor, "email", None),
+        ),
+        "actor_avatar_color_index": (
+            avatar_color_index(actor.id)
             if actor
-            else "System"
+            else None
         ),
         "action": activity.action,
         "entity_type": activity.entity_type,

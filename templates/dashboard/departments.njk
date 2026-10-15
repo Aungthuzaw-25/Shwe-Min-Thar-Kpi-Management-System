@@ -4,6 +4,9 @@
 {% block title %}Departments Management - KPI Platform{% endblock %}
 
 {% block content %}
+<link rel="stylesheet" href="/static/css/avatar.css">
+<script src="/static/js/avatar-renderer.js"></script>
+<script src="/static/js/avatar.js"></script>
 <!-- 🌟 RESPONSIVE FIX: Header flex-direction adjusted for mobile -->
 <!-- HEADER -->
 <header class="workspace-header">
@@ -123,6 +126,7 @@
                 <select id="userSelect" class="border border-white shadow-sm p-2.5 sm:p-3 rounded-xl flex-1 text-xs sm:text-sm font-semibold focus:outline-none focus:border-blue-500 bg-white cursor-pointer w-full">
                     <option value="">-- Select Employee --</option>
                 </select>
+                <div id="userSelectAvatar" class="flex flex-wrap items-center gap-2 mt-2" aria-live="polite"></div>
                 
                 <div class="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
                     <label for="userLevelSelect" class="sr-only">Employee department level</label>
@@ -201,6 +205,7 @@
     let currentTab = 'active';
     let allFetchedDepartments = []; 
     let currentActiveDeptId = null;
+    let departmentAvailableUsers = [];
 
     // --- Loading & Helpers ---
     function setButtonLoading(buttonId, isLoading, originalText = "Save") {
@@ -479,6 +484,7 @@
             const response = await fetch(USER_API_URL);
             if (!response.ok) throw new Error("Failed to load active users.");
             const allUsers = await response.json();
+            departmentAvailableUsers = allUsers;
             
             const deptUsers = [];
             const nonDeptUsers = [];
@@ -490,6 +496,10 @@
                         id: user.id,
                         name: `${user.first_name || ''} ${user.last_name || ''}`.trim(),
                         email: user.email,
+                        display_name: user.display_name || `${user.first_name || ''} ${user.last_name || ''}`.trim(),
+                        avatar_url: user.avatar_url,
+                        initials: user.initials,
+                        avatar_color_index: user.avatar_color_index,
                         position: user.position?.name || 'No Title',
                         user_level: deptInfo.level || 'L2',
                         is_department_head: deptInfo.is_head || false
@@ -507,6 +517,7 @@
             defaultOption.value = "";
             defaultOption.textContent = "-- Select Employee --";
             select.replaceChildren(defaultOption);
+            document.getElementById("userSelectAvatar").replaceChildren();
             nonDeptUsers.forEach(user => {
                 const roleName = user.role?.name || "";
                 if (!roleName.toLowerCase().includes("super admin")) {
@@ -535,14 +546,10 @@
                 const tr = document.createElement("tr");
                 tr.className = "hover:bg-blue-50/30 transition-colors group bg-white";
                 
-                const initials = escapeHTML(user.name.substring(0, 2).toUpperCase());
-                
                 tr.innerHTML = `
                     <td class="px-4 sm:px-6 py-3 sm:py-4 min-w-[200px] whitespace-normal">
                         <div class="flex items-center gap-3">
-                            <div class="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-blue-100 to-blue-200 text-blue-800 font-extrabold flex items-center justify-center text-xs sm:text-sm shrink-0 border border-blue-200 shadow-sm">
-                                ${initials}
-                            </div>
+                            ${window.kpiAvatarMarkup(user, 32)}
                             <div class="min-w-0">
                                 <p class="font-extrabold text-blue-950 text-xs sm:text-sm truncate">${escapeHTML(user.name)}</p>
                                 <p class="text-[10px] sm:text-[11px] text-slate-500 font-semibold mt-0.5 tracking-wide truncate">${escapeHTML(user.position)} • ${escapeHTML(user.email)}</p>
@@ -733,5 +740,10 @@
     // Init
     document.getElementById("searchInput").addEventListener("input", renderDepartments);
     document.addEventListener("DOMContentLoaded", fetchDepartments);
+    document.getElementById("userSelect")?.addEventListener("change", (event) => {
+        const user = departmentAvailableUsers.find((item) => String(item.id) === event.target.value);
+        const preview = document.getElementById("userSelectAvatar");
+        preview.innerHTML = user ? window.kpiAvatarMarkup(user, 32) : "";
+    });
 </script>
 {% endblock %}

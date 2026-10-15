@@ -4,6 +4,9 @@
 {% block title %}Task & Evidence Management - KPI Portal{% endblock %}
 
 {% block content %}
+<link rel="stylesheet" href="/static/css/avatar.css">
+<script src="/static/js/avatar-renderer.js"></script>
+<script src="/static/js/avatar.js"></script>
 <style>
     @keyframes fadeSlideUp { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
     .animate-fade-slide { animation: fadeSlideUp 0.4s ease-out forwards; }
@@ -253,6 +256,7 @@
                     <select id="assigneeUser" onchange="loadCategoriesForReceiver(this.value)" required class="w-full bg-white border border-slate-300 p-2.5 sm:p-3.5 rounded-xl text-xs sm:text-sm font-bold text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none shadow-sm cursor-pointer appearance-none">
                         <option value="">-- Select Subordinate --</option>
                     </select>
+                    <div id="assigneeUserAvatar" class="flex items-center gap-2 mt-2" aria-live="polite"></div>
                 </div>
                 <div>
                     <label for="assignTaskTitle" class="block text-[10px] sm:text-xs font-black text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-widest">Task Title <span class="text-red-500">*</span></label>
@@ -449,10 +453,13 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="/static/js/avatar-renderer.js"></script>
+<script src="/static/js/avatar.js"></script>
 <script>
     const API_BASE = "/api/v1/tasks";
     const currentUserLevel = "{{ user_level }}";
     let myTasksList = [];
+    let taskAssignees = [];
     let selectedFiles = []; 
     let selectedResubmitFiles = []; 
 
@@ -559,12 +566,18 @@
     }
 
     function getTaskOwnerName(t) {
-        const usr = t.owner || t.user || t.submitter; 
+        const usr = t.owner || t.user || t.submitter;
         if (usr) {
             if (usr.first_name) return `${usr.first_name} ${usr.last_name || ''}`.trim().toUpperCase();
             if (usr.email) return usr.email.split('@')[0].toUpperCase();
         }
         return "UNKNOWN USER";
+    }
+
+    function getTaskOwnerIdentity(t, label) {
+        const owner = t.owner || t.user || t.submitter;
+        const avatar = owner && owner.id ? window.kpiAvatarMarkup(owner, 24) : "";
+        return `<span class="inline-flex items-center gap-1.5">${avatar}<span>BY: ${escapeHTML(label)}</span></span>`;
     }
 
     function safeGetValue(id) {
@@ -573,6 +586,12 @@
     }
 
     document.addEventListener("DOMContentLoaded", () => {
+        document.getElementById("assigneeUser")?.addEventListener("change", (event) => {
+            const user = taskAssignees.find((item) => String(item.id) === event.target.value);
+            document.getElementById("assigneeUserAvatar").innerHTML = user
+                ? window.kpiAvatarMarkup(user, 24)
+                : "";
+        });
         loadInitialTaskData();
         loadMyTasks();
         if (['L1', 'L0', 'Level 1', 'Level 0'].includes(currentUserLevel) && document.getElementById('btn-approvals-tab')) {
@@ -647,6 +666,7 @@
             }
             if (!response.ok) throw new Error(`Failed to load assignees (${response.status})`);
             const users = await response.json();
+            taskAssignees = users;
             select.innerHTML = '<option value="">-- Select Subordinate --</option>';
             users.forEach(u => select.innerHTML += `<option value="${u.id}">${escapeHTML(u.first_name)} ${escapeHTML(u.last_name)} (${escapeHTML(u.email)})</option>`);
         } catch (error) {
@@ -748,9 +768,20 @@
             }]
         };
         try {
+            const csrfCookie = document.cookie.split("; ")
+                .find(cookie => cookie.startsWith("csrf_token="));
+            const csrfToken = csrfCookie ? decodeURIComponent(csrfCookie.slice("csrf_token=".length)) : "";
+            if (!csrfToken) {
+                showToast("Security token is unavailable. Reload this page and try again.", "error");
+                return;
+            }
+
             const res = await fetch('/api/v1/tasks/bulk-create', {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json'},
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': csrfToken
+                },
                 body: JSON.stringify(payload)
             });
             if (res.ok) {
@@ -1077,7 +1108,7 @@
                             <p class="font-black text-slate-900 text-xs sm:text-sm tracking-tight truncate max-w-[180px] sm:max-w-none" title="${escapeHTML(t.title)}">${escapeHTML(t.title)}</p>
                             ${v2Tag}
                         </div>
-                        <p class="text-[9px] sm:text-[10px] font-bold text-slate-500 uppercase mt-1 tracking-widest truncate">${escapeHTML(t.category)} <span class="text-blue-500 ml-0.5 sm:ml-1">• BY: ${escapeHTML(ownerName)}</span></p>
+                        <p class="text-[9px] sm:text-[10px] font-bold text-slate-500 uppercase mt-1 tracking-widest truncate">${escapeHTML(t.category)} <span class="text-blue-500 ml-0.5 sm:ml-1">• ${getTaskOwnerIdentity(t, ownerName)}</span></p>
                     </td>
                     <td class="p-3 sm:p-5 border-b border-slate-100/60 text-center text-[10px] sm:text-xs font-semibold text-slate-600 whitespace-nowrap">${formatAppDate(t.created_at)}</td>
                     <td class="p-3 sm:p-5 border-b border-slate-100/60 text-right">
@@ -1112,7 +1143,7 @@
             <tr class="hover:bg-slate-50/50 transition-colors">
                 <td class="p-3 sm:p-5 border-b border-slate-100/60 min-w-[180px]">
                     <p class="font-black text-slate-900 text-xs sm:text-sm tracking-tight truncate max-w-[200px] sm:max-w-none" title="${escapeHTML(t.title)}">${escapeHTML(t.title)}</p>
-                    <p class="text-[9px] sm:text-[10px] font-bold text-slate-500 uppercase mt-1 tracking-widest truncate">${escapeHTML(t.category)} <span class="text-blue-500 ml-0.5 sm:ml-1">• BY: ${escapeHTML(ownerName)}</span></p>
+                    <p class="text-[9px] sm:text-[10px] font-bold text-slate-500 uppercase mt-1 tracking-widest truncate">${escapeHTML(t.category)} <span class="text-blue-500 ml-0.5 sm:ml-1">• ${getTaskOwnerIdentity(t, ownerName)}</span></p>
                 </td>
                 <td class="p-3 sm:p-5 border-b border-slate-100/60 text-center">
                     <span class="bg-emerald-50 text-emerald-700 px-2 sm:px-3.5 py-1 sm:py-1.5 rounded-lg text-[8px] sm:text-[10px] font-black uppercase ring-1 inset-ring ring-emerald-200 shadow-sm flex items-center justify-center w-max mx-auto whitespace-nowrap"><svg class="w-2.5 h-2.5 sm:w-3 sm:h-3 mr-1 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg> Verified</span>
@@ -1510,7 +1541,10 @@
                     <div class="bg-white border border-slate-100 rounded-3xl p-5 sm:p-6 shadow-sm hover:shadow-md transition-shadow ring-1 ring-slate-900/5 group relative overflow-hidden flex flex-col">
                         <div class="absolute top-0 left-0 w-1.5 h-full bg-amber-400"></div>
                         <p class="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Submitted By</p>
-                        <p class="text-sm sm:text-base font-black text-blue-950 truncate" title="${escapeHTML(q.submitter_email)}">${escapeHTML(q.submitter_email)}</p>
+                        <div class="flex min-w-0 items-center gap-2">
+                            ${window.kpiAvatarMarkup({ user_id: q.submitter_id || q.user_id, display_name: q.submitter_name || q.name || q.submitter_email, email: q.submitter_email, initials: q.initials, avatar_color_index: q.avatar_color_index, avatar_url: q.avatar_url }, 32)}
+                            <p class="min-w-0 truncate text-sm font-black text-blue-950 sm:text-base" title="${escapeHTML(q.submitter_email)}">${escapeHTML(q.submitter_email)}</p>
+                        </div>
                         <h4 class="text-2xl sm:text-3xl font-black text-slate-800 mt-3 sm:mt-4 mb-4 sm:mb-5">${escapeHTML(q.pending_count)} <span class="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest">Tasks Pending</span></h4>
                         <button onclick="openReviewModal('${escapeHTML(q.batch_id)}', '${escapeHTML(q.submitter_email)}')" class="mt-auto w-full bg-slate-900 hover:bg-blue-700 text-white font-bold text-xs sm:text-sm py-2.5 sm:py-3 rounded-xl transition-all shadow-sm active:scale-95 flex justify-center items-center gap-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
                             Review Batch <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>

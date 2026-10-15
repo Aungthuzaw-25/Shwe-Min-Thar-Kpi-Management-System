@@ -1,0 +1,44 @@
+.kpi-avatar {
+  align-items: center;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, .08);
+  color: #fff;
+  display: inline-flex;
+  flex: none;
+  font-family: 'Plus Jakarta Sans', 'Noto Sans Myanmar', system-ui, sans-serif;
+  font-weight: 700;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+  vertical-align: middle;
+}
+
+.kpi-avatar--24 { height: 24px; width: 24px; font-size: 9.6px; }
+.kpi-avatar--32 { height: 32px; width: 32px; font-size: 12.8px; }
+.kpi-avatar--40 { height: 40px; width: 40px; font-size: 16px; }
+.kpi-avatar--64 { height: 64px; width: 64px; font-size: 25.6px; }
+.kpi-avatar--96 { height: 96px; width: 96px; font-size: 38.4px; }
+.kpi-avatar--128 { height: 128px; width: 128px; font-size: 51.2px; }
+
+.kpi-avatar--color-0 { background: #2F5BFF; }
+.kpi-avatar--color-1 { background: #0F766E; }
+.kpi-avatar--color-2 { background: #6D3FD1; }
+.kpi-avatar--color-3 { background: #B4235A; }
+.kpi-avatar--color-4 { background: #B45309; }
+.kpi-avatar--color-5 { background: #0E7490; }
+.kpi-avatar--color-6 { background: #475569; }
+.kpi-avatar--color-7 { background: #C2410C; }
+
+.kpi-avatar__image,
+.kpi-avatar__fallback {
+  height: 100%;
+  inset: 0;
+  position: absolute;
+  width: 100%;
+}
+
+.kpi-avatar__image { object-fit: cover; }
+.kpi-avatar__fallback { display: none; }
+.kpi-avatar__initials { line-height: 1; }
+.kpi-avatar--photo.kpi-avatar--image-failed .kpi-avatar__image { display: none; }
+.kpi-avatar--photo.kpi-avatar--image-failed .kpi-avatar__fallback { display: inline-flex; align-items: center; justify-content: center; }

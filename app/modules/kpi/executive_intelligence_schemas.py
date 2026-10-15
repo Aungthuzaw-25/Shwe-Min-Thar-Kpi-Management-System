@@ -65,6 +65,22 @@ class ExecutiveTrend(BaseModel):
     tolerance: float = 0
 
 
+class ExecutiveMonthlyAverage(BaseModel):
+    month: int = Field(ge=1, le=12)
+    average_percentage: float | None
+    evaluated_employee_count: int
+
+
+class ExecutiveMonthlyAverageDepartment(BaseModel):
+    id: UUID
+    name: str
+
+
+class ExecutiveMonthlyAverageResponse(BaseModel):
+    departments: list[ExecutiveMonthlyAverageDepartment] = Field(default_factory=list)
+    monthly_averages: list[ExecutiveMonthlyAverage] = Field(default_factory=list)
+
+
 class ExecutiveSignal(BaseModel):
     signal_type: Literal["IMPROVEMENT", "DECLINE", "STABILITY", "CONCENTRATION", "COVERAGE"]
     severity: Literal["info", "warning"]
@@ -122,6 +138,9 @@ class ExecutiveEmployeeResult(BaseModel):
     level: str | None
     percentage: float
     status: KPIStatus
+    avatar_url: str | None = None
+    initials: str = "?"
+    avatar_color_index: int = 0
 
 
 class ExecutiveEmployeePage(BaseModel):

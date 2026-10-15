@@ -1,3 +1,6 @@
+<link rel="stylesheet" href="/static/css/avatar.css">
+<script src="/static/js/avatar-renderer.js"></script>
+<script src="/static/js/avatar.js"></script>
 <main id="executiveDashboard" class="executive-dashboard min-h-full">
   <header class="executive-header">
     <div>
@@ -180,4 +183,4 @@
     department: {{ department_name | default("") | tojson }}
   };
 </script>
-<script src="/static/js/executive-dashboard.js"></script>
+<script src="/static/js/executive-dashboard.js" defer></script>

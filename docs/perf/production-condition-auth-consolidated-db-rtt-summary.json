@@ -1,0 +1,114 @@
+[
+  {
+    "path": "/api/v1/auth/me",
+    "statuses": [
+      200,
+      200,
+      200,
+      200,
+      200
+    ],
+    "server_p50_ms": 1508.46,
+    "server_p95_ms": 2104.54,
+    "sql_counts": [
+      7,
+      7,
+      7,
+      7,
+      7
+    ],
+    "pre_ping_counts": [
+      1,
+      0,
+      1,
+      1,
+      1
+    ],
+    "browser_p50_ms": 1632.800000011921,
+    "body_bytes_p50": 944
+  },
+  {
+    "path": "/api/v1/dashboard/executive/overview",
+    "statuses": [
+      200,
+      200,
+      200,
+      200,
+      200
+    ],
+    "server_p50_ms": 2520.94,
+    "server_p95_ms": 4614.24,
+    "sql_counts": [
+      9,
+      9,
+      9,
+      9,
+      9
+    ],
+    "pre_ping_counts": [
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "browser_p50_ms": 2540.4000000059605,
+    "body_bytes_p50": 15952
+  },
+  {
+    "path": "/api/v1/dashboard/summary?period_type=MONTHLY",
+    "statuses": [
+      200,
+      200,
+      200,
+      200,
+      200
+    ],
+    "server_p50_ms": 4861.86,
+    "server_p95_ms": 5124.24,
+    "sql_counts": [
+      17,
+      17,
+      17,
+      17,
+      17
+    ],
+    "pre_ping_counts": [
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "browser_p50_ms": 4880.699999988079,
+    "body_bytes_p50": 6336
+  },
+  {
+    "path": "/api/v1/users/super-admins",
+    "statuses": [
+      200,
+      200,
+      200,
+      200,
+      200
+    ],
+    "server_p50_ms": 1407.49,
+    "server_p95_ms": 2939.7,
+    "sql_counts": [
+      7,
+      7,
+      7,
+      7,
+      7
+    ],
+    "pre_ping_counts": [
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "browser_p50_ms": 1494.5999999940395,
+    "body_bytes_p50": 500
+  }
+]

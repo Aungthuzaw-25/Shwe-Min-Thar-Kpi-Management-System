@@ -1,0 +1,155 @@
+ee<main id="executiveDashboard" class="executive-dashboard min-h-full">
+  <header class="executive-header">
+    <div>
+      <p class="executive-eyebrow">Decision intelligence · KPI operations</p>
+      <h1 id="dashboardTitle">Executive KPI Overview</h1>
+      <p id="dashboardContext" class="executive-subtitle">
+        {{ user_display_identity | default(user_role | default("Authorized scope")) }}
+      </p>
+    </div>
+    <div class="executive-header-actions">
+      <label class="sr-only" for="dashboardPeriod">Reporting period</label>
+      <select id="dashboardPeriod" class="executive-control" aria-label="Reporting period">
+        <option value="DAILY">Daily</option>
+        <option value="WEEKLY">Weekly</option>
+        <option value="MONTHLY" selected>Monthly</option>
+        <option value="QUARTERLY">Quarterly</option>
+        <option value="YEARLY">Yearly</option>
+      </select>
+      <button id="dashboardRefresh" type="button" class="executive-button" aria-label="Refresh dashboard">
+        <span aria-hidden="true">↻</span> Refresh
+      </button>
+      <span id="dataQualityBadge" class="executive-badge" aria-live="polite">Data quality: loading</span>
+      <span id="dashboardUpdated" class="executive-updated" aria-live="polite">Not loaded</span>
+    </div>
+  </header>
+  <div id="dataQualityDetails" class="executive-quality-note" role="status" hidden></div>
+
+  <div id="dashboardError" class="executive-error" role="alert" hidden>
+    <div>
+      <strong>Dashboard data could not be loaded.</strong>
+      <span>Try refreshing the authorized summary.</span>
+    </div>
+    <button id="dashboardRetry" type="button" class="executive-button executive-button-danger">Retry</button>
+  </div>
+
+  <section aria-labelledby="scorecardsHeading">
+    <div class="executive-section-heading">
+      <div>
+        <p class="executive-eyebrow">Tier 1</p>
+        <h2 id="scorecardsHeading">KPI scorecards</h2>
+      </div>
+      <span id="scopeBadge" class="executive-badge">Loading scope</span>
+    </div>
+    <div id="scorecards" class="executive-scorecards" aria-live="polite">
+      {% for label in ["KPI score", "KPI percentage", "Evaluated records", "Employees", "Departments", "Task completion", "Pending approvals", "Unread notifications", "Activity volume"] %}
+      <article class="executive-card executive-scorecard executive-skeleton-card">
+        <span class="executive-skeleton executive-skeleton-label" aria-hidden="true"></span>
+        <span class="executive-skeleton executive-skeleton-value" aria-hidden="true"></span>
+        <span class="executive-card-label">{{ label }}</span>
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="executive-grid executive-grid-primary" aria-label="KPI trend and department comparison">
+    <article class="executive-panel executive-panel-wide">
+      <div class="executive-section-heading">
+        <div>
+          <p class="executive-eyebrow">Tier 2</p>
+          <h2 id="trendHeading">KPI performance trend</h2>
+        </div>
+        <span id="kpiTrendMeta" class="executive-panel-meta">Persisted KPI results</span>
+      </div>
+      <div class="executive-chart-frame">
+        <canvas id="kpiTrendChart" aria-label="KPI percentage trend chart"></canvas>
+        <p id="kpiTrendEmpty" class="executive-empty" hidden>No KPI trend data available for this period.</p>
+      </div>
+    </article>
+    <article id="departmentPanel" class="executive-panel">
+      <div class="executive-section-heading">
+        <div>
+          <p class="executive-eyebrow">Tier 2</p>
+          <h2>Department comparison</h2>
+        </div>
+        <span class="executive-panel-meta">Authorized only</span>
+      </div>
+      <div id="departmentComparison" class="executive-table-wrap"></div>
+    </article>
+  </section>
+
+  <section class="executive-grid executive-grid-secondary" aria-label="KPI status and data availability">
+    <article class="executive-panel">
+      <div class="executive-section-heading">
+        <div>
+          <p class="executive-eyebrow">Tier 2</p>
+          <h2>Persisted KPI status</h2>
+        </div>
+        <span class="executive-panel-meta">Finalized records only</span>
+      </div>
+      <div id="kpiStatusDistribution" class="executive-diagnostic-grid executive-diagnostic-grid-three" aria-live="polite"></div>
+    </article>
+    <article class="executive-panel">
+      <div class="executive-section-heading">
+        <div>
+          <p class="executive-eyebrow">Data availability</p>
+          <h2>Unavailable analytics</h2>
+        </div>
+      </div>
+      <div class="executive-availability-grid">
+        <div class="executive-availability-item"><strong>Target vs Actual</strong><span>Not available: no authoritative dashboard aggregation contract.</span></div>
+        <div class="executive-availability-item"><strong>Attendance</strong><span>Not available: no authoritative attendance-result source is integrated.</span></div>
+        <div class="executive-availability-item"><strong>Custom Metrics</strong><span>Not available: no governed custom-metric registry exists.</span></div>
+      </div>
+    </article>
+  </section>
+
+  <section class="executive-grid executive-grid-secondary" aria-label="Operational diagnostics">
+    <article class="executive-panel">
+      <div class="executive-section-heading"><div><p class="executive-eyebrow">Tier 3</p><h2>Task lifecycle</h2></div></div>
+      <div id="taskLifecycle" class="executive-diagnostic-grid"></div>
+      <div class="executive-subsection">
+        <span class="executive-card-label">Operational risk</span>
+        <div id="taskRisk" class="executive-risk-grid"></div>
+      </div>
+    </article>
+    <article class="executive-panel">
+      <div class="executive-section-heading"><div><p class="executive-eyebrow">Tier 3</p><h2>Approval bottlenecks</h2></div></div>
+      <div id="approvalDiagnostics" class="executive-diagnostic-grid executive-diagnostic-grid-four"></div>
+      <div class="executive-subsection">
+        <span class="executive-card-label">KPI category performance</span>
+        <div id="categoryPerformance" class="executive-empty executive-empty-compact">
+          <strong>Category-level finalized KPI results are not yet available.</strong>
+          <span>This is intentionally unavailable because the current records store aggregate formula results.</span>
+        </div>
+      </div>
+    </article>
+  </section>
+
+  <section class="executive-grid executive-grid-tertiary" aria-label="Alerts activity and notifications">
+    <article class="executive-panel">
+      <div class="executive-section-heading"><div><p class="executive-eyebrow">Tier 4</p><h2>Alerts</h2></div></div>
+      <div id="dashboardAlerts" class="executive-list"></div>
+    </article>
+    <article class="executive-panel">
+      <div class="executive-section-heading"><div><p class="executive-eyebrow">Tier 4</p><h2>Recent activity</h2></div><span id="activitySummary" class="executive-panel-meta"></span></div>
+      <div id="dashboardActivity" class="executive-list"></div>
+    </article>
+    <article class="executive-panel">
+      <div class="executive-section-heading">
+        <div><p class="executive-eyebrow">Tier 4</p><h2>Notifications</h2></div>
+        <a class="executive-link" href="/notifications">View all</a>
+      </div>
+      <div id="dashboardNotifications" class="executive-list"></div>
+    </article>
+  </section>
+</main>
+
+<script>
+  window.KPI_EXECUTIVE_CONTEXT = {
+    role: {{ user_role | default("") | tojson }},
+    level: {{ user_level | default("") | tojson }},
+    department: {{ department_name | default("") | tojson }}
+  };
+</script>
+<script src="/static/js/executive-dashboard.js"></script>

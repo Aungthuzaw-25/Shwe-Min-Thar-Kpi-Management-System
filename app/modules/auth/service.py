@@ -9,7 +9,7 @@ from fastapi import HTTPException, status
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload, lazyload
 
 from app.core import security
 from app.core.config import settings
@@ -17,7 +17,7 @@ from app.core.password_policy import get_password_expiry_days
 from app.models.audit_log import AuditLog
 from app.modules.auth.models import AuthSession, LoginHistory, PasswordHistory
 from app.modules.departments.models import UserDepartment
-from app.modules.users.models import User
+from app.modules.users.models import Role, User
 
 INVALID_CREDENTIALS_MESSAGE = "Invalid email or password."
 
@@ -27,21 +27,21 @@ TIMING_EQUALIZATION_HASH = security.pwd_context.handler("bcrypt").hash(
     secrets.token_urlsafe(32),
 )
 
+
+async def _load_authentication_user(db: AsyncSession, email: str) -> User | None:
+    statement = select(User).options(
+        joinedload(User.role).lazyload(Role.permissions),
+        joinedload(User.position),
+        joinedload(User.user_departments).joinedload(UserDepartment.department),
+    ).where(User.email == email).with_for_update(of=User)
+    result = await db.execute(statement)
+    return result.unique().scalars().first()
+
+
 class AuthService:
     @staticmethod
     async def _find_user_for_authentication(db: AsyncSession, email: str) -> User | None:
-        stmt = (
-            select(User)
-            .options(
-                selectinload(User.role),
-                selectinload(User.position),
-                selectinload(User.user_departments).selectinload(UserDepartment.department),
-            )
-            .where(User.email == email)
-            .with_for_update()
-        )
-        result = await db.execute(stmt)
-        return result.scalars().first()
+        return await _load_authentication_user(db, email)
 
     @staticmethod
     async def _reject_invalid_credentials(password: str) -> None:

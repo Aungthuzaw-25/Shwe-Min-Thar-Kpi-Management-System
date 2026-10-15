@@ -14,6 +14,7 @@ from app.models.audit_log import AuditLog
 from app.modules.departments.models import Department, UserDepartment
 from app.modules.kpi.dashboard_router import unified_router
 from app.modules.kpi.executive_intelligence_service import (
+    build_monthly_average_series,
     _trend_change,
     build_executive_overview,
     get_executive_employee_detail,
@@ -232,6 +233,95 @@ def test_summary_department_aggregation_and_period_trend(tmp_path):
     _run_isolated_test(tmp_path, _test_summary_departments_trend_and_deleted_users)
 
 
+async def _test_month_range_summary_and_employee_ranking(db):
+    users, department_a, department_b, previous_period, current_period, _ = (
+        await _create_fixture(db)
+    )
+    overview = await build_executive_overview(
+        db,
+        scope_user_ids=None,
+        department_ids=[department_a.id, department_b.id],
+        show_departments=True,
+        period_start=datetime(2026, 5, 1, tzinfo=UTC),
+        period_end=datetime(2026, 7, 1, tzinfo=UTC),
+    )
+
+    assert overview.selected_period.id == current_period.id
+    assert overview.summary.average_percentage == 63.33
+    assert overview.summary.evaluated_employee_count == 3
+    assert overview.summary.no_result_employee_count == 1
+    assert [point.period_id for point in overview.trend.points] == [
+        previous_period.id,
+        current_period.id,
+    ]
+    assert overview.trend.delta == 6.67
+    assert len(overview.departments) == 2
+
+    employees = await list_executive_employee_results(
+        db,
+        period_id=None,
+        period_start=datetime(2026, 5, 1, tzinfo=UTC),
+        period_end=datetime(2026, 7, 1, tzinfo=UTC),
+        scope_user_ids=None,
+        department_ids=[department_a.id, department_b.id],
+        offset=0,
+        limit=25,
+    )
+    assert employees.total == 3
+    assert [item.user_id for item in employees.items] == [
+        users[0].id,
+        users[2].id,
+        users[1].id,
+    ]
+    assert [item.percentage for item in employees.items] == [75.0, 70.0, 45.0]
+
+
+def test_month_range_scopes_summary_trend_and_employee_ranking(tmp_path):
+    _run_isolated_test(tmp_path, _test_month_range_summary_and_employee_ranking)
+
+
+async def _test_monthly_average_series_has_calendar_gaps_and_respects_scope(db):
+    users, department_a, department_b, _, _, _ = await _create_fixture(db)
+    monthly = await build_monthly_average_series(
+        db,
+        year=2026,
+        scope_user_ids=None,
+        department_ids=[department_a.id, department_b.id],
+    )
+    assert len(monthly) == 12
+    assert [point.month for point in monthly] == list(range(1, 13))
+    assert [point.average_percentage for point in monthly] == [
+        None, None, None, None, 60.0, 66.67, None, None, None, None, None, None
+    ]
+    assert [point.evaluated_employee_count for point in monthly] == [
+        0, 0, 0, 0, 3, 3, 0, 0, 0, 0, 0, 0
+    ]
+
+    department_monthly = await build_monthly_average_series(
+        db,
+        year=2026,
+        scope_user_ids=[users[0].id, users[1].id],
+        department_ids=[department_a.id],
+    )
+    assert department_monthly[5].average_percentage == 60.0
+    assert department_monthly[5].evaluated_employee_count == 2
+
+    no_data_year = await build_monthly_average_series(
+        db,
+        year=2027,
+        scope_user_ids=None,
+        department_ids=[department_a.id, department_b.id],
+    )
+    assert len(no_data_year) == 12
+    assert all(point.average_percentage is None for point in no_data_year)
+
+
+def test_monthly_average_series_preserves_empty_months_and_scope(tmp_path):
+    _run_isolated_test(
+        tmp_path, _test_monthly_average_series_has_calendar_gaps_and_respects_scope
+    )
+
+
 async def _test_open_empty_invalid_and_scoped_detail(db):
     users, department_a, _, _, current_period, open_period = await _create_fixture(
         db, with_history=True
@@ -311,7 +401,7 @@ def test_period_empty_state_and_employee_scope(tmp_path):
 
 
 async def _test_api_enforces_l2_scope_for_employee_drilldown(db):
-    users, department_a, _, _, current_period, _ = await _create_fixture(db)
+    users, department_a, department_b, _, current_period, _ = await _create_fixture(db)
     app = FastAPI()
     app.include_router(unified_router, prefix="/api/v1/dashboard")
 
@@ -330,6 +420,41 @@ async def _test_api_enforces_l2_scope_for_employee_drilldown(db):
         overview = overview_response.json()
         assert overview["summary"]["evaluated_employee_count"] == 1
         assert overview["departments"] == []
+
+        monthly_response = await client.get(
+            "/api/v1/dashboard/executive/monthly-averages",
+            params={"year": 2026},
+        )
+        assert monthly_response.status_code == 200
+        monthly = monthly_response.json()
+        assert len(monthly["monthly_averages"]) == 12
+        assert monthly["monthly_averages"][5]["average_percentage"] == 90
+        assert monthly["monthly_averages"][5]["evaluated_employee_count"] == 1
+        assert monthly["monthly_averages"][4]["average_percentage"] == 60
+        assert [item["id"] for item in monthly["departments"]] == [
+            str(department_a.id)
+        ]
+
+        selected_department_response = await client.get(
+            "/api/v1/dashboard/executive/monthly-averages",
+            params={"year": 2026, "department_id": str(department_a.id)},
+        )
+        assert selected_department_response.status_code == 200
+        selected_department = selected_department_response.json()
+        assert selected_department["monthly_averages"][5]["average_percentage"] == 90
+        assert selected_department["monthly_averages"][5]["evaluated_employee_count"] == 1
+
+        unauthorized_department_response = await client.get(
+            "/api/v1/dashboard/executive/monthly-averages",
+            params={"year": 2026, "department_id": str(department_b.id)},
+        )
+        assert unauthorized_department_response.status_code == 404
+
+        invalid_year_response = await client.get(
+            "/api/v1/dashboard/executive/monthly-averages",
+            params={"year": 1899},
+        )
+        assert invalid_year_response.status_code == 422
 
         allowed_response = await client.get(
             f"/api/v1/dashboard/executive/employees/{users[0].id}",

@@ -5,11 +5,13 @@
     branches:
       - main
       - master
+      - fix-ci-workflow
 
   pull_request:
     branches:
       - main
       - master
+      - fix-ci-workflow
 
 jobs:
   node-web:
@@ -25,7 +27,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@8f152de45cc393bb48ce5d89d36b731f54556e65 # v4.0.0
         with:
-          node-version: "20"
+          node-version: "22"
           cache: npm
           cache-dependency-path: web/package-lock.json
 
@@ -36,6 +38,13 @@ jobs:
       - name: Run Node tests
         working-directory: web
         run: npm test
+
+      - name: Build production web image
+        run: |
+          docker build \
+            --file web/Dockerfile \
+            --tag kpi-management-web:${{ github.sha }} \
+            .
 
   test:
     runs-on: ubuntu-latest

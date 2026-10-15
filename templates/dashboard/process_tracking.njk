@@ -4,6 +4,9 @@
 {% block title %}Process Tracking - Enterprise Core{% endblock %}
 
 {% block content %}
+<link rel="stylesheet" href="/static/css/avatar.css">
+<script src="/static/js/avatar-renderer.js"></script>
+<script src="/static/js/avatar.js"></script>
 <style>
     @keyframes fadeSlideUp { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
     .animate-fade-slide { animation: fadeSlideUp 0.4s ease-out forwards; }
@@ -170,7 +173,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="/static/vendor/chart.umd.min.js" defer></script>
 
 <script>
     let currentScope = 'department';
@@ -351,7 +354,14 @@
                             </div>
                             <div class="flex-1 min-w-0 pt-0.5">
                                 <p class="text-[13px] font-bold text-slate-800 leading-tight">${escapeHTML(act.description || actionText)}</p>
-                                <p class="text-[11px] text-slate-500 font-medium mt-0.5">${formatMyanmarTime(act.created_at)} <span class="mx-1">•</span> by <span class="font-semibold text-slate-600">${escapeHTML(act.actor_name)}</span></p>
+                                <p class="text-[11px] text-slate-500 font-medium mt-0.5">${formatMyanmarTime(act.created_at)} <span class="mx-1">•</span> by <span class="inline-flex items-center gap-2 font-semibold text-slate-600">${window.kpiAvatarMarkup({
+                                    ...act,
+                                    id: act.actor_id || act.user_id,
+                                    display_name: act.actor_name,
+                                    avatar_url: act.actor_avatar_url || act.avatar_url,
+                                    initials: act.actor_initials || act.initials,
+                                    avatar_color_index: act.actor_avatar_color_index ?? act.avatar_color_index
+                                }, 32)}${escapeHTML(act.actor_name)}</span></p>
                             </div>
                         </div>
                     </div>

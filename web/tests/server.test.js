@@ -74,11 +74,11 @@ describe("Express pages and CSP middleware", () => {
     expect(nonce).toBeTruthy();
     expect(response.headers["content-security-policy"]).toBe([
       "default-src 'self';",
-      `script-src 'self' 'nonce-${nonce}' https://cdn.jsdelivr.net;`,
+      `script-src 'self' 'nonce-${nonce}';`,
       `style-src 'self' 'nonce-${nonce}' https://fonts.googleapis.com;`,
       "font-src 'self' https://fonts.gstatic.com;",
       "img-src 'self' data: blob: https://storage.example:9443 http://localhost:9000 http://minio:9000;",
-      "connect-src 'self' https://cdn.jsdelivr.net https://storage.example:9443 http://localhost:9000 http://minio:9000;",
+      "connect-src 'self' https://storage.example:9443 http://localhost:9000 http://minio:9000;",
       "frame-ancestors 'none';",
     ].join(" "));
     expect(response.text).toContain(`<script nonce="${nonce}"`);
@@ -128,7 +128,7 @@ describe("Express pages and CSP middleware", () => {
   });
 
   it("renders the profile page using the authenticated context and account data", async () => {
-    const response = await request(createApp({ backend: fakeBackend() }))
+    const response = await request(createApp({ backend: fakeBackend("Super Admin") }))
       .get("/profile")
       .set("Cookie", "access_token=qa-token");
 
@@ -136,6 +136,15 @@ describe("Express pages and CSP middleware", () => {
     expect(response.text).toContain("qa.user@example.com");
     expect(response.text).toContain("qa.user@gmail.com");
     expect(response.text).toContain("Connected on 2024-05-06");
+  });
+
+  it("does not render the legacy Connected Accounts card for other roles", async () => {
+    const response = await request(createApp({ backend: fakeBackend("Department User") }))
+      .get("/profile")
+      .set("Cookie", "access_token=qa-token");
+
+    expect(response.status).toBe(200);
+    expect(response.text).not.toContain("Connected Accounts");
   });
 
   it("returns the backend authentication status and body unchanged", async () => {

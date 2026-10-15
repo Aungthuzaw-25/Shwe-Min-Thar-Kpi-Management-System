@@ -57,6 +57,11 @@ class User(BaseModel):
     
     first_name = Column(String(100), nullable=False)
     last_name = Column(String(100), nullable=False)
+    phone_number = Column(String(32), nullable=True)
+    bio = Column(String(500), nullable=True)
+    avatar_path = Column(String(255), nullable=True)
+    avatar_updated_at = Column(DateTime, nullable=True)
+    password_changed_at = Column(DateTime, nullable=True)
     position_id = Column(UUID(as_uuid=True), ForeignKey("positions.id"), nullable=True)
     
     region_town = Column(String(100), nullable=True) 

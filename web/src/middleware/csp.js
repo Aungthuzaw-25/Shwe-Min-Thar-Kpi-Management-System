@@ -46,11 +46,11 @@ export function cspMiddleware({
       "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
       "Content-Security-Policy": [
         "default-src 'self';",
-        `script-src 'self' 'nonce-${nonce}' https://cdn.jsdelivr.net;`,
+        `script-src 'self' 'nonce-${nonce}';`,
         `style-src 'self' 'nonce-${nonce}' https://fonts.googleapis.com;`,
         "font-src 'self' https://fonts.gstatic.com;",
         `img-src 'self' data: blob:${additionalStorageOrigins};`,
-        `connect-src 'self' https://cdn.jsdelivr.net${additionalStorageOrigins};`,
+        `connect-src 'self'${additionalStorageOrigins};`,
         "frame-ancestors 'none';",
       ].join(" "),
     });

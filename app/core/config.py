@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     ALLOWED_ORIGINS: str = "http://localhost:8000,http://127.0.0.1:8000"
     REDIS_URL: str | None = None
     OAUTH_ENABLED: bool = False
+    APP_BASE_URL: str | None = None
     OAUTH_PUBLIC_BASE_URL: str | None = None
     OAUTH_STATE_TTL_SECONDS: int = 600
     GOOGLE_OIDC_ENABLED: bool = False
@@ -41,7 +42,8 @@ class Settings(BaseSettings):
     MICROSOFT_OIDC_ENABLED: bool = False
     MICROSOFT_CLIENT_ID: str | None = None
     MICROSOFT_CLIENT_SECRET: str | None = None
-    MICROSOFT_TENANT_ID: str = "organizations"
+    MICROSOFT_TENANT: str = "common"
+    MICROSOFT_TENANT_ID: str | None = None
     MICROSOFT_REDIRECT_URI: str | None = None
     ENABLE_SCHEDULER: bool = False
     RUN_SCHEDULER: bool = False

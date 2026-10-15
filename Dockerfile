@@ -1,7 +1,7 @@
 # ============================================================
 # Stage 1: Build Tailwind CSS (Optimized for Production Cache)
 # ============================================================
-FROM node:20-alpine AS tailwind-builder
+FROM node:22-alpine AS tailwind-builder
 
 WORKDIR /app
 

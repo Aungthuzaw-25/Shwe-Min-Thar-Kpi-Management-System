@@ -389,6 +389,9 @@ class KpiReportService:
             item = KpiReportItem(
                 user_id=row["user_id"],
                 full_name=row["full_name"],
+                avatar_url=row.get("avatar_url"),
+                initials=row.get("initials", "?"),
+                avatar_color_index=row.get("avatar_color_index", 0),
                 department_name=row["department_name"] or "N/A",
                 total_score=total_score,
                 # 🌟 FIXED: Using real database grade so UI Badge color works correctly

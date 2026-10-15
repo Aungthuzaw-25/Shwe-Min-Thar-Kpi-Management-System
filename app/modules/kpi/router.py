@@ -5,7 +5,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import asc, desc
+from sqlalchemy import String, asc, cast, desc, or_
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -59,6 +59,7 @@ from app.modules.kpi.schemas import (
     KPIRecordResponse,
     KpiReportSummaryResponse,
 )
+from app.modules.users.avatar import avatar_color_index, avatar_initials, avatar_url
 from app.modules.users.models import User
 
 # 🌟 1. Setup Production Logger
@@ -138,6 +139,10 @@ class AuditLogResponse(BaseModel):
     id: str
     timestamp: str
     admin_name: str
+    actor_id: str | None = None
+    avatar_url: str | None = None
+    initials: str = "?"
+    avatar_color_index: int = 0
     action: str
     table_name: str
     old_value: dict[str, Any]
@@ -868,15 +873,33 @@ async def bulk_calculate_endpoint(
 
 @router.get('/audit-logs', response_model=list[AuditLogResponse], tags=["Audit Logs"], responses={500: {"description": "Internal Server Error"}})
 async def get_system_audit_logs(
-    limit: int = Query(100, le=1000), 
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    search: str | None = Query(None, max_length=200),
+    action: str | None = Query(None, max_length=50),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(allow_super_admins)
 ):
     try:
+        stmt = select(AuditLog, User).outerjoin(User, AuditLog.user_id == User.id)
+        if action:
+            stmt = stmt.where(AuditLog.action == action)
+        if search:
+            term = f"%{search.strip()}%"
+            actor_name = User.first_name + " " + User.last_name
+            stmt = stmt.where(
+                or_(
+                    actor_name.ilike(term),
+                    AuditLog.action.ilike(term),
+                    AuditLog.table_name.ilike(term),
+                    AuditLog.ip_address.ilike(term),
+                    cast(AuditLog.old_value, String).ilike(term),
+                    cast(AuditLog.new_value, String).ilike(term),
+                )
+            )
         stmt = (
-            select(AuditLog, User)
-            .outerjoin(User, AuditLog.user_id == User.id)
-            .order_by(desc(AuditLog.created_at))
+            stmt.order_by(desc(AuditLog.created_at), desc(AuditLog.id))
+            .offset(offset)
             .limit(limit)
         )
 
@@ -891,6 +914,18 @@ async def get_system_audit_logs(
                 id=str(log.id),
                 timestamp=f"{log.created_at.isoformat()}Z" if log.created_at else "",
                 admin_name=admin_name,
+                actor_id=str(admin.id) if admin else None,
+                avatar_url=(
+                    avatar_url(admin.avatar_path, admin.avatar_updated_at)
+                    if admin
+                    else None
+                ),
+                initials=(
+                    avatar_initials(admin_name, admin.email)
+                    if admin
+                    else "?"
+                ),
+                avatar_color_index=avatar_color_index(admin.id) if admin else 0,
                 action=log.action,
                 table_name=log.table_name,
                 old_value=log.old_value or {},

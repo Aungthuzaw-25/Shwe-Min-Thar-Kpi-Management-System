@@ -1,12 +1,11 @@
 # Environments
-.env
-.env.*
-!.env.example
-!.env.qa.example
-venv/
-env/
-.venv/
-.vscode/
+**/.env
+**/.env.*
+!/.env.example
+!/.env.qa.example
+/.venv/
+/venv/
+/env/
 
 # Caches & Bytecode
 __pycache__/
@@ -22,9 +21,16 @@ htmlcov/
 .scannerwork/
 playwright-report/
 test-results/
+blob-report/
+.playwright/
+web/.auth/
+*.trace.zip
 
-# Uploads (Production တွင် MinIO သုံးမည်ဖြစ်သော်လည်း Local အတွက်ဖျက်ထားရန်)
-uploads/
+# User uploads and generated runtime files. Keep only the intentional fixture
+# placeholder in version control; never commit uploaded evidence or avatars.
+uploads/*
+!uploads/evidence/
+uploads/evidence/*
 !uploads/evidence/dummy_evidence.txt
 downloads/
 logs/
@@ -34,6 +40,11 @@ temp/
 *.log
 full_pytest.txt
 pytest_focus.txt
+compile.log
+diffcheck.log
+ruff.log
+sonar-debug.log
+*.response
 query
 
 # IDEs
@@ -58,3 +69,6 @@ static/css/output.css
 # Local agent instructions/artifacts
 agent.md
 AGENTS.md
+
+# Security-related Markdown reports and notes
+security-docs/

@@ -1,0 +1,742 @@
+{
+  "dashboard_summary": [
+    {
+      "status": 200,
+      "client_ms": 401.40000000596046,
+      "server_timing": "app;dur=329.19, sql;desc=\"58 queries\"",
+      "sql_count": "58",
+      "sample": 1
+    },
+    {
+      "status": 200,
+      "client_ms": 360.2999999821186,
+      "server_timing": "app;dur=308.02, sql;desc=\"33 queries\"",
+      "sql_count": "33",
+      "sample": 2
+    },
+    {
+      "status": 200,
+      "client_ms": 178.40000000596046,
+      "server_timing": "app;dur=161.53, sql;desc=\"23 queries\"",
+      "sql_count": "23",
+      "sample": 3
+    },
+    {
+      "status": 200,
+      "client_ms": 188.5,
+      "server_timing": "app;dur=175.78, sql;desc=\"23 queries\"",
+      "sql_count": "23",
+      "sample": 4
+    },
+    {
+      "status": 200,
+      "client_ms": 128.40000000596046,
+      "server_timing": "app;dur=119.63, sql;desc=\"23 queries\"",
+      "sql_count": "23",
+      "sample": 5
+    }
+  ],
+  "executive_overview": [
+    {
+      "status": 200,
+      "client_ms": 93.5,
+      "server_timing": "app;dur=85.01, sql;desc=\"15 queries\"",
+      "sql_count": "15",
+      "sample": 1
+    },
+    {
+      "status": 200,
+      "client_ms": 90.90000000596046,
+      "server_timing": "app;dur=82.46, sql;desc=\"15 queries\"",
+      "sql_count": "15",
+      "sample": 2
+    },
+    {
+      "status": 200,
+      "client_ms": 107.89999997615814,
+      "server_timing": "app;dur=96.98, sql;desc=\"15 queries\"",
+      "sql_count": "15",
+      "sample": 3
+    },
+    {
+      "status": 200,
+      "client_ms": 103.69999998807907,
+      "server_timing": "app;dur=93.10, sql;desc=\"15 queries\"",
+      "sql_count": "15",
+      "sample": 4
+    },
+    {
+      "status": 200,
+      "client_ms": 88.09999999403954,
+      "server_timing": "app;dur=79.87, sql;desc=\"15 queries\"",
+      "sql_count": "15",
+      "sample": 5
+    }
+  ],
+  "executive_employees": [
+    {
+      "status": 200,
+      "client_ms": 52,
+      "server_timing": "app;dur=43.52, sql;desc=\"12 queries\"",
+      "sql_count": "12",
+      "sample": 1
+    },
+    {
+      "status": 200,
+      "client_ms": 52.69999998807907,
+      "server_timing": "app;dur=42.93, sql;desc=\"12 queries\"",
+      "sql_count": "12",
+      "sample": 2
+    },
+    {
+      "status": 200,
+      "client_ms": 56.20000001788139,
+      "server_timing": "app;dur=48.52, sql;desc=\"12 queries\"",
+      "sql_count": "12",
+      "sample": 3
+    },
+    {
+      "status": 200,
+      "client_ms": 49.5,
+      "server_timing": "app;dur=41.35, sql;desc=\"12 queries\"",
+      "sql_count": "12",
+      "sample": 4
+    },
+    {
+      "status": 200,
+      "client_ms": 50.099999994039536,
+      "server_timing": "app;dur=40.95, sql;desc=\"12 queries\"",
+      "sql_count": "12",
+      "sample": 5
+    }
+  ],
+  "tasks": [
+    {
+      "status": 200,
+      "client_ms": 68.5,
+      "server_timing": "app;dur=58.00, sql;desc=\"12 queries\"",
+      "sql_count": "12",
+      "sample": 1
+    },
+    {
+      "status": 200,
+      "client_ms": 64.90000000596046,
+      "server_timing": "app;dur=54.03, sql;desc=\"12 queries\"",
+      "sql_count": "12",
+      "sample": 2
+    },
+    {
+      "status": 200,
+      "client_ms": 66,
+      "server_timing": "app;dur=56.36, sql;desc=\"12 queries\"",
+      "sql_count": "12",
+      "sample": 3
+    },
+    {
+      "status": 200,
+      "client_ms": 82.80000001192093,
+      "server_timing": "app;dur=71.27, sql;desc=\"12 queries\"",
+      "sql_count": "12",
+      "sample": 4
+    },
+    {
+      "status": 200,
+      "client_ms": 82.90000000596046,
+      "server_timing": "app;dur=71.76, sql;desc=\"12 queries\"",
+      "sql_count": "12",
+      "sample": 5
+    }
+  ],
+  "task_approval_queue": [
+    {
+      "status": 200,
+      "client_ms": 26.700000017881393,
+      "server_timing": "app;dur=18.23, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 1
+    },
+    {
+      "status": 200,
+      "client_ms": 30.200000017881393,
+      "server_timing": "app;dur=21.50, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 2
+    },
+    {
+      "status": 200,
+      "client_ms": 38.30000001192093,
+      "server_timing": "app;dur=28.18, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 3
+    },
+    {
+      "status": 200,
+      "client_ms": 27.299999982118607,
+      "server_timing": "app;dur=17.77, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 4
+    },
+    {
+      "status": 200,
+      "client_ms": 48.099999994039536,
+      "server_timing": "app;dur=36.70, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 5
+    }
+  ],
+  "departments": [
+    {
+      "status": 200,
+      "client_ms": 53.400000005960464,
+      "server_timing": "app;dur=39.07, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 1
+    },
+    {
+      "status": 200,
+      "client_ms": 37.89999997615814,
+      "server_timing": "app;dur=27.83, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 2
+    },
+    {
+      "status": 200,
+      "client_ms": 25.30000001192093,
+      "server_timing": "app;dur=17.26, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 3
+    },
+    {
+      "status": 200,
+      "client_ms": 26.099999994039536,
+      "server_timing": "app;dur=18.06, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 4
+    },
+    {
+      "status": 200,
+      "client_ms": 30.5,
+      "server_timing": "app;dur=16.40, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 5
+    }
+  ],
+  "kpi_periods": [
+    {
+      "status": 200,
+      "client_ms": 27.80000001192093,
+      "server_timing": "app;dur=19.39, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 1
+    },
+    {
+      "status": 200,
+      "client_ms": 31.400000005960464,
+      "server_timing": "app;dur=21.61, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 2
+    },
+    {
+      "status": 200,
+      "client_ms": 34,
+      "server_timing": "app;dur=25.46, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 3
+    },
+    {
+      "status": 200,
+      "client_ms": 37.900000005960464,
+      "server_timing": "app;dur=27.80, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 4
+    },
+    {
+      "status": 200,
+      "client_ms": 48.80000001192093,
+      "server_timing": "app;dur=37.19, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 5
+    }
+  ],
+  "kpi_formulas": [
+    {
+      "status": 200,
+      "client_ms": 53.69999998807907,
+      "server_timing": "app;dur=35.36, sql;desc=\"10 queries\"",
+      "sql_count": "10",
+      "sample": 1
+    },
+    {
+      "status": 200,
+      "client_ms": 63.19999998807907,
+      "server_timing": "app;dur=41.85, sql;desc=\"9 queries\"",
+      "sql_count": "9",
+      "sample": 2
+    },
+    {
+      "status": 200,
+      "client_ms": 52.5,
+      "server_timing": "app;dur=39.26, sql;desc=\"9 queries\"",
+      "sql_count": "9",
+      "sample": 3
+    },
+    {
+      "status": 200,
+      "client_ms": 54.69999998807907,
+      "server_timing": "app;dur=43.74, sql;desc=\"9 queries\"",
+      "sql_count": "9",
+      "sample": 4
+    },
+    {
+      "status": 200,
+      "client_ms": 37.30000001192093,
+      "server_timing": "app;dur=28.16, sql;desc=\"9 queries\"",
+      "sql_count": "9",
+      "sample": 5
+    }
+  ],
+  "permissions": [
+    {
+      "status": 200,
+      "client_ms": 31.30000001192093,
+      "server_timing": "app;dur=21.49, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 1
+    },
+    {
+      "status": 200,
+      "client_ms": 30.900000005960464,
+      "server_timing": "app;dur=20.75, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 2
+    },
+    {
+      "status": 200,
+      "client_ms": 32.30000001192093,
+      "server_timing": "app;dur=24.09, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 3
+    },
+    {
+      "status": 200,
+      "client_ms": 31.900000005960464,
+      "server_timing": "app;dur=23.21, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 4
+    },
+    {
+      "status": 200,
+      "client_ms": 31.200000017881393,
+      "server_timing": "app;dur=22.44, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 5
+    }
+  ],
+  "permissions_role_admin": [
+    {
+      "status": 200,
+      "client_ms": 46.5,
+      "server_timing": "app;dur=38.22, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 1
+    },
+    {
+      "status": 200,
+      "client_ms": 35.30000001192093,
+      "server_timing": "app;dur=26.85, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 2
+    },
+    {
+      "status": 200,
+      "client_ms": 29.80000001192093,
+      "server_timing": "app;dur=20.91, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 3
+    },
+    {
+      "status": 200,
+      "client_ms": 30.30000001192093,
+      "server_timing": "app;dur=20.56, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 4
+    },
+    {
+      "status": 200,
+      "client_ms": 29.700000017881393,
+      "server_timing": "app;dur=20.95, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 5
+    }
+  ],
+  "permissions_role_superadmin": [
+    {
+      "status": 200,
+      "client_ms": 34.400000005960464,
+      "server_timing": "app;dur=25.26, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 1
+    },
+    {
+      "status": 200,
+      "client_ms": 41.400000005960464,
+      "server_timing": "app;dur=27.68, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 2
+    },
+    {
+      "status": 200,
+      "client_ms": 33.69999998807907,
+      "server_timing": "app;dur=22.95, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 3
+    },
+    {
+      "status": 200,
+      "client_ms": 30,
+      "server_timing": "app;dur=20.75, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 4
+    },
+    {
+      "status": 200,
+      "client_ms": 33.599999994039536,
+      "server_timing": "app;dur=22.66, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 5
+    }
+  ],
+  "permissions_user_effective": [
+    {
+      "status": 200,
+      "client_ms": 46.70000001788139,
+      "server_timing": "app;dur=38.00, sql;desc=\"15 queries\"",
+      "sql_count": "15",
+      "sample": 1
+    },
+    {
+      "status": 200,
+      "client_ms": 46.80000001192093,
+      "server_timing": "app;dur=37.60, sql;desc=\"15 queries\"",
+      "sql_count": "15",
+      "sample": 2
+    },
+    {
+      "status": 200,
+      "client_ms": 45.599999994039536,
+      "server_timing": "app;dur=36.14, sql;desc=\"15 queries\"",
+      "sql_count": "15",
+      "sample": 3
+    },
+    {
+      "status": 200,
+      "client_ms": 44.5,
+      "server_timing": "app;dur=34.98, sql;desc=\"15 queries\"",
+      "sql_count": "15",
+      "sample": 4
+    },
+    {
+      "status": 200,
+      "client_ms": 43.30000001192093,
+      "server_timing": "app;dur=34.74, sql;desc=\"15 queries\"",
+      "sql_count": "15",
+      "sample": 5
+    }
+  ],
+  "permissions_users": [
+    {
+      "status": 200,
+      "client_ms": 195.10000002384186,
+      "server_timing": "app;dur=184.24, sql;desc=\"12 queries\"",
+      "sql_count": "12",
+      "sample": 1
+    },
+    {
+      "status": 200,
+      "client_ms": 78.2999999821186,
+      "server_timing": "app;dur=65.53, sql;desc=\"12 queries\"",
+      "sql_count": "12",
+      "sample": 2
+    },
+    {
+      "status": 200,
+      "client_ms": 69.80000001192093,
+      "server_timing": "app;dur=58.75, sql;desc=\"12 queries\"",
+      "sql_count": "12",
+      "sample": 3
+    },
+    {
+      "status": 200,
+      "client_ms": 59.5,
+      "server_timing": "app;dur=49.05, sql;desc=\"12 queries\"",
+      "sql_count": "12",
+      "sample": 4
+    },
+    {
+      "status": 200,
+      "client_ms": 62,
+      "server_timing": "app;dur=51.40, sql;desc=\"12 queries\"",
+      "sql_count": "12",
+      "sample": 5
+    }
+  ],
+  "notifications": [
+    {
+      "status": 200,
+      "client_ms": 37.20000001788139,
+      "server_timing": "app;dur=27.05, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 1
+    },
+    {
+      "status": 200,
+      "client_ms": 34,
+      "server_timing": "app;dur=24.28, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 2
+    },
+    {
+      "status": 200,
+      "client_ms": 32.400000005960464,
+      "server_timing": "app;dur=23.01, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 3
+    },
+    {
+      "status": 200,
+      "client_ms": 36.79999998211861,
+      "server_timing": "app;dur=26.51, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 4
+    },
+    {
+      "status": 200,
+      "client_ms": 29.900000005960464,
+      "server_timing": "app;dur=22.05, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 5
+    }
+  ],
+  "notifications_unread": [
+    {
+      "status": 200,
+      "client_ms": 35.5,
+      "server_timing": "app;dur=26.04, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 1
+    },
+    {
+      "status": 200,
+      "client_ms": 29.19999998807907,
+      "server_timing": "app;dur=20.10, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 2
+    },
+    {
+      "status": 200,
+      "client_ms": 26.400000005960464,
+      "server_timing": "app;dur=18.61, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 3
+    },
+    {
+      "status": 200,
+      "client_ms": 25.899999976158142,
+      "server_timing": "app;dur=17.83, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 4
+    },
+    {
+      "status": 200,
+      "client_ms": 27.400000005960464,
+      "server_timing": "app;dur=19.76, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 5
+    }
+  ],
+  "system_settings": [
+    {
+      "status": 200,
+      "client_ms": 28.900000005960464,
+      "server_timing": "app;dur=20.42, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 1
+    },
+    {
+      "status": 200,
+      "client_ms": 26.900000005960464,
+      "server_timing": "app;dur=19.90, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 2
+    },
+    {
+      "status": 200,
+      "client_ms": 29.299999982118607,
+      "server_timing": "app;dur=21.69, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 3
+    },
+    {
+      "status": 200,
+      "client_ms": 26.599999994039536,
+      "server_timing": "app;dur=16.49, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 4
+    },
+    {
+      "status": 200,
+      "client_ms": 27.19999998807907,
+      "server_timing": "app;dur=17.08, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 5
+    }
+  ],
+  "system_email_providers": [
+    {
+      "status": 200,
+      "client_ms": 34.20000001788139,
+      "server_timing": "app;dur=20.91, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 1
+    },
+    {
+      "status": 200,
+      "client_ms": 31.100000023841858,
+      "server_timing": "app;dur=18.38, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 2
+    },
+    {
+      "status": 200,
+      "client_ms": 26.30000001192093,
+      "server_timing": "app;dur=17.00, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 3
+    },
+    {
+      "status": 200,
+      "client_ms": 27.19999998807907,
+      "server_timing": "app;dur=19.29, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 4
+    },
+    {
+      "status": 200,
+      "client_ms": 28.900000005960464,
+      "server_timing": "app;dur=18.60, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 5
+    }
+  ],
+  "targets": [
+    {
+      "status": 200,
+      "client_ms": 28.099999994039536,
+      "server_timing": "app;dur=20.47, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 1
+    },
+    {
+      "status": 200,
+      "client_ms": 33.30000001192093,
+      "server_timing": "app;dur=22.31, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 2
+    },
+    {
+      "status": 200,
+      "client_ms": 41,
+      "server_timing": "app;dur=29.87, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 3
+    },
+    {
+      "status": 200,
+      "client_ms": 37.30000001192093,
+      "server_timing": "app;dur=25.84, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 4
+    },
+    {
+      "status": 200,
+      "client_ms": 38.70000001788139,
+      "server_timing": "app;dur=29.61, sql;desc=\"8 queries\"",
+      "sql_count": "8",
+      "sample": 5
+    }
+  ],
+  "task_categories": [
+    {
+      "status": 200,
+      "client_ms": 40.80000001192093,
+      "server_timing": "app;dur=32.49, sql;desc=\"11 queries\"",
+      "sql_count": "11",
+      "sample": 1
+    },
+    {
+      "status": 200,
+      "client_ms": 40.30000001192093,
+      "server_timing": "app;dur=30.52, sql;desc=\"11 queries\"",
+      "sql_count": "11",
+      "sample": 2
+    },
+    {
+      "status": 200,
+      "client_ms": 48.099999994039536,
+      "server_timing": "app;dur=36.85, sql;desc=\"11 queries\"",
+      "sql_count": "11",
+      "sample": 3
+    },
+    {
+      "status": 200,
+      "client_ms": 49.89999997615814,
+      "server_timing": "app;dur=34.92, sql;desc=\"11 queries\"",
+      "sql_count": "11",
+      "sample": 4
+    },
+    {
+      "status": 200,
+      "client_ms": 49.69999998807907,
+      "server_timing": "app;dur=40.46, sql;desc=\"11 queries\"",
+      "sql_count": "11",
+      "sample": 5
+    }
+  ],
+  "user_roles": [
+    {
+      "status": 200,
+      "client_ms": 35,
+      "server_timing": "app;dur=25.18, sql;desc=\"9 queries\"",
+      "sql_count": "9",
+      "sample": 1
+    },
+    {
+      "status": 200,
+      "client_ms": 47.099999994039536,
+      "server_timing": "app;dur=36.38, sql;desc=\"9 queries\"",
+      "sql_count": "9",
+      "sample": 2
+    },
+    {
+      "status": 200,
+      "client_ms": 40.19999998807907,
+      "server_timing": "app;dur=27.78, sql;desc=\"9 queries\"",
+      "sql_count": "9",
+      "sample": 3
+    },
+    {
+      "status": 200,
+      "client_ms": 50,
+      "server_timing": "app;dur=37.58, sql;desc=\"9 queries\"",
+      "sql_count": "9",
+      "sample": 4
+    },
+    {
+      "status": 200,
+      "client_ms": 31.599999994039536,
+      "server_timing": "app;dur=22.42, sql;desc=\"9 queries\"",
+      "sql_count": "9",
+      "sample": 5
+    }
+  ]
+}

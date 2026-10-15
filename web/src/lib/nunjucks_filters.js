@@ -20,7 +20,7 @@ export function registerFilters(environment, nunjucks) {
     }
 
     const match = typeof value === "string"
-      ? value.match(/^(\d{4})-(\d{2})-(\d{2})/)
+      ? /^(\d{4})-(\d{2})-(\d{2})/.exec(value)
       : null;
     const parts = match
       ? { year: match[1], month: match[2], day: match[3] }

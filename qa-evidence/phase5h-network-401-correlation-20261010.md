@@ -46,13 +46,13 @@ Read-only review covered:
 
 - `qa-evidence/phase5h-login-handler-401-investigation-20261010.md`
 - `qa-evidence/phase5h-login-disabled-submit-diagnosis-20261010.md`
-- `qa-evidence/phase5h-controlled-auth-runtime-evidence-20261010.md`
-- `qa-evidence/phase5h-controlled-auth-runtime-retry-evidence-20261010.md`
-- `qa-evidence/phase5h-controlled-auth-operator-preparation-20261010.md`
+- `security-docs/phase5h-controlled-auth-runtime-evidence-20261010.md`
+- `security-docs/phase5h-controlled-auth-runtime-retry-evidence-20261010.md`
+- `security-docs/phase5h-controlled-auth-operator-preparation-20261010.md`
 - `qa-evidence/phase5h-network-capture-capability-20261010.md`
 - `qa-evidence/phase5h-network-history-inspection-20261009.md`
-- `qa-evidence/phase5h-auth-log-correlation-20261009.md`
-- `qa-evidence/phase5h-auth-root-cause-diagnosis-20261009.md`
+- `security-docs/phase5h-auth-log-correlation-20261009.md`
+- `security-docs/phase5h-auth-root-cause-diagnosis-20261009.md`
 
 The S6 runtime report records a QA access-log line for `POST /api/v1/auth/login`, HTTP 401, request ID `3ae657f8-d339-4875-b55a-7618bce1d892`, process time `15892.95ms`, timestamp `2026-10-09T17:52:38.474Z`. It falls within S6's recorded attempt window. However:
 

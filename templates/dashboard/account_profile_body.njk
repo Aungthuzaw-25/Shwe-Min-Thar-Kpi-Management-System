@@ -1,0 +1,166 @@
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Noto+Sans+Myanmar:wght@400;600&display=swap">
+<link rel="stylesheet" href="/static/css/avatar.css">
+<link rel="stylesheet" href="/static/css/account.css">
+{% from "components/avatar.njk" import avatar %}
+
+<div class="acct-page" id="accountProfilePage" data-local-password-enabled="{{ 'true' if account_profile.local_password_enabled else 'false' }}">
+  <header class="acct-page-header">
+    <p class="acct-eyebrow">Account settings</p>
+    <h1 class="acct-page-title">My Profile</h1>
+  </header>
+  <div class="acct-layout">
+    <aside class="acct-card acct-summary">
+      <div class="acct-summary-avatar">{{ avatar(account_profile, 128) }}</div>
+      <div class="acct-summary-name" data-profile-summary-name>{{ account_profile.display_name }}</div>
+      <span class="acct-role-pill">{{ account_profile.role }}</span>
+      <div class="acct-summary-meta">{{ account_profile.department or 'Not assigned' }}</div>
+      <div class="acct-summary-meta">{{ account_profile.position or 'Not assigned' }}</div>
+      <div class="acct-summary-meta">{{ account_profile.email }}</div>
+    </aside>
+
+    <div class="acct-content">
+      <section class="acct-card" aria-labelledby="acct-profile-title">
+        <div class="acct-card-heading">
+          <p class="acct-eyebrow">My account</p>
+          <h2 id="acct-profile-title">Profile photo and details</h2>
+        </div>
+        <p class="acct-banner" data-acct-banner="profile" role="status" aria-live="polite" hidden></p>
+        <div class="acct-photo-row">
+          <div data-avatar-preview>{{ avatar(account_profile, 96) }}</div>
+          <div class="acct-photo-actions">
+            <label class="acct-button acct-button--secondary" for="acct-avatar-file">Upload photo</label>
+            <input class="acct-input" id="acct-avatar-file" type="file" accept="image/jpeg,image/png,image/webp" hidden>
+            {% if account_profile.avatar_url %}
+            <button class="acct-button acct-button--text" data-avatar-remove type="button">Remove photo</button>
+            {% else %}
+            <button class="acct-button acct-button--text" data-avatar-remove type="button" hidden>Remove photo</button>
+            {% endif %}
+            <p class="acct-helper">JPG, PNG or WebP, up to 2 MB</p>
+            <p class="acct-helper" data-avatar-progress role="status" aria-live="polite"></p>
+          </div>
+        </div>
+
+        <form class="acct-form" data-account-profile-form novalidate>
+          <div class="acct-field">
+            <label class="acct-label" for="acct-display-name">Display name</label>
+            <input class="acct-input" id="acct-display-name" name="display_name" maxlength="80" autocomplete="name" required value="{{ account_profile.display_name }}" aria-describedby="acct-display-name-error">
+            <span class="acct-field-error" id="acct-display-name-error" data-field-error="display_name"></span>
+          </div>
+          <div class="acct-field">
+            <label class="acct-label" for="acct-phone">Phone</label>
+            <input class="acct-input" id="acct-phone" name="phone" maxlength="20" autocomplete="tel" value="{{ account_profile.phone or '' }}" aria-describedby="acct-phone-error">
+            <span class="acct-field-error" id="acct-phone-error" data-field-error="phone"></span>
+          </div>
+          <div class="acct-field">
+            <label class="acct-label" for="acct-email">Email</label>
+            <input class="acct-input" id="acct-email" type="email" value="{{ account_profile.email }}" readonly>
+            <p class="acct-readonly-note"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><rect x="4" y="11" width="16" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg> Contact your administrator to change email</p>
+          </div>
+          <div class="acct-form-actions">
+            <button class="acct-button acct-button--primary" type="submit" data-profile-save disabled>Save changes</button>
+            <button class="acct-button acct-button--secondary" type="button" data-profile-cancel>Cancel</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="acct-card" aria-labelledby="acct-security-title">
+        <div class="acct-card-heading">
+          <p class="acct-eyebrow">Account protection</p>
+          <h2 id="acct-security-title">{{ 'Change password' if account_profile.local_password_enabled else 'Set a password' }}</h2>
+        </div>
+        <p class="acct-banner" data-acct-banner="password" role="status" aria-live="polite" hidden></p>
+        <p class="acct-helper" data-password-changed-at="{{ account_profile.password_changed_at or '' }}">Password last changed {% if account_profile.password_changed_at %}{{ account_profile.password_changed_at|strftime('%d %b %Y') }}{% else %}Never changed{% endif %}</p>
+        {% if not account_profile.local_password_enabled %}
+        <p class="acct-helper">Verify your identity with a linked provider before setting a password.</p>
+        <div class="acct-form-actions">
+          {% for provider, label in [['google', 'Google'], ['microsoft', 'Microsoft']] %}
+          {% if account_profile.linked_providers[provider] and account_profile.configured_providers[provider] %}
+          <a class="acct-button acct-button--secondary" href="/api/v1/auth/{{ provider }}/reauth/start">Verify with {{ label }}</a>
+          {% endif %}
+          {% endfor %}
+        </div>
+        {% endif %}
+        <form class="acct-form" data-account-password-form novalidate>
+          {% if account_profile.local_password_enabled %}
+          <div class="acct-field">
+            <label class="acct-label" for="acct-current-password">Current password</label>
+            <div class="acct-input-wrap">
+              <input class="acct-input" id="acct-current-password" name="current_password" type="password" autocomplete="current-password" required aria-describedby="acct-current-password-error">
+              <button class="acct-password-toggle" type="button" data-password-toggle="acct-current-password" aria-label="Show current password" aria-pressed="false">Show</button>
+            </div>
+            <span class="acct-field-error" id="acct-current-password-error" data-field-error="current_password"></span>
+          </div>
+          {% endif %}
+          <div class="acct-field">
+            <label class="acct-label" for="acct-new-password">New password</label>
+            <div class="acct-input-wrap">
+              <input class="acct-input" id="acct-new-password" name="new_password" type="password" autocomplete="new-password" minlength="10" maxlength="128" required aria-describedby="acct-password-strength acct-new-password-error">
+              <button class="acct-password-toggle" type="button" data-password-toggle="acct-new-password" aria-label="Show new password" aria-pressed="false">Show</button>
+            </div>
+            <div class="acct-password-meter" data-password-meter data-strength="0" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+            <p class="acct-password-strength" id="acct-password-strength" data-password-strength>Too weak</p>
+            <ul class="acct-checklist" data-password-checklist>
+              <li data-password-rule="length">10+ characters</li>
+              <li data-password-rule="common">Not a common password</li>
+              <li data-password-rule="different">Differs from current password</li>
+              <li data-password-rule="identity">Does not contain your name or email</li>
+            </ul>
+            <span class="acct-field-error" id="acct-new-password-error" data-field-error="new_password"></span>
+          </div>
+          <div class="acct-field">
+            <label class="acct-label" for="acct-confirm-password">Confirm new password</label>
+            <div class="acct-input-wrap">
+              <input class="acct-input" id="acct-confirm-password" name="confirm_password" type="password" autocomplete="new-password" required aria-describedby="acct-confirm-password-error">
+              <button class="acct-password-toggle" type="button" data-password-toggle="acct-confirm-password" aria-label="Show password confirmation" aria-pressed="false">Show</button>
+            </div>
+            <span class="acct-field-error" id="acct-confirm-password-error" data-field-error="confirm_password"></span>
+          </div>
+          <div class="acct-form-actions">
+            <button class="acct-button acct-button--primary" type="submit" data-password-submit>{{ 'Change password' if account_profile.local_password_enabled else 'Set password' }}</button>
+          </div>
+        </form>
+      </section>
+
+      {% if account_profile.show_connected_accounts %}
+      <section class="acct-card" aria-labelledby="acct-connected-title">
+        <div class="acct-card-heading">
+          <p class="acct-eyebrow">Sign-in methods</p>
+          <h2 id="acct-connected-title">Connected accounts</h2>
+        </div>
+        <p class="acct-banner" data-acct-banner="connected" role="status" aria-live="polite" hidden></p>
+        <div class="acct-linked-list">
+          {% for provider, label in [['google', 'Google'], ['microsoft', 'Microsoft']] %}
+          {% set linked = account_profile.linked_providers[provider] %}
+          {% set configured = account_profile.configured_providers[provider] %}
+          <div class="acct-provider-row" data-provider-row="{{ provider }}">
+            <div>
+              <div class="acct-provider-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.72"></path><path d="M14 11a5 5 0 0 0-7.07 0l-3 3A5 5 0 0 0 12 21.07l1.72-1.72"></path></svg>
+                {{ label }}
+              </div>
+              {% if linked %}
+              <p class="acct-provider-status"><span class="acct-status-pill">Connected as {{ linked.email }}</span>{% if linked.linked_at %} · linked {{ linked.linked_at|strftime('%d %b %Y') }}{% endif %}</p>
+              {% else %}
+              <p class="acct-provider-status">Not connected</p>
+              {% endif %}
+              {% if not configured %}<p class="acct-provider-warning">Not configured by the administrator</p>{% endif %}
+            </div>
+            <div class="acct-provider-actions">
+              {% if linked %}
+              <button class="acct-button acct-button--danger" type="button" data-provider-unlink="{{ provider }}">Disconnect</button>
+              {% elif configured %}
+              <button class="acct-button acct-button--secondary" type="button" data-provider-link="{{ provider }}">Connect</button>
+              {% else %}
+              <button class="acct-button acct-button--secondary" type="button" disabled>Connect</button>
+              {% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </section>
+      {% endif %}
+    </div>
+  </div>
+</div>
+<script src="/static/js/avatar.js" defer></script>
+<script src="/static/js/account-profile.js" defer></script>

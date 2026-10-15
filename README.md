@@ -29,7 +29,7 @@ A highly scalable, secure, and asynchronous Key Performance Indicator (KPI) Mana
 
 - Python 3.11 or newer
 - PostgreSQL, Redis, and an S3-compatible object store (MinIO for local use)
-- Node.js 20+ for the Express/Nunjucks UI and Tailwind CSS
+- Node.js 22+ for the Express/Nunjucks UI and Tailwind CSS
 - Docker Engine and the Docker Compose v2 plugin for the isolated QA stack
 - `libmagic` for `python-magic` (for example, `libmagic1` on Debian/Ubuntu)
 
@@ -77,6 +77,28 @@ The seed command is for a disposable local/test database only. Configure
 The API health endpoint is `http://127.0.0.1:8001/health`. For the complete
 browser UI with same-origin API, static files, cookies, CSRF, and OAuth, use
 the Docker Compose proxy stack described below.
+
+### Account profiles and OAuth
+
+Authenticated users can manage their own profile, password, and profile photo
+at `/account/profile`. Connected Google and Microsoft accounts are available
+only to Super Admins when a provider is configured. OAuth sign-in accepts only
+an identity already linked to an existing application account; it does not
+create accounts or automatically link users by email.
+
+Apply migrations with `python -m alembic upgrade head` before using the account
+features. OAuth also requires `OAUTH_ENABLED=true`, the provider's
+`*_OIDC_ENABLED` flag and client credentials, `APP_BASE_URL`, and a reachable
+Redis instance configured through `REDIS_URL`. Follow
+[docs/oauth-setup.md](./security-docs/oauth-setup.md) for provider registration and
+callback URLs. Store real credentials only in local environment files or a
+deployment secret manager.
+
+Profile avatars are currently stored on the API filesystem in
+`uploads/profile_avatars/`, which is ignored by Git. Before running multiple
+API replicas, configure persistent shared storage for this directory or move
+avatar storage to a shared object store; otherwise, a photo uploaded through
+one replica may not be available from another.
 
 ### Run tests
 
@@ -140,6 +162,20 @@ single browser origin is `http://127.0.0.1:8000`, with the API reachable only
 through the proxy. Redis and MinIO are bound to loopback. Follow
 [Production deployment](#production-deployment) before using this stack beyond
 a local machine.
+
+If Nginx returns `502` or `504`, first verify service health and inspect recent
+logs before changing proxy timeouts or database pool sizes:
+
+```powershell
+docker compose ps
+docker compose logs --tail 100 proxy api web redis minio
+Invoke-WebRequest http://127.0.0.1:8000/health
+```
+
+The isolated QA stack uses a separate Compose file and is served at
+`http://127.0.0.1:18000`. Configure its `.env.qa` and follow the health-check
+and log instructions in [docs/qa-environment.md](./docs/qa-environment.md).
+Do not use the default Compose project to reset QA data.
 
 For an isolated local database and storage stack, follow the
 [QA environment guide](./docs/qa-environment.md), not the default Compose
@@ -218,12 +254,14 @@ kpi-platform/
 │   │   ├── tasks/           # Task Schedulers, Reviews, Evidence
 │   │   └── users/
 │   ├── services/            # Global services (StorageService, DocumentService)
-│   ├── web/                 # Express UI server and Nunjucks routes
-│   └── main.py              # Application entry point
+│   └── main.py              # FastAPI application entry point
+├── web/
+│   └── src/                 # Express server, Nunjucks routes, and middleware
 ├── migrations/              # Alembic migrations
 ├── static/                  # CSS, JS, Images, PWA Manifest
 ├── templates/               # Nunjucks HTML templates (Layouts, Dashboard, etc.)
 ├── tests/                   # Automated tests
+├── proxy/                   # Nginx proxy configuration
 ├── docker-compose.yml       # Docker orchestration
 ├── Dockerfile               # Backend container build instructions
 ├── requirements.txt         # Runtime Python dependencies

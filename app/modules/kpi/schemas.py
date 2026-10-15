@@ -343,6 +343,9 @@ class KPIChartResponse(BaseModel):
 class KpiReportItem(BaseModel):
     user_id: UUID
     full_name: str
+    avatar_url: str | None = None
+    initials: str = "?"
+    avatar_color_index: int = 0
     department_name: str | None = None
     total_score: float
     grade: str

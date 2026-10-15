@@ -11,6 +11,7 @@ from app.database.connection import get_db
 from app.models.audit_log import AuditLog
 from app.modules.departments.models import Department, UserDepartment
 from app.modules.users import permission_repo
+from app.modules.users.avatar import avatar_color_index, avatar_initials, avatar_url
 from app.modules.users.models import Permission, Role, User, UserPermissionOverride
 from app.modules.users.permission_schemas import (
     AssignPermissionsRequest,
@@ -128,6 +129,11 @@ def _permission_user_item(user: User) -> dict:
         "id": str(user.id),
         "name": f"{user.first_name} {user.last_name}",
         "email": user.email,
+        "avatar_url": avatar_url(user.avatar_path, user.avatar_updated_at),
+        "initials": avatar_initials(
+            f"{user.first_name} {user.last_name}", user.email
+        ),
+        "avatar_color_index": avatar_color_index(user.id),
         "role_id": str(user.role_id),
         "role_name": user.role.name if user.role else None,
         "department_name": ", ".join(link.department.name for link in departments) or None,
@@ -183,32 +189,59 @@ async def _permission_audit_name_maps(db: AsyncSession, logs: list[AuditLog]):
     actor_rows = []
     if actor_ids:
         actor_rows = (await db.execute(
-            select(User.id, User.first_name, User.last_name, User.email)
+            select(
+                User.id,
+                User.first_name,
+                User.last_name,
+                User.email,
+                User.avatar_path,
+                User.avatar_updated_at,
+            )
             .where(User.id.in_(actor_ids))
         )).all()
-    actor_map = {
-        str(user_id): f"{first_name} {last_name} ({email})"
-        for user_id, first_name, last_name, email in actor_rows
-    }
+    actor_map = {}
+    actor_avatar_map = {}
+    for user_id, first_name, last_name, email, avatar_path, avatar_updated_at in actor_rows:
+        user_id = str(user_id)
+        full_name = f"{first_name} {last_name}"
+        actor_map[user_id] = f"{full_name} ({email})"
+        actor_avatar_map[user_id] = {
+            "avatar_url": avatar_url(avatar_path, avatar_updated_at),
+            "initials": avatar_initials(full_name, email),
+            "avatar_color_index": avatar_color_index(user_id),
+        }
 
     target_ids = {log.record_id for log in logs if log.record_id}
     target_map = {}
+    target_avatar_map = {}
     if target_ids:
         user_rows = (await db.execute(
-            select(User.id, User.first_name, User.last_name, User.email)
+            select(
+                User.id,
+                User.first_name,
+                User.last_name,
+                User.email,
+                User.avatar_path,
+                User.avatar_updated_at,
+            )
             .where(User.id.in_(target_ids))
         )).all()
-        target_map.update({
-            str(user_id): f"{first_name} {last_name} ({email})"
-            for user_id, first_name, last_name, email in user_rows
-        })
+        for user_id, first_name, last_name, email, avatar_path, avatar_updated_at in user_rows:
+            user_id = str(user_id)
+            full_name = f"{first_name} {last_name}"
+            target_map[user_id] = f"{full_name} ({email})"
+            target_avatar_map[user_id] = {
+                "avatar_url": avatar_url(avatar_path, avatar_updated_at),
+                "initials": avatar_initials(full_name, email),
+                "avatar_color_index": avatar_color_index(user_id),
+            }
         remaining = target_ids - set(target_map)
         if remaining:
             role_rows = (await db.execute(
                 select(Role.id, Role.name).where(Role.id.in_(remaining))
             )).all()
             target_map.update({str(role_id): f"Role: {name}" for role_id, name in role_rows})
-    return actor_map, target_map
+    return actor_map, actor_avatar_map, target_map, target_avatar_map
 
 
 # =====================================================================
@@ -281,7 +314,27 @@ async def list_permission_users(
     result = await db.execute(stmt)
     users = result.scalars().unique().all()
 
-    return [_permission_user_item(user) for user in users]
+    items = []
+    for u in users:
+        dept_names = []
+        dept_id = None
+        for ud in (u.user_departments or []):
+            if ud.department:
+                dept_names.append(ud.department.name)
+                dept_id = dept_id or ud.department_id
+        items.append({
+            "id": str(u.id),
+            "name": f"{u.first_name} {u.last_name}",
+            "email": u.email,
+            "avatar_url": avatar_url(u.avatar_path, u.avatar_updated_at),
+            "initials": avatar_initials(f"{u.first_name} {u.last_name}", u.email),
+            "avatar_color_index": avatar_color_index(u.id),
+            "role_id": str(u.role_id),
+            "role_name": u.role.name if u.role else None,
+            "department_name": ", ".join(dept_names) if dept_names else None,
+            "department_id": str(dept_id) if dept_id else None,
+        })
+    return items
 
 
 # =====================================================================
@@ -517,7 +570,10 @@ async def permission_audit_history(
     result = await db.execute(stmt)
     logs = result.scalars().all()
 
-    actor_map, target_map = await _permission_audit_name_maps(db, logs)
+    # Resolve actor and target names in bulk
+    actor_map, actor_avatar_map, target_map, target_avatar_map = (
+        await _permission_audit_name_maps(db, logs)
+    )
 
     items = []
     for log in logs:
@@ -527,8 +583,10 @@ async def permission_audit_history(
             "action": log.action,
             "actor_id": actor_id_str,
             "actor_name": actor_map.get(actor_id_str, "System"),
+            "actor_avatar": actor_avatar_map.get(actor_id_str),
             "target_id": log.record_id,
             "target_name": target_map.get(log.record_id, log.record_id),
+            "target_avatar": target_avatar_map.get(log.record_id),
             "old_value": log.old_value,
             "new_value": log.new_value,
             "created_at": f"{log.created_at.isoformat()}Z" if log.created_at else None,

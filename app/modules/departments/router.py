@@ -27,6 +27,7 @@ from app.modules.departments.schemas import (
 )
 from app.modules.tasks.models.task import Task
 from app.modules.tasks.models.task_history import TaskHistory
+from app.modules.users.avatar import avatar_color_index, avatar_initials, avatar_url
 from app.modules.users.models import Position, User
 
 router = APIRouter()
@@ -340,6 +341,9 @@ async def get_department_users(
         "id": user.id,
         "name": f"{user.first_name} {user.last_name}",
         "email": user.email,
+        "avatar_url": avatar_url(user.avatar_path, user.avatar_updated_at),
+        "initials": avatar_initials(f"{user.first_name} {user.last_name}", user.email),
+        "avatar_color_index": avatar_color_index(user.id),
         "position": user.position.name if getattr(user, 'position', None) else "No Title",
         "region_town": user.region_town,
         "user_level": ud.user_level,
