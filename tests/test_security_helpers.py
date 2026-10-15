@@ -22,8 +22,16 @@ def test_access_and_refresh_tokens_include_expected_claims():
     access_token = create_access_token({"sub": "user@example.com"})
     refresh_token = create_refresh_token({"sub": "user@example.com"})
 
-    access_payload = jwt.decode(access_token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-    refresh_payload = jwt.decode(refresh_token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+    access_payload = jwt.decode(
+        access_token,
+        settings.JWT_SECRET_KEY,
+        algorithms=[settings.JWT_ALGORITHM],
+    )
+    refresh_payload = jwt.decode(
+        refresh_token,
+        settings.JWT_SECRET_KEY,
+        algorithms=[settings.JWT_ALGORITHM],
+    )
 
     assert access_payload["sub"] == "user@example.com"
     assert access_payload["type"] == "access"

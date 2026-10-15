@@ -3,11 +3,72 @@ import pytest
 from app.core.config import Settings, settings
 
 
+def _isolated_settings_kwargs():
+    return {
+        "PROJECT_NAME": "KPI",
+        "VERSION": "test",
+        "DATABASE_URL": "sqlite+aiosqlite:///:memory:",
+        "REFRESH_TOKEN_EXPIRE_DAYS": 7,
+        "USE_S3": False,
+    }
+
+
 def test_settings_are_loaded_from_environment():
     assert settings.PROJECT_NAME
     assert settings.VERSION
     assert settings.DATABASE_URL
-    assert settings.SECRET_KEY
+    assert settings.JWT_SECRET_KEY
+
+
+def test_jwt_configuration_uses_canonical_environment_names(monkeypatch):
+    monkeypatch.setenv("JWT_SECRET_KEY", "canonical-test-secret")
+    monkeypatch.setenv("JWT_ALGORITHM", "HS256")
+    monkeypatch.setenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "45")
+    monkeypatch.delenv("SECRET_KEY", raising=False)
+    monkeypatch.delenv("ALGORITHM", raising=False)
+    monkeypatch.delenv("ACCESS_TOKEN_EXPIRE_MINUTES", raising=False)
+
+    configured = Settings(_env_file=None, **_isolated_settings_kwargs())
+
+    assert configured.JWT_SECRET_KEY == "canonical-test-secret"
+    assert configured.JWT_ALGORITHM == "HS256"
+    assert configured.JWT_ACCESS_TOKEN_EXPIRE_MINUTES == 45
+    assert configured.SECRET_KEY == configured.JWT_SECRET_KEY
+
+
+def test_legacy_jwt_environment_names_remain_supported(monkeypatch):
+    monkeypatch.setenv("SECRET_KEY", "legacy-test-secret")
+    monkeypatch.setenv("ALGORITHM", "HS256")
+    monkeypatch.setenv("ACCESS_TOKEN_EXPIRE_MINUTES", "90")
+
+    configured = Settings(_env_file=None, **_isolated_settings_kwargs())
+
+    assert configured.JWT_SECRET_KEY == "legacy-test-secret"
+    assert configured.JWT_ALGORITHM == "HS256"
+    assert configured.JWT_ACCESS_TOKEN_EXPIRE_MINUTES == 90
+
+
+def test_jwt_configuration_rejects_unsupported_algorithm(monkeypatch):
+    monkeypatch.setenv("JWT_SECRET_KEY", "test-secret")
+    monkeypatch.setenv("JWT_ALGORITHM", "HS384")
+
+    with pytest.raises(ValueError, match="JWT_ALGORITHM"):
+        Settings(_env_file=None, **_isolated_settings_kwargs())
+
+
+def test_missing_production_jwt_secret_fails_closed():
+    with pytest.raises(ValueError, match="JWT_SECRET_KEY"):
+        Settings(
+            _env_file=None,
+            PROJECT_NAME="KPI",
+            VERSION="test",
+            ENV="production",
+            DATABASE_URL="postgresql+asyncpg://user:pass@db.example.com/kpi",
+            DATABASE_SSL_REQUIRED=True,
+            USE_S3=False,
+            ALLOWED_ORIGINS="https://app.example.com",
+            REFRESH_TOKEN_EXPIRE_DAYS=7,
+        )
 
 
 def test_fix_neon_url_removes_asyncpg_unsupported_query_params():
@@ -59,7 +120,7 @@ def test_bootstrap_credentials_are_loaded_from_environment(monkeypatch):
 def test_production_rejects_plaintext_s3_endpoint():
     configured = Settings.model_construct(
         ENV="production",
-        SECRET_KEY="a" * 64,
+        JWT_SECRET_KEY="a" * 64,
         ALLOWED_ORIGINS="https://app.example.com",
         DATABASE_URL="postgresql+asyncpg://qa:qa@db.example.com/kpi",
         USE_S3=True,
@@ -75,7 +136,7 @@ def test_production_rejects_plaintext_s3_endpoint():
 def test_production_requires_s3_storage():
     configured = Settings.model_construct(
         ENV="production",
-        SECRET_KEY="a" * 64,
+        JWT_SECRET_KEY="a" * 64,
         ALLOWED_ORIGINS="https://app.example.com",
         DATABASE_URL="postgresql+asyncpg://qa:qa@db.example.com/kpi",
         USE_S3=False,
@@ -88,7 +149,7 @@ def test_production_requires_s3_storage():
 def test_production_requires_database_tls():
     configured = Settings.model_construct(
         ENV="production",
-        SECRET_KEY="a" * 64,
+        JWT_SECRET_KEY="a" * 64,
         ALLOWED_ORIGINS="https://app.example.com",
         DATABASE_URL="postgresql+asyncpg://qa:qa@db.example.com/kpi",
         DATABASE_SSL_REQUIRED=False,
@@ -102,7 +163,7 @@ def test_production_requires_database_tls():
 def test_production_rejects_local_database_target():
     configured = Settings.model_construct(
         ENV="production",
-        SECRET_KEY="a" * 64,
+        JWT_SECRET_KEY="a" * 64,
         ALLOWED_ORIGINS="https://app.example.com",
         DATABASE_URL="postgresql+asyncpg://qa:qa@127.0.0.1/kpi",
         USE_S3=False,

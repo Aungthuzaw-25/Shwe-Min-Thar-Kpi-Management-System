@@ -1,10 +1,11 @@
 from pathlib import Path
 from urllib.parse import urlparse
 
-from pydantic import field_validator, model_validator
+from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ASYNC_POSTGRES_SCHEME = "postgresql+asyncpg://"
+JWT_SIGNING_ALGORITHMS = frozenset({"HS256"})
 
 class Settings(BaseSettings):
     PROJECT_NAME: str
@@ -14,9 +15,20 @@ class Settings(BaseSettings):
     ENV: str = "development"
     
     DATABASE_URL: str
-    SECRET_KEY: str
-    ALGORITHM: str
-    ACCESS_TOKEN_EXPIRE_MINUTES: int
+    JWT_SECRET_KEY: str = Field(
+        validation_alias=AliasChoices("JWT_SECRET_KEY", "SECRET_KEY")
+    )
+    JWT_ALGORITHM: str = Field(
+        default="HS256",
+        validation_alias=AliasChoices("JWT_ALGORITHM", "ALGORITHM"),
+    )
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(
+        default=30,
+        gt=0,
+        validation_alias=AliasChoices(
+            "JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "ACCESS_TOKEN_EXPIRE_MINUTES"
+        ),
+    )
     REFRESH_TOKEN_EXPIRE_DAYS: int
     DATABASE_SSL_REQUIRED: bool = True
     QA_DATABASE_HOST: str = "postgres-qa"
@@ -72,11 +84,28 @@ class Settings(BaseSettings):
     SEED_TEST_L1_PASSWORD: str | None = None
     SEED_TEST_L2_PASSWORD: str | None = None
 
-    @field_validator("ALGORITHM")
+    @property
+    def SECRET_KEY(self) -> str:
+        """Backward-compatible read alias; new code uses JWT_SECRET_KEY."""
+        return self.JWT_SECRET_KEY
+
+    @property
+    def ALGORITHM(self) -> str:
+        """Backward-compatible read alias; new code uses JWT_ALGORITHM."""
+        return self.JWT_ALGORITHM
+
+    @property
+    def ACCESS_TOKEN_EXPIRE_MINUTES(self) -> int:
+        """Backward-compatible read alias for legacy integrations."""
+        return self.JWT_ACCESS_TOKEN_EXPIRE_MINUTES
+
+    @field_validator("JWT_ALGORITHM")
     @classmethod
     def validate_jwt_algorithm(cls, value: str) -> str:
-        if value != "HS256":
-            raise ValueError("ALGORITHM must be HS256.")
+        if value not in JWT_SIGNING_ALGORITHMS:
+            raise ValueError(
+                "JWT_ALGORITHM must be one of the explicitly supported application algorithms."
+            )
         return value
 
     @field_validator("DATABASE_URL")
@@ -129,7 +158,7 @@ class Settings(BaseSettings):
         return self
 
     def _validate_production_security(self) -> None:
-        secret_key = self.SECRET_KEY.strip()
+        secret_key = self.JWT_SECRET_KEY.strip()
         if (
             len(secret_key) < 32
             or secret_key.lower() in {
@@ -138,7 +167,9 @@ class Settings(BaseSettings):
             }
             or secret_key.upper().startswith("CHANGE_ME")
         ):
-            raise ValueError("SECRET_KEY must be a non-placeholder value of at least 32 characters in production.")
+            raise ValueError(
+                "JWT_SECRET_KEY must be a non-placeholder value of at least 32 characters in production."
+            )
         if not self.ALLOWED_ORIGINS.strip():
             raise ValueError("ALLOWED_ORIGINS must be configured in production.")
         if not self.DATABASE_SSL_REQUIRED:

@@ -84,12 +84,18 @@ def _create_token(data: dict, token_type: str, expires_delta: timedelta) -> str:
         "type": token_type,
         "jti": str(uuid.uuid4()),
     })
-    return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+    return jwt.encode(
+        to_encode,
+        settings.JWT_SECRET_KEY,
+        algorithm=settings.JWT_ALGORITHM,
+    )
 
 
 def create_access_token(data: dict) -> str:
     return _create_token(
-        data, "access", timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        data,
+        "access",
+        timedelta(minutes=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES),
     )
 
 
@@ -127,7 +133,11 @@ def decode_token(
     """Verify a server-issued JWT and enforce its security claims."""
     if expected_type not in TOKEN_TYPES:
         raise ValueError("Unsupported token type.")
-    payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+    payload = jwt.decode(
+        token,
+        settings.JWT_SECRET_KEY,
+        algorithms=[settings.JWT_ALGORITHM],
+    )
     return _validate_token_payload(payload, expected_type, require_session=require_session)
 
 

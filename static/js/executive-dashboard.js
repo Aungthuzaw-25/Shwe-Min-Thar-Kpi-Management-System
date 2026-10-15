@@ -470,11 +470,15 @@
       );
       if (!response.ok) throw new Error('Employee KPI details could not be loaded.');
       const detail = await response.json();
+      const renderHistoryItem = item => {
+        const changedAt = escapeHTML(formatTime(item.changed_at));
+        const percentage = Number(item.percentage).toFixed(2);
+        const status = escapeHTML(item.status);
+        const reason = escapeHTML(item.reason);
+        return `<li>${changedAt} · ${percentage}% · ${status} · ${reason}</li>`;
+      };
       const historyMarkup = detail.history?.length
-        ? `<ol>${detail.history.map(item => `<li>
-            ${escapeHTML(formatTime(item.changed_at))} · ${Number(item.percentage).toFixed(2)}% ·
-            ${escapeHTML(item.status)} · ${escapeHTML(item.reason)}
-          </li>`).join('')}</ol>`
+        ? `<ol>${detail.history.map(renderHistoryItem).join('')}</ol>`
         : listEmpty('No KPI history is available for this result.');
       target.innerHTML = `<h3>${escapeHTML(detail.employee_name)} · ${escapeHTML(detail.period.label)}</h3>
         <dl class="executive-detail-grid">

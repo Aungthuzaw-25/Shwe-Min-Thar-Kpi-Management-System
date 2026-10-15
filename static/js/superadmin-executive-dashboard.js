@@ -668,9 +668,7 @@
     });
     let scopeLabel = 'Company Average';
     if (selection.departmentMode) {
-      scopeLabel = selection.selectedDepartment?.name
-        ? selection.selectedDepartment.name
-        : 'Individual Department';
+      scopeLabel = selection.selectedDepartment?.name || 'Individual Department';
     }
     renderMonthlyTrend({
       year,

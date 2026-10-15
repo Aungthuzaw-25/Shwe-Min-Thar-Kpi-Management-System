@@ -55,7 +55,7 @@ On macOS/Linux, use `python3 -m venv .venv`, activate with
 `source .venv/bin/activate`, and copy with `cp .env.example .env`.
 
 Edit `.env` with a reachable PostgreSQL `DATABASE_URL`, a local-only
-`SECRET_KEY`, and working S3-compatible storage settings. Keep `USE_S3=true`
+`JWT_SECRET_KEY`, and working S3-compatible storage settings. Keep `USE_S3=true`
 only when `S3_ENDPOINT`, `S3_ACCESS_KEY`, and `S3_SECRET_KEY` are configured.
 Do not use example values in production. For a disposable development
 database, set `DATABASE_SSL_REQUIRED=false`; keep database TLS enabled for
@@ -108,7 +108,7 @@ before invoking pytest. In PowerShell:
 ```powershell
 $env:ENV = "development"
 $env:DATABASE_URL = "sqlite+aiosqlite:///:memory:"
-$env:SECRET_KEY = "local-only-test-secret"
+$env:JWT_SECRET_KEY = "local-only-test-secret"
 $env:USE_S3 = "false"
 python -m pytest tests --ignore=tests/test_ui_dashboard.py --cov=app --cov-report=term-missing -q
 ```
@@ -206,11 +206,55 @@ check and skips both migrations and the development seed.
 The Compose stack is not a complete public-facing deployment: configure a
 TLS-terminating reverse proxy or load balancer, a TLS-enabled PostgreSQL
 service, and production S3-compatible storage first. Set a unique
-`SECRET_KEY` (at least 32 characters), `DATABASE_URL`, `DATABASE_SSL_REQUIRED`,
+`JWT_SECRET_KEY` (at least 32 random characters), `JWT_ALGORITHM=HS256`,
+`JWT_ACCESS_TOKEN_EXPIRE_MINUTES` (positive integer; default 30),
+`DATABASE_URL`, `DATABASE_SSL_REQUIRED`,
 `S3_ENDPOINT` using HTTPS, storage credentials, and an explicit
 `ALLOWED_ORIGINS` in the deployment environment. Do not commit `.env`.
 When `ENV=production` and `USE_S3=true`, HTTPS for `S3_ENDPOINT` is required
 so presigned evidence links do not expose storage credentials over plaintext.
+
+The API reads JWT settings centrally from the standard environment variables
+above. `SECRET_KEY`, `ALGORITHM`, and `ACCESS_TOKEN_EXPIRE_MINUTES` remain
+accepted as legacy aliases during rollout; prefer the `JWT_*` names for new
+deployments. The application algorithm allowlist currently permits only
+`HS256`; production startup rejects missing, placeholder, or short signing
+secrets. Keep independent, randomly generated secrets for development, QA,
+staging, and production. Never put secret values in a Docker image or source
+control. `.env` and other real environment files are Git-ignored;
+`.env.example` contains placeholders only.
+
+### Hosting platform configuration
+
+- **Railway:** Add `JWT_SECRET_KEY`, `JWT_ALGORITHM`, and
+  `JWT_ACCESS_TOKEN_EXPIRE_MINUTES` (along with database, storage, and origin
+  settings) in the API service's Variables page, then redeploy that service.
+  For Docker deployments, the existing entrypoint reads Railway's injected
+  `PORT`. Verify the deployment health check and logs after redeploy; do not
+  paste secret values into source files or build arguments.
+- **DigitalOcean App Platform:** Set the same values as encrypted/secret
+  application environment variables for the FastAPI component and deploy a
+  new release. **Droplets or Docker hosts:** inject them through a protected
+  systemd environment file, Docker secrets/secret store, or deployment
+  orchestrator; restrict file permissions and do not bake values into images.
+- **Cloudflare:** Cloudflare Workers are not a compatible drop-in runtime for
+  this conventional Python/FastAPI, SQLAlchemy, and PostgreSQL application.
+  Keep the API on a Python-capable host (for example Railway, DigitalOcean, or
+  a container platform), configure its JWT secret there, and use Cloudflare
+  for DNS, proxying, caching of eligible static assets, or other edge services.
+  If a future architecture moves backend logic to Workers, that is a separate
+  port/rewrite and must use Workers bindings/secrets plus an architecture
+  compatible with the database access pattern; do not deploy this FastAPI
+  container as though Workers supported it unchanged.
+- **Other compatible hosts:** Inject the same environment variables using the
+  host's secret manager or protected runtime configuration. No host-specific
+  JWT code path is needed.
+
+OIDC ID tokens are separate from application-issued JWTs. They are validated
+against each provider's discovery metadata and JWKS signing keys, using the
+provider-advertised asymmetric algorithm, issuer, client audience, expiration,
+and nonce checks. `JWT_SECRET_KEY` is not used to validate external OIDC
+tokens.
 
 The Compose API port is loopback-only by default. Keep it that way when the
 reverse proxy runs on the Docker host. If your proxy is in a separate network

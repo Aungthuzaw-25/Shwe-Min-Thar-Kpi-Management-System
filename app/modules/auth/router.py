@@ -193,7 +193,7 @@ def _dashboard_path(user: User) -> str:
 def _set_auth_cookies(response: Response, request: Request, auth_result: dict[str, object], remember_me: bool) -> None:
     secure_cookie = cookie_secure_for_request(request)
     response.set_cookie(key=ACCESS_TOKEN_KEY, value=str(auth_result[ACCESS_TOKEN_KEY]), httponly=True,
-                        max_age=(settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60 if remember_me else None),
+                        max_age=(settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60 if remember_me else None),
                         samesite=AUTH_COOKIE_SAMESITE, secure=secure_cookie)
     response.set_cookie(key=REFRESH_TOKEN_KEY, value=str(auth_result[REFRESH_TOKEN_KEY]), httponly=True,
                         max_age=(settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60 if remember_me else None),
@@ -257,7 +257,7 @@ async def _consume_browser_bound_oauth_state(
 
 def _oauth_binding_signature(binding: str) -> str:
     return hmac.new(
-        settings.SECRET_KEY.encode("utf-8"),
+        settings.JWT_SECRET_KEY.encode("utf-8"),
         b"oauth-browser-binding:" + binding.encode("ascii"),
         hashlib.sha256,
     ).hexdigest()
@@ -378,7 +378,7 @@ async def login(request: Request, response: Response, payload: LoginRequest, db:
     secure_cookie = cookie_secure_for_request(request)
     response.set_cookie(
         key=ACCESS_TOKEN_KEY, value=auth_result[ACCESS_TOKEN_KEY], httponly=True,
-        max_age=(settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60 if payload.remember_me else None),
+        max_age=(settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60 if payload.remember_me else None),
         samesite=AUTH_COOKIE_SAMESITE, secure=secure_cookie,
     )
     response.set_cookie(
@@ -1168,7 +1168,7 @@ async def refresh_token(
     # keeping the cookies HttpOnly and Secure in production.
     secure_cookie = cookie_secure_for_request(request)
     persistent = bool(auth_session.remember_me)
-    response.set_cookie(key=ACCESS_TOKEN_KEY, value=new_access_token, httponly=True, max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60 if persistent else None, samesite=AUTH_COOKIE_SAMESITE, secure=secure_cookie)
+    response.set_cookie(key=ACCESS_TOKEN_KEY, value=new_access_token, httponly=True, max_age=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60 if persistent else None, samesite=AUTH_COOKIE_SAMESITE, secure=secure_cookie)
     response.set_cookie(key=REFRESH_TOKEN_KEY, value=new_refresh_token, httponly=True, max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60 if persistent else None, samesite=AUTH_COOKIE_SAMESITE, secure=secure_cookie)
 
     return {'access_token': new_access_token, 'refresh_token': new_refresh_token, 'token_type': 'bearer'}
@@ -1205,8 +1205,9 @@ async def _revoke_logout_tokens(
         # Revoke the server-side session as well as its credentials.
         try:
             session_payload = jwt.decode(
-                refresh_token or access_token, settings.SECRET_KEY,
-                algorithms=[settings.ALGORITHM],
+                refresh_token or access_token,
+                settings.JWT_SECRET_KEY,
+                algorithms=[settings.JWT_ALGORITHM],
                 options={"verify_exp": False},
             )
         except JWTError:

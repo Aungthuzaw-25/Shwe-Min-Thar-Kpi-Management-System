@@ -51,6 +51,12 @@ class FakeDB:
         self.added.append(obj)
 
 
+def test_account_profile_openapi_documents_not_found_response():
+    operation = app.openapi()["paths"]["/api/v1/account/me"]["get"]
+
+    assert operation["responses"]["404"]["description"] == "Account not found."
+
+
 def test_login_route_returns_tokens(monkeypatch):
     monkeypatch.setenv("SEED_SUPER_ADMIN_PASSWORD", "Valid@Test123456")
     fake_user = SimpleNamespace(

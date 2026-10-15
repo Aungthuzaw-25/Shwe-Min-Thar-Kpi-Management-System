@@ -124,6 +124,7 @@ async def test_id_token_signature_and_expected_claims_are_validated(monkeypatch)
     [
         ({"iss": "https://attacker.example"}, "expected-nonce"),
         ({"aud": "another-client"}, "expected-nonce"),
+        ({"exp": int(time.time()) - 10}, "expected-nonce"),
         ({"nonce": "another-nonce"}, "expected-nonce"),
         ({"aud": ["client-id", "another-client"]}, "expected-nonce"),
         ({}, "another-nonce"),
@@ -172,6 +173,17 @@ async def test_id_token_rejects_invalid_signature_and_algorithm(monkeypatch):
     with pytest.raises(OIDCValidationError):
         await provider.validate_identity(
             {"id_token": unadvertised_algorithm_token},
+            "expected-nonce",
+        )
+
+
+@pytest.mark.asyncio
+async def test_id_token_rejects_malformed_compact_token(monkeypatch):
+    provider, _private_key = _oidc_test_provider(monkeypatch)
+
+    with pytest.raises(OIDCValidationError):
+        await provider.validate_identity(
+            {"id_token": "not.a.valid.jwt"},
             "expected-nonce",
         )
 

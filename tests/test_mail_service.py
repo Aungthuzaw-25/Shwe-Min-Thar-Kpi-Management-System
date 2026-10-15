@@ -9,6 +9,7 @@ from app.modules.system.router import _safe_backup_value, _sanitize_setting_valu
 from app.modules.system.schemas import SystemSettingResponse
 from app.services import email_service
 from app.services.email_service import (
+    EmailAttachment,
     EmailAuthenticationError,
     EmailConfiguration,
     EmailConfigurationError,
@@ -19,6 +20,7 @@ from app.services.email_service import (
     EmailSecrets,
     ResendProvider,
     SMTPProvider,
+    _support_footer,
 )
 from app.services.email_service import (
     email_service as service,
@@ -45,6 +47,32 @@ def config(
         smtp_username=smtp_username,
         smtp_encryption=smtp_encryption,
     )
+
+
+def test_support_footer_preserves_message_contract_and_adds_safe_content():
+    original = EmailMessage(
+        to=["person@example.com"],
+        subject="Subject",
+        text_body="Body",
+        html_body="<p>Body</p>",
+        cc=["copy@example.com"],
+        attachments=[EmailAttachment("report.txt", b"report", "text/plain")],
+    )
+
+    updated = _support_footer(
+        original,
+        config(support_email="help&support@example.com"),
+    )
+
+    assert isinstance(updated, EmailMessage)
+    assert updated.to == original.to
+    assert updated.subject == original.subject
+    assert updated.cc == original.cc
+    assert updated.attachments == original.attachments
+    assert updated.text_body.startswith("Body\n\n")
+    assert "help&support@example.com" in updated.text_body
+    assert "&amp;" in updated.html_body
+    assert updated.reply_to == "help&support@example.com"
 
 
 class FakeResponse:

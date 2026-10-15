@@ -93,7 +93,11 @@ def _session_fixture():
 
 
 def _signed_payload(payload, key=None):
-    return jwt.encode(payload, key or settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+    return jwt.encode(
+        payload,
+        key or settings.JWT_SECRET_KEY,
+        algorithm=settings.JWT_ALGORITHM,
+    )
 
 
 def test_tokens_include_server_controlled_claims_and_validate_by_type():
@@ -137,6 +141,15 @@ def test_invalid_signature_and_missing_session_claims_are_rejected():
     missing_session = security.create_access_token({"sub": "alice@example.com"})
     with pytest.raises(JWTError):
         security.decode_token(missing_session, "access", require_session=True)
+
+    segments = valid.split(".")
+    segments[1] = jwt.utils.base64url_encode(b'{"sub":"mallory@example.com"}').decode()
+    modified_payload_token = ".".join(segments)
+    with pytest.raises(JWTError):
+        security.decode_token(modified_payload_token, "access")
+
+    with pytest.raises(JWTError):
+        security.decode_token("malformed-token", "access")
 
 
 @pytest.mark.asyncio
@@ -256,11 +269,11 @@ async def test_password_change_revokes_existing_sessions(monkeypatch):
 
 def test_production_configuration_rejects_placeholder_secrets_and_non_hs256():
     configured = Settings.model_construct(
-        ENV="production", SECRET_KEY="CHANGE_ME_GENERATE_A_LONG_RANDOM_VALUE",  # noqa: S106 - synthetic test fixture; not a production credential
+        ENV="production", JWT_SECRET_KEY="CHANGE_ME_GENERATE_A_LONG_RANDOM_VALUE",  # noqa: S106 - synthetic test fixture; not a production credential
         ALLOWED_ORIGINS="https://app.example.com", USE_S3=True,
         S3_ENDPOINT="https://storage.example.com", S3_ACCESS_KEY="access", S3_SECRET_KEY="secret",  # noqa: S106 - synthetic test fixture; not a production credential
     )
-    with pytest.raises(ValueError, match="SECRET_KEY"):
+    with pytest.raises(ValueError, match="JWT_SECRET_KEY"):
         configured.validate_security_settings()
     with pytest.raises(ValueError, match="ALGORITHM"):
         Settings.validate_jwt_algorithm("HS384")
