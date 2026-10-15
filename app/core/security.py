@@ -86,13 +86,9 @@ def create_refresh_token(data: dict, remember_me: bool = True) -> str:
     return _create_token(data, "refresh", timedelta(days=days))
 
 
-def decode_token(
-    token: str, expected_type: str, *, require_session: bool = False
+def _validate_token_payload(
+    payload: dict, expected_type: str, *, require_session: bool
 ) -> dict:
-    """Verify a server-issued JWT and enforce its security claims."""
-    if expected_type not in TOKEN_TYPES:
-        raise ValueError("Unsupported token type.")
-    payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
     for claim in REQUIRED_TOKEN_CLAIMS:
         value = payload.get(claim)
         if value is None or (isinstance(value, str) and not value.strip()):
@@ -102,11 +98,27 @@ def decode_token(
     if payload.get("type") != expected_type:
         raise JWTError("Invalid token type.")
     if require_session:
-        for claim in ("sid", "user_id"):
-            value = payload.get(claim)
-            if not isinstance(value, str) or not value.strip():
-                raise JWTError(INVALID_TOKEN_MESSAGE)
+        _validate_session_claims(payload)
     return payload
+
+
+def _validate_session_claims(payload: dict) -> None:
+    for claim in ("sid", "user_id"):
+        value = payload.get(claim)
+        if not isinstance(value, str) or not value.strip():
+            raise JWTError(INVALID_TOKEN_MESSAGE)
+
+
+def decode_token(
+    token: str, expected_type: str, *, require_session: bool = False
+) -> dict:
+    """Verify a server-issued JWT and enforce its security claims."""
+    if expected_type not in TOKEN_TYPES:
+        raise ValueError("Unsupported token type.")
+    payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+    return _validate_token_payload(payload, expected_type, require_session=require_session)
+
+
 def token_digest(token: str) -> str:
     """Return a non-reversible digest suitable for revocation/session lookup."""
     return hashlib.sha256(token.encode("utf-8")).hexdigest()

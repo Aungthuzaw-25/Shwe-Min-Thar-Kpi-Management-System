@@ -65,6 +65,14 @@ from app.modules.users.models import User
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+ROLE_SUPER_ADMIN = "Super Admin"
+ROLE_LEVEL_1 = "Level 1"
+ROLE_LEVEL_0 = "Level 0"
+ERR_FORMULA_NOT_FOUND = "Formula not found."
+PERM_KPI_EDIT = "kpi.edit"
+PERM_KPI_VIEW = "kpi.view"
+ERR_KPI_RECORD_NOT_FOUND = "KPI Record not found."
+PERM_KPI_CALCULATE = "kpi.calculate"
 
 # ==============================================================================
 # 🌟 2. DEPENDENCIES: Centralized Role-Based Access Control (RBAC)
@@ -82,10 +90,10 @@ class RoleChecker:
             )
         return user
 
-allow_admins = RoleChecker(["Super Admin", "Admin"])
-allow_super_admins = RoleChecker(["Super Admin"])
-allow_reports = RoleChecker(["Super Admin", "Admin", "HR", "Level 0", "Level 1"])
-allow_charts = RoleChecker(["Super Admin", "Admin", "Level 0", "Level 1"])
+allow_admins = RoleChecker([ROLE_SUPER_ADMIN, "Admin"])
+allow_super_admins = RoleChecker([ROLE_SUPER_ADMIN])
+allow_reports = RoleChecker([ROLE_SUPER_ADMIN, "Admin", "HR", ROLE_LEVEL_0, ROLE_LEVEL_1])
+allow_charts = RoleChecker([ROLE_SUPER_ADMIN, "Admin", ROLE_LEVEL_0, ROLE_LEVEL_1])
 
 
 async def require_report_access(
@@ -93,7 +101,7 @@ async def require_report_access(
     current_user: User = Depends(get_current_user),
 ) -> User:
     """Allow report readers by role or by their assigned department level."""
-    allowed_roles = {"Super Admin", "Admin", "HR", "Level 0", "Level 1"}
+    allowed_roles = {ROLE_SUPER_ADMIN, "Admin", "HR", ROLE_LEVEL_0, ROLE_LEVEL_1}
     if current_user.role and current_user.role.name in allowed_roles:
         return current_user
 
@@ -142,7 +150,7 @@ class AuditLogResponse(BaseModel):
 # ==============================================================================
 # 1. Admin Setup: L0, L1, L2 KPI Settings
 # ==============================================================================
-@router.get('/settings', response_model=list[KPILevelSettingResponse])
+@router.get('/settings', response_model=list[KPILevelSettingResponse], responses={500: {"description": "Internal Server Error"}})
 async def get_kpi_settings(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(allow_admins)
@@ -154,7 +162,7 @@ async def get_kpi_settings(
         logger.exception(f"Failed to fetch KPI settings: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to fetch KPI settings.")
 
-@router.put('/settings/{level_name}', response_model=KPILevelSettingResponse)
+@router.put('/settings/{level_name}', response_model=KPILevelSettingResponse, responses={500: {"description": "Internal Server Error"}})
 async def update_kpi_setting(
     level_name: str,
     payload: KPILevelSettingUpdate,
@@ -169,7 +177,7 @@ async def update_kpi_setting(
         logger.exception(f"Database error updating setting {level_name}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Database transaction failed while updating settings.")
 
-@router.put('/settings/department/{department_id}/kpi-levels', tags=["KPI Admin Controls"])
+@router.put('/settings/department/{department_id}/kpi-levels', tags=["KPI Admin Controls"], responses={500: {"description": "Internal Server Error"}})
 async def update_targeted_department_levels(
     department_id: UUID,
     payload: DepartmentKPILevelUpdate,
@@ -216,7 +224,7 @@ async def _load_formula_in_scope(
 ) -> KPIFormula:
     formula = await kpi_repo.get_formula_by_id(db, formula_id)
     if not formula or formula.is_deleted:
-        raise HTTPException(status_code=404, detail="Formula not found.")
+        raise HTTPException(status_code=404, detail=ERR_FORMULA_NOT_FOUND)
     await enforce_department_scope(db, current_user, formula.department_id)
     return formula
 
@@ -246,7 +254,7 @@ async def _authorized_active_user_ids(
 # ==============================================================================
 # 2. KPI Formulas
 # ==============================================================================
-@router.post('/formulas', response_model=KPIFormulaResponse, status_code=status.HTTP_201_CREATED)
+@router.post('/formulas', response_model=KPIFormulaResponse, status_code=status.HTTP_201_CREATED, responses={500: {"description": "Internal Server Error"}})
 async def create_kpi_formula(
     payload: KPIFormulaCreate, 
     db: AsyncSession = Depends(get_db), 
@@ -261,14 +269,14 @@ async def create_kpi_formula(
         logger.exception(f"Error creating formula: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to create KPI formula.")
 
-@router.put('/formulas/{formula_id}', response_model=KPIFormulaResponse)
+@router.put('/formulas/{formula_id}', response_model=KPIFormulaResponse, responses={404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def edit_kpi_formula(
     formula_id: UUID,
     payload: KPIFormulaUpdate, 
     db: AsyncSession = Depends(get_db), 
     current_user: User = Depends(allow_admins)
 ):
-    enforce_permission(current_user, "kpi.edit")
+    enforce_permission(current_user, PERM_KPI_EDIT)
     await _load_formula_in_scope(db, current_user, formula_id)
     try:
         return await kpi_service.update_kpi_formula(db, formula_id, payload)
@@ -284,23 +292,23 @@ async def get_kpi_formulas(
     db: AsyncSession = Depends(get_db), 
     current_user: User = Depends(get_current_user)
 ):
-    enforce_permission(current_user, "kpi.view")
+    enforce_permission(current_user, PERM_KPI_VIEW)
     formulas = await kpi_repo.get_all_formulas(db, skip=skip, limit=limit)
     department_ids = await get_authorized_department_ids(db, current_user)
     return formulas if department_ids is None else [formula for formula in formulas if str(formula.department_id) in department_ids]
 
-@router.put('/formulas/{formula_id}/toggle', response_model=KPIFormulaResponse)
+@router.put('/formulas/{formula_id}/toggle', response_model=KPIFormulaResponse, responses={404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def toggle_kpi_formula(
     formula_id: UUID,
     payload: KPIFormulaUpdate,
     db: AsyncSession = Depends(get_db), 
     current_user: User = Depends(allow_admins)
 ):
-    enforce_permission(current_user, "kpi.edit")
+    enforce_permission(current_user, PERM_KPI_EDIT)
     try:
         formula = await _load_formula_in_scope(db, current_user, formula_id)
         if not formula:
-            raise HTTPException(status_code=404, detail="Formula not found.")
+            raise HTTPException(status_code=404, detail=ERR_FORMULA_NOT_FOUND)
             
         return await kpi_repo.toggle_formula_status(db, formula, payload.is_active)
     except SQLAlchemyError as e:
@@ -322,7 +330,7 @@ async def _transition_formula_state(
     try:
         formula = await _load_formula_in_scope(db, current_user, formula_id)
         if not formula:
-            raise HTTPException(status_code=404, detail="Formula not found.")
+            raise HTTPException(status_code=404, detail=ERR_FORMULA_NOT_FOUND)
             
         if formula.status not in current_status:
             valid_states = ", ".join([s.name for s in current_status])
@@ -339,32 +347,32 @@ async def _transition_formula_state(
         logger.exception(f"Database error transitioning formula {formula_id} to {new_status}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="State transition failed due to a database error.")
 
-@router.post('/formulas/{formula_id}/submit', response_model=KPIFormulaResponse)
+@router.post('/formulas/{formula_id}/submit', response_model=KPIFormulaResponse, responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def submit_formula_for_review(formula_id: UUID, db: AsyncSession = Depends(get_db), _: User = Depends(allow_admins)):
     return await _transition_formula_state(db, formula_id, [FormulaStatus.DRAFT], FormulaStatus.REVIEW, _)
 
-@router.post('/formulas/{formula_id}/approve', response_model=KPIFormulaResponse)
+@router.post('/formulas/{formula_id}/approve', response_model=KPIFormulaResponse, responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def approve_formula(formula_id: UUID, db: AsyncSession = Depends(get_db), _: User = Depends(allow_super_admins)):
     return await _transition_formula_state(db, formula_id, [FormulaStatus.REVIEW], FormulaStatus.APPROVED, _)
 
-@router.post('/formulas/{formula_id}/reject', response_model=KPIFormulaResponse)
+@router.post('/formulas/{formula_id}/reject', response_model=KPIFormulaResponse, responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def reject_formula(formula_id: UUID, db: AsyncSession = Depends(get_db), _: User = Depends(allow_super_admins)):
     return await _transition_formula_state(db, formula_id, [FormulaStatus.REVIEW], FormulaStatus.DRAFT, _)
 
-@router.post('/formulas/{formula_id}/activate', response_model=KPIFormulaResponse)
+@router.post('/formulas/{formula_id}/activate', response_model=KPIFormulaResponse, responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def activate_formula(formula_id: UUID, db: AsyncSession = Depends(get_db), _: User = Depends(allow_admins)):
     return await _transition_formula_state(db, formula_id, [FormulaStatus.APPROVED, FormulaStatus.ARCHIVED], FormulaStatus.ACTIVE, _)
 
-@router.post('/formulas/{formula_id}/archive', response_model=KPIFormulaResponse)
+@router.post('/formulas/{formula_id}/archive', response_model=KPIFormulaResponse, responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def archive_formula(formula_id: UUID, db: AsyncSession = Depends(get_db), _: User = Depends(allow_admins)):
     return await _transition_formula_state(db, formula_id, [FormulaStatus.ACTIVE, FormulaStatus.APPROVED], FormulaStatus.ARCHIVED, _)
 
-@router.delete('/formulas/{formula_id}', status_code=status.HTTP_204_NO_CONTENT)
+@router.delete('/formulas/{formula_id}', status_code=status.HTTP_204_NO_CONTENT, responses={404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def delete_kpi_formula(formula_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(allow_super_admins)):
     try:
         formula = await _load_formula_in_scope(db, current_user, formula_id)
         if not formula:
-            raise HTTPException(status_code=404, detail="Formula not found.")
+            raise HTTPException(status_code=404, detail=ERR_FORMULA_NOT_FOUND)
             
         await db.delete(formula)
         await db.commit()
@@ -377,13 +385,13 @@ async def delete_kpi_formula(formula_id: UUID, db: AsyncSession = Depends(get_db
 # ==============================================================================
 # 3. KPI Records & Available Categories Matrix Filtering
 # ==============================================================================
-@router.get('/records/monthly/{target_user_id}', response_model=list[KPIRecordResponse])
+@router.get('/records/monthly/{target_user_id}', response_model=list[KPIRecordResponse], responses={500: {"description": "Internal Server Error"}})
 async def get_monthly_kpi_records(
     target_user_id: UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    enforce_permission(current_user, "kpi.view")
+    enforce_permission(current_user, PERM_KPI_VIEW)
     await enforce_user_scope(db, current_user, target_user_id)
         
     try:
@@ -398,7 +406,7 @@ async def get_available_kpi_categories(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    enforce_permission(current_user, "kpi.view")
+    enforce_permission(current_user, PERM_KPI_VIEW)
     categories = sorted(
         await kpi_category_service.get_eligible_kpi_categories_for_user(
             db, current_user.id
@@ -415,14 +423,14 @@ async def get_available_kpi_categories(
 # ==============================================================================
 # 4. KPI Admin Controls: Freeze, Override & Deduction
 # ==============================================================================
-@router.put("/records/{record_id}/freeze", tags=["KPI Admin Controls"])
+@router.put("/records/{record_id}/freeze", tags=["KPI Admin Controls"], responses={404: {"description": "Not Found"}, 409: {"description": "Conflict"}, 500: {"description": "Internal Server Error"}})
 async def freeze_kpi_record(
     record_id: UUID, 
     payload: KPIFreezeRequest, 
     db: AsyncSession = Depends(get_db), 
     current_user: User = Depends(allow_admins)
 ):
-    enforce_permission(current_user, "kpi.edit")
+    enforce_permission(current_user, PERM_KPI_EDIT)
     try:
         record = (await db.execute(
             select(KPIRecord).options(
@@ -430,7 +438,7 @@ async def freeze_kpi_record(
             ).where(KPIRecord.id == record_id)
         )).scalars().first()
         if not record:
-            raise HTTPException(status_code=404, detail="KPI Record not found.")
+            raise HTTPException(status_code=404, detail=ERR_KPI_RECORD_NOT_FOUND)
         await enforce_user_scope(db, current_user, record.user_id)
         if record.period and record.period.status in [KPIPeriodStatus.FINALIZED, KPIPeriodStatus.LOCKED, KPIPeriodStatus.CANCELLED]:
             raise HTTPException(status_code=409, detail="Finalized KPI records require the correction workflow.")
@@ -443,14 +451,14 @@ async def freeze_kpi_record(
         logger.exception(f"Failed to freeze record {record_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Database error while freezing record.")
 
-@router.put("/records/{record_id}/override", response_model=KPIRecordResponse, tags=["KPI Admin Controls"])
+@router.put("/records/{record_id}/override", response_model=KPIRecordResponse, tags=["KPI Admin Controls"], responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def override_kpi_record(
     record_id: UUID, 
     payload: KPIOverrideRequest, 
     db: AsyncSession = Depends(get_db), 
     current_user: User = Depends(allow_admins)
 ):
-    enforce_permission(current_user, "kpi.edit")
+    enforce_permission(current_user, PERM_KPI_EDIT)
     try:
         record = (await db.execute(
             select(KPIRecord).options(
@@ -458,7 +466,7 @@ async def override_kpi_record(
             ).where(KPIRecord.id == record_id)
         )).scalars().first()
         if not record:
-            raise HTTPException(status_code=404, detail="KPI Record not found.")
+            raise HTTPException(status_code=404, detail=ERR_KPI_RECORD_NOT_FOUND)
         await enforce_user_scope(db, current_user, record.user_id)
         period_service.ensure_kpi_record_editable(record)
         if record.is_frozen:
@@ -511,14 +519,14 @@ async def override_kpi_record(
         logger.exception(f"Database error overriding KPI {record_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Transaction failed while overriding KPI.")
 
-@router.put("/records/{record_id}/deduct", response_model=KPIRecordResponse, tags=["KPI Admin Controls"])
+@router.put("/records/{record_id}/deduct", response_model=KPIRecordResponse, tags=["KPI Admin Controls"], responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def deduct_kpi_record(
     record_id: UUID, 
     payload: KPIDeductionRequest, 
     db: AsyncSession = Depends(get_db), 
     current_user: User = Depends(allow_admins)
 ):
-    enforce_permission(current_user, "kpi.edit")
+    enforce_permission(current_user, PERM_KPI_EDIT)
     try:
         record = (await db.execute(
             select(KPIRecord).options(
@@ -526,7 +534,7 @@ async def deduct_kpi_record(
             ).where(KPIRecord.id == record_id)
         )).scalars().first()
         if not record:
-            raise HTTPException(status_code=404, detail="KPI Record not found.")
+            raise HTTPException(status_code=404, detail=ERR_KPI_RECORD_NOT_FOUND)
         await enforce_user_scope(db, current_user, record.user_id)
         period_service.ensure_kpi_record_editable(record)
         if record.is_frozen:
@@ -586,7 +594,7 @@ async def deduct_kpi_record(
 # ==============================================================================
 # 5. Dashboard: Ranking (Leaderboard) - O(1) N+1 Fix
 # ==============================================================================
-@router.get('/dashboard/ranking', response_model=list[KPIRankingResponse], tags=["Dashboard"])
+@router.get('/dashboard/ranking', response_model=list[KPIRankingResponse], tags=["Dashboard"], responses={500: {"description": "Internal Server Error"}})
 async def get_kpi_ranking(
     period_type: PeriodType = PeriodType.MONTHLY,
     limit: int = Query(10, gt=0, le=100),
@@ -594,7 +602,7 @@ async def get_kpi_ranking(
     current_user: User = Depends(get_current_user)
 ):
     """Rank from the current month (or today), independent of summary date filters."""
-    enforce_permission(current_user, "kpi.view")
+    enforce_permission(current_user, PERM_KPI_VIEW)
     try:
         today = datetime.now(APPLICATION_TIMEZONE).date()
         start_date = today.replace(day=1) if period_type == PeriodType.MONTHLY else today
@@ -650,7 +658,7 @@ async def get_kpi_ranking(
 # ==============================================================================
 # 6. Dashboard: Trend Charts
 # ==============================================================================
-@router.get('/dashboard/charts/{target_user_id}', response_model=KPIChartResponse, tags=["Dashboard"])
+@router.get('/dashboard/charts/{target_user_id}', response_model=KPIChartResponse, tags=["Dashboard"], responses={500: {"description": "Internal Server Error"}})
 async def get_kpi_trend_chart(
     target_user_id: UUID,
     period_type: PeriodType = PeriodType.MONTHLY,
@@ -659,7 +667,7 @@ async def get_kpi_trend_chart(
     current_user: User = Depends(get_current_user)
 ):
     """Return a rolling ``days_limit`` chart independent of summary date filters."""
-    enforce_permission(current_user, "kpi.view")
+    enforce_permission(current_user, PERM_KPI_VIEW)
     await enforce_user_scope(db, current_user, target_user_id)
  
     try:
@@ -706,7 +714,7 @@ def _normalize_report_period_type(period_type: str) -> str:
         ) from exc
 
 
-@router.get('/reports/summary', response_model=KpiReportSummaryResponse, tags=["Reports"])
+@router.get('/reports/summary', response_model=KpiReportSummaryResponse, tags=["Reports"], responses={422: {"description": "Unprocessable Entity"}, 500: {"description": "Internal Server Error"}})
 async def get_kpi_summary_report(
     period_type: str = Query(..., description="e.g., DAILY, WEEKLY, MONTHLY"),
     department_id: UUID | None = Query(None, description="Filter by Department"),
@@ -759,14 +767,14 @@ async def run_custom_kpi_background(user_ids: list[UUID], start_date: datetime, 
         logger.critical(f"[Custom KPI Worker] Fatal Database Connection Error: {str(connection_error)}", exc_info=True)
 
 
-@router.post('/calculate/custom', tags=["KPI Engine"])
+@router.post('/calculate/custom', tags=["KPI Engine"], responses={400: {"description": "Bad Request"}, 403: {"description": "Forbidden"}, 500: {"description": "Internal Server Error"}})
 async def trigger_custom_calculation(
     payload: CustomKpiCalculationRequest,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(allow_admins)
 ):
-    enforce_permission(current_user, "kpi.calculate")
+    enforce_permission(current_user, PERM_KPI_CALCULATE)
     try:
         user_ids = await _authorized_active_user_ids(db, current_user)
         
@@ -792,16 +800,16 @@ async def trigger_custom_calculation(
         raise HTTPException(status_code=500, detail="Failed to initialize background task.")
 
 
-@router.post('/calculate/explicit', tags=["KPI Engine"])
+@router.post('/calculate/explicit', tags=["KPI Engine"], responses={404: {"description": "Not Found"}, 422: {"description": "Unprocessable Entity"}})
 async def calculate_kpi_record_explicitly(
     payload: ExplicitKpiCalculationRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(allow_admins),
 ):
-    enforce_permission(current_user, "kpi.calculate")
+    enforce_permission(current_user, PERM_KPI_CALCULATE)
     record = await db.get(KPIRecord, payload.record_id)
     if record is None or record.is_deleted:
-        raise HTTPException(status_code=404, detail="KPI Record not found.")
+        raise HTTPException(status_code=404, detail=ERR_KPI_RECORD_NOT_FOUND)
     await enforce_user_scope(db, current_user, record.user_id)
 
     context = KPICalculationContext(**payload.model_dump())
@@ -820,7 +828,7 @@ async def calculate_kpi_record_explicitly(
 # 9. Audit Logs Extraction API
 # ==============================================================================
 
-@router.post('/calculate', tags=["KPI Engine"])
+@router.post('/calculate', tags=["KPI Engine"], responses={400: {"description": "Bad Request"}, 403: {"description": "Forbidden"}})
 async def bulk_calculate_endpoint(
     payload: BulkKpiCalculationRequest,
     background_tasks: BackgroundTasks,
@@ -830,7 +838,7 @@ async def bulk_calculate_endpoint(
     """Bulk KPI calculation for multiple users.
     If `user_ids` is empty, all active users are targeted.
     """
-    enforce_permission(current_user, "kpi.calculate")
+    enforce_permission(current_user, PERM_KPI_CALCULATE)
     # Resolve target users only after validating their server-side department scope.
     target_user_ids = await _authorized_active_user_ids(db, current_user, payload.user_ids)
 
@@ -858,7 +866,7 @@ async def bulk_calculate_endpoint(
     )
     return result
 
-@router.get('/audit-logs', response_model=list[AuditLogResponse], tags=["Audit Logs"])
+@router.get('/audit-logs', response_model=list[AuditLogResponse], tags=["Audit Logs"], responses={500: {"description": "Internal Server Error"}})
 async def get_system_audit_logs(
     limit: int = Query(100, le=1000), 
     db: AsyncSession = Depends(get_db),

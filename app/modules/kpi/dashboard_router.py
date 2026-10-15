@@ -54,6 +54,7 @@ def _completion_percentage(completed_tasks: int, total_tasks: int) -> float:
     "/summary",
     response_model=DashboardSummaryResponse,
     tags=["Unified Dashboard"],
+    responses={400: {"description": "Bad Request"}},
 )
 async def fetch_unified_dashboard_summary(
     period_type: PeriodType = Query(PeriodType.MONTHLY),
@@ -194,6 +195,7 @@ async def _get_executive_scope(
     "/executive/overview",
     response_model=ExecutiveOverview,
     tags=["Executive KPI Intelligence"],
+    responses={404: {"description": "Not Found"}},
 )
 async def fetch_executive_overview(
     period_id: UUID | None = Query(None),
@@ -220,6 +222,7 @@ async def fetch_executive_overview(
     "/executive/employees/{user_id}",
     response_model=ExecutiveEmployeeDetail,
     tags=["Executive KPI Intelligence"],
+    responses={404: {"description": "Not Found"}},
 )
 async def fetch_executive_employee_detail(
     user_id: UUID,
@@ -519,18 +522,9 @@ async def _get_admin_scope_departments(db: AsyncSession, current_user: User) -> 
     return [str(dept_id) for dept_id in dept_ids] if dept_ids else []
 
 
-@admin_router.get("/summary", tags=["Admin Dashboard"])
-async def fetch_admin_dashboard_summary(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(admin_checker),
-) -> dict[str, Any]:
-    """Return an admin-scoped summary with actual task, user, KPI, and department data."""
-    role_name = _normalize_role_name(getattr(getattr(current_user, "role", None), "name", None))
-    if "ADMIN" not in role_name and "SYSTEM ADMIN" not in role_name:
-        raise HTTPException(status_code=403, detail="Access Denied. You do not have permission to perform this action.")
-
-    department_ids = await _get_admin_scope_departments(db, current_user)
-
+async def _admin_user_counts(
+    db: AsyncSession, current_user: User, department_ids: list[str] | None
+) -> tuple[int, int]:
     user_filters = [User.is_deleted == False]
     if department_ids is not None and department_ids:
         user_filters.append(User.id.in_(
@@ -541,7 +535,6 @@ async def fetch_admin_dashboard_summary(
         ))
     elif department_ids == []:
         user_filters.append(User.id == current_user.id)
-
     user_counts = (
         await db.execute(
             select(
@@ -550,14 +543,24 @@ async def fetch_admin_dashboard_summary(
             ).where(*user_filters)
         )
     ).one()
-    total_users = int(user_counts.total_users or 0)
-    active_users = int(user_counts.active_users or 0)
+    return int(user_counts.total_users or 0), int(user_counts.active_users or 0)
 
+
+async def _admin_department_count(
+    db: AsyncSession, department_ids: list[str] | None
+) -> int:
     if department_ids is None:
-        department_count = (await db.execute(select(func.count(Department.id)).where(Department.is_deleted == False))).scalar() or 0
-    else:
-        department_count = len(department_ids)
+        return (
+            await db.execute(
+                select(func.count(Department.id)).where(Department.is_deleted == False)
+            )
+        ).scalar() or 0
+    return len(department_ids)
 
+
+async def _admin_task_counts(
+    db: AsyncSession, current_user: User, department_ids: list[str] | None
+):
     task_filters = [Task.is_deleted == False]
     if department_ids:
         task_filters.append(Task.owner_id.in_(
@@ -568,8 +571,7 @@ async def fetch_admin_dashboard_summary(
         ))
     elif department_ids == []:
         task_filters.append(Task.owner_id == current_user.id)
-
-    task_counts = (
+    return (
         await db.execute(
             select(
                 func.count(Task.id).label("total_tasks"),
@@ -600,27 +602,45 @@ async def fetch_admin_dashboard_summary(
             ).where(*task_filters)
         )
     ).one()
-    total_tasks = int(task_counts.total_tasks or 0)
-    pending_approvals = int(task_counts.pending_approvals or 0)
-    completed_tasks = int(task_counts.completed_tasks or 0)
-    rejected_tasks = int(task_counts.rejected_tasks or 0)
-    overdue_tasks = int(task_counts.overdue_tasks or 0)
-    late_tasks = int(task_counts.late_tasks or 0)
 
+
+async def _admin_average_kpi(
+    db: AsyncSession, current_user: User, department_ids: list[str] | None
+):
     kpi_filters = [KPIRecord.percentage.is_not(None), KPIRecord.is_deleted == False]
     if department_ids:
         kpi_filters.append(KPIRecord.department_id.in_(department_ids))
     elif department_ids == []:
         kpi_filters.append(KPIRecord.user_id == current_user.id)
-    average_kpi = (await db.execute(select(func.avg(KPIRecord.percentage)).where(*kpi_filters))).scalar() or 0.0
+    return (
+        await db.execute(select(func.avg(KPIRecord.percentage)).where(*kpi_filters))
+    ).scalar() or 0.0
 
-    position_count = 0
+
+async def _admin_position_count(
+    db: AsyncSession, department_ids: list[str] | None
+) -> int:
     if department_ids is None:
-        position_count = (await db.execute(select(func.count(Position.id)).where(Position.is_active == True))).scalar() or 0
-    elif department_ids:
-        position_count = (await db.execute(select(func.count(Position.id)).where(Position.department_id.in_(department_ids), Position.is_active == True))).scalar() or 0
+        return (
+            await db.execute(
+                select(func.count(Position.id)).where(Position.is_active == True)
+            )
+        ).scalar() or 0
+    if department_ids:
+        return (
+            await db.execute(
+                select(func.count(Position.id)).where(
+                    Position.department_id.in_(department_ids),
+                    Position.is_active == True,
+                )
+            )
+        ).scalar() or 0
+    return 0
 
-    users_by_department = []
+
+async def _admin_users_by_department(
+    db: AsyncSession, department_ids: list[str] | None
+) -> list[dict[str, Any]]:
     dept_stmt = (
         select(Department.name, func.count(UserDepartment.user_id).label("user_count"))
         .select_from(Department)
@@ -636,22 +656,18 @@ async def fetch_admin_dashboard_summary(
         dept_stmt = dept_stmt.where(Department.id.in_(department_ids))
     elif department_ids == []:
         dept_stmt = dept_stmt.where(false())
-    dept_stmt = dept_stmt.group_by(Department.name).order_by(func.count(UserDepartment.user_id).desc())
-    for name, count in (await db.execute(dept_stmt)).all():
-        users_by_department.append({"label": name, "value": int(count or 0)})
+    dept_stmt = dept_stmt.group_by(Department.name).order_by(
+        func.count(UserDepartment.user_id).desc()
+    )
+    return [
+        {"label": name, "value": int(count or 0)}
+        for name, count in (await db.execute(dept_stmt)).all()
+    ]
 
-    task_summary = {
-        "total": total_tasks,
-        "assigned": int(task_counts.assigned_tasks or 0),
-        "pending": int(task_counts.pending_tasks or 0),
-        "approved": int(task_counts.approved_tasks or 0),
-        "completed": completed_tasks,
-        "rejected": rejected_tasks,
-        "overdue": overdue_tasks,
-        "late": late_tasks,
-        "completion_percentage": _completion_percentage(completed_tasks, total_tasks),
-    }
 
+async def _admin_kpi_by_department(
+    db: AsyncSession, department_ids: list[str] | None
+) -> list[dict[str, Any]]:
     dept_kpi_stmt = select(
         Department.name,
         func.avg(KPIRecord.percentage).label("average_kpi")
@@ -665,8 +681,56 @@ async def fetch_admin_dashboard_summary(
         dept_kpi_stmt = dept_kpi_stmt.where(Department.id.in_(department_ids))
     elif department_ids == []:
         dept_kpi_stmt = dept_kpi_stmt.where(false())
-    dept_kpi_stmt = dept_kpi_stmt.group_by(Department.name).order_by(func.avg(KPIRecord.percentage).desc())
-    kpi_by_department = [{"label": name, "value": round(float(avg or 0.0), 2)} for name, avg in (await db.execute(dept_kpi_stmt)).all()]
+    dept_kpi_stmt = dept_kpi_stmt.group_by(Department.name).order_by(
+        func.avg(KPIRecord.percentage).desc()
+    )
+    return [
+        {"label": name, "value": round(float(avg or 0.0), 2)}
+        for name, avg in (await db.execute(dept_kpi_stmt)).all()
+    ]
+
+
+@admin_router.get(
+    "/summary",
+    tags=["Admin Dashboard"],
+    responses={403: {"description": "Forbidden"}},
+)
+async def fetch_admin_dashboard_summary(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(admin_checker),
+) -> dict[str, Any]:
+    """Return an admin-scoped summary with actual task, user, KPI, and department data."""
+    role_name = _normalize_role_name(getattr(getattr(current_user, "role", None), "name", None))
+    if "ADMIN" not in role_name and "SYSTEM ADMIN" not in role_name:
+        raise HTTPException(status_code=403, detail="Access Denied. You do not have permission to perform this action.")
+
+    department_ids = await _get_admin_scope_departments(db, current_user)
+    total_users, active_users = await _admin_user_counts(db, current_user, department_ids)
+    department_count = await _admin_department_count(db, department_ids)
+    task_counts = await _admin_task_counts(db, current_user, department_ids)
+    total_tasks = int(task_counts.total_tasks or 0)
+    pending_approvals = int(task_counts.pending_approvals or 0)
+    completed_tasks = int(task_counts.completed_tasks or 0)
+    rejected_tasks = int(task_counts.rejected_tasks or 0)
+    overdue_tasks = int(task_counts.overdue_tasks or 0)
+    late_tasks = int(task_counts.late_tasks or 0)
+    average_kpi = await _admin_average_kpi(db, current_user, department_ids)
+    position_count = await _admin_position_count(db, department_ids)
+    users_by_department = await _admin_users_by_department(db, department_ids)
+
+    task_summary = {
+        "total": total_tasks,
+        "assigned": int(task_counts.assigned_tasks or 0),
+        "pending": int(task_counts.pending_tasks or 0),
+        "approved": int(task_counts.approved_tasks or 0),
+        "completed": completed_tasks,
+        "rejected": rejected_tasks,
+        "overdue": overdue_tasks,
+        "late": late_tasks,
+        "completion_percentage": _completion_percentage(completed_tasks, total_tasks),
+    }
+
+    kpi_by_department = await _admin_kpi_by_department(db, department_ids)
 
     # KPIRecord stores an aggregate score for a formula/period, not a
     # per-category result. Task.category is an operational label and cannot be

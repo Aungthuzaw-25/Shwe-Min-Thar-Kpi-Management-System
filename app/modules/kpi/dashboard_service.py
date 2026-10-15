@@ -358,12 +358,14 @@ async def _build_activity_data(
 async def _build_task_diagnostics(
     db: AsyncSession, user_ids: list[UUID]
 ) -> tuple[TaskDiagnostics, ApprovalDiagnostics]:
-    filters = [
-        Task.is_deleted.is_(False),
-        Task.owner_id.in_(user_ids) if user_ids else Task.owner_id == UUID(int=0),
-    ]
+    row = (await db.execute(_task_diagnostic_statement(user_ids))).one()
+    return _task_diagnostics_from_row(row), _approval_diagnostics_from_row(row)
+
+
+def _task_diagnostic_statement(user_ids: list[UUID]):
+    filters = [Task.is_deleted.is_(False), _task_owner_filter(user_ids)]
     now = datetime.now(UTC)
-    statement = select(
+    return select(
         func.count(Task.id).label("total"),
         func.count(Task.id).filter(Task.status == TaskStatus.DRAFT).label("draft"),
         func.count(
@@ -385,10 +387,18 @@ async def _build_task_diagnostics(
         ).label("overdue"),
         func.count(Task.id).filter(Task.is_late.is_(True)).label("late"),
     ).where(*filters)
-    row = (await db.execute(statement)).one()
+
+
+def _task_owner_filter(user_ids: list[UUID]):
+    if user_ids:
+        return Task.owner_id.in_(user_ids)
+    return Task.owner_id == UUID(int=0)
+
+
+def _task_diagnostics_from_row(row) -> TaskDiagnostics:
     total = int(row.total or 0)
     completed = int(row.completed or 0)
-    diagnostics = TaskDiagnostics(
+    return TaskDiagnostics(
         total=total,
         draft=int(row.draft or 0),
         pending=int(row.pending or 0),
@@ -410,13 +420,129 @@ async def _build_task_diagnostics(
             count=total,
         ),
     )
-    approval = ApprovalDiagnostics(
+
+
+def _approval_diagnostics_from_row(row) -> ApprovalDiagnostics:
+    return ApprovalDiagnostics(
         pending_l1=int(row.pending_l1 or 0),
         pending_l0=int(row.pending_l0 or 0),
         total_pending_approval=int(row.pending or 0),
         rejected=int(row.rejected or 0),
     )
-    return diagnostics, approval
+
+
+async def _dashboard_scope(
+    db: AsyncSession, current_user: User, department_ids: list[UUID] | None
+) -> tuple[str, str | None, list[UUID], list[UUID]]:
+    role_name = str(getattr(getattr(current_user, "role", None), "name", "") or "")
+    normalized_role_name = role_name.replace("-", " ").replace("_", " ").upper()
+    memberships = (
+        await db.execute(
+            select(UserDepartment.user_level).where(
+                UserDepartment.user_id == current_user.id,
+                UserDepartment.is_deleted.is_(False),
+            )
+        )
+    ).scalars().all()
+    level = _normalize_level(memberships[0] if memberships else None)
+    visible_departments = department_ids or []
+    is_department_comparison_visible = (
+        normalized_role_name in {"SUPER ADMIN", "ADMIN", "HR"}
+        or level in {"L0", "L1"}
+    )
+    comparison_department_ids = (
+        visible_departments if is_department_comparison_visible else []
+    )
+    return role_name, level, visible_departments, comparison_department_ids
+
+
+def _dashboard_alerts(
+    task_diagnostics: TaskDiagnostics,
+    approval_diagnostics: ApprovalDiagnostics,
+    period_type: PeriodType,
+) -> list[DashboardAlert]:
+    alerts = []
+    if task_diagnostics.overdue >= ALERT_COUNT_THRESHOLD:
+        alerts.append(
+            DashboardAlert(
+                severity="warning",
+                type="overdue_tasks",
+                message="Tasks are overdue",
+                count=task_diagnostics.overdue,
+                source="tasks",
+                period=period_type.value,
+            )
+        )
+    if task_diagnostics.late >= ALERT_COUNT_THRESHOLD:
+        alerts.append(
+            DashboardAlert(
+                severity="warning",
+                type="late_tasks",
+                message="Tasks were submitted late",
+                count=task_diagnostics.late,
+                source="tasks",
+                period=period_type.value,
+            )
+        )
+    if approval_diagnostics.total_pending_approval >= ALERT_COUNT_THRESHOLD:
+        alerts.append(
+            DashboardAlert(
+                severity="info",
+                type="pending_approvals",
+                message="Tasks are awaiting approval",
+                count=approval_diagnostics.total_pending_approval,
+                source="approvals",
+                period=period_type.value,
+            )
+        )
+    return alerts
+
+
+def _dashboard_data_quality(
+    kpi_row,
+    task_diagnostics: TaskDiagnostics,
+    kpi_trend: DashboardTrend,
+    comparisons: list[DepartmentComparison],
+) -> DashboardDataQuality:
+    evaluated_count = int(kpi_row.count or 0)
+    unavailable_metrics = [
+        item
+        for item, unavailable in (
+            ("kpi_records", not bool(kpi_row.count)),
+            ("kpi_trend", kpi_trend.count < 2),
+            ("department_comparison", not bool(comparisons)),
+            ("category_performance", True),
+            ("task_data", not bool(task_diagnostics.total)),
+            ("target_data", True),
+            ("attendance_intelligence", True),
+        )
+        if unavailable
+    ]
+    return DashboardDataQuality(
+        status="available" if kpi_row.count and task_diagnostics.total else "partial",
+        evaluated_kpi_records=evaluated_count,
+        kpi_trend="available" if kpi_trend.count else "unavailable",
+        department_comparison="available" if comparisons else "unavailable",
+        category_performance=CategoryPerformance(
+            status="unavailable",
+            reason="category_results_not_independently_stored",
+        ),
+        task_data="available" if task_diagnostics.total else "unavailable",
+        comparison=kpi_trend.comparison_status,
+        period_notes=[
+            "Task and approval diagnostics are lifecycle-scoped because tasks "
+            "do not store KPI period boundaries."
+        ],
+        metrics_unavailable=unavailable_metrics,
+        warnings=[
+            "Category-level KPI performance is unavailable because finalized "
+            "category results are not independently stored.",
+            "Target versus actual is unavailable because scoring-rule targets "
+            "are category thresholds, not authoritative aggregate targets.",
+            "Attendance intelligence is unavailable because no authoritative "
+            "attendance result source is integrated.",
+        ],
+    )
 
 
 async def build_dashboard_summary(
@@ -433,24 +559,13 @@ async def build_dashboard_summary(
     period_start = period_range.start_inclusive
     period_end = period_range.end_exclusive
 
-    role_name = str(getattr(getattr(current_user, "role", None), "name", "") or "")
-    normalized_role_name = role_name.replace("-", " ").replace("_", " ").upper()
-    memberships = (
-        await db.execute(
-            select(UserDepartment.user_level).where(
-                UserDepartment.user_id == current_user.id,
-                UserDepartment.is_deleted.is_(False),
-            )
-        )
-    ).scalars().all()
-    level = _normalize_level(memberships[0] if memberships else None)
-    visible_departments = department_ids or []
-
-    comparison_department_ids = (
-        visible_departments
-        if normalized_role_name in {"SUPER ADMIN", "ADMIN", "HR"}
-        or level in {"L0", "L1"}
-        else []
+    (
+        role_name,
+        level,
+        visible_departments,
+        comparison_department_ids,
+    ) = await _dashboard_scope(
+        db, current_user, department_ids
     )
     kpi_row, comparisons = await _build_kpi_aggregates(
         db,
@@ -495,40 +610,9 @@ async def build_dashboard_summary(
 
     notifications = await get_notifications_by_user(db, current_user.id, limit=5)
     unread_count = await count_unread_notifications(db, current_user.id)
-    alerts = [
-        DashboardAlert(
-            severity="warning",
-            type="overdue_tasks",
-            message="Tasks are overdue",
-            count=task_diagnostics.overdue,
-            source="tasks",
-            period=period_type.value,
-        )
-        for _ in [0]
-        if task_diagnostics.overdue >= ALERT_COUNT_THRESHOLD
-    ]
-    if task_diagnostics.late >= ALERT_COUNT_THRESHOLD:
-        alerts.append(
-            DashboardAlert(
-                severity="warning",
-                type="late_tasks",
-                message="Tasks were submitted late",
-                count=task_diagnostics.late,
-                source="tasks",
-                period=period_type.value,
-            )
-        )
-    if approval_diagnostics.total_pending_approval >= ALERT_COUNT_THRESHOLD:
-        alerts.append(
-            DashboardAlert(
-                severity="info",
-                type="pending_approvals",
-                message="Tasks are awaiting approval",
-                count=approval_diagnostics.total_pending_approval,
-                source="approvals",
-                period=period_type.value,
-            )
-        )
+    alerts = _dashboard_alerts(
+        task_diagnostics, approval_diagnostics, period_type
+    )
 
     return DashboardSummaryResponse(
         scope=DashboardScope(
@@ -566,49 +650,7 @@ async def build_dashboard_summary(
                 for item in notifications
             ],
         ),
-        data_quality=DashboardDataQuality(
-            status=(
-                "available"
-                if kpi_row.count and task_diagnostics.total
-                else "partial"
-            ),
-            evaluated_kpi_records=int(kpi_row.count or 0),
-            kpi_trend="available" if kpi_trend.count else "unavailable",
-            department_comparison=(
-                "available" if comparisons else "unavailable"
-            ),
-            category_performance=CategoryPerformance(
-                status="unavailable",
-                reason="category_results_not_independently_stored",
-            ),
-            task_data=(
-                "available" if task_diagnostics.total else "unavailable"
-            ),
-            comparison=kpi_trend.comparison_status,
-            period_notes=[
-                "Task and approval diagnostics are lifecycle-scoped because tasks "
-                "do not store KPI period boundaries."
-            ],
-            metrics_unavailable=[
-                item
-                for item, unavailable in (
-                    ("kpi_records", not bool(kpi_row.count)),
-                    ("kpi_trend", kpi_trend.count < 2),
-                    ("department_comparison", not bool(comparisons)),
-                    ("category_performance", True),
-                    ("task_data", not bool(task_diagnostics.total)),
-                    ("target_data", True),
-                    ("attendance_intelligence", True),
-                )
-                if unavailable
-            ],
-            warnings=[
-                "Category-level KPI performance is unavailable because finalized "
-                "category results are not independently stored.",
-                "Target versus actual is unavailable because scoring-rule targets "
-                "are category thresholds, not authoritative aggregate targets.",
-                "Attendance intelligence is unavailable because no authoritative "
-                "attendance result source is integrated.",
-            ],
+        data_quality=_dashboard_data_quality(
+            kpi_row, task_diagnostics, kpi_trend, comparisons
         ),
     )

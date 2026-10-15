@@ -33,6 +33,7 @@ router = APIRouter()
 
 admin_checker = RoleChecker(['Super Admin', 'Admin'])
 DEPARTMENT_VIEW_PERMISSION = "department.view"
+PERM_DEPARTMENT_EDIT = "department.edit"
 DEPARTMENT_NOT_FOUND = "Department not found."
 
 class ChangeLevelRequest(BaseModel):
@@ -138,7 +139,7 @@ async def get_department_positions(
     },
 )
 async def update_department(dept_id: UUID, payload: DepartmentUpdate, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
-    enforce_permission(current_user, "department.edit")
+    enforce_permission(current_user, PERM_DEPARTMENT_EDIT)
     await enforce_department_scope(db, current_user, dept_id)
     dept = await department_repo.get_department_by_id(db, dept_id)
     if not dept:
@@ -170,7 +171,7 @@ async def update_department_priority(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(admin_checker),
 ):
-    enforce_permission(current_user, "department.edit")
+    enforce_permission(current_user, PERM_DEPARTMENT_EDIT)
     await enforce_department_scope(db, current_user, dept_id)
     dept = await department_repo.get_department_by_id(db, dept_id)
     if not dept:
@@ -184,7 +185,7 @@ async def update_department_priority(
 
 @router.delete(
     "/{dept_id}",
-    responses={404: {"description": "Department not found"}},
+    responses={404: {"description": "Department not found"}, 400: {"description": "Bad Request"}},
 )
 async def delete_department(dept_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
     enforce_permission(current_user, "department.delete")
@@ -213,7 +214,7 @@ async def delete_department(dept_id: UUID, db: AsyncSession = Depends(get_db), c
     },
 )
 async def restore_department(dept_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
-    enforce_permission(current_user, "department.edit")
+    enforce_permission(current_user, PERM_DEPARTMENT_EDIT)
     await enforce_department_scope(db, current_user, dept_id)
     dept = await department_repo.get_department_any(db, dept_id)
     if not dept:
@@ -229,7 +230,7 @@ async def restore_department(dept_id: UUID, db: AsyncSession = Depends(get_db), 
     responses={
         404: {"description": "Department not found"},
         500: {"description": "Permanent deletion failed"},
-    },
+    400: {"description": "Bad Request"}},
 )
 async def permanent_delete_department(dept_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
     enforce_permission(current_user, "department.delete")
@@ -273,7 +274,7 @@ async def assign_user_to_department(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(admin_checker)
 ):
-    enforce_permission(current_user, "department.edit")
+    enforce_permission(current_user, PERM_DEPARTMENT_EDIT)
     await enforce_department_scope(db, current_user, dept_id)
     dept = await department_repo.get_department_by_id(db, dept_id)
     if not dept: raise HTTPException(status_code=404, detail=DEPARTMENT_NOT_FOUND)
@@ -448,6 +449,117 @@ async def transfer_user(payload: TransferUserRequest, db: AsyncSession = Depends
 # ==============================================================================
 # 🌟 SUPER ADMIN: Department Process Tracking API
 # ==============================================================================
+def _process_metric_key(status_enum):
+    status_val = status_enum.value if hasattr(status_enum, "value") else str(status_enum)
+    if "Draft" in status_val:
+        return "DRAFT"
+    if "L1" in status_val:
+        return "PENDING_L1_REVIEW"
+    if "L0" in status_val:
+        return "PENDING_L0_REVIEW"
+    if "Completed" in status_val or "Approved" in status_val:
+        return "COMPLETED"
+    if "Rejected" in status_val:
+        return "REJECTED"
+    return None
+
+
+async def _get_department_process_metrics(db: AsyncSession, dept_id: UUID):
+    metrics_stmt = (
+        select(Task.status, func.count(Task.id))
+        .join(User, Task.owner_id == User.id)
+        .join(UserDepartment, User.id == UserDepartment.user_id)
+        .where(
+            UserDepartment.department_id == dept_id,
+            UserDepartment.is_deleted == False,
+            User.is_deleted == False,
+            Task.is_deleted == False,
+            TaskHistory.is_deleted == False,
+        )
+        .group_by(Task.status)
+    )
+    metrics_req = await db.execute(metrics_stmt)
+    process_metrics = {
+        "DRAFT": 0, "PENDING_L1_REVIEW": 0, "PENDING_L0_REVIEW": 0,
+        "COMPLETED": 0, "REJECTED": 0
+    }
+    for status_enum, count in metrics_req.all():
+        metric_key = _process_metric_key(status_enum)
+        if metric_key == "COMPLETED":
+            process_metrics[metric_key] += count
+        elif metric_key:
+            process_metrics[metric_key] = count
+    return process_metrics
+
+
+async def _get_recent_department_activities(db: AsyncSession, dept_id: UUID):
+    timeline_stmt = (
+        select(TaskHistory, Task.title, User.first_name, User.last_name)
+        .join(Task, TaskHistory.task_id == Task.id)
+        .join(UserDepartment, Task.owner_id == UserDepartment.user_id)
+        .outerjoin(User, TaskHistory.changed_by == User.id)
+        .where(
+            UserDepartment.department_id == dept_id,
+            UserDepartment.is_deleted == False,
+            User.is_deleted == False,
+            Task.is_deleted == False,
+            TaskHistory.is_deleted == False,
+        )
+        .order_by(TaskHistory.created_at.desc())
+        .limit(15)
+    )
+    timeline_req = await db.execute(timeline_stmt)
+    return [
+        {
+            "task_title": task_title,
+            "action_by": f"{f_name} {l_name}".strip() if f_name else "System",
+            "action": history.action,
+            "remarks": history.remarks,
+            "timestamp": history.created_at.isoformat()
+        }
+        for history, task_title, f_name, l_name in timeline_req.all()
+    ]
+
+
+def _progress_bucket(action):
+    action_name = str(action).upper()
+    if any(value in action_name for value in ("APPROVED", "VERIFIED", "COMPLETED")):
+        return "completed"
+    if "REJECTED" in action_name:
+        return "failed"
+    if any(value in action_name for value in ("SUBMITTED", "PENDING", "REVIEW")):
+        return "in_progress"
+    return "draft"
+
+
+async def _get_department_progress_trend(db: AsyncSession, dept_id: UUID):
+    trend_stmt = (
+        select(func.date(TaskHistory.created_at).label("day"), TaskHistory.action, func.count(TaskHistory.id))
+        .join(Task, TaskHistory.task_id == Task.id)
+        .join(UserDepartment, Task.owner_id == UserDepartment.user_id)
+        .join(User, Task.owner_id == User.id)
+        .where(
+            UserDepartment.department_id == dept_id,
+            UserDepartment.is_deleted == False,
+            User.is_deleted == False,
+            Task.is_deleted == False,
+        )
+        .group_by(func.date(TaskHistory.created_at), TaskHistory.action)
+        .order_by(func.date(TaskHistory.created_at))
+    )
+    trend_rows = (await db.execute(trend_stmt)).all()
+    trend_by_day = {}
+    for day, action, count in trend_rows:
+        bucket = trend_by_day.setdefault(
+            str(day), {"completed": 0, "in_progress": 0, "draft": 0, "failed": 0}
+        )
+        bucket[_progress_bucket(action)] += int(count)
+    return [
+        {"label": day, **values}
+        for day, values in list(trend_by_day.items())[-30:]
+    ]
+
+
 @router.get(
     "/{dept_id}/process-tracking",
     tags=["Super Admin Tracking"],
@@ -466,97 +578,11 @@ async def get_department_process_tracking(
     if not dept_check:
         raise HTTPException(status_code=404, detail=DEPARTMENT_NOT_FOUND)
 
-    # 2. ထိုဌာနအတွင်းရှိ User များ၏ Process Status များကို ရေတွက်ခြင်း (Metrics)
-    metrics_stmt = (
-        select(Task.status, func.count(Task.id))
-        .join(User, Task.owner_id == User.id)
-        .join(UserDepartment, User.id == UserDepartment.user_id)
-        .where(
-            UserDepartment.department_id == dept_id,
-            UserDepartment.is_deleted == False,
-            User.is_deleted == False,
-            Task.is_deleted == False,
-            TaskHistory.is_deleted == False,
-        )
-        .group_by(Task.status)
-    )
-    metrics_req = await db.execute(metrics_stmt)
-
-    process_metrics = {
-        "DRAFT": 0, "PENDING_L1_REVIEW": 0, "PENDING_L0_REVIEW": 0, "COMPLETED": 0, "REJECTED": 0
-    }
-
-    for status_enum, count in metrics_req.all():
-        status_val = status_enum.value if hasattr(status_enum, 'value') else str(status_enum)
-        if "Draft" in status_val: process_metrics["DRAFT"] = count
-        elif "L1" in status_val: process_metrics["PENDING_L1_REVIEW"] = count
-        elif "L0" in status_val: process_metrics["PENDING_L0_REVIEW"] = count
-        elif "Completed" in status_val or "Approved" in status_val: process_metrics["COMPLETED"] += count
-        elif "Rejected" in status_val: process_metrics["REJECTED"] = count
-
-    # 3. ဌာန၏ နောက်ဆုံး Process Timeline ဆွဲထုတ်ခြင်း
-    timeline_stmt = (
-        select(TaskHistory, Task.title, User.first_name, User.last_name)
-        .join(Task, TaskHistory.task_id == Task.id)
-        .join(UserDepartment, Task.owner_id == UserDepartment.user_id)
-        .outerjoin(User, TaskHistory.changed_by == User.id)
-        .where(
-            UserDepartment.department_id == dept_id,
-            UserDepartment.is_deleted == False,
-            User.is_deleted == False,
-            Task.is_deleted == False,
-            TaskHistory.is_deleted == False,
-        )
-        .order_by(TaskHistory.created_at.desc())
-        .limit(15)
-    )
-    timeline_req = await db.execute(timeline_stmt)
-
-    recent_activities = []
-    for history, task_title, f_name, l_name in timeline_req.all():
-        actor_name = f"{f_name} {l_name}".strip() if f_name else "System"
-        recent_activities.append({
-            "task_title": task_title,
-            "action_by": actor_name,
-            "action": history.action,
-            "remarks": history.remarks,
-            "timestamp": history.created_at.isoformat()
-        })
-
-    trend_stmt = (
-        select(func.date(TaskHistory.created_at).label("day"), TaskHistory.action, func.count(TaskHistory.id))
-        .join(Task, TaskHistory.task_id == Task.id)
-        .join(UserDepartment, Task.owner_id == UserDepartment.user_id)
-        .join(User, Task.owner_id == User.id)
-        .where(
-            UserDepartment.department_id == dept_id,
-            UserDepartment.is_deleted == False,
-            User.is_deleted == False,
-            Task.is_deleted == False,
-        )
-        .group_by(func.date(TaskHistory.created_at), TaskHistory.action)
-        .order_by(func.date(TaskHistory.created_at))
-    )
-    trend_rows = (await db.execute(trend_stmt)).all()
-    trend_by_day = {}
-    for day, action, count in trend_rows:
-        bucket = trend_by_day.setdefault(str(day), {"completed": 0, "in_progress": 0, "draft": 0, "failed": 0})
-        action_name = str(action).upper()
-        if any(value in action_name for value in ("APPROVED", "VERIFIED", "COMPLETED")):
-            bucket["completed"] += int(count)
-        elif "REJECTED" in action_name:
-            bucket["failed"] += int(count)
-        elif any(value in action_name for value in ("SUBMITTED", "PENDING", "REVIEW")):
-            bucket["in_progress"] += int(count)
-        else:
-            bucket["draft"] += int(count)
-
+    process_metrics = await _get_department_process_metrics(db, dept_id)
+    recent_activities = await _get_recent_department_activities(db, dept_id)
     return {
         "user_name": None, # Department Tracking ဖြစ်၍ User Name ကို Null ထားမည်
         "tracking_metrics": process_metrics,
         "recent_process_activities": recent_activities,
-        "progress_trend": [
-            {"label": day, **values}
-            for day, values in list(trend_by_day.items())[-30:]
-        ],
+        "progress_trend": await _get_department_progress_trend(db, dept_id),
     }

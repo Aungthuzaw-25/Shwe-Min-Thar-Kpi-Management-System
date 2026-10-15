@@ -164,19 +164,7 @@ def _permission_entry(permission, override, granted_by_role: bool) -> dict:
 # =====================================================================
 # 🌟 NEW: Bulk save user overrides
 # =====================================================================
-async def bulk_save_user_overrides(
-    db: AsyncSession,
-    user_id: UUID,
-    overrides: list[dict],
-) -> list[dict]:
-    """Atomically replace all user permission overrides.
-
-    ``overrides`` is a list of dicts with keys:
-      permission_code, allowed, scope, department_id (optional)
-
-    Only items whose state differs from the role baseline are stored; items
-    set to "inherit" (no override) are simply omitted / deleted.
-    """
+def _normalize_permission_overrides(overrides: list[dict]) -> list[dict]:
     normalized = []
     seen = set()
     for item in overrides:
@@ -199,6 +187,23 @@ async def bulk_save_user_overrides(
             "scope": scope,
             "department_id": department_id,
         })
+    return normalized
+
+
+async def bulk_save_user_overrides(
+    db: AsyncSession,
+    user_id: UUID,
+    overrides: list[dict],
+) -> list[dict]:
+    """Atomically replace all user permission overrides.
+
+    ``overrides`` is a list of dicts with keys:
+      permission_code, allowed, scope, department_id (optional)
+
+    Only items whose state differs from the role baseline are stored; items
+    set to "inherit" (no override) are simply omitted / deleted.
+    """
+    normalized = _normalize_permission_overrides(overrides)
 
     # Delete existing overrides for this user
     existing = (await db.execute(

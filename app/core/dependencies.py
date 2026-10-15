@@ -84,6 +84,55 @@ async def enforce_department_scope(
         )
 
 
+def _matching_permission_overrides(
+    user: User, permission_code: str, *, owner_id=None, department_id=None
+) -> list:
+    matching = []
+    for override in getattr(user, "permission_overrides", []) or []:
+        permission = getattr(override, "permission", None)
+        if not permission or permission.code != permission_code:
+            continue
+        scope = (override.scope or "ALL").upper()
+        if _override_matches_scope(
+            user, override, scope, owner_id=owner_id, department_id=department_id
+        ):
+            matching.append(override)
+    return matching
+
+
+def _override_matches_scope(
+    user: User, override, scope: str, *, owner_id=None, department_id=None
+) -> bool:
+    if scope == "ALL":
+        return True
+    if scope == "DEPARTMENT":
+        return (
+            department_id is not None
+            and str(override.department_id) == str(department_id)
+        )
+    if scope == "OWN":
+        return owner_id is not None and str(owner_id) == str(user.id)
+    return False
+
+
+def _has_role_permission(user: User, permission_code: str) -> bool:
+    role_permissions = getattr(user.role, "permissions", []) if user.role else []
+    return any(
+        getattr(permission, "code", None) == permission_code
+        for permission in role_permissions
+    )
+
+
+def _can_review_task_permission(user: User) -> bool:
+    department_links = getattr(user, "user_departments", []) or []
+    levels = {
+        str(getattr(link, "user_level", "")).upper().replace("LEVEL ", "L")
+        for link in department_links
+        if not getattr(link, "is_deleted", False)
+    }
+    return bool(levels.intersection({"L0", "L1"}))
+
+
 def has_effective_permission(
     user: User,
     permission_code: str,
@@ -100,20 +149,9 @@ def has_effective_permission(
     if user.role and user.role.name == SUPER_ADMIN_ROLE:
         return True
 
-    matching = []
-    for override in getattr(user, "permission_overrides", []) or []:
-        permission = getattr(override, "permission", None)
-        if not permission or permission.code != permission_code:
-            continue
-        scope = (override.scope or "ALL").upper()
-        if scope == "ALL":
-            matching.append(override)
-        elif scope == "DEPARTMENT" and department_id is not None:
-            if str(override.department_id) == str(department_id):
-                matching.append(override)
-        elif scope == "OWN" and owner_id is not None:
-            if str(owner_id) == str(user.id):
-                matching.append(override)
+    matching = _matching_permission_overrides(
+        user, permission_code, owner_id=owner_id, department_id=department_id
+    )
 
     # A deny is stronger than every role grant (and than an allow at another
     # scope), which makes accidental data exposure fail closed.
@@ -122,24 +160,13 @@ def has_effective_permission(
     if any(override.allowed is True for override in matching):
         return True
 
-    role_permissions = getattr(user.role, "permissions", []) if user.role else []
-    has_role_permission = any(
-        getattr(permission, "code", None) == permission_code
-        for permission in role_permissions
-    )
-    if not has_role_permission:
+    if not _has_role_permission(user, permission_code):
         return False
 
     # L0/L1 can review the department workflow; L2 remains a submitter.
     # Explicit user overrides above still take precedence over this level gate.
     if permission_code in LEVEL_RESTRICTED_TASK_PERMISSIONS:
-        department_links = getattr(user, "user_departments", []) or []
-        levels = {
-            str(getattr(link, "user_level", "")).upper().replace("LEVEL ", "L")
-            for link in department_links
-            if not getattr(link, "is_deleted", False)
-        }
-        return bool(levels.intersection({"L0", "L1"}))
+        return _can_review_task_permission(user)
 
     return True
 
@@ -295,6 +322,81 @@ class RequirePermission:
         self.required_permissions = required_permissions
 
     # 🌟 FIX: DB ကို ထပ်မံ Query လုပ်စရာ မလိုတော့ဘဲ get_current_user မှရလာသော Data ပေါ်မှ တိုက်ရိုက် စစ်ဆေးမည်
+    async def _resolve_owner_department(self, db: AsyncSession, owner_param):
+        if owner_param is None:
+            return None
+        try:
+            from app.modules.departments.models import UserDepartment
+
+            row = (
+                await db.execute(
+                    select(UserDepartment.department_id).where(
+                        UserDepartment.user_id == owner_param,
+                        UserDepartment.is_deleted.is_(False),
+                    )
+                )
+            ).first()
+            return row[0] if row else None
+        except Exception:
+            return None
+
+    async def _resolve_task_scope(self, db: AsyncSession, resource_id, department_id):
+        if not resource_id:
+            return None, department_id
+        from app.modules.departments.models import UserDepartment
+        from app.modules.tasks.models.task import Task
+
+        task = await db.get(Task, resource_id)
+        if not task:
+            return None, department_id
+        row = (
+            await db.execute(
+                select(UserDepartment.department_id).where(
+                    UserDepartment.user_id == task.owner_id,
+                    UserDepartment.is_deleted.is_(False),
+                )
+            )
+        ).first()
+        return task.owner_id, department_id or (row[0] if row else None)
+
+    async def _resolve_record_scope(self, db: AsyncSession, resource_id, department_id):
+        if not resource_id:
+            return None, department_id
+        from app.modules.kpi.models import KPIRecord
+
+        record = await db.get(KPIRecord, resource_id)
+        if not record:
+            return None, department_id
+        return record.user_id, department_id or record.department_id
+
+    async def _resolve_batch_owner(self, db: AsyncSession, resource_id):
+        if not resource_id:
+            return None
+        from app.modules.tasks.models.submission_batch import SubmissionBatch
+
+        batch = await db.get(SubmissionBatch, resource_id)
+        return batch.submitter_id if batch else None
+
+    async def _resolve_resource_scope(self, params, db, owner_id, department_id):
+        try:
+            task_owner, department_id = await self._resolve_task_scope(
+                db, params.get("task_id"), department_id
+            )
+            if task_owner is not None:
+                owner_id = task_owner
+            record_owner, department_id = await self._resolve_record_scope(
+                db, params.get("record_id"), department_id
+            )
+            if record_owner is not None:
+                owner_id = record_owner
+            batch_owner = await self._resolve_batch_owner(db, params.get("batch_id"))
+            if batch_owner is not None:
+                owner_id = batch_owner
+        except Exception:  # noqa: S110 - malformed scope hints remain fail-closed
+            # Unresolved scoped overrides do not match; role decisions still apply.
+            pass
+        return owner_id, department_id
+
     async def __call__(
         self,
         request: Request,
@@ -302,69 +404,22 @@ class RequirePermission:
         db: AsyncSession = Depends(get_db),
     ):
         """Check permissions and infer resource scope from common route IDs."""
-        owner_id = None
-        department_id = None
         params = request.path_params
         owner_param = next(
             (params.get(name) for name in ("owner_id", "target_user_id", "user_id")
              if params.get(name) is not None),
             None,
         )
-        if owner_param is not None:
-            owner_id = owner_param
-            try:
-                from app.modules.departments.models import UserDepartment
-                row = (await db.execute(
-                    select(UserDepartment.department_id).where(
-                        UserDepartment.user_id == owner_param,
-                        UserDepartment.is_deleted == False,
-                    )
-                )).first()
-                department_id = row[0] if row else None
-            except Exception:
-                department_id = None
-
+        owner_id = owner_param
+        department_id = await self._resolve_owner_department(db, owner_param)
         department_id = (
             params.get("department_id")
             or params.get("dept_id")
             or department_id
         )
-
-        # Resolve task/KPI/batch resources so OWN and DEPARTMENT overrides work
-        # on routes that expose only a resource UUID.
-        try:
-            resource_id = params.get("task_id")
-            if resource_id:
-                from app.modules.departments.models import UserDepartment
-                from app.modules.tasks.models.task import Task
-                task = await db.get(Task, resource_id)
-                if task:
-                    owner_id = task.owner_id
-                    row = (await db.execute(
-                        select(UserDepartment.department_id).where(
-                            UserDepartment.user_id == task.owner_id,
-                            UserDepartment.is_deleted == False,
-                        )
-                    )).first()
-                    department_id = department_id or (row[0] if row else None)
-            resource_id = params.get("record_id")
-            if resource_id:
-                from app.modules.kpi.models import KPIRecord
-                record = await db.get(KPIRecord, resource_id)
-                if record:
-                    owner_id = record.user_id
-                    department_id = department_id or record.department_id
-            resource_id = params.get("batch_id")
-            if resource_id:
-                from app.modules.tasks.models.submission_batch import SubmissionBatch
-                batch = await db.get(SubmissionBatch, resource_id)
-                if batch:
-                    owner_id = batch.submitter_id
-        except Exception:  # noqa: S110 - malformed scope hints remain fail-closed
-            # Scope resolution must never turn a malformed resource into an
-            # authorization bypass; unresolved scoped overrides simply don't
-            # match and the normal role decision remains fail-closed.
-            pass
+        owner_id, department_id = await self._resolve_resource_scope(
+            params, db, owner_id, department_id
+        )
 
         # Required permissions are OR semantics.  A deny only vetoes its own
         # permission; another explicitly granted required permission may still

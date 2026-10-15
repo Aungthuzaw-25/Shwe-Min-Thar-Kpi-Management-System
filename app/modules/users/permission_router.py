@@ -84,7 +84,12 @@ async def get_permissions_for_role(role_id: UUID, db: AsyncSession = Depends(get
     return await permission_repo.get_role_permissions(db, role_id)
 
 
-@router.put("/role/{role_id}", response_model=list[PermissionResponse], dependencies=[Depends(admin_only)])
+@router.put(
+    "/role/{role_id}",
+    response_model=list[PermissionResponse],
+    dependencies=[Depends(admin_only)],
+    responses={403: {"description": "Not authorized to manage these role permissions"}, 404: {"description": "Not Found"}, 422: {"description": "Unprocessable Entity"}},
+)
 async def update_role_permissions(
     role_id: UUID,
     payload: AssignPermissionsRequest,
@@ -202,7 +207,11 @@ async def get_user_overrides(user_id: UUID, db: AsyncSession = Depends(get_db)):
              "scope": o.scope, "department_id": o.department_id} for o, p in rows]
 
 
-@router.put("/user/{user_id}", response_model=list[UserPermissionOverrideResponse])
+@router.put(
+    "/user/{user_id}",
+    response_model=list[UserPermissionOverrideResponse],
+    responses={403: {"description": "Not authorized to manage permissions for this user"}, 404: {"description": "Not Found"}, 422: {"description": "Unprocessable Entity"}},
+)
 async def set_user_override(
     user_id: UUID,
     payload: UserPermissionOverrideRequest,
@@ -255,7 +264,11 @@ async def set_user_override(
     return await get_user_overrides(user_id, db)
 
 
-@router.delete("/user/{user_id}/{permission_code}", status_code=204)
+@router.delete(
+    "/user/{user_id}/{permission_code}",
+    status_code=204,
+    responses={403: {"description": "Not authorized to manage permissions for this user"}},
+)
 async def delete_user_override(
     user_id: UUID,
     permission_code: str,
@@ -287,7 +300,7 @@ async def delete_user_override(
 # =====================================================================
 # 5. 🌟 NEW: Effective permissions (merged role + overrides)
 # =====================================================================
-@router.get("/user/{user_id}/effective", dependencies=[Depends(admin_only)])
+@router.get("/user/{user_id}/effective", dependencies=[Depends(admin_only)], responses={404: {"description": "Not Found"}})
 async def get_user_effective_permissions(
     user_id: UUID,
     response: Response,
@@ -304,7 +317,10 @@ async def get_user_effective_permissions(
 # =====================================================================
 # 6. 🌟 NEW: Bulk save user overrides
 # =====================================================================
-@router.put("/user/{user_id}/bulk")
+@router.put(
+    "/user/{user_id}/bulk",
+    responses={403: {"description": "Not authorized to manage permissions for this user"}, 404: {"description": "Not Found"}, 422: {"description": "Unprocessable Entity"}},
+)
 async def bulk_save_user_overrides(
     user_id: UUID,
     payload: BulkUserOverrideRequest,
@@ -365,7 +381,7 @@ async def bulk_save_user_overrides(
 # =====================================================================
 # 7. 🌟 NEW: Reset user to role defaults
 # =====================================================================
-@router.delete("/user/{user_id}/all-overrides", status_code=200)
+@router.delete("/user/{user_id}/all-overrides", status_code=200, responses={403: {"description": "Forbidden"}})
 async def reset_user_overrides(
     user_id: UUID,
     db: AsyncSession = Depends(get_db),

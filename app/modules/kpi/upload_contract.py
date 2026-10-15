@@ -45,6 +45,21 @@ def _category_entries(formula: Any) -> list[dict[str, Any]]:
 def _rule_metric_headers(
     categories: list[dict[str, Any]], scoring_rules: Any
 ) -> dict[str, MetricHeader]:
+    rule_labels = _rule_labels_by_key(categories)
+    fields: dict[str, MetricHeader] = {}
+    for rule in scoring_rules or []:
+        persisted_name = str(getattr(rule, "rule_name", "") or "").strip()
+        key = normalize_header(persisted_name)
+        if not key:
+            continue
+        label = _rule_label_for_key(rule_labels, key, persisted_name)
+        _add_field(fields, MetricHeader(label=label, key=key, source="rule"))
+    return fields
+
+
+def _rule_labels_by_key(
+    categories: list[dict[str, Any]],
+) -> dict[str, set[str]]:
     rule_labels: dict[str, set[str]] = {}
     for category in categories:
         for deduction in category.get("deductions") or []:
@@ -54,23 +69,20 @@ def _rule_metric_headers(
             key = normalize_header(label)
             if key:
                 rule_labels.setdefault(key, set()).add(str(label).strip())
+    return rule_labels
 
-    fields: dict[str, MetricHeader] = {}
-    for rule in scoring_rules or []:
-        persisted_name = str(getattr(rule, "rule_name", "") or "").strip()
-        key = normalize_header(persisted_name)
-        if not key:
-            continue
-        labels = rule_labels.get(key, set())
-        if len(labels) > 1:
-            ordered_labels = sorted(labels)
-            raise HeaderContractError(
-                "KPI header normalization collision between "
-                f"'{ordered_labels[0]}' and '{ordered_labels[1]}'."
-            )
-        label = next(iter(labels)) if len(labels) == 1 else persisted_name
-        _add_field(fields, MetricHeader(label=label, key=key, source="rule"))
-    return fields
+
+def _rule_label_for_key(
+    rule_labels: dict[str, set[str]], key: str, persisted_name: str
+) -> str:
+    labels = rule_labels.get(key, set())
+    if len(labels) > 1:
+        ordered_labels = sorted(labels)
+        raise HeaderContractError(
+            "KPI header normalization collision between "
+            f"'{ordered_labels[0]}' and '{ordered_labels[1]}'."
+        )
+    return next(iter(labels)) if len(labels) == 1 else persisted_name
 
 
 def _target_metric_headers(

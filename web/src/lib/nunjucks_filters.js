@@ -1,11 +1,11 @@
 export function registerFilters(environment, nunjucks) {
   environment.addFilter("tojson", (value) => {
     const json = JSON.stringify(value)
-      .replaceAll(/</g, "\\u003c")
-      .replaceAll(/>/g, "\\u003e")
-      .replaceAll(/&/g, "\\u0026")
-      .replaceAll(/\u2028/g, "\\u2028")
-      .replaceAll(/\u2029/g, "\\u2029");
+      .replaceAll("<", "\\u003c")
+      .replaceAll(">", "\\u003e")
+      .replaceAll("&", "\\u0026")
+      .replaceAll("\u2028", "\\u2028")
+      .replaceAll("\u2029", "\\u2029");
     return new nunjucks.runtime.SafeString(json);
   });
 
@@ -31,9 +31,9 @@ export function registerFilters(environment, nunjucks) {
         };
 
     return String(format)
-      .replaceAll(/%Y/g, parts.year)
-      .replaceAll(/%m/g, parts.month)
-      .replaceAll(/%d/g, parts.day);
+      .replaceAll("%Y", parts.year)
+      .replaceAll("%m", parts.month)
+      .replaceAll("%d", parts.day);
   });
 
   environment.addFilter("items", (value) => (

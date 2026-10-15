@@ -216,6 +216,21 @@ def _parse_csv(contents: bytes) -> ParsedWorkbook:
     return _table_from_rows(rows)
 
 
+def _xlsx_row_values(cells, headers, row_number: int) -> list[Any]:
+    row_values = [cell.value for cell in cells]
+    for column_index, cell in enumerate(cells):
+        if cell.data_type == "f":
+            header = (
+                str(headers[column_index])
+                if column_index < len(headers) and headers[column_index]
+                else get_column_letter(column_index + 1)
+            )
+            raise UploadValidationError(
+                f"Row {row_number} — {header}: formula cells are not supported."
+            )
+    return row_values
+
+
 def _parse_xlsx(contents: bytes) -> ParsedWorkbook:
     try:
         workbook = load_workbook(io.BytesIO(contents), data_only=False, read_only=False)
@@ -240,17 +255,7 @@ def _parse_xlsx(contents: bytes) -> ParsedWorkbook:
         headers = [cell.value for cell in values[0]]
         rows: list[tuple[int, list[Any]]] = []
         for row_number, cells in enumerate(values[1:], start=2):
-            row_values = [cell.value for cell in cells]
-            for column_index, cell in enumerate(cells):
-                if cell.data_type == "f":
-                    header = (
-                        str(headers[column_index])
-                        if column_index < len(headers) and headers[column_index]
-                        else get_column_letter(column_index + 1)
-                    )
-                    raise UploadValidationError(
-                        f"Row {row_number} — {header}: formula cells are not supported."
-                    )
+            row_values = _xlsx_row_values(cells, headers, row_number)
             if any(value is not None and str(value).strip() for value in row_values):
                 rows.append((row_number, row_values))
         return ParsedWorkbook(headers=headers, rows=rows)
@@ -358,6 +363,105 @@ async def _build_upload_rows(
     if period is None:
         return await _build_legacy_upload_rows(workbook, db, current_user)
 
+    return await _build_period_upload_rows(workbook, db, current_user, period)
+
+
+async def _load_upload_formula_context(db, users, period):
+    formulas_by_user: dict[UUID, KPIFormula] = {}
+    contracts_by_user: dict[UUID, frozenset[str]] = {}
+    for user in users:
+        try:
+            formula = await _resolve_user_formula(db, user, period)
+        except UploadValidationError:
+            continue
+        if formula is None:
+            continue
+        formulas_by_user[user.id] = formula
+        try:
+            contracts_by_user[user.id] = frozenset(
+                field.key
+                for field in build_header_contract([formula]).metric_headers
+            )
+        except HeaderContractError as exc:
+            raise UploadValidationError(str(exc)) from exc
+    try:
+        contract = build_header_contract(list(formulas_by_user.values()))
+    except HeaderContractError as exc:
+        raise UploadValidationError(str(exc)) from exc
+    return formulas_by_user, contracts_by_user, contract
+
+
+async def _validate_period_upload_row(
+    row_number,
+    values,
+    metadata_indexes,
+    user_by_email,
+    formulas_by_user,
+    period,
+    db,
+    header_indexes,
+    metric_by_key,
+    contracts_by_user,
+):
+    email_value = values[metadata_indexes["email"]]
+    email = (
+        str(email_value).strip().casefold()
+        if isinstance(email_value, str)
+        else ""
+    )
+    if not email:
+        return None, f"Row {row_number} — Email: a non-empty email is required."
+    user = user_by_email.get(email)
+    if user is None:
+        return None, (
+            f"Row {row_number} — Email '{email}': active employee was not found "
+            "in your authorized departments."
+        )
+    formula = formulas_by_user.get(user.id)
+    if formula is None:
+        return None, (
+            f"Row {row_number} — Email '{email}': no active KPI formula is assigned "
+            "for the selected period."
+        )
+    existing_record = (
+        await db.execute(
+            select(KPIRecord).where(
+                KPIRecord.user_id == user.id,
+                KPIRecord.kpi_period_id == period.id,
+                KPIRecord.is_deleted.is_(False),
+            )
+        )
+    ).scalars().first()
+    if existing_record and (existing_record.is_frozen or existing_record.is_overridden):
+        return None, (
+            f"Row {row_number} — Email '{email}': the existing KPI record is frozen "
+            "or overridden and cannot be recalculated."
+        )
+    task_data, metric_errors = _read_upload_metrics(
+        row_number,
+        email,
+        values,
+        header_indexes,
+        metric_by_key,
+        contracts_by_user[user.id],
+    )
+    if metric_errors:
+        return None, metric_errors
+    return ValidatedUploadRow(
+        row_number=row_number,
+        email=email,
+        user=user,
+        formula=formula,
+        task_data=task_data,
+    ), None
+
+
+async def _build_period_upload_rows(
+    workbook: ParsedWorkbook,
+    db: AsyncSession,
+    current_user: User,
+    period: KPIPeriod,
+) -> tuple[list[ValidatedUploadRow], list[str]]:
     errors: list[str] = []
     department_ids = await get_authorized_department_ids(db, current_user)
     users_statement = _scoped_active_users_statement(department_ids)
@@ -367,27 +471,9 @@ async def _build_upload_rows(
         for user in users
         if user.email
     }
-
-    formulas_by_user: dict[UUID, KPIFormula] = {}
-    contracts_by_user: dict[UUID, frozenset[str]] = {}
-    for user in users:
-        try:
-            formula = await _resolve_user_formula(db, user, period)
-        except UploadValidationError:
-            continue
-        if formula is not None:
-            formulas_by_user[user.id] = formula
-            try:
-                contracts_by_user[user.id] = frozenset(
-                    field.key
-                    for field in build_header_contract([formula]).metric_headers
-                )
-            except HeaderContractError as exc:
-                raise UploadValidationError(str(exc)) from exc
-    try:
-        contract = build_header_contract(list(formulas_by_user.values()))
-    except HeaderContractError as exc:
-        raise UploadValidationError(str(exc)) from exc
+    formulas_by_user, contracts_by_user, contract = await _load_upload_formula_context(
+        db, users, period
+    )
 
     header_indexes, header_errors = _validate_headers(workbook.headers, contract)
     errors.extend(header_errors)
@@ -421,56 +507,24 @@ async def _build_upload_rows(
             errors.append(f"Row {row_number} — Email '{email}': duplicate employee row.")
             continue
         seen_emails.add(email)
-
-        user = user_by_email.get(email)
-        if user is None:
-            errors.append(
-                f"Row {row_number} — Email '{email}': active employee was not found "
-                "in your authorized departments."
-            )
-            continue
-        formula = formulas_by_user.get(user.id)
-        if formula is None:
-            errors.append(
-                f"Row {row_number} — Email '{email}': no active KPI formula is assigned "
-                "for the selected period."
-            )
-            continue
-        existing_record = (
-            await db.execute(
-                select(KPIRecord).where(
-                    KPIRecord.user_id == user.id,
-                    KPIRecord.kpi_period_id == period.id,
-                    KPIRecord.is_deleted.is_(False),
-                )
-            )
-        ).scalars().first()
-        if existing_record and (existing_record.is_frozen or existing_record.is_overridden):
-            errors.append(
-                f"Row {row_number} — Email '{email}': the existing KPI record is frozen "
-                "or overridden and cannot be recalculated."
-            )
-            continue
-
-        task_data, metric_errors = _read_upload_metrics(
+        row, row_errors = await _validate_period_upload_row(
             row_number,
-            email,
             values,
+            metadata_indexes,
+            user_by_email,
+            formulas_by_user,
+            period,
+            db,
             header_indexes,
             metric_by_key,
-            contracts_by_user[user.id],
+            contracts_by_user,
         )
-        errors.extend(metric_errors)
-        if not metric_errors:
-            validated_rows.append(
-                ValidatedUploadRow(
-                    row_number=row_number,
-                    email=email,
-                    user=user,
-                    formula=formula,
-                    task_data=task_data,
-                )
-            )
+        if isinstance(row_errors, list):
+            errors.extend(row_errors)
+        elif row_errors:
+            errors.append(row_errors)
+        if row:
+            validated_rows.append(row)
     return validated_rows, errors
 
 

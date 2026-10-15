@@ -334,7 +334,7 @@ async def _complete_oauth_login(
         return _oauth_error_redirect("Unable to complete provider sign-in.")
 
 
-@router.get("/google/start")
+@router.get("/google/start", responses={404: {"description": "Not Found"}})
 async def google_start(request: Request, remember_me: bool = False, redis=Depends(get_oauth_redis)):
     provider = _provider("google")
     nonce, verifier = create_nonce(), create_pkce_verifier()
@@ -342,14 +342,21 @@ async def google_start(request: Request, remember_me: bool = False, redis=Depend
     return RedirectResponse(await provider.authorization_url(state, nonce, verifier), status_code=303)
 
 
-@router.get("/google/callback")
+@router.get(
+    "/google/callback",
+    responses={
+        400: {"description": "Bad Request"},
+        403: {"description": "Forbidden"},
+        404: {"description": "Not Found"},
+    },
+)
 async def google_callback(request: Request, code: str | None = None, state: str | None = None,
                           error: str | None = None, iss: str | None = None,
                           db: AsyncSession = Depends(get_db)):
     return await _complete_oauth_login(request, db, "google", code, state, error, iss)
 
 
-@router.get("/microsoft/start")
+@router.get("/microsoft/start", responses={404: {"description": "Not Found"}})
 async def microsoft_start(request: Request, remember_me: bool = False, redis=Depends(get_oauth_redis)):
     provider = _provider("microsoft")
     nonce, verifier = create_nonce(), create_pkce_verifier()
@@ -357,7 +364,14 @@ async def microsoft_start(request: Request, remember_me: bool = False, redis=Dep
     return RedirectResponse(await provider.authorization_url(state, nonce, verifier), status_code=303)
 
 
-@router.get("/microsoft/callback")
+@router.get(
+    "/microsoft/callback",
+    responses={
+        400: {"description": "Bad Request"},
+        403: {"description": "Forbidden"},
+        404: {"description": "Not Found"},
+    },
+)
 async def microsoft_callback(request: Request, code: str | None = None, state: str | None = None,
                              error: str | None = None, iss: str | None = None,
                              db: AsyncSession = Depends(get_db)):
@@ -384,16 +398,93 @@ async def _link_start(provider_name: str, user: User, db: AsyncSession, redis):
     return RedirectResponse(await provider.authorization_url(state, nonce, verifier), status_code=303)
 
 
-@router.get("/google/link/start")
+@router.get("/google/link/start", responses={403: {"description": "Forbidden"}, 404: {"description": "Not Found"}})
 async def google_link_start(user: User = Depends(get_current_user),
                             db: AsyncSession = Depends(get_db), redis=Depends(get_oauth_redis)):
     return await _link_start("google", user, db, redis)
 
 
-@router.get("/microsoft/link/start")
+@router.get("/microsoft/link/start", responses={403: {"description": "Forbidden"}, 404: {"description": "Not Found"}})
 async def microsoft_link_start(user: User = Depends(get_current_user),
                                db: AsyncSession = Depends(get_db), redis=Depends(get_oauth_redis)):
     return await _link_start("microsoft", user, db, redis)
+
+
+async def _resolve_link_identity(
+    request: Request,
+    provider_name: str,
+    code: str | None,
+    state: str | None,
+    state_data: dict | None,
+    provider: OIDCProvider | None,
+) -> tuple[dict, object]:
+    if state_data is None:
+        state_data = await consume_oauth_state(get_oauth_redis(request), state or "")
+    if state_data.get("provider") != provider_name or state_data.get("flow_type") != "LINK":
+        raise HTTPException(status_code=400, detail=INVALID_OAUTH_STATE_MESSAGE)
+    provider = provider or _provider(provider_name)
+    await provider.validate_callback_issuer(request.query_params.get("iss"))
+    identity = await provider.validate_identity(
+        await provider.exchange_code(code or "", state_data["pkce_verifier"]), state_data["nonce"]
+    )
+    return state_data, identity
+
+
+async def _find_linked_account(
+    db: AsyncSession, provider_name: str, identity
+) -> OAuthAccount | None:
+    return (await db.execute(select(OAuthAccount).where(
+        OAuthAccount.provider == provider_name,
+        OAuthAccount.issuer == identity.issuer,
+        OAuthAccount.tenant_id == (identity.tenant_id or ""),
+        OAuthAccount.provider_subject == identity.subject,
+    ))).scalars().first()
+
+
+async def _reject_link_conflict(
+    db: AsyncSession, duplicate: OAuthAccount | None, user_id: str, provider_name: str
+) -> bool:
+    if duplicate and str(duplicate.user_id) != str(user_id):
+        db.add(AuditLog(action="OAUTH_IDENTITY_CONFLICT", table_name="oauth_accounts",
+                        new_value={"provider": provider_name, "reason": "already_linked"}))
+        await db.commit()
+        return True
+    return False
+
+
+async def _find_link_user(db: AsyncSession, user_id: str) -> User | None:
+    return (await db.execute(select(User).where(
+        User.id == user_id,
+        User.is_deleted.is_(False),
+    ))).scalars().first()
+
+
+def _store_linked_account(
+    db: AsyncSession, user: User, duplicate: OAuthAccount | None,
+    provider_name: str, identity,
+) -> None:
+    if duplicate:
+        duplicate.revoked_at = None
+        duplicate.provider_email = identity.email
+        duplicate.email_verified = identity.email_verified
+    else:
+        db.add(OAuthAccount(user_id=user.id, provider=provider_name, issuer=identity.issuer,
+                            tenant_id=identity.tenant_id or "", provider_subject=identity.subject,
+                            provider_email=identity.email, email_verified=identity.email_verified,
+                            linked_at=utc_now_naive()))
+    db.add(AuditLog(user_id=user.id, action="OAUTH_IDENTITY_LINKED",
+                    table_name="oauth_accounts", new_value={"provider": provider_name}))
+
+
+def _link_success_redirect(state_data: dict) -> RedirectResponse:
+    return_path = state_data.get("return_path") or PROFILE_RETURN_PATH
+    if not return_path.startswith("/") or return_path.startswith("//"):
+        return_path = PROFILE_RETURN_PATH
+    separator = "&" if "?" in return_path else "?"
+    return RedirectResponse(
+        url=f"{return_path}{separator}oauth_linked=1",
+        status_code=303,
+    )
 
 
 async def _complete_link(request: Request, db: AsyncSession, provider_name: str,
@@ -403,71 +494,51 @@ async def _complete_link(request: Request, db: AsyncSession, provider_name: str,
     if error:
         return _oauth_error_redirect("Provider sign-in was cancelled.")
     try:
-        if state_data is None:
-            state_data = await consume_oauth_state(get_oauth_redis(request), state or "")
-        if state_data.get("provider") != provider_name or state_data.get("flow_type") != "LINK":
-            raise HTTPException(status_code=400, detail=INVALID_OAUTH_STATE_MESSAGE)
-        provider = provider or _provider(provider_name)
-        await provider.validate_callback_issuer(request.query_params.get("iss"))
-        identity = await provider.validate_identity(
-            await provider.exchange_code(code or "", state_data["pkce_verifier"]), state_data["nonce"]
+        state_data, identity = await _resolve_link_identity(
+            request, provider_name, code, state, state_data, provider
         )
         user_id = state_data.get("user_id")
         if not user_id or (current_user is not None and str(current_user.id) != str(user_id)):
             raise HTTPException(status_code=403, detail="Authenticated user does not match OAuth link state.")
-        duplicate = (await db.execute(select(OAuthAccount).where(
-            OAuthAccount.provider == provider_name,
-            OAuthAccount.issuer == identity.issuer,
-            OAuthAccount.tenant_id == (identity.tenant_id or ""),
-            OAuthAccount.provider_subject == identity.subject,
-        ))).scalars().first()
-        if duplicate and str(duplicate.user_id) != str(user_id):
-            db.add(AuditLog(action="OAUTH_IDENTITY_CONFLICT", table_name="oauth_accounts",
-                            new_value={"provider": provider_name, "reason": "already_linked"}))
-            await db.commit()
+        duplicate = await _find_linked_account(db, provider_name, identity)
+        if await _reject_link_conflict(db, duplicate, user_id, provider_name):
             return _oauth_error_redirect("This provider account is already linked to another user.")
-        user = (await db.execute(select(User).where(
-            User.id == user_id,
-            User.is_deleted.is_(False),
-        ))).scalars().first()
+        user = await _find_link_user(db, user_id)
         if not user:
             return _oauth_error_redirect("Unable to link this provider account.")
         if not user.is_active or not await _recent_authentication(db, user.id):
             return _oauth_error_redirect("Recent authentication is required before linking an account.")
-        if duplicate:
-            duplicate.revoked_at = None
-            duplicate.provider_email = identity.email
-            duplicate.email_verified = identity.email_verified
-        else:
-            db.add(OAuthAccount(user_id=user.id, provider=provider_name, issuer=identity.issuer,
-                                tenant_id=identity.tenant_id or "", provider_subject=identity.subject,
-                                provider_email=identity.email, email_verified=identity.email_verified,
-                                linked_at=utc_now_naive()))
-        db.add(AuditLog(user_id=user.id, action="OAUTH_IDENTITY_LINKED",
-                        table_name="oauth_accounts", new_value={"provider": provider_name}))
+        _store_linked_account(db, user, duplicate, provider_name, identity)
         await db.commit()
-        return_path = state_data.get("return_path") or PROFILE_RETURN_PATH
-        if not return_path.startswith("/") or return_path.startswith("//"):
-            return_path = PROFILE_RETURN_PATH
-        separator = "&" if "?" in return_path else "?"
-        return RedirectResponse(
-            url=f"{return_path}{separator}oauth_linked=1",
-            status_code=303,
-        )
+        return _link_success_redirect(state_data)
     except (OIDCValidationError, HTTPException):
         return _oauth_error_redirect("Unable to link provider account.")
     except Exception:
         return _oauth_error_redirect("Unable to link provider account.")
 
 
-@router.get("/google/link/callback")
+@router.get(
+    "/google/link/callback",
+    responses={
+        400: {"description": "Bad Request"},
+        403: {"description": "Forbidden"},
+        404: {"description": "Not Found"},
+    },
+)
 async def google_link_callback(request: Request, code: str | None = None, state: str | None = None,
                                error: str | None = None, db: AsyncSession = Depends(get_db),
                                current_user: User = Depends(get_current_user)):
     return await _complete_link(request, db, "google", code, state, error, current_user)
 
 
-@router.get("/microsoft/link/callback")
+@router.get(
+    "/microsoft/link/callback",
+    responses={
+        400: {"description": "Bad Request"},
+        403: {"description": "Forbidden"},
+        404: {"description": "Not Found"},
+    },
+)
 async def microsoft_link_callback(request: Request, code: str | None = None, state: str | None = None,
                                   error: str | None = None, db: AsyncSession = Depends(get_db),
                                   current_user: User = Depends(get_current_user)):
@@ -492,16 +563,16 @@ async def _unlink_provider(user: User, provider_name: str, db: AsyncSession):
     return {"status": "unlinked"}
 
 
-@router.delete("/google/link")
+@router.delete("/google/link", responses={400: {"description": "Bad Request"}, 403: {"description": "Forbidden"}, 404: {"description": "Not Found"}})
 async def google_unlink(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     return await _unlink_provider(user, "google", db)
 
 
-@router.delete("/microsoft/link")
+@router.delete("/microsoft/link", responses={400: {"description": "Bad Request"}, 403: {"description": "Forbidden"}, 404: {"description": "Not Found"}})
 async def microsoft_unlink(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     return await _unlink_provider(user, "microsoft", db)
 
-@router.post('/change-password')
+@router.post('/change-password', responses={400: {"description": "Bad Request"}})
 @limiter.limit("5/minute")
 async def self_change_password(
     request: Request,
@@ -545,15 +616,57 @@ async def self_change_password(
 
     return {'message': 'Password changed successfully.'}
 
-@router.post('/refresh', response_model=TokenResponse)
-@limiter.limit("10/minute")
-async def refresh_token(request: Request, response: Response, payload: RefreshTokenRequest = None, db: AsyncSession = Depends(get_db)):
-    token_to_verify = None
+def _select_refresh_token(request: Request, payload: RefreshTokenRequest | None) -> str | None:
+    if payload is None:
+        cookie_refresh_token = request.cookies.get("refresh_token")
+        if cookie_refresh_token:
+            payload = RefreshTokenRequest(refresh_token=cookie_refresh_token)
     if payload and payload.refresh_token:
-        token_to_verify = payload.refresh_token
-    else:
-        token_to_verify = request.cookies.get("refresh_token")
+        return payload.refresh_token
+    return request.cookies.get("refresh_token")
 
+
+def _decode_refresh_claims(token: str) -> tuple[str, UUID, UUID]:
+    try:
+        decoded = security.decode_token(token, "refresh", require_session=True)
+        return decoded["sub"], UUID(decoded["sid"]), UUID(decoded["user_id"])
+    except (JWTError, ValueError, TypeError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token.",
+        ) from None
+
+
+async def _load_refresh_user(db: AsyncSession, email: str) -> User | None:
+    stmt = select(User).options(
+        selectinload(User.role),
+        selectinload(User.user_departments)
+    ).where(User.email == email)
+    result = await db.execute(stmt)
+    return result.scalars().first()
+
+
+async def _load_refresh_session(
+    db: AsyncSession, session_id: UUID, user: User, token_hash: str
+) -> AuthSession | None:
+    return (await db.execute(select(AuthSession).where(
+        AuthSession.id == session_id,
+        AuthSession.user_id == user.id,
+        AuthSession.refresh_token_hash == token_hash,
+        AuthSession.revoked_at.is_(None),
+        AuthSession.expires_at > datetime.now(UTC).replace(tzinfo=None),
+    ).with_for_update())).scalars().first()
+
+
+@router.post('/refresh', response_model=TokenResponse, responses={401: {"description": "Unauthorized"}})
+@limiter.limit("10/minute")
+async def refresh_token(
+    request: Request,
+    response: Response,
+    payload: RefreshTokenRequest | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    token_to_verify = _select_refresh_token(request, payload)
     if not token_to_verify:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Refresh token is missing.')
 
@@ -563,34 +676,13 @@ async def refresh_token(request: Request, response: Response, payload: RefreshTo
     if is_blacklisted.scalars().first():
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Refresh token has been revoked. Please log in again.')
 
-    try:
-        decoded = security.decode_token(token_to_verify, "refresh", require_session=True)
-        email = decoded["sub"]
-        session_id = UUID(decoded["sid"])
-        token_user_id = UUID(decoded["user_id"])
-    except (JWTError, ValueError, TypeError):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired refresh token.",
-        ) from None
-    stmt = select(User).options(
-        selectinload(User.role),
-        selectinload(User.user_departments)
-    ).where(User.email == email)
-    
-    result = await db.execute(stmt)
-    user = result.scalars().first()
+    email, session_id, token_user_id = _decode_refresh_claims(token_to_verify)
+    user = await _load_refresh_user(db, email)
 
     if not user or user.is_deleted or not user.is_active or user.id != token_user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired refresh token.")
 
-    auth_session = (await db.execute(select(AuthSession).where(
-        AuthSession.id == session_id,
-        AuthSession.user_id == user.id,
-        AuthSession.refresh_token_hash == token_hash,
-        AuthSession.revoked_at.is_(None),
-        AuthSession.expires_at > datetime.now(UTC).replace(tzinfo=None),
-    ).with_for_update())).scalars().first()
+    auth_session = await _load_refresh_session(db, session_id, user, token_hash)
     if not auth_session:
         raise HTTPException(status_code=401, detail="Refresh session has been revoked.")
     # Rotation makes a refresh token single-use. A second presentation is
@@ -606,24 +698,22 @@ async def refresh_token(request: Request, response: Response, payload: RefreshTo
     token_data = {'sub': user.email, 'user_id': str(user.id), 'sid': str(auth_session.id), 'role': role_value, 'level': user_level}
     new_access_token = security.create_access_token(data=token_data)
     new_refresh_token = security.create_refresh_token(
-        data=token_data, remember_me=bool(auth_session.remember_me) if auth_session else True
+        data=token_data, remember_me=bool(auth_session.remember_me)
     )
-    if auth_session:
-        auth_session.refresh_token_hash = security.token_digest(new_refresh_token)
-        auth_session.last_used_at = datetime.now(UTC).replace(tzinfo=None)
-        await db.commit()
+    auth_session.refresh_token_hash = security.token_digest(new_refresh_token)
+    auth_session.last_used_at = datetime.now(UTC).replace(tzinfo=None)
+    await db.commit()
 
     # Lax permits the top-level GET redirect back from an OAuth provider while
     # keeping the cookies HttpOnly and Secure in production.
     secure_cookie = cookie_secure_for_request(request)
-    persistent = bool(auth_session.remember_me) if auth_session else True
+    persistent = bool(auth_session.remember_me)
     response.set_cookie(key="access_token", value=new_access_token, httponly=True, max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60 if persistent else None, samesite=AUTH_COOKIE_SAMESITE, secure=secure_cookie)
     response.set_cookie(key="refresh_token", value=new_refresh_token, httponly=True, max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60 if persistent else None, samesite=AUTH_COOKIE_SAMESITE, secure=secure_cookie)
 
     return {'access_token': new_access_token, 'refresh_token': new_refresh_token, 'token_type': 'bearer'}
 
-@router.post("/logout")
-async def logout(request: Request, response: Response, payload: RefreshTokenRequest | None = None, db: AsyncSession = Depends(get_db)):
+def _logout_access_token(request: Request) -> str | None:
     # 1. Extract Access Token
     access_token = None
     auth_header = request.headers.get("Authorization")
@@ -633,13 +723,15 @@ async def logout(request: Request, response: Response, payload: RefreshTokenRequ
         cookie_token = request.cookies.get("access_token")
         if cookie_token:
             access_token = cookie_token.removeprefix("Bearer ").strip()
+    return access_token
 
-    # 2. Extract Refresh Token
-    refresh_token = (payload.refresh_token if payload and payload.refresh_token else request.cookies.get("refresh_token"))
 
+async def _revoke_logout_tokens(
+    db: AsyncSession, access_token: str | None, refresh_token: str | None
+) -> None:
     # 🛡️ SECURITY FIX: Invalidate both Access & Refresh Tokens in the Database
     tokens_to_revoke = [t for t in [access_token, refresh_token] if t]
-    
+
     if tokens_to_revoke:
         # ⚡ PERFORMANCE FIX: Check all presented credentials in one query.
         token_hashes = [security.token_digest(token) for token in tokens_to_revoke]
@@ -666,9 +758,16 @@ async def logout(request: Request, response: Response, payload: RefreshTokenRequ
                 session.revoked_at = datetime.now(UTC).replace(tzinfo=None)
         await db.commit()
 
+
+@router.post("/logout")
+async def logout(request: Request, response: Response, payload: RefreshTokenRequest | None = None, db: AsyncSession = Depends(get_db)):
+    access_token = _logout_access_token(request)
+    refresh_token = (payload.refresh_token if payload and payload.refresh_token else request.cookies.get("refresh_token"))
+    await _revoke_logout_tokens(db, access_token, refresh_token)
+
     # 🛡️ SECURITY FIX: Explicitly clear the strict cookies on logout
     secure_cookie = cookie_secure_for_request(request)
     response.delete_cookie(key="access_token", httponly=True, samesite=AUTH_COOKIE_SAMESITE, secure=secure_cookie)
     response.delete_cookie(key="refresh_token", httponly=True, samesite=AUTH_COOKIE_SAMESITE, secure=secure_cookie)
-    
+
     return {"message": "Logged out and tokens revoked successfully."}

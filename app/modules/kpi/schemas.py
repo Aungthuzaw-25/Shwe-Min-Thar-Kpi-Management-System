@@ -28,46 +28,84 @@ def _normalize_timeliness_category(categories: list["KPICategoryConfig"]) -> lis
         return categories
 
     normalized = [cat.model_copy(deep=True) for cat in categories]
-    late_category = next((cat for cat in normalized if _is_timeliness_category_name(cat.name)), None)
-    if late_category is not None:
-        late_category.name = TIMELINESS_CATEGORY_NAME
-        late_category.description = late_category.description or TIMELINESS_CATEGORY_DESCRIPTION
-        late_category.weight = max(float(late_category.weight), 0.01)
-        late_category.evaluation_type = "DEDUCTION"
-    else:
-        late_category = KPICategoryConfig(
-            name=TIMELINESS_CATEGORY_NAME,
-            description=TIMELINESS_CATEGORY_DESCRIPTION,
-            weight=0.01,
-            max_score=5.0,
-            evaluation_type="DEDUCTION",
-            deductions=[]
-        )
-        normalized.append(late_category)
+    _ensure_timeliness_category(normalized)
+    normalized = [
+        cat
+        for cat in normalized
+        if not _is_timeliness_category_name(cat.name)
+        or cat.name == TIMELINESS_CATEGORY_NAME
+    ]
+    late_category = _find_or_add_timeliness_category(normalized)
+    _normalize_timeliness_categories(normalized)
+    _rebalance_category_weights(normalized, late_category)
+    _validate_category_weights(normalized)
+    return normalized
 
-    normalized = [cat for cat in normalized if not _is_timeliness_category_name(cat.name) or cat.name == TIMELINESS_CATEGORY_NAME]
-    late_category_merged = next((cat for cat in normalized if cat.name == TIMELINESS_CATEGORY_NAME), None)
-    if late_category_merged is None:
-        late_category_merged = KPICategoryConfig(
-            name=TIMELINESS_CATEGORY_NAME,
-            description=TIMELINESS_CATEGORY_DESCRIPTION,
-            weight=0.01,
-            max_score=5.0,
-            evaluation_type="DEDUCTION",
-            deductions=[]
-        )
-        normalized.append(late_category_merged)
 
-    for cat in normalized:
-        if cat.name != TIMELINESS_CATEGORY_NAME:
-            continue
-        cat.name = TIMELINESS_CATEGORY_NAME
-        cat.description = cat.description or TIMELINESS_CATEGORY_DESCRIPTION
-        cat.weight = max(float(cat.weight), 0.01)
-        cat.evaluation_type = "DEDUCTION"
+def _new_timeliness_category() -> "KPICategoryConfig":
+    return KPICategoryConfig(
+        name=TIMELINESS_CATEGORY_NAME,
+        description=TIMELINESS_CATEGORY_DESCRIPTION,
+        weight=0.01,
+        max_score=5.0,
+        evaluation_type="DEDUCTION",
+        deductions=[],
+    )
 
-    non_late = [cat for cat in normalized if cat.name != TIMELINESS_CATEGORY_NAME]
-    total_weight = sum(float(cat.weight) for cat in normalized)
+
+def _ensure_timeliness_category(
+    categories: list["KPICategoryConfig"],
+) -> None:
+    category = next(
+        (cat for cat in categories if _is_timeliness_category_name(cat.name)),
+        None,
+    )
+    if category is None:
+        categories.append(_new_timeliness_category())
+        return
+    _normalize_single_timeliness_category(category)
+
+
+def _find_or_add_timeliness_category(
+    categories: list["KPICategoryConfig"],
+) -> "KPICategoryConfig":
+    category = next(
+        (cat for cat in categories if cat.name == TIMELINESS_CATEGORY_NAME),
+        None,
+    )
+    if category is None:
+        category = _new_timeliness_category()
+        categories.append(category)
+    return category
+
+
+def _normalize_single_timeliness_category(
+    category: "KPICategoryConfig",
+) -> None:
+    category.name = TIMELINESS_CATEGORY_NAME
+    category.description = category.description or TIMELINESS_CATEGORY_DESCRIPTION
+    category.weight = max(float(category.weight), 0.01)
+    category.evaluation_type = "DEDUCTION"
+
+
+def _normalize_timeliness_categories(
+    categories: list["KPICategoryConfig"],
+) -> None:
+    for category in categories:
+        if category.name == TIMELINESS_CATEGORY_NAME:
+            _normalize_single_timeliness_category(category)
+
+
+def _rebalance_category_weights(
+    categories: list["KPICategoryConfig"],
+    late_category: "KPICategoryConfig",
+) -> None:
+    non_late = [
+        category
+        for category in categories
+        if category.name != TIMELINESS_CATEGORY_NAME
+    ]
+    total_weight = sum(float(category.weight) for category in categories)
     if total_weight > 1.0:
         reduction_needed = total_weight - 1.0
         for cat in reversed(non_late):
@@ -83,13 +121,15 @@ def _normalize_timeliness_category(categories: list["KPICategoryConfig"]) -> lis
         largest = max(non_late, key=lambda cat: float(cat.weight))
         largest.weight = float(largest.weight) + remainder
 
-    late_category_merged.weight = max(float(late_category_merged.weight), 0.01)
-    final_total = sum(float(cat.weight) for cat in normalized)
+    late_category.weight = max(float(late_category.weight), 0.01)
+
+
+def _validate_category_weights(categories: list["KPICategoryConfig"]) -> None:
+    final_total = sum(float(category.weight) for category in categories)
     if final_total > 1.0 + 1e-9:
         raise ValueError("Timeliness category validation failed: final category weights must total 100%.")
     if final_total < 1.0 - 1e-9:
         raise ValueError("Timeliness category validation failed: final category weights must total 100%.")
-    return normalized
 
 # ---------------------------------------------------------
 # 1. KPI Level Settings (L0, L1, L2 အဖွင့်/အပိတ်)

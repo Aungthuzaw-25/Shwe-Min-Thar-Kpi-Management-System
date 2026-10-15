@@ -62,6 +62,89 @@ def validate_recovery_target(target_email: str, configuration=settings) -> tuple
     return normalized_email, expected_role
 
 
+async def _load_recovery_target(db: AsyncSession, email: str, expected_role: str) -> User:
+    try:
+        target_row = (
+            await db.execute(
+                select(User, Role.name)
+                .join(Role, User.role_id == Role.id)
+                .where(User.email == email)
+                .with_for_update()
+            )
+        ).first()
+    except SQLAlchemyError as exc:
+        raise RecoveryFailure("DATABASE_CONNECTION_FAILED") from exc
+    if target_row is None:
+        raise RecoveryFailure("TARGET_ACCOUNT_NOT_FOUND")
+    target, actual_role = target_row
+    if target.is_deleted:
+        raise RecoveryFailure("TARGET_VALIDATION_FAILED")
+    if actual_role != expected_role:
+        raise RecoveryFailure("ROLE_VALIDATION_FAILED")
+    return target
+
+
+async def _validate_recovery_password(
+    db: AsyncSession, target: User, new_password: str
+) -> None:
+    try:
+        validate_password_strength(new_password, **(await get_password_policy(db)))
+    except HTTPException as exc:
+        raise RecoveryFailure("PASSWORD_POLICY_FAILED") from exc
+    except SQLAlchemyError as exc:
+        raise RecoveryFailure("DATABASE_TRANSACTION_FAILED") from exc
+    except Exception as exc:
+        raise RecoveryFailure("PASSWORD_POLICY_FAILED") from exc
+
+    try:
+        password_is_new = await password_repo.check_password_history(
+            db, target.id, new_password
+        )
+    except Exception as exc:
+        raise RecoveryFailure("PASSWORD_HISTORY_CHECK_FAILED") from exc
+    if not password_is_new:
+        raise RecoveryFailure("PASSWORD_HISTORY_CHECK_FAILED")
+
+
+def _confirm_recovery(
+    confirm: Callable[[], str] | None, confirmation: str | None
+) -> None:
+    try:
+        operator_confirmation = confirm() if confirm is not None else confirmation
+    except Exception as exc:
+        raise RecoveryFailure("CONFIRMATION_FAILED") from exc
+    if operator_confirmation != CONFIRMATION_TEXT:
+        raise RecoveryFailure("CONFIRMATION_FAILED")
+
+
+async def _persist_recovery(db: AsyncSession, target: User, new_password: str) -> None:
+    try:
+        hashed_password = get_password_hash(new_password)
+        target.hashed_password = hashed_password
+        target.local_password_enabled = True
+        target.must_change_password = True
+
+        await db.execute(
+            text(
+                "UPDATE auth_sessions SET revoked_at = CURRENT_TIMESTAMP "
+                "WHERE user_id = :user_id AND revoked_at IS NULL"
+            ),
+            {"user_id": str(target.id)},
+        )
+        await db.execute(
+            text(
+                "UPDATE oauth_accounts SET revoked_at = CURRENT_TIMESTAMP "
+                "WHERE user_id = :user_id AND revoked_at IS NULL"
+            ),
+            {"user_id": str(target.id)},
+        )
+        await password_repo.add_password_history(
+            db, target.id, hashed_password, commit=False
+        )
+    except Exception as exc:
+        raise RecoveryFailure("DATABASE_TRANSACTION_FAILED") from exc
+
+
 async def recover_qa_password(
     target_email: str,
     new_password: str,
@@ -84,78 +167,10 @@ async def recover_qa_password(
         session_context = session_factory()
         async with session_context as db:
             async with db.begin():
-                try:
-                    target = (
-                        await db.execute(
-                            select(User, Role.name)
-                            .join(Role, User.role_id == Role.id)
-                            .where(User.email == email)
-                            .with_for_update()
-                        )
-                    ).first()
-                except SQLAlchemyError as exc:
-                    raise RecoveryFailure("DATABASE_CONNECTION_FAILED") from exc
-                if target is None:
-                    raise RecoveryFailure("TARGET_ACCOUNT_NOT_FOUND")
-                target, actual_role = target
-                if target.is_deleted:
-                    raise RecoveryFailure("TARGET_VALIDATION_FAILED")
-                if actual_role != expected_role:
-                    raise RecoveryFailure("ROLE_VALIDATION_FAILED")
-
-                try:
-                    validate_password_strength(
-                        new_password,
-                        **(await get_password_policy(db)),
-                    )
-                except HTTPException as exc:
-                    raise RecoveryFailure("PASSWORD_POLICY_FAILED") from exc
-                except SQLAlchemyError as exc:
-                    raise RecoveryFailure("DATABASE_TRANSACTION_FAILED") from exc
-                except Exception as exc:
-                    raise RecoveryFailure("PASSWORD_POLICY_FAILED") from exc
-
-                try:
-                    password_is_new = await password_repo.check_password_history(
-                        db, target.id, new_password
-                    )
-                except Exception as exc:
-                    raise RecoveryFailure("PASSWORD_HISTORY_CHECK_FAILED") from exc
-                if not password_is_new:
-                    raise RecoveryFailure("PASSWORD_HISTORY_CHECK_FAILED")
-
-                try:
-                    operator_confirmation = confirm() if confirm is not None else confirmation
-                except Exception as exc:
-                    raise RecoveryFailure("CONFIRMATION_FAILED") from exc
-                if operator_confirmation != CONFIRMATION_TEXT:
-                    raise RecoveryFailure("CONFIRMATION_FAILED")
-
-                try:
-                    hashed_password = get_password_hash(new_password)
-                    target.hashed_password = hashed_password
-                    target.local_password_enabled = True
-                    target.must_change_password = True
-
-                    await db.execute(
-                        text(
-                            "UPDATE auth_sessions SET revoked_at = CURRENT_TIMESTAMP "
-                            "WHERE user_id = :user_id AND revoked_at IS NULL"
-                        ),
-                        {"user_id": str(target.id)},
-                    )
-                    await db.execute(
-                        text(
-                            "UPDATE oauth_accounts SET revoked_at = CURRENT_TIMESTAMP "
-                            "WHERE user_id = :user_id AND revoked_at IS NULL"
-                        ),
-                        {"user_id": str(target.id)},
-                    )
-                    await password_repo.add_password_history(
-                        db, target.id, hashed_password, commit=False
-                    )
-                except Exception as exc:
-                    raise RecoveryFailure("DATABASE_TRANSACTION_FAILED") from exc
+                target = await _load_recovery_target(db, email, expected_role)
+                await _validate_recovery_password(db, target, new_password)
+                _confirm_recovery(confirm, confirmation)
+                await _persist_recovery(db, target, new_password)
     except RecoveryFailure:
         raise
     except SQLAlchemyError as exc:

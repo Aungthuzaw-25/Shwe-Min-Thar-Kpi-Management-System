@@ -213,6 +213,88 @@ async def review_task_l1(db: AsyncSession, task_id: UUID, payload: TaskReviewInp
 # ==============================================================================
 # ၃။ L0 Director မှ နောက်ဆုံးအတည်ပြုခြင်း (L1 ကို Penalty ပေးနိုင်သည်)
 # ==============================================================================
+async def _l0_kpi_target(db: AsyncSession, task: Task, payload: TaskReviewInput, owner_dept_id):
+    if payload.action == "APPROVED":
+        task.status = TaskStatus.COMPLETED
+        return task.owner_id, "L2", owner_dept_id
+    if payload.action == "DELAY":
+        task.status = TaskStatus.REJECTED
+        return None, None, None
+    if payload.action != "REJECTED":
+        return None, None, None
+
+    task.status = TaskStatus.PENDING_L1
+    l1_review_stmt = select(TaskReview).where(
+        TaskReview.task_id == task.id,
+        TaskReview.reviewer_level == "L1",
+        TaskReview.action == "APPROVED",
+    ).order_by(TaskReview.created_at.desc())
+    l1_review = (await db.execute(l1_review_stmt)).scalars().first()
+    if not l1_review:
+        return None, None, None
+    l1_ud_stmt = select(UserDepartment).where(
+        UserDepartment.user_id == l1_review.reviewer_id
+    )
+    l1_ud = (await db.execute(l1_ud_stmt)).scalars().first()
+    return (
+        l1_review.reviewer_id,
+        "L1",
+        l1_ud.department_id if l1_ud else owner_dept_id,
+    )
+
+
+def _l0_review_remarks(payload: TaskReviewInput):
+    if payload.action == "REJECTED" and payload.deduction_rule:
+        return f"[KPI Deduction: {payload.deduction_rule}] {payload.comments}"
+    return payload.comments
+
+
+def _l0_status_message(action: str) -> str:
+    if action == "APPROVED":
+        return "Approved"
+    if action == "REJECTED":
+        return "Rejected"
+    return "Delayed"
+
+
+async def _notify_l0_review(
+    db: AsyncSession,
+    task: Task,
+    payload: TaskReviewInput,
+    status_msg: str,
+    target_kpi_user_id,
+    target_kpi_level,
+):
+    await create_notification(
+        db,
+        {
+            "user_id": task.owner_id,
+            "title": f"Task {status_msg} (L0)",
+            "message": (
+                f"Your task '{task.title}' has been {status_msg.lower()} by Top Management."
+            ),
+            "notification_type": payload.action,
+            "channel": "DASHBOARD",
+        },
+        commit=False,
+    )
+    if payload.action == "REJECTED" and target_kpi_level == "L1" and target_kpi_user_id:
+        await create_notification(
+            db,
+            {
+                "user_id": target_kpi_user_id,
+                "title": "L1 Penalty Applied",
+                "message": (
+                    f"A task you previously approved ('{task.title}') was rejected by L0. "
+                    "A penalty has been applied to your KPI."
+                ),
+                "notification_type": "ESCALATION",
+                "channel": "DASHBOARD",
+            },
+            commit=False,
+        )
+
+
 async def verify_task_l0(db: AsyncSession, task_id: UUID, payload: TaskReviewInput, current_user_id: UUID) -> Task:
     stmt = select(Task).options(
         selectinload(Task.owner).selectinload(User.user_departments)
@@ -239,37 +321,11 @@ async def verify_task_l0(db: AsyncSession, task_id: UUID, payload: TaskReviewInp
         if task.owner and task.owner.user_departments:
             owner_dept_id = task.owner.user_departments[0].department_id
 
-        target_kpi_user_id = None
-        target_kpi_level = None
-        target_kpi_dept = None
+        target_kpi_user_id, target_kpi_level, target_kpi_dept = await _l0_kpi_target(
+            db, task, payload, owner_dept_id
+        )
 
-        if payload.action == "APPROVED":
-            task.status = TaskStatus.COMPLETED
-            target_kpi_user_id = task.owner_id
-            target_kpi_level = "L2"
-            target_kpi_dept = owner_dept_id
-        elif payload.action == "DELAY":
-            task.status = TaskStatus.REJECTED 
-        elif payload.action == "REJECTED":
-            task.status = TaskStatus.PENDING_L1 
-            
-            l1_review_stmt = select(TaskReview).where(
-                TaskReview.task_id == task.id, TaskReview.reviewer_level == 'L1', TaskReview.action == 'APPROVED'
-            ).order_by(TaskReview.created_at.desc())
-            l1_review = (await db.execute(l1_review_stmt)).scalars().first()
-            
-            if l1_review:
-                target_kpi_user_id = l1_review.reviewer_id
-                target_kpi_level = "L1"
-                
-                l1_ud_stmt = select(UserDepartment).where(UserDepartment.user_id == l1_review.reviewer_id)
-                l1_ud = (await db.execute(l1_ud_stmt)).scalars().first()
-                target_kpi_dept = l1_ud.department_id if l1_ud else owner_dept_id
-
-        final_remarks = payload.comments
-        if payload.action == "REJECTED" and payload.deduction_rule:
-             final_remarks = f"[KPI Deduction: {payload.deduction_rule}] {payload.comments}"
-
+        final_remarks = _l0_review_remarks(payload)
         review = TaskReview(
             task_id=task.id, 
             reviewer_id=current_user_id, 
@@ -279,13 +335,7 @@ async def verify_task_l0(db: AsyncSession, task_id: UUID, payload: TaskReviewInp
             is_verified_by_l0=True
         )
         db.add(review)
-        status_msg = (
-            "Approved"
-            if payload.action == "APPROVED"
-            else "Rejected"
-            if payload.action == "REJECTED"
-            else "Delayed"
-        )
+        status_msg = _l0_status_message(payload.action)
         record_activity(
             db,
             actor_id=current_user_id,
@@ -294,32 +344,14 @@ async def verify_task_l0(db: AsyncSession, task_id: UUID, payload: TaskReviewInp
             entity_id=task.id,
             description=f"{status_msg} task '{task.title}' at L0 review",
         )
-        await create_notification(
+        await _notify_l0_review(
             db,
-            {
-                "user_id": task.owner_id,
-                "title": f"Task {status_msg} (L0)",
-                "message": f"Your task '{task.title}' has been {status_msg.lower()} by Top Management.",
-                "notification_type": payload.action,
-                "channel": "DASHBOARD",
-            },
-            commit=False,
+            task,
+            payload,
+            status_msg,
+            target_kpi_user_id,
+            target_kpi_level,
         )
-        if payload.action == "REJECTED" and target_kpi_level == "L1" and target_kpi_user_id:
-            await create_notification(
-                db,
-                {
-                    "user_id": target_kpi_user_id,
-                    "title": "L1 Penalty Applied",
-                    "message": (
-                        f"A task you previously approved ('{task.title}') was rejected by L0. "
-                        "A penalty has been applied to your KPI."
-                    ),
-                    "notification_type": "ESCALATION",
-                    "channel": "DASHBOARD",
-                },
-                commit=False,
-            )
         await db.flush()
         if target_kpi_user_id and target_kpi_dept:
             target_date = task.due_date if task.due_date else datetime.now(timezone)

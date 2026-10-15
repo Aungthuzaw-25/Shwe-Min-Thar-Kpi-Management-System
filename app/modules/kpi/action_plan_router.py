@@ -51,7 +51,16 @@ async def _enforce_kpi_record_scope(
         ) from exc
 
 
-@router.post("/", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/",
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        400: {"description": "Action plan is not valid for this KPI record"},
+        403: {"description": "User cannot submit an action plan for this KPI record"},
+        404: {"description": "KPI record not found"},
+        409: {"description": "Finalized KPI periods require an explicit correction workflow"},
+    },
+)
 async def submit_action_plan(
     payload: ActionPlanCreate,
     db: AsyncSession = Depends(get_db),
@@ -96,7 +105,10 @@ async def submit_action_plan(
     return new_plan
 
 # 🌟 PERFORMANCE FIX: Added Pagination to prevent Memory Exhaustion
-@router.get("/all")
+@router.get(
+    "/all",
+    responses={403: {"description": "Not authorized to view action plans"}},
+)
 async def get_all_action_plans(
     skip: int = Query(0, ge=0), 
     limit: int = Query(100, gt=0, le=500), 
@@ -122,7 +134,13 @@ async def get_all_action_plans(
     result = await db.execute(stmt)
     return result.scalars().all()
 
-@router.get("/record/{kpi_record_id}")
+@router.get(
+    "/record/{kpi_record_id}",
+    responses={
+        403: {"description": "Not authorized to view this KPI record"},
+        404: {"description": "KPI record or action plan not found"},
+    },
+)
 async def get_action_plan(
     kpi_record_id: UUID,
     db: AsyncSession = Depends(get_db),
@@ -151,7 +169,16 @@ async def get_action_plan(
         raise HTTPException(status_code=404, detail="Action Plan not found for this record.")
     return plan
 
-@router.put("/{plan_id}/review", dependencies=[Depends(reviewer_role)])
+@router.put(
+    "/{plan_id}/review",
+    dependencies=[Depends(reviewer_role)],
+    responses={
+        400: {"description": "Invalid action plan status transition"},
+        403: {"description": "Not authorized to review this action plan"},
+        404: {"description": "Action plan not found"},
+        409: {"description": "Finalized KPI periods require an explicit correction workflow"},
+    },
+)
 async def review_action_plan(
     plan_id: UUID,
     payload: ActionPlanReview,

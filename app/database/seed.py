@@ -282,6 +282,541 @@ async def _ensure_super_admin(db, role_id):
     return True
 
 
+async def _seed_departments(db):
+    departments = [
+        {"name": "Human Resources"},
+        {"name": "Information Technology"},
+        {"name": "Finance"},
+        {"name": "Finance & Account"},
+    ]
+    dept_dict = {}
+    for dept_data in departments:
+        stmt = select(Department).where(Department.name == dept_data["name"])
+        existing_dept = (await db.execute(stmt)).scalar_one_or_none()
+        if existing_dept:
+            dept_dict[existing_dept.name] = existing_dept
+            continue
+        dept = Department(**dept_data)
+        db.add(dept)
+        await db.commit()
+        await db.refresh(dept)
+        dept_dict[dept.name] = dept
+    print("Departments seeded!")
+    return dept_dict
+
+
+async def _find_active_super_admin(db):
+    sa_user = (
+        await db.execute(
+            select(User)
+            .join(Role, User.role_id == Role.id)
+            .where(
+                Role.name == SUPER_ADMIN_ROLE,
+                User.is_deleted.is_(False),
+                User.is_active.is_(True),
+            )
+            .order_by(User.created_at.asc())
+            .limit(1)
+        )
+    ).scalars().first()
+    if sa_user is None:
+        raise RuntimeError(
+            "KPI seeding requires an active Super Admin creator. "
+            "Configure the seed/bootstrap Super Admin credentials."
+        )
+    return sa_user
+
+
+async def _ensure_active_period(db):
+    target_date = datetime.now(UTC)
+    year, month = target_date.year, target_date.month
+    period_start = datetime(year, month, 1, 0, 0, 0, tzinfo=UTC)
+    last_day = calendar.monthrange(year, month)[1]
+    period_end = datetime(year, month, last_day, 23, 59, 59, tzinfo=UTC)
+    period_label = target_date.strftime("%B %Y")
+    period = (
+        await db.execute(select(KPIPeriod).where(KPIPeriod.label == period_label))
+    ).scalars().first()
+    if not period:
+        period = KPIPeriod(
+            label=period_label,
+            start_date=period_start,
+            end_date=period_end,
+            status=KPIPeriodStatus.OPEN,
+        )
+        db.add(period)
+        await db.commit()
+        await db.refresh(period)
+        print(f"Active KPI Period '{period_label}' created!")
+    return period
+
+
+async def _ensure_formula_position(db, formula, department_id):
+    position = (
+        await db.execute(select(Position).where(Position.name == formula["pos"]))
+    ).scalars().first()
+    if position:
+        return position
+    position = Position(name=formula["pos"], department_id=department_id)
+    db.add(position)
+    await db.commit()
+    await db.refresh(position)
+    return position
+
+
+async def _ensure_formula_category_rule(db, category, formula, department_id, position_id):
+    category_name = category.get("name")
+    if not category_name:
+        return
+    existing_category = (
+        await db.execute(
+            select(KpiCategory).where(KpiCategory.name == category_name)
+        )
+    ).scalar_one_or_none()
+    if not existing_category:
+        new_category = KpiCategory(name=category_name)
+        db.add(new_category)
+        await db.commit()
+        await db.refresh(new_category)
+
+    existing_rule = (
+        await db.execute(
+            select(KpiRule).where(
+                KpiRule.department_id == department_id,
+                KpiRule.position_id == position_id,
+                KpiRule.level == formula["lvl"],
+                KpiRule.category_name == category_name,
+            )
+        )
+    ).scalar_one_or_none()
+    if existing_rule:
+        return
+    new_rule = KpiRule(
+        department_id=department_id,
+        position_id=position_id,
+        level=formula["lvl"],
+        category_name=category_name,
+        weight=category.get("weight", 0.0),
+        is_active=True,
+    )
+    db.add(new_rule)
+    await db.commit()
+    await db.refresh(new_rule)
+
+
+def _scoring_items_for_formula(formula_id, categories):
+    rule_items = []
+    for category in categories:
+        category_name = category.get("name")
+        for deduction in category.get("deductions", []):
+            rule_name = deduction.get("name", "Unknown Rule")
+            measure_type = deduction.get("measure_type", "count")
+            for rule in deduction.get("rules", []):
+                rule_items.append(
+                    KPIScoringRuleItem(
+                        formula_id=formula_id,
+                        category_name=category_name,
+                        rule_name=rule_name,
+                        measure_type=measure_type,
+                        operator=rule.get("operator", "=="),
+                        target_value=float(rule.get("value", 0)),
+                        deduct_score=float(rule.get("deduct_score", 0)),
+                    )
+                )
+    return rule_items
+
+
+async def _prepare_formula(db, formula, department_id, creator_id):
+    position = await _ensure_formula_position(db, formula, department_id)
+    existing = (
+        await db.execute(
+            select(KPIFormula).where(
+                KPIFormula.department_id == department_id,
+                KPIFormula.position_name == formula["pos"],
+                KPIFormula.region_town == formula["region"],
+            )
+        )
+    ).scalars().first()
+    if existing:
+        print(f"Skipped: {formula['formula_title']} (Already Exists)")
+        return None, [], {
+            "formula_id": existing.id,
+            "position_id": position.id,
+        }
+
+    new_formula = KPIFormula(
+        id=uuid.uuid4(),
+        name=formula["formula_title"],
+        description=f"KPI formula for {formula['pos']} in {formula['region']}",
+        expression=None,
+        department_id=department_id,
+        position_name=formula["pos"],
+        position_id=position.id,
+        region_town=formula["region"],
+        user_level=formula["lvl"],
+        categories=formula["cats"],
+        status=FormulaStatus.ACTIVE,
+        scope=FormulaScope.DEPARTMENT,
+        is_active=True,
+        version=1,
+        created_by_id=creator_id,
+    )
+    for category in formula["cats"]:
+        await _ensure_formula_category_rule(
+            db, category, formula, department_id, position.id
+        )
+    print(f"Prepared Formula & Rules: {formula['formula_title']}")
+    return (
+        new_formula,
+        _scoring_items_for_formula(new_formula.id, formula["cats"]),
+        {"formula_id": new_formula.id, "position_id": position.id},
+    )
+
+
+async def _backfill_kpi_categories(db):
+    all_formulas = (await db.execute(select(KPIFormula))).scalars().all()
+    missing_categories = {
+        category.get("name", "").strip()
+        for formula in all_formulas
+        for category in formula.categories or []
+        if isinstance(category, dict) and category.get("name", "").strip()
+    }
+    if not missing_categories:
+        return
+    existing_categories = set(
+        (
+            await db.execute(
+                select(KpiCategory.name).where(KpiCategory.name.in_(missing_categories))
+            )
+        ).scalars().all()
+    )
+    db.add_all(
+        KpiCategory(name=name)
+        for name in sorted(missing_categories - existing_categories)
+    )
+    await db.commit()
+
+
+async def _seed_formula_records(db, formulas, department_id, creator_id):
+    formulas_to_add = []
+    rules_to_add = []
+    created_formula_maps = {}
+    for formula in formulas:
+        with db.no_autoflush:
+            new_formula, rule_items, formula_map = await _prepare_formula(
+                db, formula, department_id, creator_id
+            )
+        if new_formula is not None:
+            formulas_to_add.append(new_formula)
+            rules_to_add.extend(rule_items)
+        created_formula_maps[formula["formula_title"]] = formula_map
+
+    for formula in formulas_to_add:
+        db.add(formula)
+        await db.commit()
+    for offset in range(0, len(rules_to_add), 100):
+        db.add_all(rules_to_add[offset : offset + 100])
+        await db.commit()
+    await _backfill_kpi_categories(db)
+    return created_formula_maps
+
+
+async def _seed_cashier_assignment(
+    db, created_formula_maps, role_dict, department_id, period, sa_user
+):
+    test_email = "cashier.mdy@kpi.com"
+    demo_password = (
+        resolve_seed_password("SEED_TEST_L2_PASSWORD")
+        if getattr(settings, "SEED_TEST_ACCOUNTS_ENABLED", False)
+        else None
+    ) or resolve_user_password(test_email)
+    test_user = (
+        await db.execute(select(User).where(User.email == test_email))
+    ).scalars().first()
+    formula_map = created_formula_maps.get(CASHIER_KPI_MDY)
+    if not formula_map:
+        return
+    test_user = await _synchronize_cashier_user(
+        db, test_user, demo_password, formula_map, role_dict, department_id
+    )
+    if test_user and period and sa_user:
+        await _assign_cashier_formula(
+            db, test_user, formula_map, department_id, period, sa_user
+        )
+
+
+async def _synchronize_cashier_user(
+    db, test_user, demo_password, formula_map, role_dict, department_id
+):
+    if not test_user and demo_password:
+        test_user = User(
+            email="cashier.mdy@kpi.com",
+            first_name="Aung",
+            last_name="Cashier",
+            position_id=formula_map["position_id"],
+            hashed_password=get_password_hash(demo_password),
+            role_id=role_dict[DEPARTMENT_USER_ROLE].id,
+            is_active=True,
+            must_change_password=False,
+        )
+        db.add(test_user)
+        await db.commit()
+        await db.refresh(test_user)
+        db.add(
+            UserDepartment(
+                user_id=test_user.id, department_id=department_id, user_level="L2"
+            )
+        )
+        await db.commit()
+    elif test_user and demo_password:
+        test_user.hashed_password = get_password_hash(demo_password)
+        test_user.is_active = True
+        test_user.failed_login_attempts = 0
+        test_user.is_locked = False
+        test_user.lockout_until = None
+        test_user.must_change_password = False
+        await db.commit()
+    return test_user
+
+
+async def _assign_cashier_formula(db, test_user, formula_map, department_id, period, sa_user):
+    existing_assignment = (
+        await db.execute(
+            select(KPIAssignment).where(
+                KPIAssignment.user_id == test_user.id,
+                KPIAssignment.kpi_formula_id == formula_map["formula_id"],
+                KPIAssignment.kpi_period_id == period.id,
+                KPIAssignment.is_deleted.is_(False),
+            )
+        )
+    ).scalars().first()
+    if existing_assignment:
+        return
+    db.add(
+        KPIAssignment(
+            department_id=department_id,
+            position_id=formula_map["position_id"],
+            user_id=test_user.id,
+            kpi_formula_id=formula_map["formula_id"],
+            kpi_period_id=period.id,
+            assigned_by_id=sa_user.id,
+            assigned_at=datetime.now(UTC).replace(tzinfo=None),
+        )
+    )
+    await db.commit()
+
+
+async def _ensure_finance_positions(db, department_id):
+    positions = (
+        await db.execute(
+            select(Position).where(
+                Position.name.in_(["Accountant", SENIOR_ACCOUNTANT_POSITION])
+            )
+        )
+    ).scalars().all()
+    position_dict = {position.name: position for position in positions}
+    for name in ("Accountant", SENIOR_ACCOUNTANT_POSITION):
+        if name in position_dict:
+            continue
+        position = Position(name=name, department_id=department_id)
+        db.add(position)
+        await db.commit()
+        await db.refresh(position)
+        position_dict[position.name] = position
+    return position_dict
+
+
+async def _ensure_finance_user(
+    db, email, last_name, user_level, department_id, role_dict, position_dict
+):
+    existing = (
+        await db.execute(select(User).where(User.email == email))
+    ).scalars().first()
+    password = (
+        resolve_seed_password(f"SEED_TEST_{user_level}_PASSWORD")
+        if getattr(settings, "SEED_TEST_ACCOUNTS_ENABLED", False)
+        else None
+    ) or resolve_user_password(email)
+    position = position_dict[
+        SENIOR_ACCOUNTANT_POSITION if user_level == "L1" else "Accountant"
+    ]
+    if existing:
+        return await _update_finance_user(
+            db, existing, password, position, department_id, user_level
+        )
+    if not password:
+        return None
+    user = User(
+        email=email,
+        first_name="Finance",
+        last_name=last_name,
+        position_id=position.id,
+        hashed_password=get_password_hash(password),
+        role_id=role_dict[DEPARTMENT_USER_ROLE].id,
+        is_active=True,
+        must_change_password=False,
+    )
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    db.add(UserDepartment(user_id=user.id, department_id=department_id, user_level=user_level))
+    await db.commit()
+    return user
+
+
+async def _update_finance_user(db, user, password, position, department_id, user_level):
+    if getattr(settings, "SEED_TEST_ACCOUNTS_ENABLED", False) and password:
+        user.hashed_password = get_password_hash(password)
+        user.is_active = True
+        user.is_locked = False
+        user.failed_login_attempts = 0
+        user.lockout_until = None
+        user.must_change_password = False
+    user.position_id = position.id
+    department_link = (
+        await db.execute(
+            select(UserDepartment).where(
+                UserDepartment.user_id == user.id,
+                UserDepartment.department_id == department_id,
+            )
+        )
+    ).scalars().first()
+    if not department_link:
+        db.add(
+            UserDepartment(
+                user_id=user.id, department_id=department_id, user_level=user_level
+            )
+        )
+    elif department_link.user_level != user_level:
+        department_link.user_level = user_level
+    await db.commit()
+    return user
+
+
+async def _ensure_local_test_account(
+    db,
+    account,
+    role_name,
+    first_name,
+    last_name,
+    role_dict,
+    *,
+    must_change_password,
+    department_id=None,
+    position=None,
+    user_level=None,
+):
+    if not account:
+        return None
+    email, password = account
+    existing = (
+        await db.execute(select(User).where(User.email == email))
+    ).scalars().first()
+    if existing is None:
+        existing = User(
+            email=email,
+            first_name=first_name,
+            last_name=last_name,
+            hashed_password=get_password_hash(password),
+            role_id=role_dict[role_name].id,
+            position_id=position.id if position else None,
+            is_active=True,
+            must_change_password=must_change_password,
+        )
+        db.add(existing)
+        await db.commit()
+        await db.refresh(existing)
+    else:
+        _update_test_account(
+            existing, password, role_dict, role_name, must_change_password, position
+        )
+        await db.commit()
+    if department_id and user_level:
+        await _ensure_user_department(db, existing, department_id, user_level)
+    return existing
+
+
+def _update_test_account(user, password, role_dict, role_name, must_change_password, position):
+    user.hashed_password = get_password_hash(password)
+    user.role_id = role_dict[role_name].id
+    user.position_id = position.id if position else None
+    user.is_active = True
+    user.is_locked = False
+    user.failed_login_attempts = 0
+    user.lockout_until = None
+    user.must_change_password = must_change_password
+
+
+async def _ensure_user_department(db, user, department_id, user_level):
+    department_link = (
+        await db.execute(
+            select(UserDepartment).where(
+                UserDepartment.user_id == user.id,
+                UserDepartment.department_id == department_id,
+            )
+        )
+    ).scalars().first()
+    if department_link is None:
+        db.add(
+            UserDepartment(
+                user_id=user.id, department_id=department_id, user_level=user_level
+            )
+        )
+    else:
+        department_link.user_level = user_level
+    await db.commit()
+
+
+async def _seed_assignment_users(
+    db, created_formula_maps, role_dict, department_id, period, sa_user
+):
+    await _seed_cashier_assignment(
+        db, created_formula_maps, role_dict, department_id, period, sa_user
+    )
+    position_dict = await _ensure_finance_positions(db, department_id)
+    await _ensure_finance_user(
+        db, "finance.l0@kpi.com", "L0", "L0", department_id, role_dict, position_dict
+    )
+    await _ensure_finance_user(
+        db, "finance.l1@kpi.com", "L1", "L1", department_id, role_dict, position_dict
+    )
+    if getattr(settings, "SEED_TEST_ACCOUNTS_ENABLED", False):
+        shared = {"db": db, "role_dict": role_dict}
+        await _ensure_local_test_account(
+            account=resolve_test_account("SUPERADMIN"),
+            role_name=SUPER_ADMIN_ROLE,
+            first_name=PHASE_2_5,
+            last_name=SUPER_ADMIN_ROLE,
+            must_change_password=False,
+            **shared,
+        )
+        await _ensure_local_test_account(
+            account=resolve_test_account("ADMIN"),
+            role_name="Admin",
+            first_name=PHASE_2_5,
+            last_name="Admin",
+            must_change_password=False,
+            department_id=department_id,
+            position=position_dict["Accountant"],
+            user_level="L0",
+            **shared,
+        )
+        await _ensure_local_test_account(
+            account=resolve_test_account("FIRST_LOGIN"),
+            role_name=DEPARTMENT_USER_ROLE,
+            first_name=PHASE_2_5,
+            last_name="First Login",
+            must_change_password=True,
+            department_id=department_id,
+            position=position_dict["Accountant"],
+            user_level="L2",
+            **shared,
+        )
+        print("Optional local Phase 2.5 test accounts synchronized.")
+    print("KPI assignment and department user seed complete.")
+    print("✅ Database seeding completed successfully! All rules and relations are perfectly configured.")
+
+
 async def _run_seed():
     async with AsyncSessionLocal() as db:
         print("Starting database seed...")
@@ -289,28 +824,7 @@ async def _run_seed():
         await _seed_permissions(db)
         print("Permission catalog seeded!")
 
-        # 1. Departments
-        departments = [
-            {"name": "Human Resources"},
-            {"name": "Information Technology"},
-            {"name": "Finance"},
-            {"name": "Finance & Account"} 
-        ]
-        
-        dept_dict = {}
-        for dept_data in departments:
-            stmt = select(Department).where(Department.name == dept_data["name"])
-            existing_dept = (await db.execute(stmt)).scalar_one_or_none()
-            if not existing_dept:
-                dept = Department(**dept_data)
-                db.add(dept)
-                await db.commit()
-                await db.refresh(dept)
-                dept_dict[dept.name] = dept
-            else:
-                dept_dict[existing_dept.name] = existing_dept
-                
-        print("Departments seeded!")
+        dept_dict = await _seed_departments(db)
 
         # 2. Roles and permissions
         role_dict = await ensure_roles_and_permissions(db)
@@ -320,46 +834,10 @@ async def _run_seed():
         await _ensure_super_admin(db, role_dict[SUPER_ADMIN_ROLE].id)
         # KPI formulas and assignments are authored by the existing internal
         # Super Admin, not by the demo employee used for assignment coverage.
-        sa_user = (
-            await db.execute(
-                select(User)
-                .join(Role, User.role_id == Role.id)
-                .where(
-                    Role.name == SUPER_ADMIN_ROLE,
-                    User.is_deleted.is_(False),
-                    User.is_active.is_(True),
-                )
-                .order_by(User.created_at.asc())
-                .limit(1)
-            )
-        ).scalars().first()
-        if sa_user is None:
-            raise RuntimeError(
-                "KPI seeding requires an active Super Admin creator. "
-                "Configure the seed/bootstrap Super Admin credentials."
-            )
+        sa_user = await _find_active_super_admin(db)
 
         # 🌟 4. KPI Period Setup (Active Cycle) 🌟
-        target_date = datetime.now(UTC)
-        year, month = target_date.year, target_date.month
-        period_start = datetime(year, month, 1, 0, 0, 0, tzinfo=UTC)
-        last_day = calendar.monthrange(year, month)[1]
-        period_end = datetime(year, month, last_day, 23, 59, 59, tzinfo=UTC)
-        period_label = target_date.strftime("%B %Y")
-        
-        stmt = select(KPIPeriod).where(KPIPeriod.label == period_label)
-        period = (await db.execute(stmt)).scalars().first()
-        if not period:
-            period = KPIPeriod(
-                label=period_label, 
-                start_date=period_start, 
-                end_date=period_end, 
-                status=KPIPeriodStatus.OPEN
-            )
-            db.add(period)
-            await db.commit()
-            await db.refresh(period)
-            print(f"Active KPI Period '{period_label}' created!")
+        period = await _ensure_active_period(db)
 
         # 5. KPI Formulas & Scoring Rules Seeding
         print("Starting KPI Formula Seeding...")
@@ -418,376 +896,14 @@ async def _run_seed():
             ]}
         ]
 
-        formulas_to_add = []
-        rules_to_add = [] 
-        
-        # Keep track of created items for Assignment Phase
-        created_formula_maps = {} 
+        created_formula_maps = await _seed_formula_records(
+            db, formulas, finance_dept_id, sa_user.id if sa_user else None
+        )
 
-        for f in formulas:
-            with db.no_autoflush:
-                # 🌟 Database ဆက်စပ်မှုအတွက် Position ကို သေချာစွာ ရှာဖွေ/တည်ဆောက်မည်
-                stmt_pos = select(Position).where(Position.name == f["pos"])
-                pos_obj = (await db.execute(stmt_pos)).scalars().first()
-                if not pos_obj:
-                    pos_obj = Position(name=f["pos"], department_id=finance_dept_id)
-                    db.add(pos_obj)
-                    await db.commit()
-                    await db.refresh(pos_obj)
-
-                stmt = select(KPIFormula).where(
-                    KPIFormula.department_id == finance_dept_id,
-                    KPIFormula.position_name == f["pos"],
-                    KPIFormula.region_town == f["region"]
-                )
-                exists = (await db.execute(stmt)).scalars().first()
-
-                if not exists:
-                    new_f = KPIFormula()
-                    new_f.id = uuid.uuid4()
-                    new_f.name = f["formula_title"]
-                    new_f.description = f"KPI formula for {f['pos']} in {f['region']}"
-                    new_f.expression = None
-                    new_f.department_id = finance_dept_id
-                    new_f.position_name = f["pos"]
-                    new_f.position_id = pos_obj.id  # 🌟 Linked to actual Position table
-                    new_f.region_town = f["region"]
-                    new_f.user_level = f["lvl"]
-                    new_f.categories = f["cats"]
-                    new_f.status = FormulaStatus.ACTIVE
-                    new_f.scope = FormulaScope.DEPARTMENT
-                    new_f.is_active = True
-                    new_f.version = 1
-                    new_f.created_by_id = sa_user.id if sa_user else None
-                    
-                    # Upsert KPI categories (create if not exists)
-                    for cat in f["cats"]:
-                        cat_name = cat.get("name")
-                        if cat_name:
-                            stmt_cat = select(KpiCategory).where(KpiCategory.name == cat_name)
-                            existing_cat = (await db.execute(stmt_cat)).scalar_one_or_none()
-                            if not existing_cat:
-                                new_cat = KpiCategory(name=cat_name)
-                                db.add(new_cat)
-                                await db.commit()
-                                await db.refresh(new_cat)
-                            # Create or ensure KpiRule entry for this category
-                            stmt_rule = select(KpiRule).where(
-                                KpiRule.department_id == finance_dept_id,
-                                KpiRule.position_id == pos_obj.id,
-                                KpiRule.level == f["lvl"],
-                                KpiRule.category_name == cat_name,
-                            )
-                            existing_rule = (await db.execute(stmt_rule)).scalar_one_or_none()
-                            if not existing_rule:
-                                new_rule = KpiRule(
-                                    department_id=finance_dept_id,
-                                    position_id=pos_obj.id,
-                                    level=f["lvl"],
-                                    category_name=cat_name,
-                                    weight=cat.get("weight", 0.0),
-                                    is_active=True,
-                                )
-                                db.add(new_rule)
-                                await db.commit()
-                                await db.refresh(new_rule)
-                    
-                    formulas_to_add.append(new_f)
-                    created_formula_maps[f["formula_title"]] = {"formula_id": new_f.id, "position_id": pos_obj.id}
-
-
-                    # 🌟 Normalized Scoring Rules များ သေချာ ထည့်သွင်းခြင်း
-                    for cat in f["cats"]:
-                        cat_name = cat.get("name")
-                        for ded in cat.get("deductions", []):
-                            rule_name = ded.get("name", "Unknown Rule")
-                            measure_type = ded.get("measure_type", "count")
-                            for rule in ded.get("rules", []):
-                                op = rule.get("operator", "==")
-                                val = float(rule.get("value", 0))
-                                score = float(rule.get("deduct_score", 0))
-                                
-                                new_rule_item = KPIScoringRuleItem(
-                                    formula_id=new_f.id,
-                                    category_name=cat_name,
-                                    rule_name=rule_name,
-                                    measure_type=measure_type,
-                                    operator=op,
-                                    target_value=val,
-                                    deduct_score=score
-                                )
-                                rules_to_add.append(new_rule_item)
-                                
-                    print(f"Prepared Formula & Rules: {f['formula_title']}")
-                else:
-                    print(f"Skipped: {f['formula_title']} (Already Exists)")
-                    created_formula_maps[f["formula_title"]] = {"formula_id": exists.id, "position_id": pos_obj.id}
-
-        # Insert formulas individually to avoid large transaction overload
-        for formula in formulas_to_add:
-            db.add(formula)
-            await db.commit()
-
-        # Insert scoring rules in manageable batches (e.g., 100 at a time)
-        batch_size = 100
-        for i in range(0, len(rules_to_add), batch_size):
-            db.add_all(rules_to_add[i:i + batch_size])
-            await db.commit()
-            # Redundant batch insertion removed
-        # Redundant rule batch insertion removed – rules already inserted in batches above
-
-        # Backfill the canonical category lookup for formulas created by
-        # earlier seed versions as well as newly-created formulas.
-        all_formulas = (await db.execute(select(KPIFormula))).scalars().all()
-        missing_categories = set()
-        for formula in all_formulas:
-            for category in formula.categories or []:
-                category_name = category.get("name", "").strip() if isinstance(category, dict) else ""
-                if category_name:
-                    missing_categories.add(category_name)
-        if missing_categories:
-            existing_categories = set(
-                (
-                    await db.execute(
-                        select(KpiCategory.name).where(KpiCategory.name.in_(missing_categories))
-                    )
-                ).scalars().all()
-            )
-            db.add_all(
-                KpiCategory(name=name)
-                for name in sorted(missing_categories - existing_categories)
-            )
-            await db.commit()
-
-        # 🌟 6. Link Everything Together (User -> Assignment -> Formula -> Period) 🌟
         print("Finalizing KPI Assignments linking...")
-        
-        test_email = "cashier.mdy@kpi.com"
-        demo_password = (
-            resolve_seed_password("SEED_TEST_L2_PASSWORD")
-            if getattr(settings, "SEED_TEST_ACCOUNTS_ENABLED", False)
-            else None
-        ) or resolve_user_password(test_email)
-        stmt = select(User).where(User.email == test_email)
-        test_user = (await db.execute(stmt)).scalars().first()
-        
-        if CASHIER_KPI_MDY in created_formula_maps:
-            f_map = created_formula_maps[CASHIER_KPI_MDY]
-
-            if not test_user and demo_password:
-                test_user = User(
-                    email=test_email,
-                    first_name="Aung",
-                    last_name="Cashier",
-                    position_id=f_map["position_id"],
-                    hashed_password=get_password_hash(demo_password),
-                    role_id=role_dict[DEPARTMENT_USER_ROLE].id,
-                    is_active=True,
-                    must_change_password=False,
-                )
-                db.add(test_user)
-                await db.commit()
-                await db.refresh(test_user)
-
-                db.add(UserDepartment(user_id=test_user.id, department_id=finance_dept_id, user_level="L2"))
-                await db.commit()
-            elif test_user and demo_password:
-                test_user.hashed_password = get_password_hash(demo_password)
-                test_user.is_active = True
-                test_user.failed_login_attempts = 0
-                test_user.is_locked = False
-                test_user.lockout_until = None
-                test_user.must_change_password = False
-                await db.commit()
-
-            if test_user and period and sa_user:
-                existing_assignment = (await db.execute(
-                    select(KPIAssignment).where(
-                        KPIAssignment.user_id == test_user.id,
-                        KPIAssignment.kpi_formula_id == f_map["formula_id"],
-                        KPIAssignment.kpi_period_id == period.id,
-                        KPIAssignment.is_deleted.is_(False),
-                    )
-                )).scalars().first()
-                if not existing_assignment:
-                    db.add(KPIAssignment(
-                        department_id=finance_dept_id,
-                        position_id=f_map["position_id"],
-                        user_id=test_user.id,
-                        kpi_formula_id=f_map["formula_id"],
-                        kpi_period_id=period.id,
-                        assigned_by_id=sa_user.id,
-                        assigned_at=datetime.now(UTC).replace(tzinfo=None),
-                    ))
-                    await db.commit()
-
-        position_dict = {}
-        finance_positions = (await db.execute(
-            select(Position).where(Position.name.in_(["Accountant", SENIOR_ACCOUNTANT_POSITION]))
-        )).scalars().all()
-        for position in finance_positions:
-            position_dict[position.name] = position
-
-        if "Accountant" not in position_dict:
-            accountant_position = Position(name="Accountant", department_id=finance_dept_id)
-            db.add(accountant_position)
-            await db.commit()
-            await db.refresh(accountant_position)
-            position_dict[accountant_position.name] = accountant_position
-        if SENIOR_ACCOUNTANT_POSITION not in position_dict:
-            senior_accountant_position = Position(
-                name=SENIOR_ACCOUNTANT_POSITION, department_id=finance_dept_id
-            )
-            db.add(senior_accountant_position)
-            await db.commit()
-            await db.refresh(senior_accountant_position)
-            position_dict[senior_accountant_position.name] = senior_accountant_position
-
-        async def _ensure_finance_user(email: str, last_name: str, user_level: str):
-            existing = (await db.execute(select(User).where(User.email == email))).scalars().first()
-            password = (
-                resolve_seed_password(f"SEED_TEST_{user_level}_PASSWORD")
-                if getattr(settings, "SEED_TEST_ACCOUNTS_ENABLED", False)
-                else None
-            ) or resolve_user_password(email)
-            position = position_dict[
-                SENIOR_ACCOUNTANT_POSITION if user_level == "L1" else "Accountant"
-            ]
-
-            if existing:
-                if getattr(settings, "SEED_TEST_ACCOUNTS_ENABLED", False) and password:
-                    existing.hashed_password = get_password_hash(password)
-                    existing.is_active = True
-                    existing.is_locked = False
-                    existing.failed_login_attempts = 0
-                    existing.lockout_until = None
-                    existing.must_change_password = False
-                existing.position_id = position.id
-                dept_link = (await db.execute(
-                    select(UserDepartment).where(
-                        UserDepartment.user_id == existing.id,
-                        UserDepartment.department_id == finance_dept_id,
-                    )
-                )).scalars().first()
-                if not dept_link:
-                    db.add(UserDepartment(user_id=existing.id, department_id=finance_dept_id, user_level=user_level))
-                elif dept_link.user_level != user_level:
-                    dept_link.user_level = user_level
-                await db.commit()
-                return existing
-
-            if not password:
-                return None
-            user = User(
-                email=email,
-                first_name="Finance",
-                last_name=last_name,
-                position_id=position.id,
-                hashed_password=get_password_hash(password),
-                role_id=role_dict[DEPARTMENT_USER_ROLE].id,
-                is_active=True,
-                must_change_password=False,
-            )
-            db.add(user)
-            await db.commit()
-            await db.refresh(user)
-            db.add(UserDepartment(user_id=user.id, department_id=finance_dept_id, user_level=user_level))
-            await db.commit()
-            return user
-
-        await _ensure_finance_user("finance.l0@kpi.com", "L0", "L0")
-        await _ensure_finance_user("finance.l1@kpi.com", "L1", "L1")
-
-        async def _ensure_local_test_account(
-            account: tuple[str, str] | None,
-            role_name: str,
-            first_name: str,
-            last_name: str,
-            *,
-            must_change_password: bool,
-            department_id=None,
-            position=None,
-            user_level: str | None = None,
-        ):
-            if not account:
-                return None
-            email, password = account
-            existing = (await db.execute(select(User).where(User.email == email))).scalars().first()
-            if existing is None:
-                existing = User(
-                    email=email,
-                    first_name=first_name,
-                    last_name=last_name,
-                    hashed_password=get_password_hash(password),
-                    role_id=role_dict[role_name].id,
-                    position_id=position.id if position else None,
-                    is_active=True,
-                    must_change_password=must_change_password,
-                )
-                db.add(existing)
-                await db.commit()
-                await db.refresh(existing)
-            else:
-                existing.hashed_password = get_password_hash(password)
-                existing.role_id = role_dict[role_name].id
-                existing.position_id = position.id if position else None
-                existing.is_active = True
-                existing.is_locked = False
-                existing.failed_login_attempts = 0
-                existing.lockout_until = None
-                existing.must_change_password = must_change_password
-                await db.commit()
-
-            if department_id and user_level:
-                dept_link = (await db.execute(
-                    select(UserDepartment).where(
-                        UserDepartment.user_id == existing.id,
-                        UserDepartment.department_id == department_id,
-                    )
-                )).scalars().first()
-                if dept_link is None:
-                    db.add(UserDepartment(
-                        user_id=existing.id,
-                        department_id=department_id,
-                        user_level=user_level,
-                    ))
-                else:
-                    dept_link.user_level = user_level
-                await db.commit()
-            return existing
-
-        if getattr(settings, "SEED_TEST_ACCOUNTS_ENABLED", False):
-            await _ensure_local_test_account(
-                resolve_test_account("SUPERADMIN"),
-                SUPER_ADMIN_ROLE,
-                PHASE_2_5,
-                SUPER_ADMIN_ROLE,
-                must_change_password=False,
-            )
-            await _ensure_local_test_account(
-                resolve_test_account("ADMIN"),
-                "Admin",
-                PHASE_2_5,
-                "Admin",
-                must_change_password=False,
-                department_id=finance_dept_id,
-                position=position_dict["Accountant"],
-                user_level="L0",
-            )
-            await _ensure_local_test_account(
-                resolve_test_account("FIRST_LOGIN"),
-                DEPARTMENT_USER_ROLE,
-                PHASE_2_5,
-                "First Login",
-                must_change_password=True,
-                department_id=finance_dept_id,
-                position=position_dict["Accountant"],
-                user_level="L2",
-            )
-            print("Optional local Phase 2.5 test accounts synchronized.")
-
-        print("KPI assignment and department user seed complete.")
-        print("✅ Database seeding completed successfully! All rules and relations are perfectly configured.")
+        await _seed_assignment_users(
+            db, created_formula_maps, role_dict, finance_dept_id, period, sa_user
+        )
 
 
 async def run_seed():

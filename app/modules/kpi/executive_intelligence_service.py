@@ -379,12 +379,31 @@ async def _load_trend(
     department_ids: list[UUID] | None,
 ) -> ExecutiveTrend:
     if selected_period_type is None:
-        return ExecutiveTrend(
-            points=[],
-            delta=None,
-            direction="UNAVAILABLE",
-            comparison_available=False,
-        )
+        return _unavailable_trend()
+    periods = await _matching_trend_periods(
+        db, selected_period, selected_period_type
+    )
+    period_ids = [period.id for period in periods]
+    aggregate_rows = await _trend_aggregate_rows(
+        db, period_ids, selected_period_type, scope_user_ids, department_ids
+    )
+    points = _trend_points(periods, aggregate_rows)
+    delta, direction = _trend_comparison(
+        points, selected_period, aggregate_rows
+    )
+    return ExecutiveTrend(
+        points=points,
+        delta=delta,
+        direction=direction,
+        comparison_available=direction != "UNAVAILABLE",
+    )
+
+
+async def _matching_trend_periods(
+    db: AsyncSession,
+    selected_period: KPIPeriod,
+    selected_period_type: PeriodType,
+) -> list[KPIPeriod]:
     period_ids_with_matching_type = (
         select(KPIRecord.kpi_period_id)
         .join(User, User.id == KPIRecord.user_id)
@@ -430,49 +449,68 @@ async def _load_trend(
         .all()
     )
     periods.reverse()
-    period_ids = [period.id for period in periods]
-    aggregate_rows = {}
-    if period_ids:
-        records = _ranked_records(period_ids, selected_period_type)
-        rows = (
-            await db.execute(
-                select(
-                    records.c.kpi_period_id,
-                    func.avg(records.c.percentage).label("average_percentage"),
-                    func.count(records.c.id).label("evaluated_count"),
-                    *_status_columns(records),
-                )
-                .where(*_record_filters(records, scope_user_ids, department_ids))
-                .group_by(records.c.kpi_period_id)
-            )
-        ).all()
-        aggregate_rows = {row.kpi_period_id: row for row in rows}
+    return periods
 
+
+async def _trend_aggregate_rows(
+    db: AsyncSession,
+    period_ids: list[UUID],
+    selected_period_type: PeriodType,
+    scope_user_ids: list[UUID] | None,
+    department_ids: list[UUID] | None,
+) -> dict:
+    if not period_ids:
+        return {}
+    records = _ranked_records(period_ids, selected_period_type)
+    rows = (
+        await db.execute(
+            select(
+                records.c.kpi_period_id,
+                func.avg(records.c.percentage).label("average_percentage"),
+                func.count(records.c.id).label("evaluated_count"),
+                *_status_columns(records),
+            )
+            .where(*_record_filters(records, scope_user_ids, department_ids))
+            .group_by(records.c.kpi_period_id)
+        )
+    ).all()
+    return {row.kpi_period_id: row for row in rows}
+
+
+def _trend_points(periods: list[KPIPeriod], aggregate_rows: dict) -> list[ExecutiveTrendPoint]:
     points = []
     for period in periods:
-        row = aggregate_rows.get(period.id)
-        evaluated_count = int(row.evaluated_count or 0) if row else 0
-        points.append(
-            ExecutiveTrendPoint(
-                period_id=period.id,
-                period_label=period.label,
-                average_percentage=(
-                    _round_metric(row.average_percentage) if row else None
-                ),
-                evaluated_employee_count=evaluated_count,
-                status_distribution=(
-                    _status_distribution(row, evaluated_count)
-                    if row
-                    else [
-                        ExecutiveStatusCount(
-                            status=status, count=0, percentage=None
-                        )
-                        for status in STATUS_ORDER
-                    ]
-                ),
-            )
-        )
+        points.append(_trend_point(period, aggregate_rows.get(period.id)))
+    return points
 
+
+def _trend_point(
+    period: KPIPeriod, row
+) -> ExecutiveTrendPoint:
+    evaluated_count = int(row.evaluated_count or 0) if row else 0
+    return ExecutiveTrendPoint(
+        period_id=period.id,
+        period_label=period.label,
+        average_percentage=(
+            _round_metric(row.average_percentage) if row else None
+        ),
+        evaluated_employee_count=evaluated_count,
+        status_distribution=(
+            _status_distribution(row, evaluated_count)
+            if row
+            else [
+                ExecutiveStatusCount(status=status, count=0, percentage=None)
+                for status in STATUS_ORDER
+            ]
+        ),
+    )
+
+
+def _trend_comparison(
+    points: list[ExecutiveTrendPoint],
+    selected_period: KPIPeriod,
+    aggregate_rows: dict,
+) -> tuple[float | None, str]:
     selected_point = next(
         (point for point in points if point.period_id == selected_period.id), None
     )
@@ -497,12 +535,7 @@ async def _load_trend(
         delta, direction = _trend_change(
             float(raw_current), float(raw_previous)
         )
-    return ExecutiveTrend(
-        points=points,
-        delta=delta,
-        direction=direction,
-        comparison_available=direction != "UNAVAILABLE",
-    )
+    return delta, direction
 
 
 def _build_signals(
@@ -619,6 +652,124 @@ def _build_signals(
     return signals, attention
 
 
+def _unavailable_trend() -> ExecutiveTrend:
+    return ExecutiveTrend(
+        points=[],
+        delta=None,
+        direction="UNAVAILABLE",
+        comparison_available=False,
+    )
+
+
+def _empty_executive_overview(summary: ExecutiveSummary) -> ExecutiveOverview:
+    return ExecutiveOverview(
+        periods=[],
+        selected_period=None,
+        summary=summary,
+        trend=_unavailable_trend(),
+        category_intelligence=ExecutiveUnavailableData(
+            reason="Finalized category results are not independently persisted."
+        ),
+        target_intelligence=ExecutiveUnavailableData(
+            reason="Authoritative target-versus-actual results are not independently persisted."
+        ),
+    )
+
+
+def _selected_executive_period(
+    periods: list[KPIPeriod], period_id: UUID | None
+) -> KPIPeriod | None:
+    if period_id is not None:
+        selected_period = next(
+            (period for period in periods if period.id == period_id), None
+        )
+        if selected_period is None:
+            raise LookupError("KPI period not found.")
+        return selected_period
+    return _default_period(periods)
+
+
+async def _finalized_overview_data(
+    db: AsyncSession,
+    selected_period: KPIPeriod,
+    selected_period_type: PeriodType | None,
+    selected_types: set[PeriodType],
+    active_count: int,
+    empty_summary: ExecutiveSummary,
+    scope_user_ids: list[UUID] | None,
+    department_ids: list[UUID] | None,
+    show_departments: bool,
+):
+    if len(selected_types) > 1:
+        return empty_summary, [], _unavailable_trend(), [], []
+
+    aggregate = await _load_period_aggregate(
+        db,
+        selected_period.id,
+        scope_user_ids,
+        department_ids,
+        selected_period_type,
+    )
+    evaluated_count = int(aggregate.evaluated_count or 0)
+    summary = ExecutiveSummary(
+        status="available",
+        average_percentage=_round_metric(aggregate.average_percentage),
+        evaluated_employee_count=evaluated_count,
+        no_result_employee_count=max(active_count - evaluated_count, 0),
+        active_employee_count=active_count,
+        status_distribution=_status_distribution(aggregate, evaluated_count),
+    )
+    departments = (
+        await _load_department_metrics(
+            db, selected_period.id, scope_user_ids, department_ids
+        )
+        if show_departments
+        else []
+    )
+    trend = await _load_trend(
+        db,
+        selected_period,
+        selected_period_type,
+        scope_user_ids,
+        department_ids,
+    )
+    signals, attention = _build_signals(selected_period, summary, trend)
+    attention.extend(_department_attention_areas(selected_period, departments))
+    return summary, departments, trend, signals, attention
+
+
+def _department_attention_areas(
+    period: KPIPeriod, departments: list[ExecutiveDepartment]
+) -> list[ExecutiveAttentionArea]:
+    attention = []
+    for department in departments:
+        fair_or_poor_count = department.fair_count + department.poor_count
+        if not fair_or_poor_count:
+            continue
+        fair_or_poor_percentage = _round_metric(
+            fair_or_poor_count / department.evaluated_employee_count * 100
+        )
+        attention.append(
+            ExecutiveAttentionArea(
+                area_type="STATUS_CONCENTRATION",
+                severity="info",
+                title=f"FAIR/POOR results are present in {department.department_name}",
+                explanation=(
+                    f"{fair_or_poor_count} of "
+                    f"{department.evaluated_employee_count} evaluated "
+                    f"employees ({fair_or_poor_percentage:.2f}%) "
+                    "have a FAIR or POOR result."
+                ),
+                metric_name="fair_or_poor_employee_percentage",
+                metric_value=fair_or_poor_percentage or 0,
+                period_id=period.id,
+                period_label=period.label,
+                department_id=department.department_id,
+            )
+        )
+    return attention
+
+
 async def list_executive_employee_results(
     db: AsyncSession,
     *,
@@ -717,13 +868,7 @@ async def build_executive_overview(
     period_types = await _load_period_types(
         db, periods, scope_user_ids, department_ids
     )
-    selected_period = None
-    if period_id is not None:
-        selected_period = next((period for period in periods if period.id == period_id), None)
-        if selected_period is None:
-            raise LookupError("KPI period not found.")
-    else:
-        selected_period = _default_period(periods)
+    selected_period = _selected_executive_period(periods, period_id)
     active_count = await _load_active_employee_count(db, scope_user_ids)
     empty_summary = ExecutiveSummary(
         status="unavailable",
@@ -733,102 +878,32 @@ async def build_executive_overview(
         active_employee_count=None,
     )
     if selected_period is None:
-        return ExecutiveOverview(
-            periods=[],
-            selected_period=None,
-            summary=empty_summary,
-            trend=ExecutiveTrend(
-                points=[], delta=None, direction="UNAVAILABLE", comparison_available=False
-            ),
-            category_intelligence=ExecutiveUnavailableData(
-                reason="Finalized category results are not independently persisted."
-            ),
-            target_intelligence=ExecutiveUnavailableData(
-                reason="Authoritative target-versus-actual results are not independently persisted."
-            ),
-        )
+        return _empty_executive_overview(empty_summary)
 
     selected_types = period_types.get(selected_period.id, set())
     selected_period_type = next(iter(selected_types)) if len(selected_types) == 1 else None
-    finalized = selected_period.status in FINAL_PERIOD_STATUSES
-    if finalized:
-        if len(selected_types) > 1:
-            summary = empty_summary
-            departments = []
-            trend = ExecutiveTrend(
-                points=[],
-                delta=None,
-                direction="UNAVAILABLE",
-                comparison_available=False,
-            )
-            signals, attention = [], []
-        else:
-            aggregate = await _load_period_aggregate(
-                db,
-                selected_period.id,
-                scope_user_ids,
-                department_ids,
-                selected_period_type,
-            )
-            evaluated_count = int(aggregate.evaluated_count or 0)
-            summary = ExecutiveSummary(
-                status="available",
-                average_percentage=_round_metric(aggregate.average_percentage),
-                evaluated_employee_count=evaluated_count,
-                no_result_employee_count=max(active_count - evaluated_count, 0),
-                active_employee_count=active_count,
-                status_distribution=_status_distribution(aggregate, evaluated_count),
-            )
-            departments = (
-                await _load_department_metrics(
-                    db, selected_period.id, scope_user_ids, department_ids
-                )
-                if show_departments
-                else []
-            )
-            trend = await _load_trend(
-                db,
-                selected_period,
-                selected_period_type,
-                scope_user_ids,
-                department_ids,
-            )
-            signals, attention = _build_signals(selected_period, summary, trend)
-        for department in departments:
-            fair_or_poor_count = department.fair_count + department.poor_count
-            if fair_or_poor_count:
-                fair_or_poor_percentage = _round_metric(
-                    fair_or_poor_count
-                    / department.evaluated_employee_count
-                    * 100
-                )
-                attention.append(
-                    ExecutiveAttentionArea(
-                        area_type="STATUS_CONCENTRATION",
-                        severity="info",
-                        title=f"FAIR/POOR results are present in {department.department_name}",
-                        explanation=(
-                            f"{fair_or_poor_count} of "
-                            f"{department.evaluated_employee_count} evaluated "
-                            f"employees ({fair_or_poor_percentage:.2f}%) "
-                            "have a FAIR or POOR result."
-                        ),
-                        metric_name="fair_or_poor_employee_percentage",
-                        metric_value=fair_or_poor_percentage or 0,
-                        period_id=selected_period.id,
-                        period_label=selected_period.label,
-                        department_id=department.department_id,
-                    )
-                )
+    if selected_period.status in FINAL_PERIOD_STATUSES:
+        (
+            summary,
+            departments,
+            trend,
+            signals,
+            attention,
+        ) = await _finalized_overview_data(
+            db,
+            selected_period,
+            selected_period_type,
+            selected_types,
+            active_count,
+            empty_summary,
+            scope_user_ids,
+            department_ids,
+            show_departments,
+        )
     else:
         summary = empty_summary
         departments = []
-        trend = ExecutiveTrend(
-            points=[],
-            delta=None,
-            direction="UNAVAILABLE",
-            comparison_available=False,
-        )
+        trend = _unavailable_trend()
         signals, attention = [], []
 
     return ExecutiveOverview(

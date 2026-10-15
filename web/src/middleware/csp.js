@@ -18,7 +18,7 @@ function storageOrigins(endpoint, isProduction) {
 
 export function rewriteHtml(html, nonce) {
   return html
-    .replace(/<script(?![^>]*\bsrc=)([^>]*)>/gi, `<script nonce="${nonce}"$1>`)
+    .replaceAll(/<script(?![^>]*\bsrc=)([^>]*)>/gi, `<script nonce="${nonce}"$1>`)
     .replace(/<style([^>]*)>/gi, `<style nonce="${nonce}"$1>`)
     .replace(
       /\s(on(?:click|submit|change|keydown))\s*=\s*(["'])((?:(?!\2).)*)\2/gi,

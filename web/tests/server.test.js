@@ -169,7 +169,7 @@ describe("Express pages and CSP middleware", () => {
 
     expect(response.status).toBe(400);
     expect(response.headers["content-type"]).toMatch(/^text\/plain/);
-    expect(response.text).toBe('<script>alert("xss")</script>');
+    expect(response.text).toBe("&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;");
   });
 
   it("writes request failures as single-line structured logs", async () => {
@@ -184,7 +184,7 @@ describe("Express pages and CSP middleware", () => {
       await request(createApp({ backend })).get("/dashboard");
 
       expect(log).toHaveBeenCalledOnce();
-      expect(log.mock.calls[0][0]).toContain('"error":"failure\\r\\nforged log entry"');
+      expect(log.mock.calls[0][0]).toContain('"error":"failure__forged log entry"');
       expect(log.mock.calls[0][0]).not.toMatch(/[\r\n]/);
     } finally {
       log.mockRestore();

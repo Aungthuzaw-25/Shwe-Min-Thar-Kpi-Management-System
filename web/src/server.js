@@ -9,6 +9,10 @@ import { registerActivityRoutes } from "./routes/activity.js";
 import { registerAuthRoutes } from "./routes/auth.js";
 import { registerDashboardRoutes } from "./routes/dashboard.js";
 
+function sanitizeLogField(value) {
+  return String(value).replaceAll(/[\r\n\t]/g, "_");
+}
+
 const sourceDirectory = path.dirname(fileURLToPath(import.meta.url));
 const templatesDirectory = path.resolve(sourceDirectory, "../../templates");
 
@@ -43,9 +47,9 @@ export function createApp({
     console.error(JSON.stringify({
       level: "error",
       message: "Web request failed",
-      method: request.method,
-      path: request.path,
-      error: error instanceof Error ? error.message : String(error),
+      method: sanitizeLogField(request.method),
+      path: sanitizeLogField(request.path),
+      error: sanitizeLogField(error instanceof Error ? error.message : error),
     }));
     if (response.headersSent) return;
     response.status(502).json({ detail: "The application service is temporarily unavailable." });

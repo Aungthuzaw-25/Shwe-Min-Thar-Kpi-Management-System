@@ -233,7 +233,11 @@ def _email_diagnostic_code(message: str) -> str:
         return "PROVIDER_CONNECTION_FAILED"
     return "PROVIDER_NOT_READY"
 
-@router.get("/settings", response_model=list[SystemSettingResponse])
+@router.get(
+    "/settings",
+    response_model=list[SystemSettingResponse],
+    responses={422: {"description": "Invalid setting value"}},
+)
 async def read_all_settings(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -290,7 +294,7 @@ async def read_all_settings(
     responses={
         400: {"description": "Setting key already exists"},
         422: {"description": "Invalid setting value"},
-    },
+    403: {"description": "Forbidden"}},
 )
 async def create_new_setting(
     payload: SystemSettingCreate,
@@ -317,7 +321,10 @@ async def create_new_setting(
     return await repo.create_setting(db, payload)
 
 
-@router.get("/settings/email/providers")
+@router.get(
+    "/settings/email/providers",
+    responses={422: {"description": "Email provider configuration is invalid"}},
+)
 async def list_email_providers(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -375,7 +382,7 @@ async def list_email_providers(
     responses={
         404: {"description": "Email provider is not implemented"},
         422: {"description": "Provider does not match the URL"},
-    },
+    403: {"description": "Forbidden"}},
 )
 async def save_email_provider(
     provider_type: str,
@@ -438,7 +445,7 @@ async def save_email_provider(
         422: {"description": "Email provider configuration is invalid"},
         502: {"description": "Email provider rejected the connection"},
         503: {"description": "Email provider is unavailable"},
-    },
+    403: {"description": "Forbidden"}},
 )
 async def test_configured_email_provider(
     provider_type: str,
@@ -490,6 +497,59 @@ async def test_configured_email_provider(
     }
 
 
+def _enable_email_provider(state: dict, provider_type: str, provider_value: dict) -> None:
+    if not provider_value.get("tested"):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Test the provider successfully before enabling it.",
+        )
+    try:
+        email_service.validate_provider_configuration(provider_type, provider_value)
+    except EmailProviderError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+    for other_type, other_config in state["providers"].items():
+        other_config["enabled"] = other_type == provider_type
+    state["active_provider"] = provider_type
+
+
+def _email_provider_lifecycle_response(state: dict, provider_type: str, provider_value: dict):
+    active = state.get("active_provider")
+    provider_name = next(
+        (
+            definition["name"]
+            for definition in EmailProviderFactory.definitions()
+            if definition["key"] == provider_type
+        ),
+        provider_type,
+    )
+    is_active = active == provider_type
+    is_ready = (
+        provider_value.get("tested")
+        and provider_value.get("last_test_status") == "ready"
+    )
+    return {
+        "success": True,
+        "provider": provider_type,
+        "enabled": provider_value["enabled"],
+        "is_active": is_active,
+        "active_provider": active,
+        "status": "ready" if is_ready else "not_ready",
+        "service_status": (
+            f"Enabled — {provider_name}"
+            if is_active
+            else "Disabled — No active provider"
+        ),
+        "message": (
+            f"{provider_name} enabled successfully."
+            if is_active
+            else f"{provider_name} disabled successfully."
+        ),
+    }
+
+
 @router.post(
     "/settings/email/providers/{provider_type}/lifecycle",
     responses={
@@ -497,7 +557,7 @@ async def test_configured_email_provider(
         409: {"description": "Email provider cannot be disabled"},
         422: {"description": "Email provider configuration is invalid"},
         500: {"description": "Email provider operation failed"},
-    },
+    403: {"description": "Forbidden"}},
 )
 async def update_email_provider_lifecycle(
     provider_type: str,
@@ -514,23 +574,7 @@ async def update_email_provider_lifecycle(
         raise HTTPException(status_code=404, detail=EMAIL_PROVIDER_NOT_CONFIGURED)
 
     if payload.action == "enable":
-        if not provider_value.get("tested"):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Test the provider successfully before enabling it.",
-            )
-        try:
-            email_service.validate_provider_configuration(
-                provider_type, provider_value
-            )
-        except EmailProviderError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=str(exc),
-            ) from exc
-        for other_type, other_config in state["providers"].items():
-            other_config["enabled"] = other_type == provider_type
-        state["active_provider"] = provider_type
+        _enable_email_provider(state, provider_type, provider_value)
     else:
         provider_value["enabled"] = False
         if state.get("active_provider") == provider_type:
@@ -547,44 +591,15 @@ async def update_email_provider_lifecycle(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Unable to update email provider.",
         ) from exc
-    active = state.get("active_provider")
-    provider_name = next(
-        (
-            definition["name"]
-            for definition in EmailProviderFactory.definitions()
-            if definition["key"] == provider_type
-        ),
-        provider_type,
-    )
-    is_active = active == provider_type
-    return {
-        "success": True,
-        "provider": provider_type,
-        "enabled": provider_value["enabled"],
-        "is_active": is_active,
-        "active_provider": active,
-        "status": (
-            "ready"
-            if provider_value.get("tested")
-            and provider_value.get("last_test_status") == "ready"
-            else "not_ready"
-        ),
-        "service_status": (
-            f"Enabled — {provider_name}"
-            if is_active
-            else "Disabled — No active provider"
-        ),
-        "message": (
-            f"{provider_name} enabled successfully."
-            if is_active
-            else f"{provider_name} disabled successfully."
-        ),
-    }
+    return _email_provider_lifecycle_response(state, provider_type, provider_value)
 
 
 @router.delete(
     "/settings/email/providers/{provider_type}",
-    responses={404: {"description": "Email provider is not configured"}},
+    responses={
+        404: {"description": "Email provider is not configured"},
+        422: {"description": "Email provider configuration is invalid"},
+    403: {"description": "Forbidden"}},
 )
 async def remove_email_provider(
     provider_type: str,
@@ -610,7 +625,7 @@ async def remove_email_provider(
     responses={
         404: {"description": "Setting not found"},
         422: {"description": "Invalid setting value"},
-    },
+    403: {"description": "Forbidden"}},
 )
 async def update_existing_setting(
     key: str,
@@ -658,7 +673,7 @@ async def update_existing_setting(
         422: {"description": "Email provider configuration is invalid"},
         502: {"description": "Email provider rejected the connection"},
         503: {"description": "Email provider is unavailable"},
-    },
+    403: {"description": "Forbidden"}},
 )
 async def test_email_connection(
     db: AsyncSession = Depends(get_db),
@@ -706,7 +721,7 @@ async def test_email_connection(
         "message": diagnostic,
     }
 
-@router.get("/logs", response_model=SystemEventLogPage)
+@router.get("/logs", response_model=SystemEventLogPage, responses={503: {"description": "Service Unavailable"}})
 async def read_system_logs(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, gt=0, le=500),
@@ -792,7 +807,7 @@ async def clear_system_cache(
 
 @router.get(
     "/backup",
-    responses={500: {"description": "Failed to generate backup"}},
+    responses={500: {"description": "Failed to generate backup"}, 422: {"description": "Unprocessable Entity"}},
 )
 async def generate_database_backup(
     db: AsyncSession = Depends(get_db),

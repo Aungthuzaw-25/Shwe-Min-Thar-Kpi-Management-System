@@ -23,8 +23,8 @@ admin_only = RoleChecker(["Super Admin", "Admin", "HR"])
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(admin_only)],
     responses={
-        status.HTTP_400_BAD_REQUEST: {"description": "Invalid period dates"},
-        status.HTTP_500_INTERNAL_SERVER_ERROR: {"description": "Database error"},
+        400: {"description": "Invalid period dates"},
+        500: {"description": "Database error"},
     },
 )
 async def create_kpi_period(payload: KPIPeriodCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
@@ -67,7 +67,15 @@ async def get_kpi_periods(
     result = await db.execute(stmt)
     return result.scalars().all()
 
-@router.put("/{period_id}/status", response_model=KPIPeriodResponse, dependencies=[Depends(admin_only)])
+@router.put(
+    "/{period_id}/status",
+    response_model=KPIPeriodResponse,
+    dependencies=[Depends(admin_only)],
+    responses={
+        400: {"description": "Invalid period status transition"},
+        404: {"description": "KPI period not found"},
+    },
+)
 async def update_period_status(
     period_id: UUID,
     new_status: KPIPeriodStatus,
@@ -94,9 +102,9 @@ async def update_period_status(
     status_code=status.HTTP_200_OK,
     dependencies=[Depends(admin_only)],
     responses={
-        status.HTTP_400_BAD_REQUEST: {"description": "Only draft periods can be deleted"},
-        status.HTTP_404_NOT_FOUND: {"description": "KPI period not found"},
-        status.HTTP_500_INTERNAL_SERVER_ERROR: {"description": "Database error"},
+        400: {"description": "Only draft periods can be deleted"},
+        404: {"description": "KPI period not found"},
+        500: {"description": "Database error"},
     },
 )
 async def delete_kpi_period(

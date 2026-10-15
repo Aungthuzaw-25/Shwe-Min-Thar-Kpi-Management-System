@@ -110,31 +110,12 @@ class OIDCProvider:
     async def _decode_identity_claims(self, id_token: str, metadata: dict) -> dict:
         try:
             header = jwt.get_unverified_header(id_token)
-            allowed_algorithms = ["RS256", "RS384", "RS512", "ES256", "ES384", "ES512"]
-            algorithm = header.get("alg")
-            if algorithm not in allowed_algorithms:
-                raise OIDCValidationError("Unsupported ID token algorithm.")
-            supported_algorithms = metadata.get("id_token_signing_alg_values_supported")
-            if (
-                not isinstance(supported_algorithms, list)
-                or algorithm not in supported_algorithms
-            ):
-                raise OIDCValidationError("Unsupported ID token algorithm.")
+            algorithm = self._validated_signing_algorithm(header, metadata)
             kid = header.get("kid")
             if not isinstance(kid, str) or not kid:
                 raise OIDCValidationError("Signing key not found.")
             keys = await self._jwks(metadata["jwks_uri"])
-            key = next(
-                (
-                    item
-                    for item in keys.get("keys", [])
-                    if item.get("kid") == kid
-                    and item.get("use", "sig") == "sig"
-                    and ("key_ops" not in item or "verify" in item["key_ops"])
-                    and ("alg" not in item or item["alg"] == algorithm)
-                ),
-                None,
-            )
+            key = self._find_signing_key(keys, kid, algorithm)
             if not key:
                 raise OIDCValidationError("Signing key not found.")
             issuer = metadata["issuer"]
@@ -155,22 +136,68 @@ class OIDCProvider:
         except (JWTError, KeyError, TypeError) as exc:
             raise OIDCValidationError("Provider identity validation failed.") from exc
 
+    @staticmethod
+    def _validated_signing_algorithm(header: dict, metadata: dict) -> str:
+        allowed_algorithms = {"RS256", "RS384", "RS512", "ES256", "ES384", "ES512"}
+        algorithm = header.get("alg")
+        supported_algorithms = metadata.get("id_token_signing_alg_values_supported")
+        if (
+            algorithm not in allowed_algorithms
+            or not isinstance(supported_algorithms, list)
+            or algorithm not in supported_algorithms
+        ):
+            raise OIDCValidationError("Unsupported ID token algorithm.")
+        return algorithm
+
+    @staticmethod
+    def _find_signing_key(keys: dict, kid: str, algorithm: str) -> dict | None:
+        for item in keys.get("keys", []):
+            if item.get("kid") != kid or item.get("use", "sig") != "sig":
+                continue
+            if "key_ops" in item and "verify" not in item["key_ops"]:
+                continue
+            if "alg" in item and item["alg"] != algorithm:
+                continue
+            return item
+        return None
+
     def _identity_from_claims(self, claims: dict, nonce: str) -> OIDCIdentity:
         if claims.get("nonce") != nonce:
             raise OIDCValidationError("Provider nonce validation failed.")
-        audiences = claims.get("aud")
-        if isinstance(audiences, list) and len(audiences) > 1:
-            if claims.get("azp") != self.client_id:
-                raise OIDCValidationError("Provider authorized party validation failed.")
-        elif claims.get("azp") not in (None, self.client_id):
-            raise OIDCValidationError("Provider authorized party validation failed.")
+        self._validate_authorized_party(claims)
         subject = claims.get("sub")
         email = claims.get("email") or claims.get("preferred_username")
         if not subject or not email:
             raise OIDCValidationError("Provider identity is incomplete.")
         email_verified = claims.get("email_verified")
+        self._validate_provider_email(email_verified)
+        tenant_id = self._microsoft_tenant(claims)
+        first_name, last_name = self._identity_name(claims, email)
+        return OIDCIdentity(
+            provider=self.name,
+            issuer=claims["iss"],
+            subject=subject,
+            email=email,
+            email_verified=email_verified is True,
+            first_name=first_name,
+            last_name=last_name,
+            tenant_id=tenant_id,
+        )
+
+    def _validate_authorized_party(self, claims: dict) -> None:
+        audiences = claims.get("aud")
+        if isinstance(audiences, list) and len(audiences) > 1:
+            if claims.get("azp") != self.client_id:
+                raise OIDCValidationError("Provider authorized party validation failed.")
+            return
+        if claims.get("azp") not in (None, self.client_id):
+            raise OIDCValidationError("Provider authorized party validation failed.")
+
+    def _validate_provider_email(self, email_verified) -> None:
         if self.name == "google" and email_verified is not True:
             raise OIDCValidationError("A verified provider email is required.")
+
+    def _microsoft_tenant(self, claims: dict) -> str | None:
         tenant_id = claims.get("tid") if self.microsoft else None
         if self.microsoft and (
             not tenant_id
@@ -178,18 +205,15 @@ class OIDCProvider:
             or tenant_id in {"common", "consumers"}
         ):
             raise OIDCValidationError("Only organizational Microsoft accounts are supported.")
+        return tenant_id
+
+    @staticmethod
+    def _identity_name(claims: dict, email: str) -> tuple[str, str]:
         full_name = (claims.get("name") or "").strip()
         parts = full_name.split(maxsplit=1)
-        return OIDCIdentity(
-            provider=self.name,
-            issuer=claims["iss"],
-            subject=subject,
-            email=email,
-            email_verified=email_verified is True,
-            first_name=parts[0] if parts else email.split("@", 1)[0],
-            last_name=parts[1] if len(parts) > 1 else "",
-            tenant_id=tenant_id,
-        )
+        first_name = parts[0] if parts else email.split("@", 1)[0]
+        last_name = parts[1] if len(parts) > 1 else ""
+        return first_name, last_name
 
     async def validate_identity(self, token_response: dict[str, Any], nonce: str) -> OIDCIdentity:
         id_token = token_response.get("id_token")
