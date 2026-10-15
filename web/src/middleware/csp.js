@@ -19,10 +19,10 @@ function storageOrigins(endpoint, isProduction) {
 export function rewriteHtml(html, nonce) {
   return html
     .replaceAll(/<script(?![^>]*\bsrc=)([^>]*)>/gi, `<script nonce="${nonce}"$1>`)
-    .replace(/<style([^>]*)>/gi, `<style nonce="${nonce}"$1>`)
+    .replaceAll(/<style([^>]*)>/gi, `<style nonce="${nonce}"$1>`)
     .replace(
       /\s(on(?:click|submit|change|keydown))\s*=\s*(["'])((?:(?!\2).)*)\2/gi,
-      (_match, handler, _quote, value) => ` data-csp-${handler}="${value.replace(/"/g, "&quot;")}"`,
+      (_match, handler, _quote, value) => ` data-csp-${handler}="${value.replaceAll('"', "&quot;")}"`,
     );
 }
 

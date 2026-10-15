@@ -165,8 +165,10 @@ async def test_bulk_validation_failure_does_not_restore_prior_assignment():
         invalid_user_ids=[user_ids[1]],
     )
 
+    bulk_data = _bulk_data(session, user_ids)
+    actor_id = uuid4()
     with pytest.raises(HTTPException, match="Selected user is not active"):
-        await bulk_assign_kpi(session, _bulk_data(session, user_ids), uuid4())
+        await bulk_assign_kpi(session, bulk_data, actor_id)
 
     assert deleted_assignment.is_deleted
     assert not session.added

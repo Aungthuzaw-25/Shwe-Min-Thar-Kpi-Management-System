@@ -106,7 +106,7 @@
     if (trendChart) trendChart.destroy();
     trendChart = null;
     renderTrendAccessibleTable(trend);
-    if (!trend || !trend.count || !trend.labels.length || trend.count < 2) {
+    if (!trend?.count || !trend.labels?.length || trend.count < 2) {
       canvas.hidden = true;
       empty.hidden = false;
       empty.textContent = trend?.count === 1
@@ -126,11 +126,14 @@
     }
     canvas.hidden = false;
     empty.hidden = true;
-    meta.textContent = trend.comparison_status === 'available' && trend.delta !== null
-      ? `${trend.delta >= 0 ? '↑' : '↓'} ${Math.abs(trend.delta).toFixed(2)} pts vs previous period`
-      : trend.comparison_status === 'insufficient_data'
-        ? 'Insufficient historical data'
-      : 'No comparison data';
+    if (trend.comparison_status === 'available' && trend.delta !== null) {
+      const direction = trend.delta >= 0 ? '↑' : '↓';
+      meta.textContent = `${direction} ${Math.abs(trend.delta).toFixed(2)} pts vs previous period`;
+    } else if (trend.comparison_status === 'insufficient_data') {
+      meta.textContent = 'Insufficient historical data';
+    } else {
+      meta.textContent = 'No comparison data';
+    }
     trendChart = new window.Chart(canvas, {
       type: 'line',
       data: {
@@ -184,7 +187,7 @@
   function renderDepartments(rows) {
     const panel = document.getElementById('departmentPanel');
     const target = document.getElementById('departmentComparison');
-    if (!rows || !rows.length || isPersonal) {
+    if (!rows?.length || isPersonal) {
       panel.hidden = isPersonal;
       if (!isPersonal) target.innerHTML = '<p class="executive-empty">No department comparison data available.</p>';
       return;
@@ -238,10 +241,15 @@
       target.innerHTML = listEmpty('No finalized KPI status data available.');
       return;
     }
-    target.innerHTML = rows.map(row => diagnostic(
-      row.status || 'Unspecified',
-      `${row.count ?? 0} · ${row.percentage === null ? '—' : `${Number(row.percentage).toFixed(2)}%`}`
-    )).join('');
+    target.innerHTML = rows.map(row => {
+      const percentage = row.percentage === null
+        ? '—'
+        : `${Number(row.percentage).toFixed(2)}%`;
+      return diagnostic(
+        row.status || 'Unspecified',
+        `${row.count ?? 0} · ${percentage}`
+      );
+    }).join('');
   }
 
   function renderExecutiveSignals(signals, attentionAreas) {
@@ -414,19 +422,7 @@
       document.getElementById('employeePrevious').disabled = employeeOffset === 0;
       document.getElementById('employeeNext').disabled =
         employeeOffset + page.items.length >= employeeTotal;
-      target.innerHTML = page.items.length ? `<table class="executive-table">
-        <caption class="sr-only">Authorized employee KPI results, alphabetically ordered</caption>
-        <thead><tr><th>Employee</th><th>Department</th><th>Position</th><th>Level</th><th>KPI %</th><th>Status</th><th>Details</th></tr></thead>
-        <tbody>${page.items.map(item => `<tr>
-          <td><span class="inline-flex items-center gap-2">${window.kpiAvatarMarkup({
-            ...item,
-            id: item.user_id,
-            display_name: item.employee_name
-          }, 32)}<span>${escapeHTML(item.employee_name)}</span></span></td><td>${escapeHTML(item.department_name || '—')}</td>
-          <td>${escapeHTML(item.position_name || '—')}</td><td>${escapeHTML(item.level || '—')}</td>
-          <td>${Number(item.percentage).toFixed(2)}%</td><td>${escapeHTML(item.status)}</td>
-          <td><button type="button" class="executive-link-button" data-user-id="${escapeHTML(item.user_id)}">View details</button></td>
-        </tr>`).join('')}</tbody></table>` : listEmpty('No KPI results are available for this period.');
+      target.innerHTML = renderEmployeeResultTable(page.items);
     } catch (error) {
       if (error.name === 'AbortError') return;
       target.innerHTML = listEmpty('Employee results could not be loaded. Try refreshing the dashboard.');
@@ -435,6 +431,24 @@
       signal?.removeEventListener('abort', abortWithDashboard);
       if (activeEmployeeRequest === controller) activeEmployeeRequest = null;
     }
+  }
+
+  function renderEmployeeResultTable(items) {
+    if (!items.length) return listEmpty('No KPI results are available for this period.');
+    const rows = items.map(item => `<tr>
+      <td><span class="inline-flex items-center gap-2">${window.kpiAvatarMarkup({
+        ...item,
+        id: item.user_id,
+        display_name: item.employee_name
+      }, 32)}<span>${escapeHTML(item.employee_name)}</span></span></td><td>${escapeHTML(item.department_name || '—')}</td>
+      <td>${escapeHTML(item.position_name || '—')}</td><td>${escapeHTML(item.level || '—')}</td>
+      <td>${Number(item.percentage).toFixed(2)}%</td><td>${escapeHTML(item.status)}</td>
+      <td><button type="button" class="executive-link-button" data-user-id="${escapeHTML(item.user_id)}">View details</button></td>
+    </tr>`).join('');
+    return `<table class="executive-table">
+      <caption class="sr-only">Authorized employee KPI results, alphabetically ordered</caption>
+      <thead><tr><th>Employee</th><th>Department</th><th>Position</th><th>Level</th><th>KPI %</th><th>Status</th><th>Details</th></tr></thead>
+      <tbody>${rows}</tbody></table>`;
   }
 
   async function loadEmployeeDetail(userId, periodId) {
@@ -452,6 +466,12 @@
       );
       if (!response.ok) throw new Error('Employee KPI details could not be loaded.');
       const detail = await response.json();
+      const historyMarkup = detail.history?.length
+        ? `<ol>${detail.history.map(item => `<li>
+            ${escapeHTML(formatTime(item.changed_at))} · ${Number(item.percentage).toFixed(2)}% ·
+            ${escapeHTML(item.status)} · ${escapeHTML(item.reason)}
+          </li>`).join('')}</ol>`
+        : listEmpty('No KPI history is available for this result.');
       target.innerHTML = `<h3>${escapeHTML(detail.employee_name)} · ${escapeHTML(detail.period.label)}</h3>
         <dl class="executive-detail-grid">
           <div><dt>Department</dt><dd>${escapeHTML(detail.department_name || 'Unavailable')}</dd></div>
@@ -466,10 +486,7 @@
         <p class="executive-detail-note">Category results unavailable: ${escapeHTML(detail.category_intelligence.reason)}</p>
         <p class="executive-detail-note">Target results unavailable: ${escapeHTML(detail.target_intelligence.reason)}</p>
         <h4>Persisted KPI history</h4>
-        ${detail.history?.length ? `<ol>${detail.history.map(item => `<li>
-          ${escapeHTML(formatTime(item.changed_at))} · ${Number(item.percentage).toFixed(2)}% ·
-          ${escapeHTML(item.status)} · ${escapeHTML(item.reason)}
-        </li>`).join('')}</ol>` : listEmpty('No KPI history is available for this result.')}`;
+        ${historyMarkup}`;
     } catch (error) {
       if (error.name === 'AbortError') return;
       target.innerHTML = listEmpty('Employee KPI details could not be loaded in this authorized scope.');

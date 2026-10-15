@@ -881,22 +881,7 @@ async def get_system_audit_logs(
     current_user: User = Depends(allow_super_admins)
 ):
     try:
-        stmt = select(AuditLog, User).outerjoin(User, AuditLog.user_id == User.id)
-        if action:
-            stmt = stmt.where(AuditLog.action == action)
-        if search:
-            term = f"%{search.strip()}%"
-            actor_name = User.first_name + " " + User.last_name
-            stmt = stmt.where(
-                or_(
-                    actor_name.ilike(term),
-                    AuditLog.action.ilike(term),
-                    AuditLog.table_name.ilike(term),
-                    AuditLog.ip_address.ilike(term),
-                    cast(AuditLog.old_value, String).ilike(term),
-                    cast(AuditLog.new_value, String).ilike(term),
-                )
-            )
+        stmt = _audit_log_query(action, search)
         stmt = (
             stmt.order_by(desc(AuditLog.created_at), desc(AuditLog.id))
             .offset(offset)
@@ -906,34 +891,47 @@ async def get_system_audit_logs(
         result = await db.execute(stmt)
         rows = result.all()
 
-        logs = []
-        for log, admin in rows:
-            admin_name = f"{admin.first_name} {admin.last_name}" if admin else "System Auto"
-            
-            logs.append(AuditLogResponse(
-                id=str(log.id),
-                timestamp=f"{log.created_at.isoformat()}Z" if log.created_at else "",
-                admin_name=admin_name,
-                actor_id=str(admin.id) if admin else None,
-                avatar_url=(
-                    avatar_url(admin.avatar_path, admin.avatar_updated_at)
-                    if admin
-                    else None
-                ),
-                initials=(
-                    avatar_initials(admin_name, admin.email)
-                    if admin
-                    else "?"
-                ),
-                avatar_color_index=avatar_color_index(admin.id) if admin else 0,
-                action=log.action,
-                table_name=log.table_name,
-                old_value=log.old_value or {},
-                new_value=log.new_value or {},
-                ip_address=log.ip_address or "Unknown"
-            ))
-
-        return logs
+        return [_serialize_audit_log(log, admin) for log, admin in rows]
     except Exception as e:
         logger.exception(f"Error fetching audit logs: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to retrieve audit logs.")
+
+
+def _audit_log_query(action: str | None, search: str | None):
+    stmt = select(AuditLog, User).outerjoin(User, AuditLog.user_id == User.id)
+    if action:
+        stmt = stmt.where(AuditLog.action == action)
+    if search:
+        term = f"%{search.strip()}%"
+        actor_name = User.first_name + " " + User.last_name
+        stmt = stmt.where(
+            or_(
+                actor_name.ilike(term),
+                AuditLog.action.ilike(term),
+                AuditLog.table_name.ilike(term),
+                AuditLog.ip_address.ilike(term),
+                cast(AuditLog.old_value, String).ilike(term),
+                cast(AuditLog.new_value, String).ilike(term),
+            )
+        )
+    return stmt
+
+
+def _serialize_audit_log(log: AuditLog, admin: User | None) -> AuditLogResponse:
+    admin_name = f"{admin.first_name} {admin.last_name}" if admin else "System Auto"
+    return AuditLogResponse(
+        id=str(log.id),
+        timestamp=f"{log.created_at.isoformat()}Z" if log.created_at else "",
+        admin_name=admin_name,
+        actor_id=str(admin.id) if admin else None,
+        avatar_url=(
+            avatar_url(admin.avatar_path, admin.avatar_updated_at) if admin else None
+        ),
+        initials=avatar_initials(admin_name, admin.email) if admin else "?",
+        avatar_color_index=avatar_color_index(admin.id) if admin else 0,
+        action=log.action,
+        table_name=log.table_name,
+        old_value=log.old_value or {},
+        new_value=log.new_value or {},
+        ip_address=log.ip_address or "Unknown",
+    )

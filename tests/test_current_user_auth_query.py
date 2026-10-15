@@ -111,9 +111,11 @@ async def test_authentication_keeps_revocation_and_account_error_precedence(
     row, status_code, detail
 ):
     db = _AuthDB(row)
+    request = _access_request()
+    token = _token()
 
     with pytest.raises(HTTPException) as error:
-        await dependencies.get_current_user(_access_request(), _token(), db)
+        await dependencies.get_current_user(request, token, db)
 
     assert error.value.status_code == status_code
     assert error.value.detail == detail
@@ -123,9 +125,11 @@ async def test_authentication_keeps_revocation_and_account_error_precedence(
 @pytest.mark.asyncio
 async def test_missing_subject_checks_blacklist_and_session_before_account_error():
     db = _AuthDB(None, (False, True))
+    request = _access_request()
+    token = _token()
 
     with pytest.raises(HTTPException) as error:
-        await dependencies.get_current_user(_access_request(), _token(), db)
+        await dependencies.get_current_user(request, token, db)
 
     assert error.value.status_code == 401
     assert error.value.detail == "User not found or account disabled."
@@ -135,9 +139,11 @@ async def test_missing_subject_checks_blacklist_and_session_before_account_error
 @pytest.mark.asyncio
 async def test_missing_subject_still_prefers_blacklist_error_over_session_error():
     db = _AuthDB(None, (True, False))
+    request = _access_request()
+    token = _token()
 
     with pytest.raises(HTTPException) as error:
-        await dependencies.get_current_user(_access_request(), _token(), db)
+        await dependencies.get_current_user(request, token, db)
 
     assert error.value.status_code == 401
     assert error.value.detail == "Token has been revoked. Please log in again."

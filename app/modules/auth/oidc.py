@@ -95,14 +95,17 @@ class OIDCProvider:
             "code_challenge": create_pkce_challenge(verifier),
             "code_challenge_method": "S256",
             "access_type": "offline" if self.name == "google" else None,
-            "prompt": (
-                "login" if force_reauthentication
-                else "select_account" if self.name == "google"
-                else None
-            ),
+            "prompt": self._authorization_prompt(force_reauthentication),
             "max_age": "0" if force_reauthentication else None,
         }
         return f"{metadata['authorization_endpoint']}?{urlencode({k: v for k, v in params.items() if v is not None})}"
+
+    def _authorization_prompt(self, force_reauthentication: bool) -> str | None:
+        if force_reauthentication:
+            return "login"
+        if self.name == "google":
+            return "select_account"
+        return None
 
     async def exchange_code(self, code: str, verifier: str) -> dict[str, Any]:
         if not code or len(code) > 4096:

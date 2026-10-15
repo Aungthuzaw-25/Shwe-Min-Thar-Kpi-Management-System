@@ -92,9 +92,10 @@ async def test_formula_creation_persists_authoritative_position_and_rejects_cros
     assert formula.position_id == position_id
     assert formula.position_name == "Canonical Position"
 
+    db = Session()
     with pytest.raises(HTTPException) as denied:
         await kpi_service._resolve_formula_position(
-            Session(), other_department_id, position_id
+            db, other_department_id, position_id
         )
     assert denied.value.status_code == 400
 
@@ -131,17 +132,20 @@ async def test_formula_engine_prefers_position_id_and_keeps_name_fallback():
 
 
 def test_global_kpi_setting_is_super_admin_only():
+    admin = _user("Admin")
     with pytest.raises(HTTPException) as denied:
-        kpi_router.allow_super_admins(_user("Admin"))
+        kpi_router.allow_super_admins(admin)
     assert denied.value.status_code == 403
-    assert kpi_router.allow_super_admins(_user("Super Admin")).role.name == "Super Admin"
+    super_admin = _user("Super Admin")
+    assert kpi_router.allow_super_admins(super_admin).role.name == "Super Admin"
 
 
 @pytest.mark.asyncio
 async def test_clear_cache_is_truthful_when_no_application_cache_exists(monkeypatch):
     monkeypatch.setattr(system_router, "enforce_permission", lambda *_args: None)
+    super_admin = _user("Super Admin")
     with pytest.raises(HTTPException) as unavailable:
-        await system_router.clear_system_cache(None, _user("Super Admin"))
+        await system_router.clear_system_cache(None, super_admin)
     assert unavailable.value.status_code == 501
 
 
@@ -215,8 +219,10 @@ async def test_task_authorization_ignores_soft_deleted_department_memberships():
                 return _Result([task])
             return _Result([department_id])
 
+    db = Session()
+    admin = _user("Admin", admin_id)
     with pytest.raises(HTTPException) as denied:
-        await tasks_router._authorized_task(Session(), task.id, _user("Admin", admin_id))
+        await tasks_router._authorized_task(db, task.id, admin)
     assert denied.value.status_code == 404
 
 

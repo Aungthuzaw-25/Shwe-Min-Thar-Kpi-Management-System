@@ -2,7 +2,7 @@ import hashlib
 import hmac
 import secrets
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Annotated, Any
 from uuid import UUID
 
 import jwt
@@ -34,6 +34,7 @@ from app.modules.auth.oauth_state import (
     get_oauth_redis,
 )
 from app.modules.auth.oidc import (
+    OIDCIdentity,
     OIDCProvider,
     OIDCValidationError,
     create_nonce,
@@ -56,13 +57,35 @@ router = APIRouter()
 INVALID_OAUTH_STATE_MESSAGE = "Invalid OAuth state."
 OIDC_SCOPES = ("openid", "email", "profile")
 OAUTH_PROFILE_PATH = "/account/profile"
+OAUTH_PROVIDER_DISABLED_MESSAGE = "OAuth provider is not enabled."
+OAUTH_PROVIDER_DISABLED_DESCRIPTION = "The OAuth provider is not enabled."
+OAUTH_PROVIDER_CANCELLED_MESSAGE = "Provider sign-in was cancelled."
+OAUTH_LINK_SESSION_MISMATCH_MESSAGE = "OAuth link session does not match."
+OAUTH_LINK_FAILURE_MESSAGE = "Unable to link provider account."
+OAUTH_RECENT_AUTH_REQUIRED_MESSAGE = "Recent authentication is required."
+OAUTH_RECENT_LINK_AUTH_REQUIRED_MESSAGE = (
+    "Recent authentication is required before linking an account."
+)
+SUPER_ADMIN_ROLE_NAME = "Super Admin"
+SUPER_ADMIN_LINK_PERMISSION_MESSAGE = (
+    "Only Super Admin accounts can manage linked identities."
+)
+OAUTH_LINK_CONFLICT = "conflict"
+OAUTH_LINK_USER_MISSING = "user_missing"
+OAUTH_LINK_AUTHENTICATION_REQUIRED = "authentication_required"
+INVALID_OR_REVOKED_REFRESH_TOKEN_MESSAGE = "Invalid or expired refresh token."
+SESSION_USER_MISMATCH_MESSAGE = "Session user mismatch."
+ACCESS_TOKEN_KEY = "access_token"
+REFRESH_TOKEN_KEY = "refresh_token"
+UNKNOWN_VALUE = "Unknown"
+USER_AGENT_HEADER = "user-agent"
 OAUTH_START_ERROR_RESPONSES = {
-    404: {"description": "The OAuth provider is not enabled."},
+    404: {"description": OAUTH_PROVIDER_DISABLED_DESCRIPTION},
 }
 OAUTH_CALLBACK_ERROR_RESPONSES = {
-    400: {"description": "Invalid OAuth state."},
+    400: {"description": INVALID_OAUTH_STATE_MESSAGE},
     403: {"description": "Forbidden"},
-    404: {"description": "The OAuth provider is not enabled."},
+    404: {"description": OAUTH_PROVIDER_DISABLED_DESCRIPTION},
 }
 
 LOGIN_ERROR_RESPONSES = {
@@ -70,12 +93,12 @@ LOGIN_ERROR_RESPONSES = {
     403: {"description": "The account is disabled or locked."},
 }
 OAUTH_LINK_START_ERROR_RESPONSES = {
-    403: {"description": "Recent authentication is required."},
-    404: {"description": "The OAuth provider is not enabled."},
+    403: {"description": OAUTH_RECENT_AUTH_REQUIRED_MESSAGE},
+    404: {"description": OAUTH_PROVIDER_DISABLED_DESCRIPTION},
 }
 OAUTH_UNLINK_ERROR_RESPONSES = {
     400: {"description": "The last usable authentication method cannot be removed."},
-    403: {"description": "Recent authentication is required."},
+    403: {"description": OAUTH_RECENT_AUTH_REQUIRED_MESSAGE},
     404: {"description": "The provider account is not linked."},
 }
 PASSWORD_CHANGE_ERROR_RESPONSES = {
@@ -99,7 +122,7 @@ def _provider(name: str) -> OIDCProvider:
             and settings.GOOGLE_CLIENT_SECRET
             and redirect_uri
         ):
-            raise HTTPException(status_code=404, detail="OAuth provider is not enabled.")
+            raise HTTPException(status_code=404, detail=OAUTH_PROVIDER_DISABLED_MESSAGE)
         return OIDCProvider(
             name="google", client_id=settings.GOOGLE_CLIENT_ID,
             client_secret=settings.GOOGLE_CLIENT_SECRET, redirect_uri=redirect_uri,
@@ -118,7 +141,7 @@ def _provider(name: str) -> OIDCProvider:
         and settings.MICROSOFT_CLIENT_SECRET
         and redirect_uri
     ):
-        raise HTTPException(status_code=404, detail="OAuth provider is not enabled.")
+        raise HTTPException(status_code=404, detail=OAUTH_PROVIDER_DISABLED_MESSAGE)
     tenant = settings.MICROSOFT_TENANT_ID or settings.MICROSOFT_TENANT or "common"
     return OIDCProvider(
         name="microsoft", client_id=settings.MICROSOFT_CLIENT_ID,
@@ -158,7 +181,7 @@ def _oauth_error_redirect(message: str) -> RedirectResponse:
 
 def _dashboard_path(user: User) -> str:
     role_name = user.role.name if user.role else ""
-    if role_name == "Super Admin":
+    if role_name == SUPER_ADMIN_ROLE_NAME:
         return "/superadmin/dashboard"
     if role_name in {"Admin", "HR"}:
         return "/admin/dashboard"
@@ -167,10 +190,10 @@ def _dashboard_path(user: User) -> str:
 
 def _set_auth_cookies(response: Response, request: Request, auth_result: dict[str, object], remember_me: bool) -> None:
     secure_cookie = cookie_secure_for_request(request)
-    response.set_cookie(key="access_token", value=str(auth_result["access_token"]), httponly=True,
+    response.set_cookie(key=ACCESS_TOKEN_KEY, value=str(auth_result[ACCESS_TOKEN_KEY]), httponly=True,
                         max_age=(settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60 if remember_me else None),
                         samesite=AUTH_COOKIE_SAMESITE, secure=secure_cookie)
-    response.set_cookie(key="refresh_token", value=str(auth_result["refresh_token"]), httponly=True,
+    response.set_cookie(key=REFRESH_TOKEN_KEY, value=str(auth_result[REFRESH_TOKEN_KEY]), httponly=True,
                         max_age=(settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60 if remember_me else None),
                         samesite=AUTH_COOKIE_SAMESITE, secure=secure_cookie)
 
@@ -342,8 +365,8 @@ async def get_current_user_accounts(
 @router.post('/login', response_model=TokenResponse, responses=LOGIN_ERROR_RESPONSES)
 @limiter.limit("5/minute") 
 async def login(request: Request, response: Response, payload: LoginRequest, db: AsyncSession = Depends(get_db)):
-    client_ip = request.client.host if request.client else 'Unknown'
-    user_agent = request.headers.get('user-agent', 'Unknown')
+    client_ip = request.client.host if request.client else UNKNOWN_VALUE
+    user_agent = request.headers.get(USER_AGENT_HEADER, UNKNOWN_VALUE)
 
     # Keep JSON login and Swagger login on the same authentication policy.
     auth_result = await AuthService.authenticate_user(
@@ -352,12 +375,12 @@ async def login(request: Request, response: Response, payload: LoginRequest, db:
     )
     secure_cookie = cookie_secure_for_request(request)
     response.set_cookie(
-        key="access_token", value=auth_result["access_token"], httponly=True,
+        key=ACCESS_TOKEN_KEY, value=auth_result[ACCESS_TOKEN_KEY], httponly=True,
         max_age=(settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60 if payload.remember_me else None),
         samesite=AUTH_COOKIE_SAMESITE, secure=secure_cookie,
     )
     response.set_cookie(
-        key="refresh_token", value=auth_result["refresh_token"], httponly=True,
+        key=REFRESH_TOKEN_KEY, value=auth_result[REFRESH_TOKEN_KEY], httponly=True,
         max_age=(settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60 if payload.remember_me else None),
         samesite=AUTH_COOKIE_SAMESITE, secure=secure_cookie,
     )
@@ -370,7 +393,7 @@ async def login(request: Request, response: Response, payload: LoginRequest, db:
 @limiter.limit("5/minute")
 async def login_for_swagger(
     request: Request,
-    form_data: OAuth2PasswordRequestForm = Depends(), 
+    form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -381,13 +404,13 @@ async def login_for_swagger(
         db,
         form_data.username,
         form_data.password,
-        ip_address=request.client.host if request.client else "Unknown",
-        user_agent=request.headers.get("user-agent", "Unknown"),
+        ip_address=request.client.host if request.client else UNKNOWN_VALUE,
+        user_agent=request.headers.get(USER_AGENT_HEADER, UNKNOWN_VALUE),
     )
 
     # Swagger က အတိအကျတောင်းဆိုတဲ့ format
     return {
-        "access_token": result["access_token"],
+        ACCESS_TOKEN_KEY: result[ACCESS_TOKEN_KEY],
         "token_type": "bearer"
     }
 
@@ -424,12 +447,12 @@ def _request_session_id(request: Request, user: User) -> UUID:
     if token.lower().startswith("bearer "):
         token = token[7:].strip()
     else:
-        token = request.cookies.get("access_token", "").removeprefix("Bearer ").strip()
+        token = request.cookies.get(ACCESS_TOKEN_KEY, "").removeprefix("Bearer ").strip()
     try:
         payload = security.decode_token(token, "access", require_session=True)
         session_id = UUID(payload["sid"])
         if UUID(payload["user_id"]) != user.id:
-            raise ValueError("Session user mismatch.")
+            raise ValueError(SESSION_USER_MISMATCH_MESSAGE)
         return session_id
     except (JWTError, KeyError, TypeError, ValueError):
         raise HTTPException(status_code=401, detail="The current session is invalid.") from None
@@ -455,7 +478,7 @@ async def _complete_provider_reauthentication(
     provider: OIDCProvider,
 ):
     _validate_oauth_flow(state_data, provider_name, "REAUTH")
-    user = await get_current_user(request, None, db)
+    user = await get_current_user(request, "", db)
     session_id = _request_session_id(request, user)
     if (
         str(user.id) != str(state_data.get("user_id"))
@@ -502,7 +525,7 @@ async def _complete_oauth_login(
     callback_issuer: str | None = None,
 ):
     if error:
-        return _oauth_error_redirect("Provider sign-in was cancelled.")
+        return _oauth_error_redirect(OAUTH_PROVIDER_CANCELLED_MESSAGE)
     try:
         redis = get_oauth_redis(request)
         state_data = await _consume_browser_bound_oauth_state(request, redis, state)
@@ -510,57 +533,111 @@ async def _complete_oauth_login(
             raise HTTPException(status_code=400, detail=INVALID_OAUTH_STATE_MESSAGE)
         provider = _provider(provider_name)
         await provider.validate_callback_issuer(callback_issuer)
-        if state_data.get("flow_type") == "REAUTH":
-            return await _complete_provider_reauthentication(
-                request, db, provider_name, code, state_data, provider
-            )
-        if state_data.get("flow_type") == "LINK":
-            current_user = await get_current_user(request, None, db)
-            current_session_id = _request_session_id(request, current_user)
-            if (
-                str(current_user.id) != str(state_data.get("user_id"))
-                or str(current_session_id) != str(state_data.get("session_id"))
-                or not current_user.role
-                or current_user.role.name != "Super Admin"
-            ):
-                raise HTTPException(status_code=403, detail="OAuth link session does not match.")
-            return await _complete_link(
-                request,
-                db,
-                provider_name,
-                code,
-                state,
-                error,
-                current_user,
-                state_data=state_data,
-                provider=provider,
-                current_session_id=current_session_id,
-            )
-        _validate_oauth_flow(state_data, provider_name, "LOGIN")
-        token_response = await provider.exchange_code(code or "", state_data["pkce_verifier"])
-        identity = await provider.validate_identity(token_response, state_data["nonce"])
-        user, identity_row = await _resolve_oauth_user(db, identity)
-        if not user:
-            db.add(AuditLog(action="OAUTH_LOGIN_REJECTED", table_name="oauth_accounts",
-                            new_value={"provider": provider_name, "reason": "unlinked_identity"}))
-            await db.commit()
-            return _oauth_error_redirect("Your account has not been provisioned for this application. Please contact an administrator.")
-        if not user.is_active or user.is_deleted:
-            return _oauth_error_redirect("Your account is disabled. Please contact an administrator.")
-        identity_row.last_login_at = utc_now_naive()
-        auth_result = await AuthService.issue_authenticated_session(
-            db, user, request.client.host if request.client else "Unknown",
-            request.headers.get("user-agent", "Unknown"), bool(state_data.get("remember_me")), audit_action="OAUTH_LOGIN",
+        return await _complete_oauth_flow(
+            request, db, provider_name, code, state, error, state_data, provider
         )
-        response = RedirectResponse(url=_dashboard_path(user), status_code=303)
-        _set_auth_cookies(response, request, auth_result, bool(state_data.get("remember_me")))
-        return response
     except (OIDCValidationError, HTTPException) as exc:
         if isinstance(exc, HTTPException) and exc.status_code == 503:
             return _oauth_error_redirect("OAuth sign-in is temporarily unavailable.")
         return _oauth_error_redirect("Unable to validate provider sign-in.")
     except Exception:
         return _oauth_error_redirect("Unable to complete provider sign-in.")
+
+
+async def _complete_oauth_flow(
+    request: Request,
+    db: AsyncSession,
+    provider_name: str,
+    code: str | None,
+    state: str | None,
+    error: str | None,
+    state_data: dict[str, Any],
+    provider: OIDCProvider,
+):
+    flow_type = state_data.get("flow_type")
+    if flow_type == "REAUTH":
+        return await _complete_provider_reauthentication(
+            request, db, provider_name, code, state_data, provider
+        )
+    if flow_type == "LINK":
+        return await _complete_oauth_link_login(
+            request, db, provider_name, code, state, error, state_data, provider
+        )
+    _validate_oauth_flow(state_data, provider_name, "LOGIN")
+    return await _complete_oauth_user_login(
+        request, db, provider_name, code, state_data, provider
+    )
+
+
+async def _complete_oauth_link_login(
+    request: Request,
+    db: AsyncSession,
+    provider_name: str,
+    code: str | None,
+    state: str | None,
+    error: str | None,
+    state_data: dict[str, Any],
+    provider: OIDCProvider,
+):
+    current_user = await get_current_user(request, "", db)
+    current_session_id = _request_session_id(request, current_user)
+    if (
+        str(current_user.id) != str(state_data.get("user_id"))
+        or str(current_session_id) != str(state_data.get("session_id"))
+        or not current_user.role
+        or current_user.role.name != SUPER_ADMIN_ROLE_NAME
+    ):
+        raise HTTPException(status_code=403, detail=OAUTH_LINK_SESSION_MISMATCH_MESSAGE)
+    return await _complete_link(
+        request,
+        db,
+        provider_name,
+        code,
+        state,
+        error,
+        current_user,
+        state_data=state_data,
+        provider=provider,
+        current_session_id=current_session_id,
+    )
+
+
+async def _complete_oauth_user_login(
+    request: Request,
+    db: AsyncSession,
+    provider_name: str,
+    code: str | None,
+    state_data: dict[str, Any],
+    provider: OIDCProvider,
+):
+    token_response = await provider.exchange_code(
+        code or "", state_data["pkce_verifier"]
+    )
+    identity = await provider.validate_identity(token_response, state_data["nonce"])
+    user, identity_row = await _resolve_oauth_user(db, identity)
+    if not user:
+        db.add(AuditLog(action="OAUTH_LOGIN_REJECTED", table_name="oauth_accounts",
+                        new_value={"provider": provider_name, "reason": "unlinked_identity"}))
+        await db.commit()
+        return _oauth_error_redirect(
+            "Your account has not been provisioned for this application. Please contact an administrator."
+        )
+    if not user.is_active or user.is_deleted:
+        return _oauth_error_redirect(
+            "Your account is disabled. Please contact an administrator."
+        )
+    identity_row.last_login_at = utc_now_naive()
+    auth_result = await AuthService.issue_authenticated_session(
+        db,
+        user,
+        request.client.host if request.client else UNKNOWN_VALUE,
+        request.headers.get(USER_AGENT_HEADER, UNKNOWN_VALUE),
+        bool(state_data.get("remember_me")),
+        audit_action="OAUTH_LOGIN",
+    )
+    response = RedirectResponse(url=_dashboard_path(user), status_code=303)
+    _set_auth_cookies(response, request, auth_result, bool(state_data.get("remember_me")))
+    return response
 
 
 @router.get("/google/start", responses=OAUTH_START_ERROR_RESPONSES)
@@ -672,11 +749,11 @@ async def microsoft_callback(request: Request, code: str | None = None, state: s
 
 
 async def _link_start(request: Request, provider_name: str, user: User, db: AsyncSession, redis):
-    if not user.role or user.role.name != "Super Admin":
-        raise HTTPException(status_code=403, detail="Only Super Admin accounts can manage linked identities.")
+    if not user.role or user.role.name != SUPER_ADMIN_ROLE_NAME:
+        raise HTTPException(status_code=403, detail=SUPER_ADMIN_LINK_PERMISSION_MESSAGE)
     session_id = _request_session_id(request, user)
     if not await _recent_authentication(db, user.id, session_id):
-        raise HTTPException(status_code=403, detail="Recent authentication is required before linking an account.")
+        raise HTTPException(status_code=403, detail=OAUTH_RECENT_LINK_AUTH_REQUIRED_MESSAGE)
     provider = _provider(provider_name)
     nonce, verifier = create_nonce(), create_pkce_verifier()
     binding, cookie_value = _oauth_browser_binding(request)
@@ -731,20 +808,20 @@ async def _persist_oauth_link(
         db.add(AuditLog(action="OAUTH_IDENTITY_CONFLICT", table_name="oauth_accounts",
                         new_value={"provider": provider_name, "reason": "already_linked"}))
         await db.commit()
-        return "conflict"
+        return OAUTH_LINK_CONFLICT
 
     user = (await db.execute(select(User).options(selectinload(User.role)).where(
         User.id == user_id,
         User.is_deleted.is_(False),
     ))).scalars().first()
     if not user:
-        return "user_missing"
-    if not user.role or user.role.name != "Super Admin":
-        return "authentication_required"
+        return OAUTH_LINK_USER_MISSING
+    if not user.role or user.role.name != SUPER_ADMIN_ROLE_NAME:
+        return OAUTH_LINK_AUTHENTICATION_REQUIRED
     if not user.is_active or not await _recent_authentication(
         db, user.id, current_session_id
     ):
-        return "authentication_required"
+        return OAUTH_LINK_AUTHENTICATION_REQUIRED
 
     if duplicate:
         duplicate.revoked_at = None
@@ -761,54 +838,104 @@ async def _persist_oauth_link(
     return None
 
 
-async def _complete_link(request: Request, db: AsyncSession, provider_name: str,
-                         code: str | None, state: str | None, error: str | None,
-                         current_user: User | None, state_data: dict[str, Any] | None = None,
-                         provider: OIDCProvider | None = None,
-                         current_session_id: UUID | None = None):
+async def _validate_oauth_link_callback(
+    request: Request,
+    provider_name: str,
+    code: str | None,
+    state_data: dict[str, Any],
+    provider: OIDCProvider | None,
+) -> OIDCIdentity:
+    provider = provider or _provider(provider_name)
+    await provider.validate_callback_issuer(request.query_params.get("iss"))
+    token_response = await provider.exchange_code(
+        code or "", state_data["pkce_verifier"]
+    )
+    return await provider.validate_identity(token_response, state_data["nonce"])
+
+
+def _validate_oauth_link_session(
+    request: Request,
+    current_user: User | None,
+    state_data: dict[str, Any],
+    current_session_id: UUID | None,
+) -> tuple[str, UUID]:
+    user_id = state_data.get("user_id")
+    if not user_id or (
+        current_user is not None and str(current_user.id) != str(user_id)
+    ):
+        raise HTTPException(
+            status_code=403, detail="Authenticated user does not match OAuth link state."
+        )
+    if current_session_id is None:
+        current_session_id = UUID(state_data["session_id"])
+        if current_user is not None:
+            current_session_id = _request_session_id(request, current_user)
+    if str(current_session_id) != str(state_data.get("session_id")):
+        raise HTTPException(status_code=403, detail=OAUTH_LINK_SESSION_MISMATCH_MESSAGE)
+    return user_id, current_session_id
+
+
+def _oauth_link_success_redirect(state_data: dict[str, Any]) -> RedirectResponse:
+    return_path = state_data.get("return_path") or OAUTH_PROFILE_PATH
+    if not return_path.startswith("/") or return_path.startswith("//"):
+        return_path = OAUTH_PROFILE_PATH
+    separator = "&" if "?" in return_path else "?"
+    return RedirectResponse(
+        url=f"{return_path}{separator}oauth_linked=1",
+        status_code=303,
+    )
+
+
+def _oauth_link_result_redirect(
+    link_result: str | None, state_data: dict[str, Any]
+) -> RedirectResponse:
+    failure_messages = {
+        OAUTH_LINK_CONFLICT: "This provider account is already linked to another user.",
+        OAUTH_LINK_USER_MISSING: "Unable to link this provider account.",
+        OAUTH_LINK_AUTHENTICATION_REQUIRED: OAUTH_RECENT_LINK_AUTH_REQUIRED_MESSAGE,
+    }
+    failure_message = (
+        failure_messages.get(link_result) if link_result is not None else None
+    )
+    if failure_message is not None:
+        return _oauth_error_redirect(failure_message)
+    return _oauth_link_success_redirect(state_data)
+
+
+async def _complete_link(
+    request: Request,
+    db: AsyncSession,
+    provider_name: str,
+    code: str | None,
+    state: str | None,
+    error: str | None,
+    current_user: User | None,
+    state_data: dict[str, Any] | None = None,
+    provider: OIDCProvider | None = None,
+    current_session_id: UUID | None = None,
+):
     if error:
-        return _oauth_error_redirect("Provider sign-in was cancelled.")
+        return _oauth_error_redirect(OAUTH_PROVIDER_CANCELLED_MESSAGE)
     try:
         if state_data is None:
             state_data = await _consume_browser_bound_oauth_state(
                 request, get_oauth_redis(request), state
             )
         _validate_oauth_flow(state_data, provider_name, "LINK")
-        provider = provider or _provider(provider_name)
-        await provider.validate_callback_issuer(request.query_params.get("iss"))
-        identity = await provider.validate_identity(
-            await provider.exchange_code(code or "", state_data["pkce_verifier"]), state_data["nonce"]
+        identity = await _validate_oauth_link_callback(
+            request, provider_name, code, state_data, provider
         )
-        user_id = state_data.get("user_id")
-        if not user_id or (current_user is not None and str(current_user.id) != str(user_id)):
-            raise HTTPException(status_code=403, detail="Authenticated user does not match OAuth link state.")
-        if current_session_id is None:
-            current_session_id = UUID(state_data["session_id"])
-            if current_user is not None:
-                current_session_id = _request_session_id(request, current_user)
-        if str(current_session_id) != str(state_data.get("session_id")):
-            raise HTTPException(status_code=403, detail="OAuth link session does not match.")
+        user_id, current_session_id = _validate_oauth_link_session(
+            request, current_user, state_data, current_session_id
+        )
         link_result = await _persist_oauth_link(
             db, provider_name, user_id, identity, current_session_id
         )
-        if link_result == "conflict":
-            return _oauth_error_redirect("This provider account is already linked to another user.")
-        if link_result == "user_missing":
-            return _oauth_error_redirect("Unable to link this provider account.")
-        if link_result == "authentication_required":
-            return _oauth_error_redirect("Recent authentication is required before linking an account.")
-        return_path = state_data.get("return_path") or OAUTH_PROFILE_PATH
-        if not return_path.startswith("/") or return_path.startswith("//"):
-            return_path = OAUTH_PROFILE_PATH
-        separator = "&" if "?" in return_path else "?"
-        return RedirectResponse(
-            url=f"{return_path}{separator}oauth_linked=1",
-            status_code=303,
-        )
+        return _oauth_link_result_redirect(link_result, state_data)
     except (OIDCValidationError, HTTPException):
-        return _oauth_error_redirect("Unable to link provider account.")
+        return _oauth_error_redirect(OAUTH_LINK_FAILURE_MESSAGE)
     except Exception:
-        return _oauth_error_redirect("Unable to link provider account.")
+        return _oauth_error_redirect(OAUTH_LINK_FAILURE_MESSAGE)
 
 
 @router.get("/google/link/callback", responses=OAUTH_CALLBACK_ERROR_RESPONSES)
@@ -828,11 +955,11 @@ async def microsoft_link_callback(request: Request, code: str | None = None, sta
 
 
 async def _unlink_provider(request: Request, user: User, provider_name: str, db: AsyncSession):
-    if not user.role or user.role.name != "Super Admin":
-        raise HTTPException(status_code=403, detail="Only Super Admin accounts can manage linked identities.")
+    if not user.role or user.role.name != SUPER_ADMIN_ROLE_NAME:
+        raise HTTPException(status_code=403, detail=SUPER_ADMIN_LINK_PERMISSION_MESSAGE)
     current_session_id = _request_session_id(request, user)
     if not await _recent_authentication(db, user.id, current_session_id):
-        raise HTTPException(status_code=403, detail="Recent authentication is required.")
+        raise HTTPException(status_code=403, detail=OAUTH_RECENT_AUTH_REQUIRED_MESSAGE)
     identities = (await db.execute(select(OAuthAccount).where(
         OAuthAccount.user_id == user.id, OAuthAccount.revoked_at.is_(None)
     ))).scalars().all()
@@ -904,12 +1031,12 @@ async def self_change_password(
     if access_token.lower().startswith("bearer "):
         access_token = access_token[7:].strip()
     else:
-        access_token = request.cookies.get("access_token", "").removeprefix("Bearer ").strip()
+        access_token = request.cookies.get(ACCESS_TOKEN_KEY, "").removeprefix("Bearer ").strip()
     try:
         token_payload = security.decode_token(access_token, "access", require_session=True)
         current_session_id = UUID(token_payload["sid"])
         if UUID(token_payload["user_id"]) != user.id:
-            raise ValueError("Session user mismatch.")
+            raise ValueError(SESSION_USER_MISMATCH_MESSAGE)
     except (JWTError, KeyError, TypeError, ValueError):
         raise HTTPException(status_code=401, detail="The current session is invalid.") from None
 
@@ -942,7 +1069,7 @@ def _refresh_token_from_request(
 ) -> str | None:
     if payload and payload.refresh_token:
         return payload.refresh_token
-    return request.cookies.get("refresh_token")
+    return request.cookies.get(REFRESH_TOKEN_KEY)
 
 
 def _decode_refresh_token(token: str) -> tuple[str, UUID, UUID]:
@@ -952,7 +1079,7 @@ def _decode_refresh_token(token: str) -> tuple[str, UUID, UUID]:
     except (JWTError, ValueError, TypeError):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired refresh token.",
+            detail=INVALID_OR_REVOKED_REFRESH_TOKEN_MESSAGE,
         ) from None
 
 
@@ -966,7 +1093,7 @@ async def _load_refresh_user(db: AsyncSession, email: str, token_user_id: UUID) 
     if not user or user.is_deleted or not user.is_active or user.id != token_user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired refresh token.",
+            detail=INVALID_OR_REVOKED_REFRESH_TOKEN_MESSAGE,
         )
     return user
 
@@ -1039,8 +1166,8 @@ async def refresh_token(
     # keeping the cookies HttpOnly and Secure in production.
     secure_cookie = cookie_secure_for_request(request)
     persistent = bool(auth_session.remember_me)
-    response.set_cookie(key="access_token", value=new_access_token, httponly=True, max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60 if persistent else None, samesite=AUTH_COOKIE_SAMESITE, secure=secure_cookie)
-    response.set_cookie(key="refresh_token", value=new_refresh_token, httponly=True, max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60 if persistent else None, samesite=AUTH_COOKIE_SAMESITE, secure=secure_cookie)
+    response.set_cookie(key=ACCESS_TOKEN_KEY, value=new_access_token, httponly=True, max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60 if persistent else None, samesite=AUTH_COOKIE_SAMESITE, secure=secure_cookie)
+    response.set_cookie(key=REFRESH_TOKEN_KEY, value=new_refresh_token, httponly=True, max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60 if persistent else None, samesite=AUTH_COOKIE_SAMESITE, secure=secure_cookie)
 
     return {'access_token': new_access_token, 'refresh_token': new_refresh_token, 'token_type': 'bearer'}
 
@@ -1051,7 +1178,7 @@ def _logout_access_token(request: Request) -> str | None:
     if auth_header and auth_header.startswith("Bearer "):
         access_token = auth_header.split(" ")[1]
     else:
-        cookie_token = request.cookies.get("access_token")
+        cookie_token = request.cookies.get(ACCESS_TOKEN_KEY)
         if cookie_token:
             access_token = cookie_token.removeprefix("Bearer ").strip()
     return access_token
@@ -1093,12 +1220,12 @@ async def _revoke_logout_tokens(
 @router.post("/logout")
 async def logout(request: Request, response: Response, payload: RefreshTokenRequest | None = None, db: AsyncSession = Depends(get_db)):
     access_token = _logout_access_token(request)
-    refresh_token = (payload.refresh_token if payload and payload.refresh_token else request.cookies.get("refresh_token"))
+    refresh_token = (payload.refresh_token if payload and payload.refresh_token else request.cookies.get(REFRESH_TOKEN_KEY))
     await _revoke_logout_tokens(db, access_token, refresh_token)
 
     # 🛡️ SECURITY FIX: Explicitly clear the strict cookies on logout
     secure_cookie = cookie_secure_for_request(request)
-    response.delete_cookie(key="access_token", httponly=True, samesite=AUTH_COOKIE_SAMESITE, secure=secure_cookie)
-    response.delete_cookie(key="refresh_token", httponly=True, samesite=AUTH_COOKIE_SAMESITE, secure=secure_cookie)
+    response.delete_cookie(key=ACCESS_TOKEN_KEY, httponly=True, samesite=AUTH_COOKIE_SAMESITE, secure=secure_cookie)
+    response.delete_cookie(key=REFRESH_TOKEN_KEY, httponly=True, samesite=AUTH_COOKIE_SAMESITE, secure=secure_cookie)
 
     return {"message": "Logged out and tokens revoked successfully."}

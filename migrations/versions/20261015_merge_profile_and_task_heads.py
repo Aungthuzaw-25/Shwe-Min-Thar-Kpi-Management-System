@@ -11,8 +11,10 @@ depends_on = None
 
 
 def upgrade():
+    # This intentional no-op merge revision combines the profile and task heads.
     pass
 
 
 def downgrade():
+    # This intentional no-op merge revision has no schema changes to reverse.
     pass

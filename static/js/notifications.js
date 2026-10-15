@@ -77,11 +77,7 @@
                 </div>`;
 
             let deactivateModal = () => {};
-            const finish = (value) => {
-                deactivateModal();
-                overlay.remove();
-                resolve(value);
-            };
+            const finish = (value) => finishModal(overlay, deactivateModal, resolve, value);
             overlay.querySelector(".app-confirm-cancel").addEventListener("click", () => finish(false));
             overlay.querySelector(".app-confirm-submit").addEventListener("click", () => finish(true));
             overlay.addEventListener("click", (event) => {
@@ -115,11 +111,7 @@
                 </div>`;
             const input = overlay.querySelector(".app-prompt-input");
             let deactivateModal = () => {};
-            const finish = (value) => {
-                deactivateModal();
-                overlay.remove();
-                resolve(value);
-            };
+            const finish = (value) => finishModal(overlay, deactivateModal, resolve, value);
             overlay.querySelector(".app-confirm-cancel").addEventListener("click", () => finish(null));
             overlay.querySelector(".app-confirm-submit").addEventListener("click", () => finish(input.value));
             deactivateModal = activateModal(overlay, input, () => finish(null));
@@ -168,6 +160,12 @@
         });
     }
 
+    function finishModal(overlay, deactivateModal, resolve, value) {
+        deactivateModal();
+        overlay.remove();
+        resolve(value);
+    }
+
     function activateModal(overlay, initialFocus, onEscape) {
         const previouslyFocused = document.activeElement;
         const title = overlay.querySelector("h2");
@@ -199,7 +197,7 @@
             }
 
             const first = focusable[0];
-            const last = focusable[focusable.length - 1];
+            const last = focusable.at(-1);
             if (event.shiftKey && (document.activeElement === first || !overlay.contains(document.activeElement))) {
                 event.preventDefault();
                 last.focus();

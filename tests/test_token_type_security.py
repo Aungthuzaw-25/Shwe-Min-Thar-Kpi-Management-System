@@ -23,12 +23,14 @@ def _request() -> Request:
 @pytest.mark.asyncio
 async def test_refresh_token_cannot_authenticate_as_access_token():
     refresh_token = security.create_refresh_token({"sub": "admin@example.com"})
+    request = _request()
+    db = SimpleNamespace()
 
     with pytest.raises(HTTPException) as error:
         await dependencies.get_current_user(
-            request=_request(),
+            request=request,
             token=refresh_token,
-            db=SimpleNamespace(),
+            db=db,
         )
 
     assert error.value.status_code == 401

@@ -25,24 +25,27 @@ async def test_valid_pdf_is_accepted(monkeypatch):
 @pytest.mark.asyncio
 async def test_renamed_executable_is_rejected(monkeypatch):
     monkeypatch.setattr(file_handler, "_detect_mime_type", lambda content, filename: "application/x-dosexec")
+    file = upload("evidence.pdf", b"MZ executable")
     with pytest.raises(HTTPException) as exc:
-        await file_handler.validate_and_read_upload(upload("evidence.pdf", b"MZ executable"))
+        await file_handler.validate_and_read_upload(file)
     assert exc.value.status_code == 415
 
 
 @pytest.mark.asyncio
 async def test_mismatched_extension_and_mime_are_rejected(monkeypatch):
     monkeypatch.setattr(file_handler, "_detect_mime_type", lambda content, filename: "image/png")
+    file = upload("evidence.pdf", b"not a pdf")
     with pytest.raises(HTTPException) as exc:
-        await file_handler.validate_and_read_upload(upload("evidence.pdf", b"not a pdf"))
+        await file_handler.validate_and_read_upload(file)
     assert exc.value.status_code == 415
 
 
 @pytest.mark.asyncio
 async def test_unknown_mime_is_rejected(monkeypatch):
     monkeypatch.setattr(file_handler, "_detect_mime_type", lambda content, filename: "application/octet-stream")
+    file = upload("evidence.pdf", b"unknown")
     with pytest.raises(HTTPException) as exc:
-        await file_handler.validate_and_read_upload(upload("evidence.pdf", b"unknown"))
+        await file_handler.validate_and_read_upload(file)
     assert exc.value.status_code == 415
 
 

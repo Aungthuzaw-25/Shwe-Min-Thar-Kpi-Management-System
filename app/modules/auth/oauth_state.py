@@ -10,7 +10,7 @@ from redis.asyncio import Redis
 
 from app.core.config import settings
 
-OAUTH_UNAVAILABLE_MESSAGE = "OAuth sign-in is temporarily unavailable."
+OAUTH_UNAVAILABLE_DETAIL = "OAuth sign-in is temporarily unavailable."
 INVALID_OAUTH_STATE_MESSAGE = "Invalid OAuth state."
 OAUTH_BINDING_COOKIE_NAME = "oauth_browser_binding"
 
@@ -22,7 +22,7 @@ def get_oauth_redis(request: Request) -> Redis:
     if client is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=OAUTH_UNAVAILABLE_MESSAGE,
+            detail=OAUTH_UNAVAILABLE_DETAIL,
         )
     return client
 
@@ -89,7 +89,7 @@ async def consume_oauth_state(
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="OAuth sign-in is temporarily unavailable.",
+            detail=OAUTH_UNAVAILABLE_DETAIL,
         ) from exc
     if not raw:
         raise HTTPException(status_code=400, detail="OAuth state is invalid or expired.")
@@ -114,7 +114,7 @@ async def consume_oauth_state(
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="OAuth sign-in is temporarily unavailable.",
+            detail=OAUTH_UNAVAILABLE_DETAIL,
         ) from exc
     if not consumed:
         raise HTTPException(status_code=400, detail="OAuth state is invalid or expired.")

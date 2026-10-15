@@ -20,7 +20,7 @@ def required_ui_password(name):
     return password
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 def playwright_context():
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True, args=["--no-sandbox"])

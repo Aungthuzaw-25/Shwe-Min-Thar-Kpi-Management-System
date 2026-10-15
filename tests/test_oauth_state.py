@@ -1,6 +1,7 @@
 import json
 
 import pytest
+from fastapi import HTTPException
 
 from app.modules.auth.oauth_state import consume_oauth_state, create_oauth_state
 
@@ -35,14 +36,15 @@ async def test_oauth_state_is_one_time_and_provider_bound(monkeypatch):
     )
     payload = await consume_oauth_state(redis, state, "browser-secret")
     assert json.loads(json.dumps(payload))["provider"] == "google"
-    with pytest.raises(Exception):
+    with pytest.raises(HTTPException):
         await consume_oauth_state(redis, state, "browser-secret")
 
 
 @pytest.mark.asyncio
 async def test_oauth_state_rejects_expired_or_unknown_state():
-    with pytest.raises(Exception):
-        await consume_oauth_state(FakeRedis(), "unknown", "browser-secret")
+    redis = FakeRedis()
+    with pytest.raises(HTTPException):
+        await consume_oauth_state(redis, "unknown", "browser-secret")
 
 
 @pytest.mark.asyncio
@@ -77,9 +79,10 @@ async def test_oauth_state_distinguishes_login_and_link_flows():
 
 @pytest.mark.asyncio
 async def test_link_state_requires_an_authenticated_user():
-    with pytest.raises(Exception):
+    redis = FakeRedis()
+    with pytest.raises(HTTPException):
         await create_oauth_state(
-            FakeRedis(),
+            redis,
             provider="microsoft",
             nonce="nonce",
             pkce_verifier="verifier",
@@ -99,7 +102,7 @@ async def test_oauth_state_rejects_callback_from_a_different_browser_without_con
         browser_binding="initiating-browser",
     )
 
-    with pytest.raises(Exception):
+    with pytest.raises(HTTPException):
         await consume_oauth_state(redis, state, "attacker-browser")
 
     payload = await consume_oauth_state(redis, state, "initiating-browser")

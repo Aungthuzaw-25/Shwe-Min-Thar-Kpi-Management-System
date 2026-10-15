@@ -61,12 +61,17 @@ async def test_recalculation_rejects_authoritative_period(period_status):
         async def execute(self, statement):
             return Result()
 
+    db = Database()
+    user = SimpleNamespace(id="user-1")
+    formula = SimpleNamespace(id="formula-1")
+    period = SimpleNamespace(id="period-1")
+
     with pytest.raises(ValueError, match="finalized, locked"):
         await _save_kpi_record(
-            Database(),
-            SimpleNamespace(id="user-1"),
-            SimpleNamespace(id="formula-1"),
-            SimpleNamespace(id="period-1"),
+            db,
+            user,
+            formula,
+            period,
             PeriodType.MONTHLY,
             "2026-09-01",
             "2026-09-30",

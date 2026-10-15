@@ -108,9 +108,10 @@ async def test_admin_task_detail_uses_department_scope(monkeypatch):
 
     monkeypatch.setattr(tasks_router, "_authorized_task", deny_cross_department_task)
     admin = SimpleNamespace(role=SimpleNamespace(name="Admin"))
+    db = Database()
 
     with pytest.raises(HTTPException) as error:
-        await tasks_router.get_single_task("task-a", Database(), admin)
+        await tasks_router.get_single_task("task-a", db, admin)
 
     assert called is True
     assert error.value.status_code == 404

@@ -99,21 +99,24 @@ async def test_password_change_rejects_bad_current_password_and_confirmation(mon
 
     monkeypatch.setattr(auth_router, "run_in_threadpool", threadpool)
     monkeypatch.setattr(auth_router.security, "verify_password", lambda *_: False)
+    request = _request()
+    bad_current_password = ChangePasswordRequest(
+        old_password="wrong", new_password="StrongPass!123",  # noqa: S106 - synthetic test fixture; not a production credential
+        confirm_new_password="StrongPass!123",  # noqa: S106 - synthetic test fixture; not a production credential
+    )
     with pytest.raises(HTTPException, match="current password"):
         await auth_router.self_change_password(
-            _request(), ChangePasswordRequest(
-                old_password="wrong", new_password="StrongPass!123",  # noqa: S106 - synthetic test fixture; not a production credential
-                confirm_new_password="StrongPass!123",  # noqa: S106 - synthetic test fixture; not a production credential
-            ), user, db,
+            request, bad_current_password, user, db,
         )
 
     monkeypatch.setattr(auth_router.security, "verify_password", lambda *_: True)
+    bad_confirmation = ChangePasswordRequest(
+        old_password="old", new_password="StrongPass!123",  # noqa: S106 - synthetic test fixture; not a production credential
+        confirm_new_password="DifferentPass!123",  # noqa: S106 - synthetic test fixture; not a production credential
+    )
     with pytest.raises(HTTPException, match="confirmation"):
         await auth_router.self_change_password(
-            _request(), ChangePasswordRequest(
-                old_password="old", new_password="StrongPass!123",  # noqa: S106 - synthetic test fixture; not a production credential
-                confirm_new_password="DifferentPass!123",  # noqa: S106 - synthetic test fixture; not a production credential
-            ), user, db,
+            request, bad_confirmation, user, db,
         )
 
 
@@ -185,6 +188,8 @@ async def test_password_change_revokes_sessions_after_policy_validation(monkeypa
 async def test_admin_reset_rejects_out_of_scope_user_before_modification(monkeypatch):
     current_user = SimpleNamespace(id=uuid4(), role=SimpleNamespace(name="Admin"))
     db = SimpleNamespace(execute_calls=0)
+    target_user_id = uuid4()
+    payload = PasswordResetAdmin(new_password="StrongPass!123")  # noqa: S106 - synthetic test fixture; not a production credential
 
     async def deny_scope(_db, _current_user, _user_id):
         raise HTTPException(status_code=403, detail="Access denied for this user's organizational scope.")
@@ -192,9 +197,7 @@ async def test_admin_reset_rejects_out_of_scope_user_before_modification(monkeyp
     monkeypatch.setattr(users_router, "enforce_permission", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(users_router, "enforce_user_scope", deny_scope)
     with pytest.raises(HTTPException) as error:
-        await users_router.reset_user_password(
-            uuid4(), PasswordResetAdmin(new_password="StrongPass!123"), db, current_user  # noqa: S106 - synthetic test fixture; not a production credential
-        )
+        await users_router.reset_user_password(target_user_id, payload, db, current_user)
     assert error.value.status_code == 403
     assert db.execute_calls == 0
 

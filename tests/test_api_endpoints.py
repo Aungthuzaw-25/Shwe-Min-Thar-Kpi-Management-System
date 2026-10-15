@@ -247,12 +247,14 @@ async def test_system_logs_database_failure_returns_safe_error(monkeypatch):
 
     monkeypatch.setattr(system_router, "enforce_permission", lambda *args: None)
     monkeypatch.setattr(system_router.repo, "get_recent_logs", fail)
+    db = SimpleNamespace()
+    current_user = SimpleNamespace(id=uuid4())
 
     with pytest.raises(system_router.HTTPException) as exc_info:
         await system_router.read_system_logs(
             page=1, page_size=25, skip=None, limit=None, level=None,
             event_type=None, service=None, search=None, start=None, end=None,
-            db=SimpleNamespace(), current_user=SimpleNamespace(id=uuid4()),
+            db=db, current_user=current_user,
         )
 
     assert exc_info.value.status_code == 503
@@ -262,20 +264,24 @@ async def test_system_logs_database_failure_returns_safe_error(monkeypatch):
 @pytest.mark.asyncio
 async def test_system_log_detail_rejects_invalid_id(monkeypatch):
     monkeypatch.setattr(system_router, "enforce_permission", lambda *args: None)
+    db = SimpleNamespace()
+    current_user = SimpleNamespace(id=uuid4())
     with pytest.raises(system_router.HTTPException) as exc_info:
         await system_router.read_system_log_detail(
             "not-a-uuid",
-            SimpleNamespace(),
-            SimpleNamespace(id=uuid4()),
+            db,
+            current_user,
         )
     assert exc_info.value.status_code == 404
 
 
 @pytest.mark.asyncio
 async def test_notification_detail_rejects_invalid_id():
+    db = SimpleNamespace()
+    current_user = SimpleNamespace(id=uuid4())
     with pytest.raises(notifications_router.HTTPException) as exc_info:
         await notifications_router.get_my_notification(
-            "not-a-uuid", SimpleNamespace(), SimpleNamespace(id=uuid4())
+            "not-a-uuid", db, current_user
         )
     assert exc_info.value.status_code == 404
 

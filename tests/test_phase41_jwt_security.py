@@ -121,16 +121,18 @@ def test_tokens_include_server_controlled_claims_and_validate_by_type():
     {"type": "access", "iat": 1, "jti": "j", "exp": datetime.now(UTC) + timedelta(minutes=5)},
 ])
 def test_expired_or_missing_subject_access_tokens_are_rejected(payload):
+    token = _signed_payload(payload)
     with pytest.raises(JWTError):
-        security.decode_token(_signed_payload(payload), "access")
+        security.decode_token(token, "access")
 
 
 def test_invalid_signature_and_missing_session_claims_are_rejected():
     token_data = {"sub": "alice@example.com", "user_id": str(uuid4()), "sid": str(uuid4())}
     valid = security.create_access_token(token_data)
     claims = security.decode_token(valid, "access")
+    invalid_signature_token = _signed_payload(claims, key="wrong-secret")
     with pytest.raises(JWTError):
-        security.decode_token(_signed_payload(claims, key="wrong-secret"), "access")
+        security.decode_token(invalid_signature_token, "access")
 
     missing_session = security.create_access_token({"sub": "alice@example.com"})
     with pytest.raises(JWTError):
@@ -142,13 +144,18 @@ async def test_access_endpoint_rejects_refresh_token_and_refresh_endpoint_reject
     user, session, token_data = _session_fixture()
     refresh = security.create_refresh_token(token_data)
     access = security.create_access_token(token_data)
+    request = _request()
+    db = SimpleNamespace()
+
     with pytest.raises(HTTPException) as access_error:
-        await dependencies.get_current_user(_request(), refresh, SimpleNamespace())
+        await dependencies.get_current_user(request, refresh, db)
     assert access_error.value.status_code == 401
 
     db = _RefreshDB(user, session)
+    response = Response()
+    refresh_request = RefreshTokenRequest(refresh_token=access)
     with pytest.raises(HTTPException) as refresh_error:
-        await auth_router.refresh_token(_request(), Response(), RefreshTokenRequest(refresh_token=access), db)
+        await auth_router.refresh_token(request, response, refresh_request, db)
     assert refresh_error.value.status_code == 401
 
 
@@ -168,8 +175,11 @@ async def test_refresh_rotation_replay_and_logout_revocation():
     security.decode_token(rotated["access_token"], "access", require_session=True)
 
     db.stage = 0
+    request = _request()
+    response = Response()
+    replay_request = RefreshTokenRequest(refresh_token=refresh)
     with pytest.raises(HTTPException) as replay:
-        await auth_router.refresh_token(_request(), Response(), RefreshTokenRequest(refresh_token=refresh), db)
+        await auth_router.refresh_token(request, response, replay_request, db)
     assert replay.value.status_code == 401
 
     db.mode = "logout"
@@ -181,10 +191,9 @@ async def test_refresh_rotation_replay_and_logout_revocation():
 
     db.mode = "refresh"
     db.stage = 0
+    revoked_request = RefreshTokenRequest(refresh_token=rotated["refresh_token"])
     with pytest.raises(HTTPException) as revoked:
-        await auth_router.refresh_token(
-            _request(), Response(), RefreshTokenRequest(refresh_token=rotated["refresh_token"]), db
-        )
+        await auth_router.refresh_token(request, response, revoked_request, db)
     assert revoked.value.status_code == 401
 
 

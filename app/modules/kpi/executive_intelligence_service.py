@@ -45,6 +45,12 @@ STATUS_ORDER = (
 )
 FINAL_PERIOD_STATUSES = (KPIPeriodStatus.FINALIZED, KPIPeriodStatus.LOCKED)
 TREND_PERIOD_LIMIT = 12
+CATEGORY_RESULTS_UNAVAILABLE = (
+    "Finalized category results are not independently persisted."
+)
+TARGET_RESULTS_UNAVAILABLE = (
+    "Authoritative target-versus-actual results are not independently persisted."
+)
 
 
 async def build_monthly_average_series(
@@ -840,10 +846,10 @@ def _empty_executive_overview(summary: ExecutiveSummary) -> ExecutiveOverview:
         summary=summary,
         trend=_unavailable_trend(),
         category_intelligence=ExecutiveUnavailableData(
-            reason="Finalized category results are not independently persisted."
+            reason=CATEGORY_RESULTS_UNAVAILABLE
         ),
         target_intelligence=ExecutiveUnavailableData(
-            reason="Authoritative target-versus-actual results are not independently persisted."
+            reason=TARGET_RESULTS_UNAVAILABLE
         ),
     )
 
@@ -1150,10 +1156,10 @@ async def _build_date_range_overview(
                 comparison_available=False,
             ),
             category_intelligence=ExecutiveUnavailableData(
-                reason="Finalized category results are not independently persisted."
+                reason=CATEGORY_RESULTS_UNAVAILABLE
             ),
             target_intelligence=ExecutiveUnavailableData(
-                reason="Authoritative target-versus-actual results are not independently persisted."
+                reason=TARGET_RESULTS_UNAVAILABLE
             ),
         )
 
@@ -1193,10 +1199,10 @@ async def _build_date_range_overview(
         signals=signals,
         attention_areas=attention,
         category_intelligence=ExecutiveUnavailableData(
-            reason="Finalized category results are not independently persisted."
+            reason=CATEGORY_RESULTS_UNAVAILABLE
         ),
         target_intelligence=ExecutiveUnavailableData(
-            reason="Authoritative target-versus-actual results are not independently persisted."
+            reason=TARGET_RESULTS_UNAVAILABLE
         ),
     )
 
@@ -1277,10 +1283,10 @@ async def build_executive_overview(
         signals=signals,
         attention_areas=attention,
         category_intelligence=ExecutiveUnavailableData(
-            reason="Finalized category results are not independently persisted."
+            reason=CATEGORY_RESULTS_UNAVAILABLE
         ),
         target_intelligence=ExecutiveUnavailableData(
-            reason="Authoritative target-versus-actual results are not independently persisted."
+            reason=TARGET_RESULTS_UNAVAILABLE
         ),
     )
 

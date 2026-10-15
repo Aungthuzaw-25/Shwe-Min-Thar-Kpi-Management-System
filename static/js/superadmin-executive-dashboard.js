@@ -52,10 +52,10 @@
     const parentSignal = options.signal;
     let timedOut = false;
     const abortFromParent = () => controller.abort(parentSignal.reason);
-    if (parentSignal?.aborted) {
+    if (parentSignal && parentSignal.aborted) {
       abortFromParent();
-    } else {
-      parentSignal?.addEventListener('abort', abortFromParent, { once: true });
+    } else if (parentSignal) {
+      parentSignal.addEventListener('abort', abortFromParent, { once: true });
     }
     const timeout = window.setTimeout(() => {
       timedOut = true;
@@ -72,7 +72,7 @@
       throw error;
     } finally {
       window.clearTimeout(timeout);
-      parentSignal?.removeEventListener('abort', abortFromParent);
+      if (parentSignal) parentSignal.removeEventListener('abort', abortFromParent);
     }
   }
 
@@ -187,10 +187,10 @@
       const departmentMode = trendScopeFilter.value === 'department';
       trendDepartmentField.hidden = !departmentMode;
       trendDepartmentFilter.disabled = !departmentMode || !trendDepartmentFilter.options.length;
-      loadMonthlyAverages(Number(filterYear.value));
+      void loadMonthlyAverages(Number(filterYear.value));
     });
     trendDepartmentFilter.addEventListener('change', () => {
-      loadMonthlyAverages(Number(filterYear.value));
+      void loadMonthlyAverages(Number(filterYear.value));
     });
   }
 
@@ -316,73 +316,154 @@
     return `exec-value-${rounded}`;
   }
 
-  function renderScorecards(data, notifications, activitySummary, executiveSummary, tasks, approvals, trend, hasPeriod) {
-    const summaryAvailable = hasPeriod && executiveSummary?.status === 'available';
-    const evaluated = executiveSummary?.evaluated_employee_count;
-    const active = executiveSummary?.active_employee_count;
-    const noResult = executiveSummary?.no_result_employee_count;
+  function renderScorecards(options) {
+    renderPrimaryScorecards(options);
+    renderSecondaryScorecards(options);
+  }
+
+  function renderPrimaryScorecards(options) {
+    const state = getPrimaryScorecardState(options);
+    const primary = [
+      renderAverageScorecard(state),
+      renderEvaluatedScorecard(state),
+      renderApprovalScorecard(state),
+      renderOverdueScorecard(state)
+    ];
+    document.getElementById('primaryCards').innerHTML = primary.join('');
+  }
+
+  function getPrimaryScorecardState(options) {
+    const data = options.data || {};
+    const executiveSummary = options.executiveSummary || {};
+    const tasks = options.tasks || {};
+    const approvals = options.approvals || {};
+    const trend = options.trend || {};
+    const hasPeriod = options.hasPeriod;
+    const summaryAvailable = hasPeriod && executiveSummary.status === 'available';
+    const evaluated = executiveSummary.evaluated_employee_count;
+    const active = executiveSummary.active_employee_count;
+    const noResult = executiveSummary.no_result_employee_count;
     const evaluatedValue = Number.isFinite(evaluated) ? evaluated : null;
     const activeValue = Number.isFinite(active) ? active : null;
     const noResultValue = Number.isFinite(noResult) ? noResult : null;
     const evaluatedPercentage = summaryAvailable && activeValue
       ? Math.max(0, Math.min(evaluatedValue / activeValue * 100, 100))
       : 0;
-    const deltaAvailable = hasPeriod && trend?.comparison_available && Number.isFinite(trend.delta);
+    const deltaAvailable = hasPeriod && trend.comparison_available && Number.isFinite(trend.delta);
     const delta = deltaAvailable ? Number(trend.delta) : null;
     const pendingCount = data.pending_approvals;
     const overdueCount = tasks.overdue;
     const pendingIsAvailable = hasPeriod && pendingCount !== null && pendingCount !== undefined && Number.isFinite(Number(pendingCount));
     const overdueIsAvailable = hasPeriod && overdueCount !== null && overdueCount !== undefined && Number.isFinite(Number(overdueCount));
-    const primary = [
-      `<section class="exec-primary-card" aria-labelledby="primaryAverageHeading">
-        <h2 id="primaryAverageHeading" class="exec-eyebrow">Average KPI</h2>
-        <strong id="currentScore" class="exec-metric">${metricValue({
-          value: executiveSummary?.average_percentage,
-          status: summaryAvailable ? 'available' : 'unavailable'
-        }, '%')}</strong>
-        <span class="exec-pill ${delta === null ? 'exec-pill-neutral' : delta >= 0 ? 'exec-pill-ok' : 'exec-pill-bad'}">${
-          delta === null ? 'No comparison' : `${delta >= 0 ? '+' : ''}${delta.toFixed(2)} pts vs previous period`
-        }</span>
-      </section>`,
-      `<section class="exec-primary-card" aria-labelledby="primaryEvaluatedHeading">
-        <h2 id="primaryEvaluatedHeading" class="exec-eyebrow">Evaluated employees</h2>
-        <strong class="exec-metric exec-evaluated-value">
-          <span>${summaryAvailable && evaluatedValue !== null ? escapeHTML(evaluatedValue.toLocaleString()) : '—'}</span>
-          <span class="exec-metric-denominator">/ ${summaryAvailable && activeValue !== null ? escapeHTML(activeValue.toLocaleString()) : '—'}</span>
-        </strong>
-        <div class="exec-progress" role="progressbar" aria-label="Employees evaluated" aria-valuemin="0" aria-valuemax="${activeValue ?? 0}" aria-valuenow="${evaluatedValue ?? 0}">
-          <span class="${percentageClass(evaluatedPercentage)}"></span>
-        </div>
-        <span class="exec-card-meta">${summaryAvailable && noResultValue !== null ? escapeHTML(noResultValue.toLocaleString()) : '—'} without KPI result</span>
-      </section>`,
-      `<section class="exec-primary-card" aria-labelledby="primaryApprovalsHeading">
-        <h2 id="primaryApprovalsHeading" class="exec-eyebrow">Pending approvals</h2>
-        <strong class="exec-metric">${pendingIsAvailable ? formatCount(pendingCount) : '—'}</strong>
-        <div class="exec-approval-breakdown" aria-label="Pending approvals by level">
-          <span><span>Level 1</span><strong>${hasPeriod ? formatCount(approvals.pending_l1) : '—'}</strong></span>
-          <span><span>Level 0</span><strong>${hasPeriod ? formatCount(approvals.pending_l0) : '—'}</strong></span>
-        </div>
-      </section>`,
-      `<section class="exec-primary-card" aria-labelledby="primaryOverdueHeading">
-        <h2 id="primaryOverdueHeading" class="exec-eyebrow">Overdue tasks</h2>
-        <strong class="exec-metric">${overdueIsAvailable ? formatCount(overdueCount) : '—'}</strong>
-        <span class="exec-pill exec-pill-bad">Late rate ${hasPeriod ? metricValue(tasks.late_rate, '%') : '—'}</span>
-      </section>`
-    ];
-    document.getElementById('primaryCards').innerHTML = primary.join('');
+    return {
+      data,
+      executiveSummary,
+      tasks,
+      approvals,
+      hasPeriod,
+      summaryAvailable,
+      evaluatedValue,
+      activeValue,
+      noResultValue,
+      evaluatedPercentage,
+      delta,
+      pendingCount,
+      overdueCount,
+      pendingIsAvailable,
+      overdueIsAvailable
+    };
+  }
 
+  function renderAverageScorecard(state) {
+    const status = state.summaryAvailable ? 'available' : 'unavailable';
+    return `<section class="exec-primary-card" aria-labelledby="primaryAverageHeading">
+      <h2 id="primaryAverageHeading" class="exec-eyebrow">Average KPI</h2>
+      <strong id="currentScore" class="exec-metric">${metricValue({
+        value: state.executiveSummary.average_percentage,
+        status
+      }, '%')}</strong>
+      ${comparisonPill(state.delta)}
+    </section>`;
+  }
+
+  function renderEvaluatedScorecard(state) {
+    const evaluated = formatAvailableCount(state.evaluatedValue, state.summaryAvailable);
+    const active = formatAvailableCount(state.activeValue, state.summaryAvailable);
+    const noResult = formatAvailableCount(state.noResultValue, state.summaryAvailable);
+    return `<section class="exec-primary-card" aria-labelledby="primaryEvaluatedHeading">
+      <h2 id="primaryEvaluatedHeading" class="exec-eyebrow">Evaluated employees</h2>
+      <strong class="exec-metric exec-evaluated-value">
+        <span>${evaluated}</span>
+        <span class="exec-metric-denominator">/ ${active}</span>
+      </strong>
+      <div class="exec-progress" role="progressbar" aria-label="Employees evaluated" aria-valuemin="0" aria-valuemax="${state.activeValue ?? 0}" aria-valuenow="${state.evaluatedValue ?? 0}">
+        <span class="${percentageClass(state.evaluatedPercentage)}"></span>
+      </div>
+      <span class="exec-card-meta">${noResult} without KPI result</span>
+    </section>`;
+  }
+
+  function formatAvailableCount(value, available) {
+    if (!available || value === null) return '—';
+    return escapeHTML(value.toLocaleString());
+  }
+
+  function renderApprovalScorecard(state) {
+    const pending = state.pendingIsAvailable ? formatCount(state.pendingCount) : '—';
+    const pendingL1 = state.hasPeriod ? formatCount(state.approvals.pending_l1) : '—';
+    const pendingL0 = state.hasPeriod ? formatCount(state.approvals.pending_l0) : '—';
+    return `<section class="exec-primary-card" aria-labelledby="primaryApprovalsHeading">
+      <h2 id="primaryApprovalsHeading" class="exec-eyebrow">Pending approvals</h2>
+      <strong class="exec-metric">${pending}</strong>
+      <div class="exec-approval-breakdown" aria-label="Pending approvals by level">
+        <span><span>Level 1</span><strong>${pendingL1}</strong></span>
+        <span><span>Level 0</span><strong>${pendingL0}</strong></span>
+      </div>
+    </section>`;
+  }
+
+  function renderOverdueScorecard(state) {
+    const overdue = state.overdueIsAvailable ? formatCount(state.overdueCount) : '—';
+    const lateRate = state.hasPeriod ? metricValue(state.tasks.late_rate, '%') : '—';
+    return `<section class="exec-primary-card" aria-labelledby="primaryOverdueHeading">
+      <h2 id="primaryOverdueHeading" class="exec-eyebrow">Overdue tasks</h2>
+      <strong class="exec-metric">${overdue}</strong>
+      <span class="exec-pill exec-pill-bad">Late rate ${lateRate}</span>
+    </section>`;
+  }
+
+  function renderSecondaryScorecards(options) {
+    const {
+      data = {},
+      notifications = {},
+      activitySummary = {},
+      executiveSummary = {},
+      hasPeriod
+    } = options;
+    const summaryAvailable = hasPeriod && executiveSummary.status === 'available';
     const secondary = [
-      ['Active employees', countMetric(executiveSummary?.active_employee_count, summaryAvailable)],
+      ['Active employees', countMetric(executiveSummary.active_employee_count, summaryAvailable)],
       ['Departments', countMetric(data.department_count, true)],
       ['Task completion', data.task_completion_percentage, '%'],
-      ['Unread notifications', countMetric(notifications?.unread_count, notifications?.unread_count !== undefined)],
-      ['Activity volume', countMetric(activitySummary?.total, activitySummary?.total !== undefined)]
+      ['Unread notifications', countMetric(notifications.unread_count, notifications.unread_count !== undefined)],
+      ['Activity volume', countMetric(activitySummary.total, activitySummary.total !== undefined)]
     ];
     document.getElementById('secondaryChips').innerHTML = secondary.map(([label, metric, suffix = ''], index) => `
       <section class="exec-chip" aria-labelledby="secondaryMetricHeading${index}">
         <h2 id="secondaryMetricHeading${index}" class="exec-eyebrow">${label}</h2>
         <strong class="exec-chip-value">${metricValue(metric, suffix)}</strong>
       </section>`).join('');
+  }
+
+  function comparisonPill(delta) {
+    let tone = 'neutral';
+    let label = 'No comparison';
+    if (delta !== null) {
+      tone = delta >= 0 ? 'ok' : 'bad';
+      const sign = delta >= 0 ? '+' : '';
+      label = `${sign}${delta.toFixed(2)} pts vs previous period`;
+    }
+    return `<span class="exec-pill exec-pill-${tone}">${label}</span>`;
   }
 
   function renderMonthlyTrend(trend) {
@@ -461,18 +542,66 @@
 
   function renderTrendAccessibleTable(trend) {
     const target = document.getElementById('kpiTrendAccessibleTable');
-    const points = trend?.points || [];
+    const points = trend && trend.points || [];
+    const scopeLabel = trend && trend.scopeLabel || 'Monthly average KPI scores';
+    const year = trend && trend.year || '';
+    const rows = points.map(point => {
+      const average = point.average_percentage === null || point.average_percentage === undefined
+        ? 'No finalized KPI results'
+        : `${Number(point.average_percentage).toFixed(2)}%`;
+      return `<tr><th scope="row">${escapeHTML(point.period_label)}</th><td>${average}</td>
+        <td>${point.evaluated_employee_count}</td></tr>`;
+    }).join('');
     target.innerHTML = `<table>
-      <caption>${escapeHTML(trend?.scopeLabel || 'Monthly average KPI scores')} · ${escapeHTML(trend?.year || '')}</caption>
+      <caption>${escapeHTML(scopeLabel)} · ${escapeHTML(year)}</caption>
       <thead><tr><th>Month</th><th>Average KPI score</th><th>Evaluated employees</th></tr></thead>
-      <tbody>${points.map(point => {
-        const average = point.average_percentage === null || point.average_percentage === undefined
-          ? 'No finalized KPI results'
-          : `${Number(point.average_percentage).toFixed(2)}%`;
-        return `<tr><th scope="row">${escapeHTML(point.period_label)}</th><td>${average}</td>
-          <td>${point.evaluated_employee_count}</td></tr>`;
-      }).join('')}</tbody>
+      <tbody>${rows}</tbody>
     </table>`;
+  }
+
+  function updateMonthlyDepartmentSelection(departments) {
+    const selectedDepartmentId = trendDepartmentFilter.value;
+    trendDepartmentFilter.replaceChildren(...departments.map(department =>
+      new Option(department.name, department.id)
+    ));
+    const hasSelectedDepartment = departments.some(
+      department => department.id === selectedDepartmentId
+    );
+    if (hasSelectedDepartment) {
+      trendDepartmentFilter.value = selectedDepartmentId;
+    } else if (departments.length) {
+      trendDepartmentFilter.value = departments[0].id;
+    }
+    const departmentMode = trendScopeFilter.value === 'department';
+    trendDepartmentFilter.hidden = !departmentMode;
+    trendDepartmentFilter.previousElementSibling.hidden = !departmentMode;
+    trendDepartmentFilter.disabled = !departmentMode || !departments.length;
+    return {
+      departmentMode,
+      hasSelectedDepartment,
+      selectedDepartment: departments.find(
+        department => department.id === trendDepartmentFilter.value
+      )
+    };
+  }
+
+  function clearMonthlyTrend(message, metaMessage) {
+    if (trendChart) trendChart.destroy();
+    trendChart = null;
+    document.getElementById('kpiTrendChart').hidden = true;
+    const empty = document.getElementById('kpiTrendEmpty');
+    empty.hidden = false;
+    empty.textContent = message;
+    document.getElementById('kpiTrendMeta').textContent = metaMessage;
+    renderTrendAccessibleTable(null);
+  }
+
+  function renderMonthlyAveragesFailure(error, sequence) {
+    if (error.name === 'AbortError' || sequence !== monthlyAverageRequestSequence) return;
+    clearMonthlyTrend(
+      'Monthly KPI averages could not be loaded. Use Refresh to try again.',
+      'Monthly data unavailable'
+    );
   }
 
   async function loadMonthlyAverages(year) {
@@ -480,87 +609,68 @@
     const controller = new AbortController();
     activeMonthlyAverageRequest = controller;
     const sequence = ++monthlyAverageRequestSequence;
-    const canvas = document.getElementById('kpiTrendChart');
-    const empty = document.getElementById('kpiTrendEmpty');
-    const meta = document.getElementById('kpiTrendMeta');
     try {
       const params = new URLSearchParams({ year: String(year) });
       if (trendScopeFilter.value === 'department' && trendDepartmentFilter.value) {
         params.set('department_id', trendDepartmentFilter.value);
       }
-      const monthlyAveragesResponse = await fetchJsonWithTimeout(
+      const data = await fetchJsonWithTimeout(
         `/api/v1/dashboard/executive/monthly-averages?${params}`,
         { signal: controller.signal, credentials: 'same-origin' },
         'Monthly KPI averages could not be loaded.'
       );
-      const data = monthlyAveragesResponse;
       if (sequence !== monthlyAverageRequestSequence) return;
-      const selectedDepartmentId = trendDepartmentFilter.value;
       const departments = data.departments || [];
-      trendDepartmentFilter.replaceChildren(...departments.map(department =>
-        new Option(department.name, department.id)
-      ));
-      const hasSelectedDepartment = departments.some(
-        department => department.id === selectedDepartmentId
-      );
-      if (hasSelectedDepartment) {
-        trendDepartmentFilter.value = selectedDepartmentId;
-      } else if (departments.length) {
-        trendDepartmentFilter.value = departments[0].id;
-      }
-      const departmentMode = trendScopeFilter.value === 'department';
-      trendDepartmentFilter.hidden = !departmentMode;
-      trendDepartmentFilter.previousElementSibling.hidden = !departmentMode;
-      trendDepartmentFilter.disabled = !departmentMode || !departments.length;
-      if (departmentMode && departments.length && !hasSelectedDepartment) {
-        loadMonthlyAverages(year);
+      const selection = updateMonthlyDepartmentSelection(departments);
+      if (selection.departmentMode && departments.length && !selection.hasSelectedDepartment) {
+        void loadMonthlyAverages(year);
         return;
       }
-      if (departmentMode && !departments.length) {
-        if (trendChart) trendChart.destroy();
-        trendChart = null;
-        canvas.hidden = true;
-        empty.hidden = false;
-        empty.textContent = 'No departments are available in your authorized scope.';
-        meta.textContent = 'Department data unavailable';
-        renderTrendAccessibleTable(null);
+      if (selection.departmentMode && !departments.length) {
+        clearMonthlyTrend(
+          'No departments are available in your authorized scope.',
+          'Department data unavailable'
+        );
         return;
       }
-      const selectedDepartment = departments.find(
-        department => department.id === trendDepartmentFilter.value
-      );
-      const monthlyAverages = data.monthly_averages || [];
-      const averagesByMonth = new Map(monthlyAverages.map(item => [item.month, item]));
-      const points = monthNames.map((name, index) => {
-        const data = averagesByMonth.get(index + 1);
-        return {
-          period_label: name.slice(0, 3),
-          average_percentage: data?.average_percentage ?? null,
-          evaluated_employee_count: data?.evaluated_employee_count ?? 0
-        };
-      });
-      renderMonthlyTrend({
-        year,
-        scopeLabel: departmentMode
-          ? selectedDepartment?.name || 'Individual Department'
-          : 'Company Average',
-        points,
-        labels: points.map(point => point.period_label),
-        values: points.map(point => point.average_percentage)
-      });
+      renderMonthlyAverageData(data, year, selection);
     } catch (error) {
-      if (error.name === 'AbortError') return;
-      if (sequence !== monthlyAverageRequestSequence) return;
-      if (trendChart) trendChart.destroy();
-      trendChart = null;
-      canvas.hidden = true;
-      empty.hidden = false;
-      empty.textContent = 'Monthly KPI averages could not be loaded. Use Refresh to try again.';
-      meta.textContent = 'Monthly data unavailable';
-      renderTrendAccessibleTable(null);
+      renderMonthlyAveragesFailure(error, sequence);
     } finally {
       if (activeMonthlyAverageRequest === controller) activeMonthlyAverageRequest = null;
     }
+  }
+
+  function renderMonthlyAverageData(data, year, selection) {
+    const monthlyAverages = data.monthly_averages || [];
+    const averagesByMonth = new Map(monthlyAverages.map(item => [item.month, item]));
+    const points = monthNames.map((name, index) => {
+      const monthData = averagesByMonth.get(index + 1) || {};
+      return {
+        period_label: name.slice(0, 3),
+        average_percentage: monthData.average_percentage === null ||
+          monthData.average_percentage === undefined
+          ? null
+          : monthData.average_percentage,
+        evaluated_employee_count: monthData.evaluated_employee_count === null ||
+          monthData.evaluated_employee_count === undefined
+          ? 0
+          : monthData.evaluated_employee_count
+      };
+    });
+    let scopeLabel = 'Company Average';
+    if (selection.departmentMode) {
+      scopeLabel = selection.selectedDepartment && selection.selectedDepartment.name
+        ? selection.selectedDepartment.name
+        : 'Individual Department';
+    }
+    renderMonthlyTrend({
+      year,
+      scopeLabel,
+      points,
+      labels: points.map(point => point.period_label),
+      values: points.map(point => point.average_percentage)
+    });
   }
 
   function renderDepartments(rows) {
@@ -576,12 +686,17 @@
       const value = row.average_percentage;
       const valid = value !== null && value !== undefined && Number.isFinite(Number(value));
       const percentage = valid ? Math.max(0, Math.min(Number(value), 100)) : 0;
-      const fillTone = valid && value < 60 ? 'exec-progress-bad'
-        : valid && value < 75 ? 'exec-progress-warn' : '';
+      let fillTone = '';
+      if (valid && value < 60) {
+        fillTone = 'exec-progress-bad';
+      } else if (valid && value < 75) {
+        fillTone = 'exec-progress-warn';
+      }
+      const displayValue = valid ? `${Number(value).toFixed(2)}%` : '—';
       return `<div class="exec-department-row">
         <div class="exec-department-meta">
           <span>${escapeHTML(row.department_name)}</span>
-          <strong>${valid ? `${Number(value).toFixed(2)}%` : '—'}</strong>
+          <strong>${displayValue}</strong>
         </div>
         <div class="exec-progress" role="progressbar" aria-label="${escapeHTML(row.department_name)} average KPI"
           aria-valuemin="0" aria-valuemax="100" aria-valuenow="${valid ? percentage : 0}">
@@ -652,11 +767,12 @@
       offset += width + gapWidth;
       return segment;
     }).join('');
-    target.innerHTML = `<svg class="exec-status-bar" role="img" aria-label="${buckets
-      .map(bucket => `${bucket.label}: ${bucket.count}`).join(', ')}" viewBox="0 0 ${barWidth} 14" preserveAspectRatio="none">${segments}</svg>
-      <ul class="exec-status-legend">${buckets.map(bucket => `
+    const ariaLabel = buckets.map(bucket => `${bucket.label}: ${bucket.count}`).join(', ');
+    const legend = buckets.map(bucket => `
         <li><span><i class="exec-status-key exec-status-${bucket.tone}" aria-hidden="true"></i>${bucket.label}</span>
-        <strong>${bucket.count.toLocaleString()}</strong></li>`).join('')}</ul>`;
+        <strong>${bucket.count.toLocaleString()}</strong></li>`).join('');
+    target.innerHTML = `<svg class="exec-status-bar" role="img" aria-label="${ariaLabel}" viewBox="0 0 ${barWidth} 14" preserveAspectRatio="none">${segments}</svg>
+      <ul class="exec-status-legend">${legend}</ul>`;
   }
 
   function renderExecutiveSignals(signals, attentionAreas) {
@@ -668,7 +784,7 @@
       COVERAGE: { label: 'Coverage', tone: 'info' }
     };
     const signalTarget = document.getElementById('executiveSignals');
-    signalTarget.innerHTML = signals?.length ? signals.map(signal => {
+    signalTarget.innerHTML = signals && signals.length ? signals.map(signal => {
       const presentation = signalPresentation[signal.signal_type] || {
         label: 'Signal',
         tone: 'neutral'
@@ -687,7 +803,7 @@
     }).join('') : listEmpty('No measurable signals for this period.');
 
     const attentionTarget = document.getElementById('executiveAttentionAreas');
-    attentionTarget.innerHTML = attentionAreas?.length ? attentionAreas.map(area => {
+    attentionTarget.innerHTML = attentionAreas && attentionAreas.length ? attentionAreas.map(area => {
       const missingResults = area.area_type === 'MISSING_RESULTS';
       const label = missingResults ? 'Missing results' : 'Performance';
       const tone = area.severity === 'warning' ? 'warn' : 'info';
@@ -707,41 +823,62 @@
   }
 
   function renderLists(data, operationalDataAvailable) {
-    const alerts = document.getElementById('dashboardAlerts');
-    alerts.innerHTML = !operationalDataAvailable
-      ? listEmpty('Operational summary unavailable.')
-      : data.alerts?.length ? data.alerts.map(alert => `
+    document.getElementById('dashboardAlerts').innerHTML =
+      renderAlerts(data, operationalDataAvailable);
+    document.getElementById('dashboardActivity').innerHTML =
+      renderActivity(data, operationalDataAvailable);
+    renderActivitySummary(data, operationalDataAvailable);
+    document.getElementById('dashboardNotifications').innerHTML =
+      renderNotifications(data, operationalDataAvailable);
+  }
+
+  function renderAlerts(data, operationalDataAvailable) {
+    if (!operationalDataAvailable) return listEmpty('Operational summary unavailable.');
+    const alerts = data.alerts || [];
+    if (!alerts.length) return listEmpty('No alerts.');
+    return alerts.map(alert => `
       <div class="exec-list-item exec-alert-${escapeHTML(alert.severity)}">
         <div class="exec-list-copy"><strong>${escapeHTML(alert.message)}</strong>
           <span>${formatCount(alert.count)} item${Number(alert.count) === 1 ? '' : 's'}</span></div>
         <time class="exec-list-time">${escapeHTML(alert.period || '—')}</time>
-      </div>`).join('') : listEmpty('No alerts.');
+      </div>`).join('');
+  }
 
-    const activity = document.getElementById('dashboardActivity');
-    activity.innerHTML = !operationalDataAvailable
-      ? listEmpty('Operational summary unavailable.')
-      : data.activity?.length ? data.activity.map(item => `
+  function renderActivity(data, operationalDataAvailable) {
+    if (!operationalDataAvailable) return listEmpty('Operational summary unavailable.');
+    const activities = data.activity || [];
+    if (!activities.length) return listEmpty('No recent activity.');
+    return activities.map(item => `
       <div class="exec-list-item">
         <div class="exec-list-copy"><strong>${escapeHTML(item.action || 'Activity')}</strong>
           <span>${item.actor_name && item.actor_name !== 'System' ? window.kpiAvatarMarkup({ ...item, display_name: item.actor_name }, 32) : ''}${escapeHTML(item.actor_name || 'System')}</span></div>
         <time class="exec-list-time">${escapeHTML(formatTime(item.created_at) || '—')}</time>
-      </div>`).join('') : listEmpty('No recent activity.');
+      </div>`).join('');
+  }
 
+  function renderActivitySummary(data, operationalDataAvailable) {
     const activitySummary = data.activity_summary || {};
-    document.getElementById('activitySummary').textContent =
-      operationalDataAvailable && Number.isFinite(Number(activitySummary.total))
-        ? `${Number(activitySummary.total).toLocaleString()} authorized activities`
-        : operationalDataAvailable ? '' : 'Unavailable';
-    const notifications = document.getElementById('dashboardNotifications');
-    const recent = data.notifications?.recent || [];
-    notifications.innerHTML = !operationalDataAvailable
-      ? listEmpty('Operational summary unavailable.')
-      : recent.length ? recent.map(item => `
+    const target = document.getElementById('activitySummary');
+    if (!operationalDataAvailable) {
+      target.textContent = 'Unavailable';
+    } else if (Number.isFinite(Number(activitySummary.total))) {
+      target.textContent = `${Number(activitySummary.total).toLocaleString()} authorized activities`;
+    } else {
+      target.textContent = '';
+    }
+  }
+
+  function renderNotifications(data, operationalDataAvailable) {
+    if (!operationalDataAvailable) return listEmpty('Operational summary unavailable.');
+    const notifications = data.notifications || {};
+    const recent = notifications.recent || [];
+    if (!recent.length) return listEmpty('No notifications.');
+    return recent.map(item => `
       <div class="exec-list-item">
         <div class="exec-list-copy"><strong>${escapeHTML(item.title || 'Notification')}</strong>
           <span>${item.actor_name ? window.kpiAvatarMarkup({ ...item, display_name: item.actor_name }, 32) : ''}${escapeHTML(item.message || '')}</span></div>
         <time class="exec-list-time">${escapeHTML(formatTime(item.created_at) || '—')}</time>
-      </div>`).join('') : listEmpty('No notifications.');
+      </div>`).join('');
   }
 
   function renderDataQuality(intelligence) {
@@ -757,10 +894,10 @@
       summary.status !== 'available'
         ? 'The selected date range has no finalized KPI results.'
         : null
-    ].filter(Boolean).map(message => message.replace(/[.]+$/, ''));
+    ].filter(Boolean).map(message => message.replace(/\.+$/, ''));
     if (qualityDetails && limitations.length) {
       qualityDetails.hidden = false;
-      qualityDetails.innerHTML = `<strong>Data limitations:</strong> ${escapeHTML(`${limitations.join('. ')}.`)}`;
+      qualityDetails.innerHTML = `<strong>Data limitations:</strong> ${escapeHTML(limitations.join('. ') + '.')}`;
     } else if (qualityDetails) {
       qualityDetails.hidden = true;
       qualityDetails.textContent = '';
@@ -772,12 +909,14 @@
 
   function updateHeader(data) {
     const scope = data.scope || {};
+    let scopeLabel = 'Authorized scope';
+    if (isSuperAdmin) {
+      scopeLabel = 'Company-wide view';
+    } else if (scope.department_ids && scope.department_ids.length) {
+      scopeLabel = `${scope.department_ids.length} authorized department(s)`;
+    }
     document.getElementById('dashboardContext').textContent =
-      `${isSuperAdmin
-        ? 'Company-wide view'
-        : scope.department_ids?.length
-          ? `${scope.department_ids.length} authorized department(s)`
-          : 'Authorized scope'} · ${currentDateRange.label}`;
+      `${scopeLabel} · ${currentDateRange.label}`;
     document.getElementById('dashboardTitle').textContent = isPersonal ? 'Personal KPI Overview' : 'Executive KPI Overview';
     document.getElementById('trendHeading').textContent = 'Average KPI by month';
   }
@@ -785,7 +924,7 @@
   function renderAvailablePeriods(overview) {
     const options = overview.periods || [];
     updateYearOptions(options);
-    selectedPeriodId = overview.selected_period?.id || null;
+    selectedPeriodId = overview.selected_period && overview.selected_period.id || null;
     if (!options.length) {
       root.classList.add('exec-no-period');
       return null;
@@ -814,7 +953,7 @@
     const controller = new AbortController();
     activeEmployeeRequest = controller;
     const abortWithDashboard = () => controller.abort();
-    signal?.addEventListener('abort', abortWithDashboard, { once: true });
+    if (signal) signal.addEventListener('abort', abortWithDashboard, { once: true });
     const params = new URLSearchParams({
       period_start: dateRange.start,
       period_end: dateRange.end,
@@ -834,33 +973,39 @@
       document.getElementById('employeePrevious').disabled = employeeOffset === 0;
       document.getElementById('employeeNext').disabled =
         employeeOffset + page.items.length >= employeeTotal;
+      const employeeRows = page.items.map(renderEmployeeResultRow).join('');
       target.innerHTML = page.items.length ? `<table class="exec-table">
         <caption class="exec-sr-only">Authorized employees ranked by average KPI score across the selected date range</caption>
         <thead><tr><th>Employee</th><th>Department</th><th>Range average</th><th>Latest status</th><th>Approval</th></tr></thead>
-        <tbody>${page.items.map(item => {
-          const status = String(item.status || 'Unavailable');
-          const statusClass = {
-            APPROVED: 'exec-status-pill-ok',
-            PENDING: 'exec-status-pill-warn',
-            REJECTED: 'exec-status-pill-bad',
-            DRAFT: 'exec-status-pill-neutral'
-          }[status.toUpperCase()] || 'exec-status-pill-neutral';
-          return `<tr>
-            <td><span class="inline-flex items-center gap-2">${window.kpiAvatarMarkup(item, 32)}<strong>${escapeHTML(item.employee_name)}</strong></span>
-              <button type="button" class="exec-link-button" data-user-id="${escapeHTML(item.user_id)}">View details</button></td>
-            <td>${escapeHTML(item.department_name || '—')}</td>
-            <td>${Number.isFinite(Number(item.percentage)) ? `${Number(item.percentage).toFixed(2)}%` : '—'}</td>
-            <td><span class="exec-status-pill ${statusClass}">${escapeHTML(status)}</span></td>
-            <td>Not available</td>
-          </tr>`;
-        }).join('')}</tbody>        </table>` : listEmpty('No KPI results are available for the selected date range.');
+        <tbody>${employeeRows}</tbody></table>` : listEmpty('No KPI results are available for the selected date range.');
     } catch (error) {
       if (error.name === 'AbortError') return;
       target.innerHTML = listEmpty('Employee results could not be loaded. Try refreshing the dashboard.');
       meta.textContent = 'Results unavailable';
     } finally {
-      signal?.removeEventListener('abort', abortWithDashboard);
+      if (signal) signal.removeEventListener('abort', abortWithDashboard);
       if (activeEmployeeRequest === controller) activeEmployeeRequest = null;
+    }
+
+    function renderEmployeeResultRow(item) {
+      const status = String(item.status || 'Unavailable');
+      const percentage = Number.isFinite(Number(item.percentage))
+        ? `${Number(item.percentage).toFixed(2)}%`
+        : '—';
+      const statusClass = {
+        APPROVED: 'exec-status-pill-ok',
+        PENDING: 'exec-status-pill-warn',
+        REJECTED: 'exec-status-pill-bad',
+        DRAFT: 'exec-status-pill-neutral'
+      }[status.toUpperCase()] || 'exec-status-pill-neutral';
+      return `<tr>
+        <td><span class="inline-flex items-center gap-2">${window.kpiAvatarMarkup(item, 32)}<strong>${escapeHTML(item.employee_name)}</strong></span>
+          <button type="button" class="exec-link-button" data-user-id="${escapeHTML(item.user_id)}">View details</button></td>
+        <td>${escapeHTML(item.department_name || '—')}</td>
+        <td>${percentage}</td>
+        <td><span class="exec-status-pill ${statusClass}">${escapeHTML(status)}</span></td>
+        <td>Not available</td>
+      </tr>`;
     }
   }
 
@@ -878,6 +1023,7 @@
         { credentials: 'same-origin', signal: controller.signal },
         'Employee KPI details could not be loaded.'
       );
+      const history = renderEmployeeHistory(detail.history);
       target.innerHTML = `<h3>${escapeHTML(detail.employee_name)} · ${escapeHTML(detail.period.label)}</h3>
         <dl class="exec-detail-grid">
           <div><dt>Department</dt><dd>${escapeHTML(detail.department_name || 'Unavailable')}</dd></div>
@@ -892,15 +1038,23 @@
         <p class="exec-detail-note">Category results unavailable: ${escapeHTML(detail.category_intelligence.reason)}</p>
         <p class="exec-detail-note">Target results unavailable: ${escapeHTML(detail.target_intelligence.reason)}</p>
         <h4>Persisted KPI history</h4>
-        ${detail.history?.length ? `<ol>${detail.history.map(item => `<li>
-          ${escapeHTML(formatTime(item.changed_at))} · ${Number(item.percentage).toFixed(2)}% ·
-          ${escapeHTML(item.status)} · ${escapeHTML(item.reason)}
-        </li>`).join('')}</ol>` : listEmpty('No KPI history is available for this result.')}`;
+        ${history}`;
     } catch (error) {
       if (error.name === 'AbortError') return;
       target.innerHTML = listEmpty('Employee KPI details could not be loaded in this authorized scope.');
     } finally {
       if (activeDetailRequest === controller) activeDetailRequest = null;
+    }
+
+    function renderEmployeeHistory(history) {
+      if (!history || !history.length) {
+        return listEmpty('No KPI history is available for this result.');
+      }
+      const items = history.map(item => `<li>
+        ${escapeHTML(formatTime(item.changed_at))} · ${Number(item.percentage).toFixed(2)}% ·
+        ${escapeHTML(item.status)} · ${escapeHTML(item.reason)}
+      </li>`).join('');
+      return `<ol>${items}</ol>`;
     }
   }
 
@@ -943,18 +1097,20 @@
       if (sequence !== requestSequence) return;
       const payload = summaryPayload || {};
       updateHeader(payload);
-      renderScorecards(
-        payload.scorecards || {},
-        payload.notifications || {},
-        payload.activity_summary || {},
-        intelligence.summary,
-        payload.task_diagnostics || {},
-        payload.approval_diagnostics || {},
-        intelligence.trend || {},
-        Boolean(selectedPeriod)
+      renderScorecards({
+        data: payload.scorecards || {},
+        notifications: payload.notifications || {},
+        activitySummary: payload.activity_summary || {},
+        executiveSummary: intelligence.summary || {},
+        tasks: payload.task_diagnostics || {},
+        approvals: payload.approval_diagnostics || {},
+        trend: intelligence.trend || {},
+        hasPeriod: Boolean(selectedPeriod)
+      });
+      void loadMonthlyAverages(Number(filterYear.value));
+      renderKpiStatusDistribution(
+        intelligence.summary && intelligence.summary.status_distribution || []
       );
-      loadMonthlyAverages(Number(filterYear.value));
-      renderKpiStatusDistribution(intelligence.summary?.status_distribution || []);
       renderDepartments(intelligence.departments || []);
       renderExecutiveSignals(intelligence.signals || [], intelligence.attention_areas || []);
       renderDiagnostics(payload.task_diagnostics || {}, payload.approval_diagnostics || {});
@@ -991,7 +1147,8 @@
   }
 
   function runEmployeeResultsLoad() {
-    loadEmployeeResults(currentDateRange, activeRequest?.signal).catch(() => {
+    const signal = activeRequest ? activeRequest.signal : undefined;
+    loadEmployeeResults(currentDateRange, signal).catch(() => {
       document.getElementById('employeeResults').innerHTML =
         listEmpty('Employee results could not be loaded. Try refreshing the dashboard.');
       document.getElementById('employeePageMeta').textContent = 'Results unavailable';

@@ -64,10 +64,13 @@ def test_avatar_content_is_decoded_and_normalized_to_webp():
 
 
 def test_avatar_decoder_rejects_unsupported_or_oversized_images():
+    svg_image = b"<svg xmlns='http://www.w3.org/2000/svg'></svg>"
+    oversized_image = _image_bytes(size=(4097, 1))
+
     with pytest.raises(ValueError):
-        normalize_avatar_image(b"<svg xmlns='http://www.w3.org/2000/svg'></svg>")
+        normalize_avatar_image(svg_image)
     with pytest.raises(ValueError):
-        normalize_avatar_image(_image_bytes(size=(4097, 1)))
+        normalize_avatar_image(oversized_image)
 
 
 def test_avatar_initials_use_names_and_grapheme_clusters():
@@ -345,14 +348,16 @@ async def test_passwordless_reauthentication_must_use_provider_flow():
         "server": ("example.test", 443),
         "client": ("127.0.0.1", 1234),
     })
+    payload = AccountReauthentication(current_password="anything")
+    user = SimpleNamespace(
+        id=uuid4(),
+        local_password_enabled=False,
+        hashed_password=None,
+    )
+    db = object()
 
     with pytest.raises(HTTPException) as error:
-        await reauthenticate_account(
-            request,
-            AccountReauthentication(current_password="anything"),
-            SimpleNamespace(id=uuid4(), local_password_enabled=False, hashed_password=None),
-            object(),
-        )
+        await reauthenticate_account(request, payload, user, db)
 
     assert error.value.status_code == 400
     assert "OAuth provider" in error.value.detail

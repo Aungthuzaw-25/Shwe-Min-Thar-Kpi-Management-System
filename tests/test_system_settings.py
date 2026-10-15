@@ -227,10 +227,11 @@ def test_only_super_admin_can_manage_email_settings():
     _require_super_admin_email_settings(
         SimpleNamespace(role=SimpleNamespace(name="Super Admin"))
     )
+    department_user = SimpleNamespace(
+        role=SimpleNamespace(name="Department User")
+    )
     with pytest.raises(HTTPException) as exc:
-        _require_super_admin_email_settings(
-            SimpleNamespace(role=SimpleNamespace(name="Department User"))
-        )
+        _require_super_admin_email_settings(department_user)
     assert exc.value.status_code == 403
 
 
@@ -250,10 +251,9 @@ def test_only_super_admin_can_manage_audit_log_retention():
     _require_super_admin_audit_retention(
         SimpleNamespace(role=SimpleNamespace(name="Super Admin"))
     )
+    admin = SimpleNamespace(role=SimpleNamespace(name="Admin"))
     with pytest.raises(HTTPException) as exc:
-        _require_super_admin_audit_retention(
-            SimpleNamespace(role=SimpleNamespace(name="Admin"))
-        )
+        _require_super_admin_audit_retention(admin)
     assert exc.value.status_code == 403
 
 
@@ -536,12 +536,14 @@ async def test_non_super_admin_cannot_enable_email_provider(monkeypatch):
         role=SimpleNamespace(name="Department User"),
         permission_overrides=[],
     )
+    payload = EmailProviderLifecycleRequest(action="enable")
+    db = FakeAuditDB()
 
     with pytest.raises(HTTPException) as exc:
         await system_router.update_email_provider_lifecycle(
             "resend",
-            EmailProviderLifecycleRequest(action="enable"),
-            FakeAuditDB(),
+            payload,
+            db,
             user,
         )
 
@@ -583,9 +585,10 @@ async def test_legacy_email_test_connection_returns_specific_configuration_diagn
         role=SimpleNamespace(name="Super Admin"),
         permission_overrides=[],
     )
+    db = FakeAuditDB()
 
     with pytest.raises(HTTPException) as exc:
-        await system_router.test_email_connection(FakeAuditDB(), user)
+        await system_router.test_email_connection(db, user)
 
     assert exc.value.status_code == 422
     assert exc.value.detail == "From Email is required."
@@ -607,9 +610,10 @@ async def test_legacy_email_test_connection_reports_no_active_provider(monkeypat
         role=SimpleNamespace(name="Super Admin"),
         permission_overrides=[],
     )
+    db = FakeAuditDB()
 
     with pytest.raises(HTTPException) as exc:
-        await system_router.test_email_connection(FakeAuditDB(), user)
+        await system_router.test_email_connection(db, user)
 
     assert exc.value.status_code == 503
     assert exc.value.detail == "No active email provider is configured."

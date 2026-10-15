@@ -3,12 +3,13 @@ import secrets
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
-from PIL import Image, ImageOps, UnidentifiedImageError
+from PIL import Image, ImageOps
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -37,6 +38,20 @@ MAX_AVATAR_DIMENSION = 4096
 MAX_AVATAR_PIXELS = MAX_AVATAR_DIMENSION * MAX_AVATAR_DIMENSION
 AVATAR_SIZE = (256, 256)
 AVATAR_FORMATS = {"JPEG", "PNG", "WEBP"}
+AVATAR_MEDIA_TYPE = "image/webp"
+AVATAR_RESPONSE_HEADERS = {
+    "Cache-Control": "private, max-age=86400",
+    "X-Content-Type-Options": "nosniff",
+}
+PROFILE_AVATAR_URL = "/api/v1/auth/me/avatar"
+ACCOUNT_AVATAR_URL = "/api/v1/account/avatars"
+PASSWORD_CHANGE_FAILED_ACTION = "PASSWORD_CHANGE_FAILED"
+PASSWORD_CHANGE_FAILURE_WINDOW = timedelta(minutes=15)
+PASSWORD_SESSION_ROTATED_ACTION = "PASSWORD_SESSION_ROTATED"
+UNKNOWN_CLIENT = "Unknown"
+REAUTHENTICATION_VALID_FOR_SECONDS = 600
+AVATAR_NOT_FOUND_DETAIL = "Avatar not found."
+INVALID_SESSION_DETAIL = "The current session is invalid."
 
 
 def _avatar_directory() -> Path:
@@ -69,7 +84,6 @@ def normalize_avatar_image(content: bytes) -> bytes:
             clean.save(output, format="WEBP", quality=85, method=6)
             return output.getvalue()
     except (
-        UnidentifiedImageError,
         OSError,
         Image.DecompressionBombError,
         SyntaxError,
@@ -95,7 +109,7 @@ def _profile_response(user: User) -> ProfileResponse:
         phone_number=user.phone_number,
         bio=user.bio,
         avatar_url=(
-            f"/api/v1/auth/me/avatar?v={avatar_version}"
+            f"{PROFILE_AVATAR_URL}?v={avatar_version}"
             if user.avatar_path
             else None
         ),
@@ -141,18 +155,37 @@ async def apply_profile_patch(
     return sorted(changed_fields)
 
 
-@router.get("/me/profile", response_model=ProfileResponse)
-async def get_profile(user: User = Depends(get_current_user)):
+@router.get(
+    "/me/profile",
+    response_model=ProfileResponse,
+    responses={
+        401: {"description": "Unauthorized"},
+        403: {"description": "Forbidden"},
+    },
+)
+async def get_profile(
+    user: Annotated[User, Depends(get_current_user)],
+):
     return _profile_response(user)
 
 
-@router.patch("/me/profile", response_model=ProfileResponse)
+@router.patch(
+    "/me/profile",
+    response_model=ProfileResponse,
+    responses={
+        400: {"description": "Bad Request"},
+        401: {"description": "Unauthorized"},
+        403: {"description": "Forbidden"},
+        422: {"description": "Unprocessable Entity"},
+        429: {"description": "Too Many Requests"},
+    },
+)
 @limiter.limit("10/minute")
 async def patch_profile(
     request: Request,
     payload: ProfilePatch,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
 ):
     await apply_profile_patch(
         db,
@@ -163,13 +196,24 @@ async def patch_profile(
     return _profile_response(user)
 
 
-@router.post("/me/avatar", status_code=status.HTTP_200_OK)
+@router.post(
+    "/me/avatar",
+    status_code=status.HTTP_200_OK,
+    responses={
+        400: {"description": "Bad Request"},
+        401: {"description": "Unauthorized"},
+        403: {"description": "Forbidden"},
+        413: {"description": "Payload Too Large"},
+        422: {"description": "Unprocessable Entity"},
+        429: {"description": "Too Many Requests"},
+    },
+)
 @limiter.limit("5/minute")
 async def upload_avatar(
     request: Request,
-    file: UploadFile = File(...),
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    file: Annotated[UploadFile, File()],
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
 ):
     if file.size is not None and file.size > MAX_AVATAR_BYTES:
         await file.close()
@@ -207,37 +251,50 @@ async def upload_avatar(
         await run_in_threadpool(old_path.unlink, missing_ok=True)
     return {
         "avatar_url": (
-            f"/api/v1/account/avatars/{filename}"
+            f"{ACCOUNT_AVATAR_URL}/{filename}"
             f"?v={_avatar_version(getattr(user, 'avatar_updated_at', None))}"
         )
     }
 
 
-@router.get("/me/avatar", response_class=FileResponse)
-async def get_avatar(user: User = Depends(get_current_user)):
+@router.get(
+    "/me/avatar",
+    response_class=FileResponse,
+    responses={
+        401: {"description": "Unauthorized"},
+        403: {"description": "Forbidden"},
+        404: {"description": "Not Found"},
+    },
+)
+async def get_avatar(user: Annotated[User, Depends(get_current_user)]):
     image_path = _stored_avatar_path(user.avatar_path)
     if image_path is None or not image_path.is_file():
-        raise HTTPException(status_code=404, detail="Avatar not found.")
+        raise HTTPException(status_code=404, detail=AVATAR_NOT_FOUND_DETAIL)
     return FileResponse(
         image_path,
-        media_type="image/webp",
-        headers={
-            "Cache-Control": "private, max-age=86400",
-            "X-Content-Type-Options": "nosniff",
-        },
+        media_type=AVATAR_MEDIA_TYPE,
+        headers=AVATAR_RESPONSE_HEADERS,
     )
 
 
-@router.delete("/me/avatar")
+@router.delete(
+    "/me/avatar",
+    responses={
+        401: {"description": "Unauthorized"},
+        403: {"description": "Forbidden"},
+        404: {"description": "Not Found"},
+        429: {"description": "Too Many Requests"},
+    },
+)
 @limiter.limit("5/minute")
 async def delete_avatar(
     request: Request,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
 ):
     old_path = _stored_avatar_path(user.avatar_path)
     if old_path is None:
-        raise HTTPException(status_code=404, detail="Avatar not found.")
+        raise HTTPException(status_code=404, detail=AVATAR_NOT_FOUND_DETAIL)
     user.avatar_path = None
     user.avatar_updated_at = None
     db.add(AuditLog(
@@ -252,14 +309,22 @@ async def delete_avatar(
     return {"status": "deleted"}
 
 
-@router.get("/avatars/{filename}", response_class=FileResponse)
+@router.get(
+    "/avatars/{filename}",
+    response_class=FileResponse,
+    responses={
+        401: {"description": "Unauthorized"},
+        403: {"description": "Forbidden"},
+        404: {"description": "Not Found"},
+    },
+)
 async def get_account_avatar(
     filename: str,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
 ):
     if not re.fullmatch(r"[a-f0-9]{32}\.webp", filename):
-        raise HTTPException(status_code=404, detail="Avatar not found.")
+        raise HTTPException(status_code=404, detail=AVATAR_NOT_FOUND_DETAIL)
     owner = (await db.execute(
         select(User.id).where(
             User.avatar_path == filename,
@@ -272,14 +337,11 @@ async def get_account_avatar(
         or filename != image_path.name
         or not image_path.is_file()
     ):
-        raise HTTPException(status_code=404, detail="Avatar not found.")
+        raise HTTPException(status_code=404, detail=AVATAR_NOT_FOUND_DETAIL)
     return FileResponse(
         image_path,
-        media_type="image/webp",
-        headers={
-            "Cache-Control": "private, max-age=86400",
-            "X-Content-Type-Options": "nosniff",
-        },
+        media_type=AVATAR_MEDIA_TYPE,
+        headers=AVATAR_RESPONSE_HEADERS,
     )
 
 
@@ -294,10 +356,17 @@ def _avatar_color_index(user_id: UUID) -> int:
 account_router.include_router(router)
 
 
-@account_router.get("/me")
+@account_router.get(
+    "/me",
+    responses={
+        401: {"description": "Unauthorized"},
+        403: {"description": "Forbidden"},
+        404: {"description": "Not Found"},
+    },
+)
 async def get_account(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
 ):
     user = (await db.execute(
         select(User)
@@ -381,13 +450,21 @@ async def get_account(
     }
 
 
-@account_router.patch("/me")
+@account_router.patch(
+    "/me",
+    responses={
+        401: {"description": "Unauthorized"},
+        403: {"description": "Forbidden"},
+        422: {"description": "Unprocessable Entity"},
+        429: {"description": "Too Many Requests"},
+    },
+)
 @limiter.limit("10/minute")
 async def patch_account(
     request: Request,
     payload: AccountProfilePatch,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
 ):
     display_name = payload.display_name.strip()
     pieces = display_name.split()
@@ -416,49 +493,46 @@ async def patch_account(
     return await get_account(db, user)
 
 
-@account_router.post("/me/password")
-@limiter.limit("5/minute")
-async def change_account_password(
-    request: Request,
-    response: Response,
-    payload: AccountPasswordChange,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    from app.core.password_policy import COMMON_WEAK_PASSWORDS
-    from app.modules.auth.router import (
-        _recent_authentication,
-        _request_session_id,
-        _set_auth_cookies,
-        self_change_password,
-    )
-    from app.modules.auth.schemas import ChangePasswordRequest
-    from app.modules.auth.service import AuthService
-
-    now = datetime.now(UTC).replace(tzinfo=None)
-    since = now - timedelta(minutes=15)
+async def _password_change_failure_counts(
+    db: AsyncSession,
+    user_id: UUID,
+    ip_address: str | None,
+    since: datetime,
+) -> tuple[int, int]:
     user_failures = (await db.execute(
         select(func.count(AuditLog.id)).where(
-            AuditLog.user_id == user.id,
-            AuditLog.action == "PASSWORD_CHANGE_FAILED",
+            AuditLog.user_id == user_id,
+            AuditLog.action == PASSWORD_CHANGE_FAILED_ACTION,
             AuditLog.created_at >= since,
         )
     )).scalar_one()
-    ip_address = request.client.host if request.client else None
     ip_failures = 0
     if ip_address:
         ip_failures = (await db.execute(
             select(func.count(AuditLog.id)).where(
                 AuditLog.ip_address == ip_address,
-                AuditLog.action == "PASSWORD_CHANGE_FAILED",
+                AuditLog.action == PASSWORD_CHANGE_FAILED_ACTION,
                 AuditLog.created_at >= since,
             )
         )).scalar_one()
+    return user_failures, ip_failures
+
+
+def _ensure_password_change_allowed(user_failures: int, ip_failures: int) -> None:
     if user_failures >= 5 or ip_failures >= 5:
         raise HTTPException(
             status_code=429,
             detail="Too many failed password attempts. Try again in 15 minutes.",
         )
+
+
+async def _load_password_change_session(
+    request: Request,
+    user: User,
+    db: AsyncSession,
+    now: datetime,
+) -> tuple[AuthSession, UUID, bool]:
+    from app.modules.auth.router import _request_session_id
 
     current_session_id = _request_session_id(request, user)
     current_session = await db.get(AuthSession, current_session_id)
@@ -467,8 +541,20 @@ async def change_account_password(
         or current_session.revoked_at is not None
         or current_session.expires_at <= now
     ):
-        raise HTTPException(status_code=401, detail="The current session is invalid.")
-    remember_me = bool(current_session.remember_me)
+        raise HTTPException(status_code=401, detail=INVALID_SESSION_DETAIL)
+    return current_session, current_session_id, bool(current_session.remember_me)
+
+
+async def _verify_password_change_authorization(
+    payload: AccountPasswordChange,
+    user: User,
+    db: AsyncSession,
+    ip_address: str | None,
+    current_session_id: UUID,
+    user_failures: int,
+    ip_failures: int,
+) -> None:
+    from app.modules.auth.router import _recent_authentication
 
     if user.local_password_enabled:
         if (
@@ -482,7 +568,7 @@ async def change_account_password(
         ):
             db.add(AuditLog(
                 user_id=user.id,
-                action="PASSWORD_CHANGE_FAILED",
+                action=PASSWORD_CHANGE_FAILED_ACTION,
                 table_name="users",
                 record_id=str(user.id),
                 new_value={"reason": "incorrect_current_password"},
@@ -499,12 +585,19 @@ async def change_account_password(
                 detail="Unable to change password. Check your current password and try again.",
             )
         if payload.new_password == payload.current_password:
-            raise HTTPException(status_code=400, detail="Choose a password different from your current password.")
+            raise HTTPException(
+                status_code=400,
+                detail="Choose a password different from your current password.",
+            )
     elif not await _recent_authentication(db, user.id, current_session_id):
         raise HTTPException(
             status_code=403,
             detail="Reauthenticate with a linked provider before setting a password.",
         )
+
+
+def _validate_new_password(user: User, payload: AccountPasswordChange) -> None:
+    from app.core.password_policy import COMMON_WEAK_PASSWORDS
 
     new_password = payload.new_password
     if not 10 <= len(new_password) <= 128:
@@ -519,57 +612,88 @@ async def change_account_password(
     if new_password != payload.confirm_password:
         raise HTTPException(status_code=400, detail="New password confirmation does not match.")
 
-    if user.local_password_enabled:
-        request.state.account_password_policy = True
-        result = await self_change_password(
-            request,
-            ChangePasswordRequest(
-                old_password=payload.current_password or "",
-                new_password=new_password,
-                confirm_new_password=payload.confirm_password,
-            ),
-            user,
-            db,
+
+async def _change_existing_password(
+    request: Request,
+    payload: AccountPasswordChange,
+    user: User,
+    db: AsyncSession,
+) -> dict:
+    from app.modules.auth.router import self_change_password
+    from app.modules.auth.schemas import ChangePasswordRequest
+
+    request.state.account_password_policy = True
+    return await self_change_password(
+        request,
+        ChangePasswordRequest(
+            old_password=payload.current_password or "",
+            new_password=payload.new_password,
+            confirm_new_password=payload.confirm_password,
+        ),
+        user,
+        db,
+    )
+
+
+async def _set_initial_password(
+    user: User,
+    db: AsyncSession,
+    new_password: str,
+    now: datetime,
+    ip_address: str | None,
+    current_session_id: UUID,
+) -> dict:
+    hashed_password = await run_in_threadpool(security.get_password_hash, new_password)
+    user.hashed_password = hashed_password
+    user.local_password_enabled = True
+    user.must_change_password = False
+    user.password_changed_at = now
+    db.add(PasswordHistory(user_id=user.id, hashed_password=hashed_password))
+    revoked_sessions = await db.execute(
+        update(AuthSession)
+        .where(
+            AuthSession.user_id == user.id,
+            AuthSession.id != current_session_id,
+            AuthSession.revoked_at.is_(None),
         )
-    else:
-        hashed_password = await run_in_threadpool(security.get_password_hash, new_password)
-        user.hashed_password = hashed_password
-        user.local_password_enabled = True
-        user.must_change_password = False
-        user.password_changed_at = now
-        db.add(PasswordHistory(user_id=user.id, hashed_password=hashed_password))
-        revoked_sessions = await db.execute(
-            update(AuthSession)
-            .where(
-                AuthSession.user_id == user.id,
-                AuthSession.id != current_session_id,
-                AuthSession.revoked_at.is_(None),
-            )
-            .values(revoked_at=now)
-        )
-        db.add(AuditLog(
-            user_id=user.id,
-            action="PASSWORD_CHANGED",
-            table_name="users",
-            record_id=str(user.id),
-            new_value={
-                "other_sessions_revoked": max(revoked_sessions.rowcount or 0, 0),
-                "password_set": True,
-            },
-            ip_address=ip_address,
-        ))
-        await db.commit()
-        result = {"message": "Password set successfully."}
+        .values(revoked_at=now)
+    )
+    db.add(AuditLog(
+        user_id=user.id,
+        action="PASSWORD_CHANGED",
+        table_name="users",
+        record_id=str(user.id),
+        new_value={
+            "other_sessions_revoked": max(revoked_sessions.rowcount or 0, 0),
+            "password_set": True,
+        },
+        ip_address=ip_address,
+    ))
+    await db.commit()
+    return {"message": "Password set successfully."}
+
+
+async def _rotate_password_session_and_notify(
+    request: Request,
+    response: Response,
+    user: User,
+    db: AsyncSession,
+    current_session: AuthSession,
+    ip_address: str | None,
+    remember_me: bool,
+) -> None:
+    from app.modules.auth.router import _set_auth_cookies
+    from app.modules.auth.service import AuthService
 
     current_session.revoked_at = datetime.now(UTC).replace(tzinfo=None)
     await db.commit()
     rotated = await AuthService.issue_authenticated_session(
         db,
         user,
-        ip_address or "Unknown",
-        request.headers.get("user-agent", "Unknown"),
+        ip_address or UNKNOWN_CLIENT,
+        request.headers.get("user-agent", UNKNOWN_CLIENT),
         remember_me=remember_me,
-        audit_action="PASSWORD_SESSION_ROTATED",
+        audit_action=PASSWORD_SESSION_ROTATED_ACTION,
     )
     _set_auth_cookies(response, request, rotated, remember_me)
     from app.services.email_service import EmailMessage, email_service
@@ -584,16 +708,90 @@ async def change_account_password(
             "If you did not make this change, contact your system administrator."
         ),
     ))
+
+
+@account_router.post(
+    "/me/password",
+    responses={
+        400: {"description": "Bad Request"},
+        401: {"description": "Unauthorized"},
+        403: {"description": "Forbidden"},
+        422: {"description": "Unprocessable Entity"},
+        429: {"description": "Too Many Requests"},
+    },
+)
+@limiter.limit("5/minute")
+async def change_account_password(
+    request: Request,
+    response: Response,
+    payload: AccountPasswordChange,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    now = datetime.now(UTC).replace(tzinfo=None)
+    ip_address = request.client.host if request.client else None
+    user_failures, ip_failures = await _password_change_failure_counts(
+        db,
+        user.id,
+        ip_address,
+        now - PASSWORD_CHANGE_FAILURE_WINDOW,
+    )
+    _ensure_password_change_allowed(user_failures, ip_failures)
+    current_session, current_session_id, remember_me = await _load_password_change_session(
+        request,
+        user,
+        db,
+        now,
+    )
+    await _verify_password_change_authorization(
+        payload,
+        user,
+        db,
+        ip_address,
+        current_session_id,
+        user_failures,
+        ip_failures,
+    )
+    _validate_new_password(user, payload)
+    if user.local_password_enabled:
+        result = await _change_existing_password(request, payload, user, db)
+    else:
+        result = await _set_initial_password(
+            user,
+            db,
+            payload.new_password,
+            now,
+            ip_address,
+            current_session_id,
+        )
+    await _rotate_password_session_and_notify(
+        request,
+        response,
+        user,
+        db,
+        current_session,
+        ip_address,
+        remember_me,
+    )
     return result
 
 
-@account_router.post("/me/reauth")
+@account_router.post(
+    "/me/reauth",
+    responses={
+        400: {"description": "Bad Request"},
+        401: {"description": "Unauthorized"},
+        403: {"description": "Forbidden"},
+        422: {"description": "Unprocessable Entity"},
+        429: {"description": "Too Many Requests"},
+    },
+)
 @limiter.limit("5/minute")
 async def reauthenticate_account(
     request: Request,
     payload: AccountReauthentication,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
 ):
     if not user.local_password_enabled:
         raise HTTPException(
@@ -616,7 +814,7 @@ async def reauthenticate_account(
         if UUID(claims["user_id"]) != user.id:
             raise ValueError("Session user mismatch.")
     except (security.JWTError, KeyError, TypeError, ValueError):
-        raise HTTPException(status_code=401, detail="The current session is invalid.") from None
+        raise HTTPException(status_code=401, detail=INVALID_SESSION_DETAIL) from None
 
     now = datetime.now(UTC).replace(tzinfo=None)
     result = await db.execute(
@@ -630,6 +828,9 @@ async def reauthenticate_account(
         .values(last_used_at=now, last_reauthenticated_at=now)
     )
     if result.rowcount != 1:
-        raise HTTPException(status_code=401, detail="The current session is invalid.")
+        raise HTTPException(status_code=401, detail=INVALID_SESSION_DETAIL)
     await db.commit()
-    return {"status": "reauthenticated", "valid_for_seconds": 600}
+    return {
+        "status": "reauthenticated",
+        "valid_for_seconds": REAUTHENTICATION_VALID_FOR_SECONDS,
+    }

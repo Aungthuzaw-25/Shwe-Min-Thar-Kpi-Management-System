@@ -100,17 +100,21 @@ async def test_formula_create_and_update_use_authoritative_department_scope(monk
     monkeypatch.setattr(kpi_router.kpi_service, "update_kpi_formula", update)
 
     payload = SimpleNamespace(department_id=department_a)
-    assert await kpi_router.create_kpi_formula(payload, _Session(), admin) is payload
+    db = _Session()
+    assert await kpi_router.create_kpi_formula(payload, db, admin) is payload
     assert created == [payload]
 
     payload.department_id = department_b
+    denied_db = _Session()
     with pytest.raises(HTTPException) as denied_create:
-        await kpi_router.create_kpi_formula(payload, _Session(), admin)
+        await kpi_router.create_kpi_formula(payload, denied_db, admin)
     assert denied_create.value.status_code == 403
     assert created == [payload]  # The denied call did not create a second formula.
 
+    update_payload = SimpleNamespace()
+    update_db = _Session()
     with pytest.raises(HTTPException) as denied_update:
-        await kpi_router.edit_kpi_formula(formula_id, SimpleNamespace(), _Session(), admin)
+        await kpi_router.edit_kpi_formula(formula_id, update_payload, update_db, admin)
     assert denied_update.value.status_code == 403
     assert updated == []
     assert calls == [department_a, department_b, department_b]
@@ -253,16 +257,19 @@ async def test_toggle_and_state_transition_reject_cross_department_without_mutat
     monkeypatch.setattr(kpi_router, "enforce_permission", lambda *_: None)
     monkeypatch.setattr(kpi_router, "_load_formula_in_scope", denied)
     monkeypatch.setattr(kpi_router.kpi_repo, "toggle_formula_status", toggle)
+    toggle_payload = SimpleNamespace(is_active=True)
+    admin = _user("Admin")
 
     with pytest.raises(HTTPException) as denied_toggle:
-        await kpi_router.toggle_kpi_formula(formula_id, SimpleNamespace(is_active=True), session, _user("Admin"))
+        await kpi_router.toggle_kpi_formula(formula_id, toggle_payload, session, admin)
     assert denied_toggle.value.status_code == 403
     assert formula.is_active is False
     assert toggles == []
 
+    transition_user = _user("Admin")
     with pytest.raises(HTTPException) as denied_transition:
         await kpi_router._transition_formula_state(
-            session, formula_id, [FormulaStatus.DRAFT], FormulaStatus.REVIEW, _user("Admin")
+            session, formula_id, [FormulaStatus.DRAFT], FormulaStatus.REVIEW, transition_user
         )
     assert denied_transition.value.status_code == 403
     assert formula.status == FormulaStatus.DRAFT
@@ -300,10 +307,14 @@ async def test_calculation_targets_are_scoped_and_reject_mixed_department_ids(mo
     session = _Session([user_a])
 
     monkeypatch.setattr(kpi_router, "get_authorized_department_ids", lambda *_: _async_value({str(uuid4())}))
-    assert await kpi_router._authorized_active_user_ids(session, _user("Admin")) == [user_a]
+    admin = _user("Admin")
+    assert await kpi_router._authorized_active_user_ids(session, admin) == [user_a]
 
+    admin_with_mixed_users = [user_a, user_b]
     with pytest.raises(HTTPException) as denied:
-        await kpi_router._authorized_active_user_ids(session, _user("Admin"), [user_a, user_b])
+        await kpi_router._authorized_active_user_ids(
+            session, admin, admin_with_mixed_users
+        )
     assert denied.value.status_code == 403
 
     session.values = [user_a, user_b]
@@ -415,10 +426,12 @@ async def test_user_department_update_checks_destination_before_any_mutation(mon
     monkeypatch.setattr(users_router, "enforce_permission", lambda *_args: None)
     monkeypatch.setattr(users_router, "enforce_user_scope", lambda *_args: _async_value(None))
     monkeypatch.setattr(users_router, "enforce_department_scope", deny_destination)
+    payload = _UpdatePayload(department_b)
+    admin = _user("Admin")
 
     with pytest.raises(HTTPException) as denied:
         await users_router.update_existing_user(
-            user_id, _UpdatePayload(department_b), session, _user("Admin")
+            user_id, payload, session, admin
         )
 
     assert denied.value.status_code == 403
@@ -489,12 +502,14 @@ async def test_summary_report_uses_delegated_scope_when_department_is_omitted(mo
     monkeypatch.setattr(kpi_router, "enforce_department_scope", scope)
     monkeypatch.setattr(kpi_router.kpi_service.KpiReportService, "generate_summary_report", generate)
 
-    await kpi_router.get_kpi_summary_report("MONTHLY", None, _Session(), _user("Admin"))
+    db = _Session()
+    admin = _user("Admin")
+    await kpi_router.get_kpi_summary_report("MONTHLY", None, db, admin)
     assert calls[-1]["department_id"] is None
     assert calls[-1]["department_ids"] == {str(department_a)}
 
     with pytest.raises(HTTPException) as denied:
-        await kpi_router.get_kpi_summary_report("MONTHLY", department_b, _Session(), _user("Admin"))
+        await kpi_router.get_kpi_summary_report("MONTHLY", department_b, db, admin)
     assert denied.value.status_code == 403
     assert len(calls) == 1
 

@@ -133,22 +133,21 @@ async def test_id_token_rejects_unexpected_issuer_audience_or_nonce(
     monkeypatch, claims, nonce
 ):
     provider, private_key = _oidc_test_provider(monkeypatch)
+    id_token = _signed_id_token(private_key, **claims)
 
     with pytest.raises(OIDCValidationError):
-        await provider.validate_identity(
-            {"id_token": _signed_id_token(private_key, **claims)},
-            nonce,
-        )
+        await provider.validate_identity({"id_token": id_token}, nonce)
 
 
 @pytest.mark.asyncio
 async def test_id_token_rejects_invalid_signature_and_algorithm(monkeypatch):
     provider, private_key = _oidc_test_provider(monkeypatch)
     other_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    invalid_signature_token = _signed_id_token(other_key)
 
     with pytest.raises(OIDCValidationError):
         await provider.validate_identity(
-            {"id_token": _signed_id_token(other_key)},
+            {"id_token": invalid_signature_token},
             "expected-nonce",
         )
 

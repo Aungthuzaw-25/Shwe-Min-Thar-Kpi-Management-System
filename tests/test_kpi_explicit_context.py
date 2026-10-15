@@ -453,12 +453,10 @@ async def _test_context_rejects_contradictory_identifiers(db, case):
     }
     field, replacement, message = case
     context_values[field] = replacement(fixture)
+    context = KPICalculationContext(**context_values)
 
     with pytest.raises(ValueError, match=message):
-        await KPICalculationEngine.resolve_explicit_calculation_context(
-            db,
-            KPICalculationContext(**context_values),
-        )
+        await KPICalculationEngine.resolve_explicit_calculation_context(db, context)
 
 
 async def _test_missing_explicit_record_never_falls_back(db, monkeypatch):
@@ -470,10 +468,11 @@ async def _test_missing_explicit_record_never_falls_back(db, monkeypatch):
         "get_applicable_formula_and_period",
         reject_global_lookup,
     )
+    context = KPICalculationContext(record_id=uuid4())
     with pytest.raises(ValueError, match="KPI record was not found"):
         await KPICalculationEngine.execute_kpi_calculation(
             db,
-            context=KPICalculationContext(record_id=uuid4()),
+            context=context,
         )
 
 

@@ -176,13 +176,14 @@ def test_l1_recalculation_failure_rolls_back_review(monkeypatch):
         "app.modules.tasks.service.trigger_kpi_recalculation",
         failed_recalculation,
     )
+    payload = TaskReviewInput(action="APPROVED", comments="Good work")
 
     with pytest.raises(RuntimeError, match="recalculation failed"):
         asyncio.run(
             review_task_l1(
                 db,
                 "task-1",
-                TaskReviewInput(action="APPROVED", comments="Good work"),
+                payload,
                 "reviewer-1",
             )
         )
@@ -217,13 +218,15 @@ def test_l0_approval_marks_task_complete(monkeypatch):
     result = asyncio.run(verify_task_l0(db, "task-1", payload, "manager-1"))
 
     assert result.status == TaskStatus.COMPLETED
-    assert calls and calls[0]["user_id"] == "user-1"
+    assert calls
+    assert calls[0]["user_id"] == "user-1"
     assert db.committed == 1
 
 
 def test_reject_requires_comment():
     task = SimpleNamespace(id="task-1", status=TaskStatus.PENDING_L1)
     db = FakeDB(task)
+    payload = TaskReviewInput(action="REJECTED", comments="")
 
     with pytest.raises(HTTPException):
-        asyncio.run(review_task_l1(db, "task-1", TaskReviewInput(action="REJECTED", comments=""), "reviewer-1"))
+        asyncio.run(review_task_l1(db, "task-1", payload, "reviewer-1"))

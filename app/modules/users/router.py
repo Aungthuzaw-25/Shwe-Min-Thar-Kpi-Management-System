@@ -716,14 +716,14 @@ async def _validate_user_update_target(
         and getattr(user.role, "name", "") == SUPER_ADMIN_ROLE_NAME
     ):
         raise HTTPException(status_code=403, detail="You do not have permission to modify a Super Admin account.")
-    await _validate_user_update_role(db, payload, current_user)
+    await _validate_user_update_role(db, payload)
     await _validate_user_update_email(db, payload, user)
     await _validate_user_update_department(db, payload, current_user)
     return user
 
 
 async def _validate_user_update_role(
-    db: AsyncSession, payload: UserUpdate, current_user: User
+    db: AsyncSession, payload: UserUpdate
 ) -> None:
     if not payload.role_id:
         return

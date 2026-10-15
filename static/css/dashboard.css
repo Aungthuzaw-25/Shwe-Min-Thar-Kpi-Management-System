@@ -244,24 +244,24 @@ body.toggled #page-content-wrapper {
 
 /* ---- Cards ---- */
 .card {
-  background: var(--kpi-surface) !important;
-  border: 1px solid var(--kpi-border) !important;
-  border-radius: 12px !important;
+  background: var(--kpi-surface);
+  border: 1px solid var(--kpi-border);
+  border-radius: 12px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.2);
 }
 
 .card-header {
-  background: rgba(255,255,255,0.03) !important;
-  border-bottom: 1px solid var(--kpi-border) !important;
+  background: rgba(255,255,255,0.03);
+  border-bottom: 1px solid var(--kpi-border);
   font-weight: 600;
   font-size: 0.9rem;
   padding: 0.75rem 1.1rem;
-  border-radius: 12px 12px 0 0 !important;
+  border-radius: 12px 12px 0 0;
 }
 
 .card-footer {
-  background: rgba(255,255,255,0.02) !important;
-  border-top: 1px solid var(--kpi-border) !important;
+  background: rgba(255,255,255,0.02);
+  border-top: 1px solid var(--kpi-border);
 }
 
 /* ---- Stat Widgets (Dashboard cards) ---- */
@@ -337,15 +337,15 @@ body.toggled #page-content-wrapper {
 
 /* ---- Forms ---- */
 .form-control, .form-select {
-  background: var(--kpi-bg) !important;
-  color: var(--kpi-text) !important;
-  border-color: var(--kpi-border) !important;
+  background: var(--kpi-bg);
+  color: var(--kpi-text);
+  border-color: var(--kpi-border);
   font-size: 0.85rem;
 }
 
 .form-control:focus, .form-select:focus {
-  border-color: var(--kpi-primary) !important;
-  box-shadow: 0 0 0 0.15rem rgba(13, 110, 253, 0.25) !important;
+  border-color: var(--kpi-primary);
+  box-shadow: 0 0 0 0.15rem rgba(13, 110, 253, 0.25);
 }
 
 .form-label {
@@ -362,7 +362,7 @@ body.toggled #page-content-wrapper {
 /* Invalid feedback inline */
 .was-validated .form-control:invalid,
 .form-control.is-invalid {
-  border-color: var(--kpi-danger) !important;
+  border-color: var(--kpi-danger);
 }
 
 .invalid-feedback {
@@ -397,30 +397,30 @@ body.toggled #page-content-wrapper {
 
 /* ---- Modals ---- */
 .modal-content {
-  background: var(--kpi-surface) !important;
-  border: 1px solid var(--kpi-border) !important;
-  border-radius: 14px !important;
+  background: var(--kpi-surface);
+  border: 1px solid var(--kpi-border);
+  border-radius: 14px;
 }
 
 .modal-header {
-  border-bottom: 1px solid var(--kpi-border) !important;
+  border-bottom: 1px solid var(--kpi-border);
 }
 
 .modal-footer {
-  border-top: 1px solid var(--kpi-border) !important;
+  border-top: 1px solid var(--kpi-border);
 }
 
 /* ---- Accordion (for batch reviews on mobile) ---- */
 .accordion-button {
-  background: var(--kpi-surface) !important;
-  color: var(--kpi-text) !important;
-  border: 1px solid var(--kpi-border) !important;
+  background: var(--kpi-surface);
+  color: var(--kpi-text);
+  border: 1px solid var(--kpi-border);
   font-size: 0.85rem;
 }
 
 .accordion-button:not(.collapsed) {
-  background: var(--kpi-surface-hover) !important;
-  color: #fff !important;
+  background: var(--kpi-surface-hover);
+  color: #fff;
 }
 
 .accordion-button::after {
@@ -648,9 +648,9 @@ body.toggled #page-content-wrapper {
 
 /* ---- Print ---- */
 @media print {
-  #sidebar-wrapper, .navbar-top { display: none !important; }
-  #page-content-wrapper { margin-left: 0 !important; width: 100% !important; }
-  .btn, .no-print { display: none !important; }
-  body { background: #fff !important; color: #000 !important; }
-  .card { box-shadow: none !important; border: 1px solid #ddd !important; }
+  #sidebar-wrapper, .navbar-top { display: none; }
+  #page-content-wrapper { margin-left: 0; width: 100%; }
+  .btn, .no-print { display: none; }
+  body { background: #fff; color: #000; }
+  .card { box-shadow: none; border: 1px solid #ddd; }
 }

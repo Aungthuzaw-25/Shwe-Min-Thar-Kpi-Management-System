@@ -78,18 +78,16 @@ main textarea:hover {
     border-color: #94a3b8;
 }
 
-main input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):focus,
-main select:focus,
-main textarea:focus {
-    border-color: var(--enterprise-primary) !important;
+main[class] :is(input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):focus, select:focus, textarea:focus) {
+    border-color: var(--enterprise-primary);
     background-color: #fff;
-    box-shadow: 0 0 0 4px var(--enterprise-focus) !important;
+    box-shadow: 0 0 0 4px var(--enterprise-focus);
     outline: none;
 }
 
 main input::placeholder,
 main textarea::placeholder {
-    color: #94a3b8;
+    color: var(--enterprise-muted);
 }
 
 main label {
@@ -143,20 +141,16 @@ main tbody tr:hover {
 }
 
 @media (prefers-reduced-motion: reduce) {
-    main > *,
+    main[class] > *,
     main [role="dialog"]:not(.hidden) > div,
     main [aria-modal="true"]:not(.hidden) > div {
-        animation: none !important;
+        animation: none;
     }
 
     main .bg-white.rounded-2xl,
     main .bg-white.rounded-3xl,
     main .glass-card,
-    main input,
-    main select,
-    main textarea,
-    main button,
-    main a {
-        transition: none !important;
+    main[class] :is(input, select, textarea, button, a) {
+        transition: none;
     }
 }

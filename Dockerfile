@@ -43,10 +43,8 @@ RUN apt-get update && \
     python -m pip install --no-cache-dir --only-binary=:all: --require-hashes --requirement requirements.lock && \
     apt-get purge -y --auto-remove build-essential libpq-dev && \
     apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
-# Create a non-root system user for security compliance
-RUN useradd --create-home --uid 1000 appuser
+    rm -rf /var/lib/apt/lists/* && \
+    useradd --create-home --uid 1000 appuser
 
 # Copy application source code
 COPY app/ ./app/

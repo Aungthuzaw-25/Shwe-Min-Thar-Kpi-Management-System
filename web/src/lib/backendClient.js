@@ -77,7 +77,7 @@ export function sendBackendError(error, response) {
   if (error.body === null) {
     response.end();
   } else if (typeof error.body === "string") {
-    response.type("text/plain").send(escapeHtml(error.body));
+    response.type("text/plain; charset=utf-8").send(escapeHtml(error.body));
   } else {
     response.status(error.status).json(escapeJsonStrings(error.body));
   }

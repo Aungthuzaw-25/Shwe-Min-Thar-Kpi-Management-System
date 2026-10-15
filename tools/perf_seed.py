@@ -5,7 +5,8 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
-import random
+import secrets
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlparse
 
@@ -176,10 +177,355 @@ async def _clear_previous_seed(session) -> None:
     await session.flush()
 
 
-async def _insert_batches(session, model, rows: list, batch_size: int = 500) -> None:
+async def _insert_batches(session, rows: list, batch_size: int = 500) -> None:
     for offset in range(0, len(rows), batch_size):
         session.add_all(rows[offset : offset + batch_size])
         await session.flush()
+
+
+@dataclass
+class _SeedFixture:
+    roles: dict[str, Role]
+    qa_users: list[User]
+    qa_department: Department
+    departments: list[Department] = field(default_factory=list)
+    category_names: list[str] = field(default_factory=list)
+    category_ids: dict[str, int] = field(default_factory=dict)
+    position_by_department_level: dict[tuple[str, str], Position] = field(default_factory=dict)
+    generated_users: list[User] = field(default_factory=list)
+    generated_levels: dict[str, str] = field(default_factory=dict)
+    generated_departments: dict[str, Department] = field(default_factory=dict)
+    users: list[User] = field(default_factory=list)
+    qa_levels: dict[int, str] = field(default_factory=dict)
+    qa_position_by_level: dict[str, Position] = field(default_factory=dict)
+
+
+@dataclass
+class _KpiFixture:
+    period_rows: list[KPIPeriod]
+    formula_by_department_level: dict[tuple[str, str], KPIFormula]
+
+
+async def _load_seed_fixture(session, final_user_count: int) -> _SeedFixture:
+    roles = {
+        role.name: role
+        for role in (await session.execute(select(Role))).scalars().all()
+    }
+    required_roles = {"Super Admin", "Admin", "HR", "Department User"}
+    if missing := required_roles.difference(roles):
+        raise RuntimeError(f"Required application roles are missing: {sorted(missing)}")
+
+    qa_users = list(
+        (await session.execute(select(User).order_by(User.email))).scalars().all()
+    )
+    if len(qa_users) > final_user_count:
+        raise RuntimeError(
+            f"The disposable QA fixture already has {len(qa_users)} users; "
+            f"requested total is {final_user_count}."
+        )
+
+    qa_departments = list(
+        (await session.execute(select(Department).order_by(Department.name)))
+        .scalars()
+        .all()
+    )
+    qa_department = next(
+        (department for department in qa_departments if department.name.startswith("QA ")),
+        None,
+    )
+    if qa_department is None:
+        raise RuntimeError("Run the existing QA seed before the performance seed.")
+    return _SeedFixture(roles, qa_users, qa_department)
+
+
+async def _create_seed_users(
+    session, fixture: _SeedFixture, final_user_count: int, password_hash: str
+) -> None:
+    fixture.departments = [
+        Department(name=f"{OBJECT_PREFIX} Department {index:02d}", priority=index)
+        for index in range(1, 7)
+    ]
+    session.add_all(fixture.departments)
+    await session.flush()
+
+    fixture.category_names = [
+        f"{OBJECT_PREFIX} Operational Quality {index}"
+        for index in range(1, 5)
+    ]
+    categories = []
+    for category_name in fixture.category_names:
+        category = (
+            await session.execute(
+                select(KpiCategory).where(KpiCategory.name == category_name)
+            )
+        ).scalar_one_or_none()
+        if category is None:
+            category = KpiCategory(name=category_name)
+            session.add(category)
+        categories.append(category)
+    await session.flush()
+    fixture.category_ids = {category.name: category.id for category in categories}
+
+    for department in fixture.departments:
+        for level in LEVELS:
+            position = Position(
+                name=f"{OBJECT_PREFIX} {department.name[-2:]} {level}",
+                department_id=department.id,
+                is_active=True,
+            )
+            session.add(position)
+            fixture.position_by_department_level[(department.name, level)] = position
+    await session.flush()
+
+    for index in range(final_user_count - len(fixture.qa_users)):
+        level = LEVELS[index % len(LEVELS)]
+        department = fixture.departments[index % len(fixture.departments)]
+        position = fixture.position_by_department_level[(department.name, level)]
+        email = f"{EMAIL_PREFIX}{index + 1:04d}@perf.example.com"
+        user = User(
+            email=email,
+            hashed_password=password_hash,
+            local_password_enabled=True,
+            first_name=f"Perf{index + 1:04d}",
+            last_name=level,
+            position_id=position.id,
+            role_id=fixture.roles["Department User"].id,
+            is_active=True,
+            is_locked=False,
+            must_change_password=False,
+        )
+        fixture.generated_users.append(user)
+        fixture.generated_levels[email] = level
+        fixture.generated_departments[email] = department
+    session.add_all(fixture.generated_users)
+    await session.flush()
+
+    memberships = [
+        UserDepartment(
+            user_id=user.id,
+            department_id=fixture.generated_departments[user.email].id,
+            user_level=fixture.generated_levels[user.email],
+        )
+        for user in fixture.generated_users
+    ]
+    await _insert_batches(session, memberships)
+
+    fixture.users = [*fixture.qa_users, *fixture.generated_users]
+    for user in fixture.qa_users:
+        membership = (
+            await session.execute(
+                select(UserDepartment)
+                .where(
+                    UserDepartment.user_id == user.id,
+                    UserDepartment.department_id == fixture.qa_department.id,
+                    UserDepartment.is_deleted.is_(False),
+                )
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        fixture.qa_levels[user.id] = membership.user_level if membership else "L2"
+        if membership and user.position_id:
+            position = await session.get(Position, user.position_id)
+            if position is not None:
+                fixture.qa_position_by_level[membership.user_level] = position
+
+    for level in LEVELS:
+        leader = next(
+            (
+                user
+                for user in fixture.generated_users
+                if fixture.generated_levels[user.email] == level
+                and fixture.generated_departments[user.email] == fixture.departments[0]
+            ),
+            None,
+        )
+        if leader:
+            fixture.departments[0].head_id = leader.id
+
+
+async def _create_kpi_formulas(
+    session, fixture: _SeedFixture, periods_spec
+) -> _KpiFixture:
+    period_rows = [
+        KPIPeriod(label=label, start_date=start, end_date=end, status=status)
+        for label, _period_type, start, end, status in periods_spec
+    ]
+    session.add_all(period_rows)
+    await session.flush()
+
+    formula_by_department_level: dict[tuple[str, str], KPIFormula] = {}
+    rules = []
+    for department in [fixture.qa_department, *fixture.departments]:
+        for level in LEVELS:
+            if department == fixture.qa_department:
+                position = fixture.qa_position_by_level.get(level)
+            else:
+                position = next(
+                    (
+                        position
+                        for position in fixture.position_by_department_level.values()
+                        if position.department_id == department.id
+                        and position.name.endswith(f" {level}")
+                    ),
+                    None,
+                )
+            category_payload = [
+                {
+                    "name": fixture.category_names[category],
+                    "description": (
+                        f"Disposable performance benchmark category {category + 1}"
+                    ),
+                    "weight": 0.25,
+                    "max_score": 5.0,
+                    "evaluation_type": "TARGET",
+                    "deductions": [],
+                }
+                for category in range(4)
+            ]
+            formula = KPIFormula(
+                name=f"{OBJECT_PREFIX} {department.name} {level}",
+                description="Deterministic disposable performance fixture.",
+                expression="weighted_category_score",
+                department_id=department.id,
+                position_id=position.id if position else None,
+                position_name=position.name if position else None,
+                user_level=level,
+                categories=category_payload,
+                scope=FormulaScope.ROLE_LEVEL,
+                is_active=True,
+                status=FormulaStatus.ACTIVE,
+                version=1,
+                effective_month="2026-09",
+                created_by_id=fixture.qa_users[0].id if fixture.qa_users else None,
+            )
+            session.add(formula)
+            formula_by_department_level[(department.name, level)] = formula
+            if position is not None:
+                rules.extend(
+                    KpiRule(
+                        department_id=department.id,
+                        position_id=position.id,
+                        level=level,
+                        category_name=category_name,
+                        weight=0.25,
+                        is_active=True,
+                    )
+                    for category_name in fixture.category_names
+                )
+    await session.flush()
+    await _insert_batches(session, rules)
+    return _KpiFixture(period_rows, formula_by_department_level)
+
+
+async def _create_kpi_records(
+    session, fixture: _SeedFixture, kpi_fixture: _KpiFixture, periods_spec, rng
+) -> tuple[list[KPIAssignment], list[KPIRecord]]:
+    period_assignments: list[KPIAssignment] = []
+    kpi_records: list[KPIRecord] = []
+    for user in fixture.users:
+        if user in fixture.generated_users:
+            level = fixture.generated_levels[user.email]
+            department = fixture.generated_departments[user.email]
+        else:
+            level = fixture.qa_levels[user.id]
+            department = fixture.qa_department
+
+        formula = kpi_fixture.formula_by_department_level[(department.name, level)]
+        position_id = user.position_id or formula.position_id
+        for period, (_label, period_type, start, end, _status) in zip(
+            kpi_fixture.period_rows, periods_spec, strict=True
+        ):
+            period_assignments.append(
+                KPIAssignment(
+                    department_id=department.id,
+                    position_id=position_id,
+                    user_id=user.id,
+                    kpi_formula_id=formula.id,
+                    kpi_period_id=period.id,
+                    assigned_by_id=fixture.qa_users[0].id if fixture.qa_users else None,
+                    assigned_at=start.replace(tzinfo=None),
+                )
+            )
+            raw_score = round(rng.uniform(2.1, 5.0), 2)
+            percentage = round(raw_score / 5 * 100, 2)
+            if percentage >= 90:
+                status_bucket = KPIStatus.EXCELLENT
+            elif percentage >= 80:
+                status_bucket = KPIStatus.VERY_GOOD
+            elif percentage >= 60:
+                status_bucket = KPIStatus.GOOD
+            elif percentage >= 40:
+                status_bucket = KPIStatus.FAIR
+            else:
+                status_bucket = KPIStatus.POOR
+            kpi_records.append(
+                KPIRecord(
+                    user_id=user.id,
+                    department_id=department.id,
+                    formula_id=formula.id,
+                    kpi_period_id=period.id,
+                    period_type=period_type,
+                    period_start=start,
+                    period_end=end,
+                    raw_score=raw_score,
+                    weighted_score=percentage,
+                    percentage=percentage,
+                    status_bucket=status_bucket,
+                    is_frozen=True,
+                )
+            )
+    await _insert_batches(session, period_assignments)
+    await _insert_batches(session, kpi_records)
+    return period_assignments, kpi_records
+
+
+async def _create_tasks_and_notifications(
+    session, fixture: _SeedFixture, task_count: int, notification_count: int, rng
+) -> tuple[list[Task], list[Notification]]:
+    now = datetime.now(UTC).replace(tzinfo=None)
+    generated_tasks = []
+    for index in range(task_count):
+        owner = fixture.users[index % len(fixture.users)]
+        supervisor = fixture.qa_users[0] if fixture.qa_users else owner
+        due_date = now + timedelta(days=rng.randint(-30, 30))
+        generated_tasks.append(
+            Task(
+                title=f"{OBJECT_PREFIX} Task {index + 1:05d}",
+                description=f"Seeded task for deterministic performance profiling #{index + 1}.",
+                category=fixture.category_names[index % len(fixture.category_names)],
+                category_id=fixture.category_ids[
+                    fixture.category_names[index % len(fixture.category_names)]
+                ],
+                status=TASK_STATUSES[index % len(TASK_STATUSES)],
+                due_date=due_date,
+                grace_period_days=index % 4,
+                is_late=(index % 7 == 0),
+                late_days=index % 6,
+                owner_id=owner.id,
+                assigner_id=supervisor.id,
+                version=1,
+                frequency=TASK_FREQUENCIES[index % len(TASK_FREQUENCIES)],
+                is_escalated=(index % 19 == 0),
+                escalated_to_level="L0" if index % 19 == 0 else None,
+                created_at=now - timedelta(days=rng.randint(0, 365)),
+            )
+        )
+    await _insert_batches(session, generated_tasks)
+
+    notifications = [
+        Notification(
+            user_id=fixture.users[index % len(fixture.users)].id,
+            title=f"{OBJECT_PREFIX} Notification {index + 1:05d}",
+            message=f"Seeded notification for deterministic profiling #{index + 1}.",
+            notification_type=("REMINDER", "DEADLINE", "APPROVAL")[index % 3],
+            is_read=index % 4 == 0,
+            channel="DASHBOARD",
+            created_at=now - timedelta(days=rng.randint(0, 180)),
+        )
+        for index in range(notification_count)
+    ]
+    await _insert_batches(session, notifications)
+    return generated_tasks, notifications
 
 
 async def seed(args: argparse.Namespace) -> dict[str, int]:
@@ -192,7 +538,7 @@ async def seed(args: argparse.Namespace) -> dict[str, int]:
     factory = async_sessionmaker(engine, expire_on_commit=False)
     try:
         await _assert_marker(engine)
-        rng = random.Random(args.random_seed)  # noqa: S311
+        rng = secrets.SystemRandom()
         final_user_count = args.users * args.scale
         task_count = args.tasks * args.scale
         notification_count = args.notifications * args.scale
@@ -201,327 +547,24 @@ async def seed(args: argparse.Namespace) -> dict[str, int]:
 
         async with factory() as session:
             await _clear_previous_seed(session)
-
-            roles = {
-                role.name: role
-                for role in (await session.execute(select(Role))).scalars().all()
-            }
-            required_roles = {"Super Admin", "Admin", "HR", "Department User"}
-            if missing := required_roles.difference(roles):
-                raise RuntimeError(f"Required application roles are missing: {sorted(missing)}")
-
-            qa_users = list(
-                (await session.execute(select(User).order_by(User.email))).scalars().all()
+            fixture = await _load_seed_fixture(session, final_user_count)
+            await _create_seed_users(session, fixture, final_user_count, password_hash)
+            kpi_fixture = await _create_kpi_formulas(session, fixture, periods_spec)
+            period_assignments, kpi_records = await _create_kpi_records(
+                session, fixture, kpi_fixture, periods_spec, rng
             )
-            if len(qa_users) > final_user_count:
-                raise RuntimeError(
-                    f"The disposable QA fixture already has {len(qa_users)} users; "
-                    f"requested total is {final_user_count}."
-                )
-
-            qa_departments = list(
-                (await session.execute(select(Department).order_by(Department.name)))
-                .scalars()
-                .all()
+            generated_tasks, notifications = await _create_tasks_and_notifications(
+                session, fixture, task_count, notification_count, rng
             )
-            qa_department = next(
-                (department for department in qa_departments if department.name.startswith("QA ")),
-                None,
-            )
-            if qa_department is None:
-                raise RuntimeError("Run the existing QA seed before the performance seed.")
-
-            departments = [
-                Department(name=f"{OBJECT_PREFIX} Department {index:02d}", priority=index)
-                for index in range(1, 7)
-            ]
-            session.add_all(departments)
-            await session.flush()
-
-            category_names = [
-                f"{OBJECT_PREFIX} Operational Quality {index}"
-                for index in range(1, 5)
-            ]
-            categories = []
-            for category_name in category_names:
-                category = (
-                    await session.execute(
-                        select(KpiCategory).where(KpiCategory.name == category_name)
-                    )
-                ).scalar_one_or_none()
-                if category is None:
-                    category = KpiCategory(name=category_name)
-                    session.add(category)
-                categories.append(category)
-            await session.flush()
-            category_ids = {category.name: category.id for category in categories}
-
-            position_by_department_level: dict[tuple[str, str], Position] = {}
-            for department in departments:
-                for level in LEVELS:
-                    position = Position(
-                        name=f"{OBJECT_PREFIX} {department.name[-2:]} {level}",
-                        department_id=department.id,
-                        is_active=True,
-                    )
-                    session.add(position)
-                    position_by_department_level[(department.name, level)] = position
-            await session.flush()
-
-            generated_users: list[User] = []
-            generated_levels: dict[str, str] = {}
-            generated_departments: dict[str, Department] = {}
-            missing_users = final_user_count - len(qa_users)
-            for index in range(missing_users):
-                level = LEVELS[index % len(LEVELS)]
-                department = departments[index % len(departments)]
-                position = position_by_department_level[(department.name, level)]
-                email = f"{EMAIL_PREFIX}{index + 1:04d}@perf.example.com"
-                user = User(
-                    email=email,
-                    hashed_password=password_hash,
-                    local_password_enabled=True,
-                    first_name=f"Perf{index + 1:04d}",
-                    last_name=level,
-                    position_id=position.id,
-                    role_id=roles["Department User"].id,
-                    is_active=True,
-                    is_locked=False,
-                    must_change_password=False,
-                )
-                generated_users.append(user)
-                generated_levels[email] = level
-                generated_departments[email] = department
-            session.add_all(generated_users)
-            await session.flush()
-
-            memberships = []
-            for user in generated_users:
-                level = generated_levels[user.email]
-                department = generated_departments[user.email]
-                memberships.append(
-                    UserDepartment(
-                        user_id=user.id,
-                        department_id=department.id,
-                        user_level=level,
-                    )
-                )
-            await _insert_batches(session, UserDepartment, memberships)
-
-            users = [*qa_users, *generated_users]
-            qa_levels = {}
-            qa_position_by_level = {}
-            for user in qa_users:
-                membership = (
-                    await session.execute(
-                        select(UserDepartment)
-                        .where(
-                            UserDepartment.user_id == user.id,
-                            UserDepartment.department_id == qa_department.id,
-                            UserDepartment.is_deleted.is_(False),
-                        )
-                        .limit(1)
-                    )
-                ).scalar_one_or_none()
-                qa_levels[user.id] = membership.user_level if membership else "L2"
-                if membership and user.position_id:
-                    position = await session.get(Position, user.position_id)
-                    if position is not None:
-                        qa_position_by_level[membership.user_level] = position
-
-            for level in LEVELS:
-                leader = next(
-                    (
-                        user
-                        for user in generated_users
-                        if generated_levels[user.email] == level
-                        and generated_departments[user.email] == departments[0]
-                    ),
-                    None,
-                )
-                if leader:
-                    departments[0].head_id = leader.id
-
-            period_rows = [
-                KPIPeriod(
-                    label=label,
-                    start_date=start,
-                    end_date=end,
-                    status=status,
-                )
-                for label, _period_type, start, end, status in periods_spec
-            ]
-            session.add_all(period_rows)
-            await session.flush()
-
-            formula_by_department_level: dict[tuple[str, str], KPIFormula] = {}
-            all_departments = [qa_department, *departments]
-            rules = []
-            for department in all_departments:
-                for level in LEVELS:
-                    position = (
-                        next(
-                            (
-                                position
-                                for position in position_by_department_level.values()
-                                if position.department_id == department.id
-                                and position.name.endswith(f" {level}")
-                            ),
-                            None,
-                        )
-                        if department != qa_department
-                        else qa_position_by_level.get(level)
-                    )
-                    category_payload = [
-                        {
-                            "name": category_names[category],
-                            "description": (
-                                f"Disposable performance benchmark category {category + 1}"
-                            ),
-                            "weight": 0.25,
-                            "max_score": 5.0,
-                            "evaluation_type": "TARGET",
-                            "deductions": [],
-                        }
-                        for category in range(4)
-                    ]
-                    formula = KPIFormula(
-                        name=f"{OBJECT_PREFIX} {department.name} {level}",
-                        description="Deterministic disposable performance fixture.",
-                        expression="weighted_category_score",
-                        department_id=department.id,
-                        position_id=position.id if position else None,
-                        position_name=position.name if position else None,
-                        user_level=level,
-                        categories=category_payload,
-                        scope=FormulaScope.ROLE_LEVEL,
-                        is_active=True,
-                        status=FormulaStatus.ACTIVE,
-                        version=1,
-                        effective_month="2026-09",
-                        created_by_id=qa_users[0].id if qa_users else None,
-                    )
-                    session.add(formula)
-                    formula_by_department_level[(department.name, level)] = formula
-                    if position is not None:
-                        rules.extend(
-                            KpiRule(
-                                department_id=department.id,
-                                position_id=position.id,
-                                level=level,
-                                category_name=category_name,
-                                weight=0.25,
-                                is_active=True,
-                            )
-                            for category_name in category_names
-                        )
-            await session.flush()
-            await _insert_batches(session, KpiRule, rules)
-
-            period_assignments: list[KPIAssignment] = []
-            kpi_records: list[KPIRecord] = []
-            for user in users:
-                if user in generated_users:
-                    level = generated_levels[user.email]
-                    department = generated_departments[user.email]
-                else:
-                    level = qa_levels[user.id]
-                    department = qa_department
-
-                formula = formula_by_department_level[(department.name, level)]
-                position_id = user.position_id or formula.position_id
-                for period, (_label, period_type, start, end, _status) in zip(
-                    period_rows, periods_spec, strict=True
-                ):
-                    period_assignments.append(
-                        KPIAssignment(
-                            department_id=department.id,
-                            position_id=position_id,
-                            user_id=user.id,
-                            kpi_formula_id=formula.id,
-                            kpi_period_id=period.id,
-                            assigned_by_id=qa_users[0].id if qa_users else None,
-                            assigned_at=start.replace(tzinfo=None),
-                        )
-                    )
-                    raw_score = round(rng.uniform(2.1, 5.0), 2)
-                    percentage = round(raw_score / 5 * 100, 2)
-                    status_bucket = (
-                        KPIStatus.EXCELLENT if percentage >= 90 else
-                        KPIStatus.VERY_GOOD if percentage >= 80 else
-                        KPIStatus.GOOD if percentage >= 60 else
-                        KPIStatus.FAIR if percentage >= 40 else KPIStatus.POOR
-                    )
-                    kpi_records.append(
-                        KPIRecord(
-                            user_id=user.id,
-                            department_id=department.id,
-                            formula_id=formula.id,
-                            kpi_period_id=period.id,
-                            period_type=period_type,
-                            period_start=start,
-                            period_end=end,
-                            raw_score=raw_score,
-                            weighted_score=percentage,
-                            percentage=percentage,
-                            status_bucket=status_bucket,
-                            is_frozen=True,
-                        )
-                    )
-            await _insert_batches(session, KPIAssignment, period_assignments)
-            await _insert_batches(session, KPIRecord, kpi_records)
-
-            now = datetime.now(UTC).replace(tzinfo=None)
-            generated_tasks = []
-            for index in range(task_count):
-                owner = users[index % len(users)]
-                supervisor = qa_users[0] if qa_users else owner
-                due_date = now + timedelta(days=rng.randint(-30, 30))
-                status = TASK_STATUSES[index % len(TASK_STATUSES)]
-                generated_tasks.append(
-                    Task(
-                        title=f"{OBJECT_PREFIX} Task {index + 1:05d}",
-                        description=f"Seeded task for deterministic performance profiling #{index + 1}.",
-                        category=category_names[index % len(category_names)],
-                        category_id=category_ids[category_names[index % len(category_names)]],
-                        status=status,
-                        due_date=due_date,
-                        grace_period_days=index % 4,
-                        is_late=(index % 7 == 0),
-                        late_days=index % 6,
-                        owner_id=owner.id,
-                        assigner_id=supervisor.id,
-                        version=1,
-                        frequency=TASK_FREQUENCIES[index % len(TASK_FREQUENCIES)],
-                        is_escalated=(index % 19 == 0),
-                        escalated_to_level="L0" if index % 19 == 0 else None,
-                        created_at=now - timedelta(days=rng.randint(0, 365)),
-                    )
-                )
-            await _insert_batches(session, Task, generated_tasks)
-
-            notifications = [
-                Notification(
-                    user_id=users[index % len(users)].id,
-                    title=f"{OBJECT_PREFIX} Notification {index + 1:05d}",
-                    message=f"Seeded notification for deterministic profiling #{index + 1}.",
-                    notification_type=("REMINDER", "DEADLINE", "APPROVAL")[index % 3],
-                    is_read=index % 4 == 0,
-                    channel="DASHBOARD",
-                    created_at=now - timedelta(days=rng.randint(0, 180)),
-                )
-                for index in range(notification_count)
-            ]
-            await _insert_batches(session, Notification, notifications)
             await session.commit()
 
             return {
-                "users_total": len(users),
-                "users_generated": len(generated_users),
-                "departments_generated": len(departments),
-                "positions_generated": len(position_by_department_level),
-                "kpi_periods": len(period_rows),
-                "kpi_formulas": len(formula_by_department_level),
+                "users_total": len(fixture.users),
+                "users_generated": len(fixture.generated_users),
+                "departments_generated": len(fixture.departments),
+                "positions_generated": len(fixture.position_by_department_level),
+                "kpi_periods": len(kpi_fixture.period_rows),
+                "kpi_formulas": len(kpi_fixture.formula_by_department_level),
                 "kpi_assignments": len(period_assignments),
                 "kpi_records": len(kpi_records),
                 "tasks": len(generated_tasks),

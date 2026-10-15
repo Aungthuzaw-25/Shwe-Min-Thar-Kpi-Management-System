@@ -243,8 +243,8 @@ async def test_provider_neutral_notification_sends_same_message_through_resend(m
 
 @pytest.mark.asyncio
 async def test_provider_neutral_notification_sends_same_message_through_smtp(monkeypatch):
-    FakeSMTP.instances.clear()
-    FakeSMTP.login_error = None
+    monkeypatch.setattr(FakeSMTP, "instances", [])
+    monkeypatch.setattr(FakeSMTP, "login_error", None)
     smtp_configuration = config("smtp")
     _mock_settings(
         monkeypatch,
@@ -276,7 +276,7 @@ async def test_provider_neutral_notification_sends_same_message_through_smtp(mon
 
 @pytest.mark.asyncio
 async def test_smtp_without_authentication_does_not_require_a_password(monkeypatch):
-    FakeSMTP.instances.clear()
+    monkeypatch.setattr(FakeSMTP, "instances", [])
     configuration = config("smtp", smtp_username=None)
     _mock_settings(
         monkeypatch,
@@ -314,23 +314,29 @@ async def test_missing_provider_secrets_and_sender_fail_safely(monkeypatch):
 def test_smtp_configuration_validation_reports_missing_host_and_invalid_port():
     provider = SMTPProvider()
     secrets = EmailSecrets(None, None)
+    missing_host = config("smtp", smtp_host=None)
+    invalid_port = config("smtp", smtp_port=70000)
+
     with pytest.raises(EmailConfigurationError, match="SMTP Host"):
-        provider.validate_configuration(config("smtp", smtp_host=None), secrets)
+        provider.validate_configuration(missing_host, secrets)
     with pytest.raises(EmailConfigurationError, match="SMTP Port"):
-        provider.validate_configuration(config("smtp", smtp_port=70000), secrets)
+        provider.validate_configuration(invalid_port, secrets)
 
 
 def test_smtp_authentication_failure_is_normalized(monkeypatch):
-    FakeSMTP.instances.clear()
-    FakeSMTP.login_error = smtplib.SMTPAuthenticationError(535, b"credentials rejected")
+    monkeypatch.setattr(FakeSMTP, "instances", [])
+    monkeypatch.setattr(
+        FakeSMTP,
+        "login_error",
+        smtplib.SMTPAuthenticationError(535, b"credentials rejected"),
+    )
     monkeypatch.setattr(email_service.smtplib, "SMTP", FakeSMTP)
     provider = SMTPProvider()
+    configuration = config("smtp")
+    secrets = EmailSecrets(resend_api_key=None, smtp_password="mock-password")  # noqa: S106 - mock-only credential
+
     with pytest.raises(EmailAuthenticationError, match="SMTP authentication failed"):
-        provider._connect(
-            config("smtp"),
-            EmailSecrets(resend_api_key=None, smtp_password="mock-password"),  # noqa: S106 - mock-only credential
-        )
-    FakeSMTP.login_error = None
+        provider._connect(configuration, secrets)
 
 
 @pytest.mark.asyncio
@@ -346,10 +352,12 @@ async def test_resend_connection_and_delivery_failures_are_normalized(monkeypatc
     assert not await service.send(
         EmailMessage(to=["person@example.com"], subject="Subject", text_body="Body")
     )
+    configuration = config()
+    secrets = EmailSecrets("fake-resend-key", None)
+    provider = ResendProvider()
+
     with pytest.raises(email_service.EmailConnectionError):
-        await ResendProvider().test_connection(
-            config(), EmailSecrets("fake-resend-key", None)
-        )
+        await provider.test_connection(configuration, secrets)
 
 
 @pytest.mark.asyncio
@@ -381,15 +389,17 @@ async def test_resend_test_mode_is_supported_without_verified_custom_domain(monk
 
 @pytest.mark.asyncio
 async def test_missing_from_email_has_specific_diagnostic_before_missing_api_key():
+    configuration = config(from_email=None)
+    secrets = EmailSecrets(None, None)
+    provider = ResendProvider()
+
     with pytest.raises(EmailConfigurationError, match="From Email is required"):
-        await ResendProvider().test_connection(
-            config(from_email=None), EmailSecrets(None, None)
-        )
+        await provider.test_connection(configuration, secrets)
 
 
 @pytest.mark.asyncio
 async def test_smtp_test_connection_uses_current_provider_and_never_sends(monkeypatch):
-    FakeSMTP.instances.clear()
+    monkeypatch.setattr(FakeSMTP, "instances", [])
     monkeypatch.setattr(email_service.smtplib, "SMTP", FakeSMTP)
     _mock_settings(
         monkeypatch,
@@ -413,7 +423,7 @@ async def test_resend_test_connection_uses_selected_provider_through_service(mon
 
 @pytest.mark.asyncio
 async def test_smtp_ssl_connection_uses_ssl_adapter_and_none_disables_tls(monkeypatch):
-    FakeSMTP.instances.clear()
+    monkeypatch.setattr(FakeSMTP, "instances", [])
     monkeypatch.setattr(email_service.smtplib, "SMTP_SSL", FakeSMTP)
     monkeypatch.setattr(email_service.smtplib, "SMTP", FakeSMTP)
     provider = SMTPProvider()
@@ -503,8 +513,9 @@ def test_system_setting_api_filters_provider_secrets_and_old_smtp_settings():
 def test_system_setting_update_rejects_provider_secrets_and_backup_redacts_legacy_values():
     from fastapi import HTTPException
 
+    setting = {"SMTP_PASSWORD": "mock-only-secret"}
     with pytest.raises(HTTPException):
-        _sanitize_setting_value("email", {"SMTP_PASSWORD": "mock-only-secret"})
+        _sanitize_setting_value("email", setting)
     backup = _safe_backup_value(
         "email",
         {

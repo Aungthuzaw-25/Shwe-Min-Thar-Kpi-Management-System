@@ -9,7 +9,7 @@
         for (const character of value) {
             if (quote) {
                 current += character;
-                if (character === quote && current[current.length - 2] !== "\\") {
+                if (character === quote && current.at(-2) !== "\\") {
                     quote = null;
                 }
             } else if (character === "'" || character === '"') {
@@ -34,7 +34,7 @@
 
     function parseQuotedArgument(value) {
         const quote = value[0];
-        if ((quote !== "'" && quote !== '"') || value[value.length - 1] !== quote) return null;
+        if ((quote !== "'" && quote !== '"') || value.at(-1) !== quote) return null;
 
         let result = "";
         for (let index = 1; index < value.length - 1; index += 1) {
@@ -81,7 +81,7 @@
     function invokeCall(expression, element, event) {
         const call = expression.trim();
         const openingParen = call.indexOf("(");
-        if (openingParen < 1 || call[call.length - 1] !== ")") return false;
+        if (openingParen < 1 || call.at(-1) !== ")") return false;
 
         const functionName = call.slice(0, openingParen);
         if (!isIdentifier(functionName) || typeof window[functionName] !== "function") return false;

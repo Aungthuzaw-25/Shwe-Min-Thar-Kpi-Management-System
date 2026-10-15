@@ -86,7 +86,6 @@
   window.addEventListener("beforeunload", (event) => {
     if (nameInput.value !== initialProfile.display_name || phoneInput.value !== initialProfile.phone) {
       event.preventDefault();
-      event.returnValue = "";
     }
   });
 

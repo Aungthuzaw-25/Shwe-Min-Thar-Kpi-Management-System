@@ -48,7 +48,7 @@
 .executive-grid-tertiary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .executive-panel { min-width: 0; padding: 1.15rem; }
 .executive-chart-frame { height: 19rem; position: relative; }
-.executive-chart-frame canvas { width: 100% !important; height: 100% !important; }
+.executive-chart-frame canvas { width: 100%; height: 100%; }
 .executive-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .35rem; min-height: 8rem; color: var(--legacy-muted); text-align: center; font-size: .78rem; }
 .executive-empty strong { color: var(--legacy-text); font-size: .8rem; }
 .executive-empty-compact { align-items: flex-start; text-align: left; min-height: 5rem; padding: .8rem 0 0; }
@@ -144,7 +144,7 @@
 
 @media (max-width: 767px) {
   .exec-mobile-sidebar-toggle {
-    display: flex !important;
+    display: flex;
     min-height: 56px;
     padding: 6px 16px;
   }
@@ -339,8 +339,6 @@
 
 .exec-dashboard .exec-refresh { grid-column: 1; }
 .exec-dashboard .exec-updated { grid-column: 2; align-self: center; }
-.exec-dashboard .exec-badge { grid-column: 1 / -1; }
-
 .exec-dashboard .exec-control:hover,
 .exec-dashboard .exec-button:hover:not(:disabled) {
   border-color: var(--exec-accent);
@@ -378,6 +376,7 @@
 }
 
 .exec-dashboard .exec-badge {
+  grid-column: 1 / -1;
   display: inline-flex;
   width: fit-content;
   min-height: 28px;
@@ -442,7 +441,7 @@
 }
 
 .exec-dashboard [hidden] {
-  display: none !important;
+  display: none;
 }
 
 .exec-dashboard .exec-value-0 { width: 0%; }
@@ -855,8 +854,10 @@
 }
 
 .exec-dashboard .exec-chart-frame canvas {
-  width: 100% !important;
-  height: 100% !important;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
 }
 
 .exec-dashboard .exec-chart-frame > .exec-empty {
@@ -877,16 +878,6 @@
   color: var(--exec-muted);
   font-size: 13px;
   text-align: center;
-}
-
-.exec-dashboard .exec-status-bar {
-  display: flex;
-  width: 100%;
-  height: 14px;
-  gap: 2px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: var(--exec-track);
 }
 
 .exec-dashboard .exec-status-bar {
@@ -1345,8 +1336,8 @@
   .exec-dashboard *,
   .exec-dashboard *::before,
   .exec-dashboard *::after {
-    animation-duration: .01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: .01ms !important;
+    animation-duration: .01ms;
+    animation-iteration-count: 1;
+    transition-duration: .01ms;
   }
 }

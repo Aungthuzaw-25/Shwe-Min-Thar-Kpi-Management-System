@@ -197,7 +197,10 @@ async def _get_executive_scope(
 @unified_router.get(
     "/executive/overview",
     tags=["Executive KPI Intelligence"],
-    responses={404: {"description": "Not Found"}},
+    responses={
+        404: {"description": "Not Found"},
+        422: {"description": "Unprocessable Entity"},
+    },
 )
 async def fetch_executive_overview(
     period_id: UUID | None = Query(None),
@@ -243,8 +246,8 @@ async def fetch_executive_overview(
 
 @unified_router.get(
     "/executive/monthly-averages",
-    response_model=ExecutiveMonthlyAverageResponse,
     tags=["Executive KPI Intelligence"],
+    responses={404: {"description": "Not Found"}},
 )
 async def fetch_executive_monthly_averages(
     year: int = Query(..., ge=1900, le=9998),
@@ -312,6 +315,7 @@ async def fetch_executive_employee_detail(
 @unified_router.get(
     "/executive/employees",
     tags=["Executive KPI Intelligence"],
+    responses={422: {"description": "Unprocessable Entity"}},
 )
 async def fetch_executive_employee_results(
     period_id: UUID | None = Query(None),
