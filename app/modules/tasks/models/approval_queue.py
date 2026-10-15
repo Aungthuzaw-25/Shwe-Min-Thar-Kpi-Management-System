@@ -1,4 +1,4 @@
-﻿from sqlalchemy import Column, ForeignKey, Integer
+from sqlalchemy import Column, ForeignKey, Index, Integer
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -15,6 +15,10 @@ class ApprovalQueue(BaseModel):
     completed_count = Column(Integer, default=0)
     partial_count = Column(Integer, default=0)
     blocked_count = Column(Integer, default=0)
+
+    __table_args__ = (
+        Index("idx_approval_queues_reviewer_created", "reviewer_id", "created_at"),
+    )
 
     batch = relationship("SubmissionBatch", back_populates="queue")
     reviewer = relationship("User")

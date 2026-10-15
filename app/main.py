@@ -173,9 +173,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         )
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
         if response.headers.get("content-type", "").startswith("text/html"):
-            body = b""
+            body_chunks = []
             async for chunk in response.body_iterator:
-                body += chunk
+                body_chunks.append(chunk)
+            body = b"".join(body_chunks)
             is_compressed = response.headers.get("content-encoding") == "gzip"
             if is_compressed:
                 body = gzip.decompress(body)
@@ -309,7 +310,10 @@ class CSRFMiddleware(BaseHTTPMiddleware):
                 )
 
         response = await call_next(request)
-        if not request.cookies.get("csrf_token"):
+        if (
+            not request.cookies.get("csrf_token")
+            and not request.url.path.startswith("/static/")
+        ):
             response.set_cookie(
                 key="csrf_token",
                 value=secrets.token_urlsafe(32),
@@ -336,7 +340,18 @@ app.add_middleware(
 # ==============================================================================
 # 📂 5. STATIC FILES & STORAGE MOUNTING
 # ==============================================================================
-app.mount("/static", StaticFiles(directory="static"), name="static")
+class CachedStaticFiles(StaticFiles):
+    async def get_response(self, path: str, scope):
+        response = await super().get_response(path, scope)
+        if response.status_code == status.HTTP_200_OK:
+            if path.endswith("service-worker.js"):
+                response.headers["Cache-Control"] = "no-cache"
+            else:
+                response.headers["Cache-Control"] = "public, max-age=3600"
+        return response
+
+
+app.mount("/static", CachedStaticFiles(directory="static"), name="static")
 
 # ==============================================================================
 # 🔌 6. BACKEND API ROUTERS (Domain-Driven Design)

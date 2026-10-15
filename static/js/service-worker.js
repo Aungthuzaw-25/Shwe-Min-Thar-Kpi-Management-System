@@ -1,7 +1,6 @@
-const CACHE_NAME = 'kpi-portal-v1';
+const CACHE_NAME = 'kpi-portal-v2';
 const CACHE_PREFIX = 'kpi-portal-';
 const ASSETS_TO_CACHE = [
-  '/auth/login',
   '/static/css/dashboard.css',
   '/static/css/input.css',
   '/static/manifest.json',
@@ -12,8 +11,15 @@ const ASSETS_TO_CACHE = [
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => {
-        return cache.addAll(ASSETS_TO_CACHE);
+      .then(async (cache) => {
+        const results = await Promise.allSettled(
+          ASSETS_TO_CACHE.map((asset) => cache.add(asset)),
+        );
+        results.forEach((result, index) => {
+          if (result.status === 'rejected') {
+            console.warn(`Service worker could not cache ${ASSETS_TO_CACHE[index]}.`);
+          }
+        });
       })
   );
 });
@@ -35,11 +41,22 @@ self.addEventListener('activate', (event) => {
 
 // Fetch Event - အင်တာနက်မရှိချိန်တွင် သိမ်းဆည်းထားသော Cache မှ ပြန်ယူရန်
 self.addEventListener('fetch', (event) => {
+  const request = event.request;
+  const requestUrl = new URL(request.url);
+  if (
+    request.method !== 'GET'
+    || request.mode === 'navigate'
+    || requestUrl.origin !== self.location.origin
+    || !requestUrl.pathname.startsWith('/static/')
+  ) {
+    return;
+  }
+
   event.respondWith(
-    caches.match(event.request)
+    caches.match(request)
       .then((response) => {
         // Cache တွင်ရှိပါက ၎င်းကိုပြန်ပေးမည်၊ မရှိပါက Network မှတဆင့် ဆက်လက်ခေါ်ယူမည်
-        return response || fetch(event.request);
+        return response || fetch(request);
       })
   );
 });

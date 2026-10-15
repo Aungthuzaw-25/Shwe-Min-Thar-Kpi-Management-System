@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.password_policy import get_password_policy, validate_password_strength
-from app.core.security import get_password_hash
+from app.core.security import get_password_hash_async
 from app.database.connection import AsyncSessionLocal
 from app.modules.users import password_repo
 from app.modules.users.models import Role, User
@@ -119,7 +119,7 @@ def _confirm_recovery(
 
 async def _persist_recovery(db: AsyncSession, target: User, new_password: str) -> None:
     try:
-        hashed_password = get_password_hash(new_password)
+        hashed_password = await get_password_hash_async(new_password)
         target.hashed_password = hashed_password
         target.local_password_enabled = True
         target.must_change_password = True

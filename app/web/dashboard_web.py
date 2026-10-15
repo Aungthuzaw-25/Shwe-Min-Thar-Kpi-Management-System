@@ -2,12 +2,11 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy.orm import joinedload
 
 from app.core.config import settings
 from app.core.dependencies import get_current_user, get_permission_map
 from app.database.connection import get_db
-from app.modules.departments.models import UserDepartment
+from app.modules.departments.models import Department, UserDepartment
 from app.modules.users.avatar import avatar_color_index, avatar_initials, avatar_url
 from app.modules.users.models import OAuthAccount, Position, User
 from app.web.template_support import templates
@@ -62,26 +61,29 @@ def build_user_template_context(user: User) -> dict:
 
 async def get_employee_context(db: AsyncSession, current_user: User) -> dict:
     result = await db.execute(
-        select(UserDepartment)
-        .options(joinedload(UserDepartment.department))
-        .where(
-            UserDepartment.user_id == current_user.id,
-            UserDepartment.is_deleted.is_(False),
+        select(
+            UserDepartment.user_level,
+            UserDepartment.department_id,
+            Department.name.label("department_name"),
+            Position.name.label("position_name"),
         )
+        .select_from(User)
+        .outerjoin(
+            UserDepartment,
+            (UserDepartment.user_id == User.id)
+            & UserDepartment.is_deleted.is_(False),
+        )
+        .outerjoin(Department, Department.id == UserDepartment.department_id)
+        .outerjoin(Position, Position.id == User.position_id)
+        .where(User.id == current_user.id)
+        .limit(1)
     )
-    user_department = result.scalars().first()
-
-    position_name = None
-    if current_user.position_id:
-        position_result = await db.execute(
-            select(Position.name).where(Position.id == current_user.position_id)
-        )
-        position_name = position_result.scalar_one_or_none()
-
-    user_level = normalize_user_level(user_department.user_level if user_department else None)
-    display_identity = position_name or (
-        user_department.department.name if user_department and user_department.department else None
-    ) or current_user.role.name
+    employee_data = result.first()
+    user_level = normalize_user_level(employee_data.user_level if employee_data else None)
+    department_id = employee_data.department_id if employee_data else None
+    department_name = employee_data.department_name if employee_data else None
+    position_name = employee_data.position_name if employee_data else None
+    display_identity = position_name or department_name or current_user.role.name
 
     return {
         **build_user_template_context(current_user),
@@ -91,14 +93,8 @@ async def get_employee_context(db: AsyncSession, current_user: User) -> dict:
         "user_email": current_user.email,
         "user_id": str(current_user.id),
         "user_level": user_level,
-        "department_id": (
-            str(user_department.department_id) if user_department else None
-        ),
-        "department_name": (
-            user_department.department.name
-            if user_department and user_department.department
-            else None
-        ),
+        "department_id": str(department_id) if department_id else None,
+        "department_name": department_name,
         "position_name": position_name,
         "permission_map": get_permission_map(current_user),
     }

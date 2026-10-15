@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 
 from app.core.config import settings
-from app.core.security import get_password_hash
+from app.core.security import get_password_hash_async
 from app.database.connection import AsyncSessionLocal
 from app.database.seed import ensure_roles_and_permissions
 from app.modules.departments.models import Department, UserDepartment
@@ -105,6 +105,7 @@ async def _get_or_create_qa_position(db, department, positions, name, parent):
 async def _get_or_create_qa_user(
     db, email, role_name, position_name, membership_level, roles, positions, department
 ):
+    password_hash = await get_password_hash_async(_password_for())
     user = (
         await db.execute(select(User).where(User.email == email))
     ).scalar_one_or_none()
@@ -125,7 +126,7 @@ async def _get_or_create_qa_user(
             {
                 "first_name": email.split(".")[1].split("@")[0].title(),
                 "last_name": "QA",
-                "hashed_password": get_password_hash(_password_for()),
+                "hashed_password": password_hash,
                 "local_password_enabled": True,
                 "role_id": roles[role_name].id,
                 "position_id": positions[position_name].id,
@@ -134,7 +135,7 @@ async def _get_or_create_qa_user(
                 "must_change_password": False,
             },
         )
-    user.hashed_password = get_password_hash(_password_for())
+    user.hashed_password = password_hash
     user.local_password_enabled = True
     user.role_id = roles[role_name].id
     user.position_id = positions[position_name].id

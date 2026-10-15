@@ -1,6 +1,7 @@
 """
 Authentication Domain Service (Single Source of Truth)
 """
+import asyncio
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -9,7 +10,7 @@ from fastapi import HTTPException, status
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy.orm import joinedload, lazyload
+from sqlalchemy.orm import joinedload
 
 from app.core import security
 from app.core.config import settings
@@ -21,11 +22,20 @@ from app.modules.users.models import Role, User
 
 INVALID_CREDENTIALS_MESSAGE = "Invalid email or password."
 
-# Generate one random bcrypt hash per process for timing equalization on
-# unknown and passwordless accounts. Never use a reusable credential hash.
-TIMING_EQUALIZATION_HASH = security.pwd_context.handler("bcrypt").hash(
-    secrets.token_urlsafe(32),
-)
+_timing_equalization_hash: str | None = None
+_timing_equalization_lock = asyncio.Lock()
+
+
+async def _get_timing_equalization_hash() -> str:
+    global _timing_equalization_hash
+    if _timing_equalization_hash is None:
+        async with _timing_equalization_lock:
+            if _timing_equalization_hash is None:
+                _timing_equalization_hash = await run_in_threadpool(
+                    security.pwd_context.handler("bcrypt").hash,
+                    secrets.token_urlsafe(32),
+                )
+    return _timing_equalization_hash
 
 
 async def _load_authentication_user(db: AsyncSession, email: str) -> User | None:
@@ -46,7 +56,7 @@ class AuthService:
     @staticmethod
     async def _reject_invalid_credentials(password: str) -> None:
         await run_in_threadpool(
-            security.verify_password, password, TIMING_EQUALIZATION_HASH
+            security.verify_password, password, await _get_timing_equalization_hash()
         )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -165,7 +175,6 @@ class AuthService:
                 new_value={"success": True, "remember_me": remember_me},
             )
         )
-        await db.commit()
         return await AuthService.issue_authenticated_session(
             db, user, ip_address, user_agent, remember_me, audit_action="LOGIN"
         )

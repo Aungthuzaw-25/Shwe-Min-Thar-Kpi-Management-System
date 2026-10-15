@@ -84,6 +84,45 @@ describe("focused frontend security fixes", () => {
     listeners.get("activate")({ waitUntil: promise => { activation = promise; } });
     await activation;
 
-    expect(deleted).toEqual(["kpi-portal-v0"]);
+    expect(deleted).toEqual(["kpi-portal-v0", "kpi-portal-v1"]);
+  });
+
+  it("does not intercept navigation or API requests", async () => {
+    const source = await readFile(new URL("static/js/service-worker.js", repositoryRoot), "utf8");
+    const listeners = new Map();
+    const caches = { match: vi.fn(async () => new Response("cached")) };
+    runInNewContext(source, {
+      self: {
+        location: { origin: "https://portal.test" },
+        addEventListener: (type, listener) => listeners.set(type, listener),
+      },
+      caches,
+      URL,
+      fetch: vi.fn(async () => new Response()),
+    });
+
+    const handleFetch = listeners.get("fetch");
+    const navigation = {
+      request: {
+        method: "GET",
+        mode: "navigate",
+        url: "https://portal.test/dashboard",
+      },
+      respondWith: vi.fn(),
+    };
+    const apiRequest = {
+      request: {
+        method: "GET",
+        mode: "cors",
+        url: "https://portal.test/api/v1/notifications",
+      },
+      respondWith: vi.fn(),
+    };
+    handleFetch(navigation);
+    handleFetch(apiRequest);
+
+    expect(navigation.respondWith).not.toHaveBeenCalled();
+    expect(apiRequest.respondWith).not.toHaveBeenCalled();
+    expect(caches.match).not.toHaveBeenCalled();
   });
 });

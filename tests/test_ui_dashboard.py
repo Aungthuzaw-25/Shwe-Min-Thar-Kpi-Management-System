@@ -109,6 +109,14 @@ def test_avatar_macro_accepts_missing_user():
     assert "kpi-avatar--color-0" in rendered
 
 
+def test_static_assets_are_cacheable_without_csrf_cookie():
+    response = TestClient(app).get("/static/css/dashboard.css")
+
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "public, max-age=3600"
+    assert "set-cookie" not in response.headers
+
+
 def test_superadmin_dashboard_access(playwright_context):
     page = playwright_context.new_page()
     login(page, SUPERADMIN_EMAIL, required_ui_password("UI_TEST_SUPERADMIN_PASSWORD"))

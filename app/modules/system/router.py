@@ -13,11 +13,11 @@ from app.core.dependencies import enforce_permission, get_current_user
 from app.database.connection import get_db
 from app.models.audit_log import AuditLog
 from app.models.system import LogLevel
+from app.modules.system import repo
 from app.modules.system.audit_log_retention import (
     AUDIT_LOG_RETENTION_KEY,
     normalize_audit_log_retention,
 )
-from app.modules.system import repo
 from app.modules.system.schemas import (
     EmailProviderLifecycleRequest,
     EmailProviderSaveRequest,
@@ -765,12 +765,9 @@ async def read_system_logs(
     effective_skip = skip if skip is not None else (page - 1) * effective_size
     event_filter = event_type or service
     try:
-        items = await repo.get_recent_logs(
+        items, total = await repo.get_recent_logs_page(
             db, skip=effective_skip, limit=effective_size, level=level,
             event_type=event_filter, search=search, start=start, end=end,
-        )
-        total = await repo.count_system_logs(
-            db, level=level, event_type=event_filter, search=search, start=start, end=end,
         )
     except SQLAlchemyError as exc:
         logger.exception("System logs query failed")

@@ -3,7 +3,7 @@ import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
-from app.core.security import verify_password
+from app.core.security import verify_password_async
 
 # 🌟 BUG FIX: PasswordHistory သည် ယခုအခါ auth.models တွင် ရှိပါသည်
 from app.modules.auth.models import PasswordHistory
@@ -17,7 +17,7 @@ async def check_password_history(db: AsyncSession, user_id: uuid.UUID, raw_passw
     
     # Password အဟောင်းများနှင့် တိုက်စစ်မည်
     for record in histories:
-        if verify_password(raw_password, record.hashed_password):
+        if await verify_password_async(raw_password, record.hashed_password):
             return False # အဟောင်းနှင့် တူနေပါသည်
     return True
 

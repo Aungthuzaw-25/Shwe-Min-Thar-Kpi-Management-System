@@ -15,6 +15,10 @@ from app.modules.users.password_schemas import PasswordResetAdmin
 from app.modules.users.schemas import UserResponse
 
 
+async def _fake_password_hash(_password):
+    return "new-hash"
+
+
 class _Scalars:
     def __init__(self, value):
         self.value = value
@@ -236,7 +240,7 @@ async def test_super_admin_reset_revokes_existing_sessions(monkeypatch):
     monkeypatch.setattr(users_router.password_repo, "check_password_history", history)
     monkeypatch.setattr(users_router.password_repo, "add_password_history", add_history)
     monkeypatch.setattr(users_router.user_repo, "update_user", update)
-    monkeypatch.setattr(users_router, "get_password_hash", lambda *_: "new-hash")
+    monkeypatch.setattr(users_router, "get_password_hash_async", _fake_password_hash)
     monkeypatch.setattr(users_router, "revoke_user_authentication", revoke)
 
     await users_router.reset_user_password(

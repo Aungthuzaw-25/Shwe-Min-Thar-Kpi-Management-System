@@ -19,14 +19,14 @@ from app.modules.kpi.executive_intelligence_schemas import (
     ExecutiveOverview,
 )
 from app.modules.kpi.executive_intelligence_service import (
-    build_monthly_average_series,
     build_executive_overview,
+    build_monthly_average_series,
     get_executive_employee_detail,
     list_executive_employee_results,
 )
 from app.modules.kpi.models import KPIRecord, KPIStatus, PeriodType
-from app.modules.notifications.models import Notification
 from app.modules.kpi.period_ranges import normalize_calendar_range
+from app.modules.notifications.models import Notification
 from app.modules.tasks.models.task import Task, TaskStatus
 from app.modules.users.models import Position, User
 
@@ -855,39 +855,40 @@ async def fetch_superadmin_dashboard_data(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(admin_checker) # 🌟 ဤနေရာတွင် Token နှင့် Role ကို စစ်ဆေးမည်
 ) -> dict[str, Any]:
-    
-    # 1. Total Active Users (exclude deleted/trashed users to match User Management)
-    users_count = await db.execute(
-        select(func.count(User.id)).where(User.is_deleted == False, User.is_active == True)
-    )
-    total_users = users_count.scalar() or 0
-
-    # 2. Total Active Departments (exclude deleted/trashed departments)
-    depts_count = await db.execute(
-        select(func.count(Department.id)).where(Department.is_deleted == False)
-    )
-    total_depts = depts_count.scalar() or 0
-
-    # 3. Active Alerts (Unread Notifications)
-    alerts_count = await db.execute(
-        select(func.count(Notification.id)).where(
+    metrics_stmt = select(
+        select(func.count(User.id))
+        .where(User.is_deleted.is_(False), User.is_active.is_(True))
+        .scalar_subquery()
+        .label("total_users"),
+        select(func.count(Department.id))
+        .where(Department.is_deleted.is_(False))
+        .scalar_subquery()
+        .label("total_departments"),
+        select(func.count(Notification.id))
+        .where(
             Notification.is_read.is_(False),
             Notification.is_deleted.is_(False),
         )
+        .scalar_subquery()
+        .label("active_alerts"),
+        select(func.count(KPIRecord.id))
+        .where(KPIRecord.is_deleted.is_(False))
+        .scalar_subquery()
+        .label("total_kpis"),
+        select(func.count(KPIRecord.id))
+        .where(
+            KPIRecord.is_deleted.is_(False),
+            KPIRecord.status_bucket.in_([KPIStatus.EXCELLENT, KPIStatus.VERY_GOOD]),
+        )
+        .scalar_subquery()
+        .label("completed_kpis"),
     )
-    active_alerts = alerts_count.scalar() or 0
-
-    # 4. Total KPIs Evaluated
-    kpis_count = await db.execute(select(func.count(KPIRecord.id)).where(KPIRecord.is_deleted == False))
-    total_kpis = kpis_count.scalar() or 0
-
-    # 5. Completed KPIs
-    completed_kpis_stmt = select(func.count(KPIRecord.id)).where(
-        KPIRecord.is_deleted == False,
-        KPIRecord.status_bucket.in_([KPIStatus.EXCELLENT, KPIStatus.VERY_GOOD])
-    )
-    completed_kpis_count = await db.execute(completed_kpis_stmt)
-    completed_kpis = completed_kpis_count.scalar() or 0
+    metrics = (await db.execute(metrics_stmt)).one()
+    total_users = metrics.total_users or 0
+    total_depts = metrics.total_departments or 0
+    active_alerts = metrics.active_alerts or 0
+    total_kpis = metrics.total_kpis or 0
+    completed_kpis = metrics.completed_kpis or 0
 
     # =========================================================
     # 🌟 6. Recent Alerts List (BUG & TIMEZONE FIXES)

@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.password_policy import validate_password_strength
-from app.core.security import get_password_hash
+from app.core.security import get_password_hash_async
 from app.database.connection import AsyncSessionLocal
 from app.database.seed import ensure_roles_and_permissions
 from app.models.audit_log import AuditLog
@@ -104,7 +104,7 @@ async def _ensure_initial_super_admin(
         email=email,
         first_name="Super",
         last_name="Admin",
-        hashed_password=get_password_hash(password),
+        hashed_password=await get_password_hash_async(password),
         local_password_enabled=True,
         role_id=super_admin_role.id,
         must_change_password=True,

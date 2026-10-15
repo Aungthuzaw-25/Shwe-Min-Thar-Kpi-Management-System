@@ -205,17 +205,13 @@ async def test_system_logs_page_contract_supports_filters_and_nullable_timestamp
         created_at=None,
     )
 
-    async def fake_logs(db, **kwargs):
+    async def fake_logs_page(db, **kwargs):
         assert kwargs["level"] == LogLevel.INFO
         assert kwargs["skip"] == 0
-        return [log]
-
-    async def fake_count(db, **kwargs):
-        return 1
+        return [log], 1
 
     monkeypatch.setattr(system_router, "enforce_permission", lambda *args: None)
-    monkeypatch.setattr(system_router.repo, "get_recent_logs", fake_logs)
-    monkeypatch.setattr(system_router.repo, "count_system_logs", fake_count)
+    monkeypatch.setattr(system_router.repo, "get_recent_logs_page", fake_logs_page)
 
     payload = await system_router.read_system_logs(
         page=1,
@@ -246,7 +242,7 @@ async def test_system_logs_database_failure_returns_safe_error(monkeypatch):
         raise SQLAlchemyError("database details must not reach the client")
 
     monkeypatch.setattr(system_router, "enforce_permission", lambda *args: None)
-    monkeypatch.setattr(system_router.repo, "get_recent_logs", fail)
+    monkeypatch.setattr(system_router.repo, "get_recent_logs_page", fail)
     db = SimpleNamespace()
     current_user = SimpleNamespace(id=uuid4())
 

@@ -23,7 +23,7 @@ from app.core.dependencies import (
     get_current_user,
 )
 from app.core.password_policy import get_password_policy, validate_password_strength
-from app.core.security import get_password_hash
+from app.core.security import get_password_hash_async
 from app.database.connection import get_db
 from app.modules.departments.models import Department, UserDepartment
 from app.modules.tasks.models.task import Task
@@ -258,7 +258,7 @@ async def create_new_user(payload: UserCreate, db: AsyncSession = Depends(get_db
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
         
-    user_data['hashed_password'] = get_password_hash(provided_password)
+    user_data['hashed_password'] = await get_password_hash_async(provided_password)
     user_data['local_password_enabled'] = True
     user_data['must_change_password'] = True 
     
@@ -382,7 +382,7 @@ async def create_super_admin(
         'first_name': payload.first_name.strip(),
         'last_name': payload.last_name.strip(),
         'email': normalized_email,
-        'hashed_password': get_password_hash(payload.password),
+        'hashed_password': await get_password_hash_async(payload.password),
         'local_password_enabled': True,
         'role_id': super_admin_role.id,
         'is_active': payload.is_active,
@@ -987,7 +987,7 @@ async def reset_user_password(user_id: UUID, payload: PasswordResetAdmin, db: As
     if not is_valid_history:
         raise HTTPException(status_code=400, detail='Cannot reuse any of the last 5 passwords.')
         
-    hashed_pass = get_password_hash(payload.new_password)
+    hashed_pass = await get_password_hash_async(payload.new_password)
     await user_repo.update_user(db, user, {
         'hashed_password': hashed_pass,
         'local_password_enabled': True,

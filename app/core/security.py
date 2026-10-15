@@ -3,6 +3,7 @@ import uuid
 from datetime import UTC, datetime, timedelta  # 🌟 IMPORT FIX: Added timezone
 
 import jwt
+from fastapi.concurrency import run_in_threadpool
 from jwt import PyJWTError as JWTError
 from passlib.context import CryptContext
 
@@ -43,6 +44,17 @@ def get_password_hash(password: str) -> str:
     if len(password) > MAX_PASSWORD_LENGTH:
         raise ValueError(f'Password must be no more than {MAX_PASSWORD_LENGTH} characters long.')
     return pwd_context.hash(password)
+
+
+async def get_password_hash_async(password: str) -> str:
+    """Hash passwords without blocking the async request or startup event loop."""
+    return await run_in_threadpool(get_password_hash, password)
+
+
+async def verify_password_async(plain_password: str, hashed_password: str) -> bool:
+    """Verify passwords without blocking the async event loop."""
+    return await run_in_threadpool(verify_password, plain_password, hashed_password)
+
 
 def password_needs_rehash(hashed_password: str) -> bool:
     """Identify legacy bcrypt hashes for opportunistic Argon2id migration."""

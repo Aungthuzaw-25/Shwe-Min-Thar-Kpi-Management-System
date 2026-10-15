@@ -113,4 +113,7 @@ class Task(BaseModel):
         
         # Manager Queue Batch Lookup အတွက်
         Index('idx_tasks_batch_lookup', 'batch_id', 'status'),
+
+        # Reminder scans filter by task state and soft deletion before due date.
+        Index('idx_tasks_status_deleted_due_date', 'status', 'is_deleted', 'due_date'),
     )

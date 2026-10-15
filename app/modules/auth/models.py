@@ -22,6 +22,10 @@ class LoginHistory(Base):
     is_success = Column(Boolean, default=True)
     attempted_at = Column(DateTime, default=lambda: datetime.now(UTC).replace(tzinfo=None), index=True)
 
+    __table_args__ = (
+        Index("idx_login_history_user_attempted", "user_id", "attempted_at"),
+    )
+
 
 class TokenBlacklist(Base):
     __tablename__ = 'token_blacklist'

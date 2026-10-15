@@ -200,6 +200,12 @@ class KPIRecord(BaseModel):
         # Department Ranking & Summary အမြန်ဆုံးဆွဲရန်
         Index('idx_kpi_dept_summary', 'department_id', 'period_type', 'period_start'),
         Index(
+            'idx_kpi_records_user_period_deleted',
+            'user_id',
+            'kpi_period_id',
+            'is_deleted',
+        ),
+        Index(
             'uq_active_kpi_record_user_period',
             'user_id',
             'period_type',
@@ -236,6 +242,18 @@ class KPIAssignment(BaseModel):
         # The unique constraint also includes soft-deleted rows, so assignments are restored on reuse.
         UniqueConstraint('user_id', 'kpi_formula_id', 'kpi_period_id', name='uq_kpi_user_formula_period'),
         Index('idx_kpi_assignment_lookup', 'user_id', 'kpi_period_id'),
+        Index(
+            'idx_kpi_assignments_user_deleted_created',
+            'user_id',
+            'is_deleted',
+            'created_at',
+        ),
+        Index(
+            'idx_kpi_assignments_user_period_deleted',
+            'user_id',
+            'kpi_period_id',
+            'is_deleted',
+        ),
     )
 
 

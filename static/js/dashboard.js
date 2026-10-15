@@ -124,61 +124,85 @@
   setActiveSidebar();
 
   // ---- Notification Polling ----
-  async function fetchNotifications() {
-    try {
-      const res = await api('/api/v1/notifications?limit=5');
-      if (!res || !res.ok) return;
-      const data = await res.json();
-      const unreadCount = Array.isArray(data) ? data.filter(n => !n.is_read).length : 0;
-      const badge = document.getElementById('notifBadge');
-      if (badge) {
-        badge.textContent = unreadCount;
-        if (unreadCount > 0) badge.classList.remove('d-none');
-        else badge.classList.add('d-none');
-      }
+  let notificationsRequest = null;
+  const pendingNotificationReads = new Set();
+  let markAllNotificationsRequest = null;
 
-      const list = document.getElementById('notificationList');
-      if (!list || !Array.isArray(data)) return;
-      if (data.length === 0) {
-        const emptyMessage = document.createElement('div');
-        emptyMessage.className = 'notification-item text-muted text-center py-3';
-        emptyMessage.textContent = 'No notifications';
-        list.replaceChildren(emptyMessage);
-        return;
-      }
-      const notificationItems = data.map(notification => {
-        const item = document.createElement('button');
-        item.type = 'button';
-        item.className = `notification-item w-full text-left ${notification.is_read ? '' : 'unread'}`;
-        item.addEventListener('click', () => window.markNotifRead(notification.id));
+  function fetchNotifications() {
+    if (notificationsRequest) return notificationsRequest;
+    notificationsRequest = (async () => {
+      try {
+        const res = await api('/api/v1/notifications?limit=5');
+        if (!res || !res.ok) return;
+        const data = await res.json();
+        const unreadCount = Array.isArray(data) ? data.filter(n => !n.is_read).length : 0;
+        const badge = document.getElementById('notifBadge');
+        if (badge) {
+          badge.textContent = unreadCount;
+          if (unreadCount > 0) badge.classList.remove('d-none');
+          else badge.classList.add('d-none');
+        }
 
-        const title = document.createElement('div');
-        title.className = 'fw-semibold';
-        title.textContent = notification.title || 'Notification';
-        const message = document.createElement('div');
-        message.className = 'text-muted notification-message';
-        message.textContent = notification.message || '';
-        const createdAt = document.createElement('div');
-        createdAt.className = 'text-muted small';
-        createdAt.textContent = formatApplicationTime(notification.created_at);
-        item.append(title, message, createdAt);
-        return item;
-      });
-      list.replaceChildren(...notificationItems);
-    } catch (error) {
-      console.error('Unable to load notifications:', error);
-    }
+        const list = document.getElementById('notificationList');
+        if (!list || !Array.isArray(data)) return;
+        if (data.length === 0) {
+          const emptyMessage = document.createElement('div');
+          emptyMessage.className = 'notification-item text-muted text-center py-3';
+          emptyMessage.textContent = 'No notifications';
+          list.replaceChildren(emptyMessage);
+          return;
+        }
+        const notificationItems = data.map(notification => {
+          const item = document.createElement('button');
+          item.type = 'button';
+          item.className = `notification-item w-full text-left ${notification.is_read ? '' : 'unread'}`;
+          item.addEventListener('click', () => window.markNotifRead(notification.id));
+
+          const title = document.createElement('div');
+          title.className = 'fw-semibold';
+          title.textContent = notification.title || 'Notification';
+          const message = document.createElement('div');
+          message.className = 'text-muted notification-message';
+          message.textContent = notification.message || '';
+          const createdAt = document.createElement('div');
+          createdAt.className = 'text-muted small';
+          createdAt.textContent = formatApplicationTime(notification.created_at);
+          item.append(title, message, createdAt);
+          return item;
+        });
+        list.replaceChildren(...notificationItems);
+      } catch (error) {
+        console.error('Unable to load notifications:', error);
+      } finally {
+        notificationsRequest = null;
+      }
+    })();
+    return notificationsRequest;
   }
 
   window.markNotifRead = async function (id) {
-    await api(`/api/v1/notifications/${id}/read`, { method: 'PUT' });
-    fetchNotifications();
+    if (pendingNotificationReads.has(id)) return;
+    pendingNotificationReads.add(id);
+    try {
+      await api(`/api/v1/notifications/${id}/read`, { method: 'PUT' });
+    } finally {
+      pendingNotificationReads.delete(id);
+    }
+    void fetchNotifications();
   };
 
   window.markAllNotifsRead = async function () {
-    await api('/api/v1/notifications/read-all', { method: 'PUT' });
-    fetchNotifications();
-    showToast('All notifications marked as read', 'success');
+    if (markAllNotificationsRequest) return markAllNotificationsRequest;
+    markAllNotificationsRequest = (async () => {
+      try {
+        await api('/api/v1/notifications/read-all', { method: 'PUT' });
+        void fetchNotifications();
+        showToast('All notifications marked as read', 'success');
+      } finally {
+        markAllNotificationsRequest = null;
+      }
+    })();
+    return markAllNotificationsRequest;
   };
 
   // Poll every 60 seconds
@@ -213,12 +237,17 @@
   // ---- Global Search (simple) ----
   const globalSearch = document.getElementById('globalSearch');
   if (globalSearch) {
-    globalSearch.addEventListener('keyup', function () {
-      const q = this.value.toLowerCase();
-      // searches any visible table
-      document.querySelectorAll('table tbody tr').forEach(row => {
-        row.classList.toggle('is-hidden', !row.textContent.toLowerCase().includes(q));
-      });
+    let searchTimeout;
+    globalSearch.addEventListener('input', function () {
+      window.clearTimeout(searchTimeout);
+      const search = this;
+      searchTimeout = window.setTimeout(() => {
+        const q = search.value.toLowerCase();
+        // searches any visible table
+        document.querySelectorAll('table tbody tr').forEach(row => {
+          row.classList.toggle('is-hidden', !row.textContent.toLowerCase().includes(q));
+        });
+      }, 150);
     });
   }
 

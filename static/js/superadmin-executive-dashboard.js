@@ -1094,13 +1094,20 @@
         { signal: controller.signal, credentials: 'same-origin' },
         'Executive KPI data could not be loaded.'
       );
-      const intelligence = await executivePromise;
+      employeeOffset = 0;
+      const employeeResultsPromise = loadEmployeeResults(dateRange, controller.signal);
+      let intelligence;
+      try {
+        intelligence = await executivePromise;
+      } catch (error) {
+        controller.abort();
+        throw error;
+      }
       if (sequence !== requestSequence) return;
       const selectedPeriod = renderAvailablePeriods(intelligence);
-      employeeOffset = 0;
       const [summaryPayload] = await Promise.all([
         summaryPromise,
-        loadEmployeeResults(dateRange, controller.signal)
+        employeeResultsPromise
       ]);
       if (sequence !== requestSequence) return;
       const payload = summaryPayload || {};

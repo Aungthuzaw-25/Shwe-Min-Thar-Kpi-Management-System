@@ -6,6 +6,10 @@ import pytest
 from app.database import qa_recover
 
 
+async def _fake_password_hash(_password):
+    return "new-test-hash"
+
+
 class _Scalars:
     def __init__(self, value):
         self.value = value
@@ -220,7 +224,7 @@ async def test_valid_qa_reset_changes_only_target_password_state(monkeypatch, ca
     monkeypatch.setattr(qa_recover, "get_password_policy", _password_policy)
     monkeypatch.setattr(qa_recover.password_repo, "check_password_history", _history_ok)
     monkeypatch.setattr(qa_recover.password_repo, "add_password_history", _add_history)
-    monkeypatch.setattr(qa_recover, "get_password_hash", lambda password: "new-test-hash")
+    monkeypatch.setattr(qa_recover, "get_password_hash_async", _fake_password_hash)
 
     await qa_recover.recover_qa_password(
         "qa.superadmin@example",
@@ -255,7 +259,7 @@ async def test_operator_confirmation_is_requested_after_account_validation(monke
     monkeypatch.setattr(qa_recover, "get_password_policy", _password_policy)
     monkeypatch.setattr(qa_recover.password_repo, "check_password_history", _history_ok)
     monkeypatch.setattr(qa_recover.password_repo, "add_password_history", _add_history)
-    monkeypatch.setattr(qa_recover, "get_password_hash", lambda _password: "new-test-hash")
+    monkeypatch.setattr(qa_recover, "get_password_hash_async", _fake_password_hash)
 
     def confirm():
         assert len(db.executed) == 1
@@ -299,7 +303,7 @@ async def test_target_query_reads_role_without_lazy_relationship(monkeypatch):
     monkeypatch.setattr(qa_recover, "get_password_policy", _password_policy)
     monkeypatch.setattr(qa_recover.password_repo, "check_password_history", _history_ok)
     monkeypatch.setattr(qa_recover.password_repo, "add_password_history", _add_history)
-    monkeypatch.setattr(qa_recover, "get_password_hash", lambda _password: "new-test-hash")
+    monkeypatch.setattr(qa_recover, "get_password_hash_async", _fake_password_hash)
     configuration = _settings()
     session_factory = lambda: db
 

@@ -91,6 +91,7 @@ class User(BaseModel):
             "OR (local_password_enabled = FALSE AND hashed_password IS NULL)",
             name="ck_users_local_password_consistency",
         ),
+        Index("idx_users_role_deleted_active", "role_id", "is_deleted", "is_active"),
     )
 
 # ==============================================================================

@@ -14,7 +14,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.future import select
 
 from app.core.config import settings
-from app.core.security import get_password_hash
+from app.core.security import get_password_hash_async
 from app.database.connection import AsyncSessionLocal
 from app.modules.departments.models import Department, UserDepartment
 
@@ -201,36 +201,56 @@ async def ensure_roles_and_permissions(db):
         )
     ).scalars().all()
     permissions_by_code = {permission.code: permission for permission in permission_rows}
-    for code, description in PERMISSION_CATALOG:
-        if code not in permissions_by_code:
-            permission = Permission(code=code, description=description)
-            db.add(permission)
-            await db.flush()
-            permissions_by_code[code] = permission
+    new_permissions = [
+        Permission(code=code, description=description)
+        for code, description in PERMISSION_CATALOG
+        if code not in permissions_by_code
+    ]
+    db.add_all(new_permissions)
+    if new_permissions:
+        await db.flush()
+        permissions_by_code.update(
+            (permission.code, permission) for permission in new_permissions
+        )
 
-    roles_by_name = {}
-    for role_data in ROLES:
-        role = (
-            await db.execute(select(Role).where(Role.name == role_data["name"]))
-        ).scalar_one_or_none()
-        if role is None:
-            role = Role(**role_data)
-            db.add(role)
-            await db.flush()
-        roles_by_name[role.name] = role
+    role_names = [role_data["name"] for role_data in ROLES]
+    existing_roles = (
+        await db.execute(select(Role).where(Role.name.in_(role_names)))
+    ).scalars().all()
+    roles_by_name = {role.name: role for role in existing_roles}
+    new_roles = [
+        Role(**role_data)
+        for role_data in ROLES
+        if role_data["name"] not in roles_by_name
+    ]
+    db.add_all(new_roles)
+    if new_roles:
+        await db.flush()
+        roles_by_name.update((role.name, role) for role in new_roles)
 
+    role_ids = [role.id for role in roles_by_name.values()]
+    existing_links = (
+        await db.execute(
+            select(RolePermission.role_id, RolePermission.permission_id).where(
+                RolePermission.role_id.in_(role_ids)
+            )
+        )
+    ).all()
+    permission_ids_by_role = {}
+    for role_id, permission_id in existing_links:
+        permission_ids_by_role.setdefault(role_id, set()).add(permission_id)
+    new_links = []
     for role_name, codes in ROLE_DEFAULTS.items():
         role = roles_by_name[role_name]
-        links = (
-            await db.execute(
-                select(RolePermission).where(RolePermission.role_id == role.id)
-            )
-        ).scalars().all()
-        existing_permission_ids = {link.permission_id for link in links}
+        existing_permission_ids = permission_ids_by_role.get(role.id, set())
         for code in codes:
             permission = permissions_by_code[code]
             if permission.id not in existing_permission_ids:
-                db.add(RolePermission(role_id=role.id, permission_id=permission.id))
+                new_links.append(
+                    RolePermission(role_id=role.id, permission_id=permission.id)
+                )
+                existing_permission_ids.add(permission.id)
+    db.add_all(new_links)
     await db.flush()
     return roles_by_name
 
@@ -272,7 +292,7 @@ async def _ensure_super_admin(db, role_id):
             email=sa_email,
             first_name="System",
             last_name=SUPER_ADMIN_ROLE,
-            hashed_password=get_password_hash(bootstrap_password),
+            hashed_password=await get_password_hash_async(bootstrap_password),
             role_id=role_id,
             is_active=True,
             must_change_password=False,
@@ -290,18 +310,25 @@ async def _seed_departments(db):
         {"name": "Finance"},
         {"name": "Finance & Account"},
     ]
-    dept_dict = {}
-    for dept_data in departments:
-        stmt = select(Department).where(Department.name == dept_data["name"])
-        existing_dept = (await db.execute(stmt)).scalar_one_or_none()
-        if existing_dept:
-            dept_dict[existing_dept.name] = existing_dept
-            continue
-        dept = Department(**dept_data)
-        db.add(dept)
+    department_names = [department["name"] for department in departments]
+    existing_departments = (
+        await db.execute(
+            select(Department).where(Department.name.in_(department_names))
+        )
+    ).scalars().all()
+    dept_dict = {department.name: department for department in existing_departments}
+    new_departments = [
+        Department(**department)
+        for department in departments
+        if department["name"] not in dept_dict
+    ]
+    db.add_all(new_departments)
+    if new_departments:
+        await db.flush()
+        dept_dict.update(
+            (department.name, department) for department in new_departments
+        )
         await db.commit()
-        await db.refresh(dept)
-        dept_dict[dept.name] = dept
     print("Departments seeded!")
     return dept_dict
 
@@ -555,7 +582,7 @@ async def _synchronize_cashier_user(
             first_name="Aung",
             last_name="Cashier",
             position_id=formula_map["position_id"],
-            hashed_password=get_password_hash(demo_password),
+            hashed_password=await get_password_hash_async(demo_password),
             role_id=role_dict[DEPARTMENT_USER_ROLE].id,
             is_active=True,
             must_change_password=False,
@@ -570,7 +597,7 @@ async def _synchronize_cashier_user(
         )
         await db.commit()
     elif test_user and demo_password:
-        test_user.hashed_password = get_password_hash(demo_password)
+        test_user.hashed_password = await get_password_hash_async(demo_password)
         test_user.is_active = True
         test_user.failed_login_attempts = 0
         test_user.is_locked = False
@@ -652,7 +679,7 @@ async def _ensure_finance_user(
         first_name="Finance",
         last_name=last_name,
         position_id=position.id,
-        hashed_password=get_password_hash(password),
+        hashed_password=await get_password_hash_async(password),
         role_id=role_dict[DEPARTMENT_USER_ROLE].id,
         is_active=True,
         must_change_password=False,
@@ -667,7 +694,7 @@ async def _ensure_finance_user(
 
 async def _update_finance_user(db, user, password, position, department_id, user_level):
     if getattr(settings, "SEED_TEST_ACCOUNTS_ENABLED", False) and password:
-        user.hashed_password = get_password_hash(password)
+        user.hashed_password = await get_password_hash_async(password)
         user.is_active = True
         user.is_locked = False
         user.failed_login_attempts = 0
@@ -718,7 +745,7 @@ async def _ensure_local_test_account(
             email=email,
             first_name=first_name,
             last_name=last_name,
-            hashed_password=get_password_hash(password),
+            hashed_password=await get_password_hash_async(password),
             role_id=role_dict[role_name].id,
             position_id=position.id if position else None,
             is_active=True,
@@ -728,7 +755,7 @@ async def _ensure_local_test_account(
         await db.commit()
         await db.refresh(existing)
     else:
-        _update_test_account(
+        await _update_test_account(
             existing, password, role_dict, role_name, must_change_password, position
         )
         await db.commit()
@@ -737,8 +764,8 @@ async def _ensure_local_test_account(
     return existing
 
 
-def _update_test_account(user, password, role_dict, role_name, must_change_password, position):
-    user.hashed_password = get_password_hash(password)
+async def _update_test_account(user, password, role_dict, role_name, must_change_password, position):
+    user.hashed_password = await get_password_hash_async(password)
     user.role_id = role_dict[role_name].id
     user.position_id = position.id if position else None
     user.is_active = True

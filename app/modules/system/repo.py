@@ -52,23 +52,75 @@ async def get_recent_logs(
     search: str | None = None, start: datetime | None = None,
     end: datetime | None = None,
 ) -> list[SystemEventLog]:
-    stmt = select(SystemEventLog).where(SystemEventLog.is_deleted.is_(False))
+    stmt = select(SystemEventLog).where(*_system_log_filters(
+        level=level,
+        event_type=event_type,
+        search=search,
+        start=start,
+        end=end,
+    ))
+    stmt = stmt.order_by(SystemEventLog.created_at.desc()).offset(skip).limit(limit)
+    result = await db.execute(stmt)
+    return result.scalars().all()
+
+
+def _system_log_filters(
+    *, level: LogLevel | None = None, event_type: str | None = None,
+    search: str | None = None, start: datetime | None = None,
+    end: datetime | None = None,
+):
+    filters = [SystemEventLog.is_deleted.is_(False)]
     if level:
-        stmt = stmt.where(SystemEventLog.level == level)
+        filters.append(SystemEventLog.level == level)
     if event_type:
-        stmt = stmt.where(SystemEventLog.event_type.ilike(f"%{event_type}%"))
+        filters.append(SystemEventLog.event_type.ilike(f"%{event_type}%"))
     if search:
-        stmt = stmt.where(or_(
+        filters.append(or_(
             SystemEventLog.message.ilike(f"%{search}%"),
             SystemEventLog.event_type.ilike(f"%{search}%"),
         ))
     if start:
-        stmt = stmt.where(SystemEventLog.created_at >= start)
+        filters.append(SystemEventLog.created_at >= start)
     if end:
-        stmt = stmt.where(SystemEventLog.created_at < end)
-    stmt = stmt.order_by(SystemEventLog.created_at.desc()).offset(skip).limit(limit)
-    result = await db.execute(stmt)
-    return result.scalars().all()
+        filters.append(SystemEventLog.created_at < end)
+    return filters
+
+
+async def get_recent_logs_page(
+    db: AsyncSession, skip: int = 0, limit: int = 50,
+    level: LogLevel | None = None, event_type: str | None = None,
+    search: str | None = None, start: datetime | None = None,
+    end: datetime | None = None,
+) -> tuple[list[SystemEventLog], int]:
+    """Fetch a page and its total in one query for non-empty pages."""
+    stmt = (
+        select(SystemEventLog, func.count().over().label("total_count"))
+        .where(*_system_log_filters(
+            level=level,
+            event_type=event_type,
+            search=search,
+            start=start,
+            end=end,
+        ))
+        .order_by(SystemEventLog.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+    )
+    rows = (await db.execute(stmt)).all()
+    if rows:
+        return [row[0] for row in rows], int(rows[0][1])
+
+    # A window count has no row to carry its value when the requested page is
+    # empty, so retain exact totals for empty datasets and out-of-range pages.
+    total = await count_system_logs(
+        db,
+        level=level,
+        event_type=event_type,
+        search=search,
+        start=start,
+        end=end,
+    )
+    return [], total
 
 
 async def count_system_logs(
@@ -76,20 +128,13 @@ async def count_system_logs(
     event_type: str | None = None, search: str | None = None,
     start: datetime | None = None, end: datetime | None = None,
 ) -> int:
-    stmt = select(func.count(SystemEventLog.id)).where(SystemEventLog.is_deleted.is_(False))
-    if level:
-        stmt = stmt.where(SystemEventLog.level == level)
-    if event_type:
-        stmt = stmt.where(SystemEventLog.event_type.ilike(f"%{event_type}%"))
-    if search:
-        stmt = stmt.where(or_(
-            SystemEventLog.message.ilike(f"%{search}%"),
-            SystemEventLog.event_type.ilike(f"%{search}%"),
-        ))
-    if start:
-        stmt = stmt.where(SystemEventLog.created_at >= start)
-    if end:
-        stmt = stmt.where(SystemEventLog.created_at < end)
+    stmt = select(func.count(SystemEventLog.id)).where(*_system_log_filters(
+        level=level,
+        event_type=event_type,
+        search=search,
+        start=start,
+        end=end,
+    ))
     return int((await db.execute(stmt)).scalar_one())
 
 

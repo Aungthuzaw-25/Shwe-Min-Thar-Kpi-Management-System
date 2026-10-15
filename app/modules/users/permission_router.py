@@ -186,35 +186,17 @@ def _validate_override_grant(
 
 async def _permission_audit_name_maps(db: AsyncSession, logs: list[AuditLog]):
     actor_ids = {log.user_id for log in logs if log.user_id}
-    actor_rows = []
-    if actor_ids:
-        actor_rows = (await db.execute(
-            select(
-                User.id,
-                User.first_name,
-                User.last_name,
-                User.email,
-                User.avatar_path,
-                User.avatar_updated_at,
-            )
-            .where(User.id.in_(actor_ids))
-        )).all()
-    actor_map = {}
-    actor_avatar_map = {}
-    for user_id, first_name, last_name, email, avatar_path, avatar_updated_at in actor_rows:
-        user_id = str(user_id)
-        full_name = f"{first_name} {last_name}"
-        actor_map[user_id] = f"{full_name} ({email})"
-        actor_avatar_map[user_id] = {
-            "avatar_url": avatar_url(avatar_path, avatar_updated_at),
-            "initials": avatar_initials(full_name, email),
-            "avatar_color_index": avatar_color_index(user_id),
-        }
-
+    actor_id_strings = {str(user_id) for user_id in actor_ids}
     target_ids = {log.record_id for log in logs if log.record_id}
-    target_map = {}
-    target_avatar_map = {}
-    if target_ids:
+    target_uuids = {}
+    for target_id in target_ids:
+        try:
+            target_uuids[target_id] = UUID(str(target_id))
+        except (TypeError, ValueError):
+            continue
+    user_rows = []
+    user_ids = actor_ids | set(target_uuids.values())
+    if user_ids:
         user_rows = (await db.execute(
             select(
                 User.id,
@@ -224,23 +206,38 @@ async def _permission_audit_name_maps(db: AsyncSession, logs: list[AuditLog]):
                 User.avatar_path,
                 User.avatar_updated_at,
             )
-            .where(User.id.in_(target_ids))
+            .where(User.id.in_(user_ids))
         )).all()
-        for user_id, first_name, last_name, email, avatar_path, avatar_updated_at in user_rows:
-            user_id = str(user_id)
-            full_name = f"{first_name} {last_name}"
-            target_map[user_id] = f"{full_name} ({email})"
-            target_avatar_map[user_id] = {
-                "avatar_url": avatar_url(avatar_path, avatar_updated_at),
-                "initials": avatar_initials(full_name, email),
-                "avatar_color_index": avatar_color_index(user_id),
-            }
-        remaining = target_ids - set(target_map)
-        if remaining:
-            role_rows = (await db.execute(
-                select(Role.id, Role.name).where(Role.id.in_(remaining))
-            )).all()
-            target_map.update({str(role_id): f"Role: {name}" for role_id, name in role_rows})
+
+    actor_map = {}
+    actor_avatar_map = {}
+    target_map = {}
+    target_avatar_map = {}
+    for user_id, first_name, last_name, email, avatar_path, avatar_updated_at in user_rows:
+        user_key = str(user_id)
+        full_name = f"{first_name} {last_name}"
+        user_name = f"{full_name} ({email})"
+        user_avatar = {
+            "avatar_url": avatar_url(avatar_path, avatar_updated_at),
+            "initials": avatar_initials(full_name, email),
+            "avatar_color_index": avatar_color_index(user_key),
+        }
+        if user_key in actor_id_strings:
+            actor_map[user_key] = user_name
+            actor_avatar_map[user_key] = user_avatar
+        if user_key in target_ids:
+            target_map[user_key] = user_name
+            target_avatar_map[user_key] = user_avatar
+    remaining_role_ids = {
+        target_uuids[target_id]
+        for target_id in target_ids - set(target_map)
+        if target_id in target_uuids
+    }
+    if remaining_role_ids:
+        role_rows = (await db.execute(
+            select(Role.id, Role.name).where(Role.id.in_(remaining_role_ids))
+        )).all()
+        target_map.update({str(role_id): f"Role: {name}" for role_id, name in role_rows})
     return actor_map, actor_avatar_map, target_map, target_avatar_map
 
 

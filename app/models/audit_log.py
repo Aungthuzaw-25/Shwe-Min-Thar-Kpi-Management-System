@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import JSON, Column, DateTime, ForeignKey, String
+from sqlalchemy import JSON, Column, DateTime, ForeignKey, Index, String
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.core.timezone import utc_now_naive
@@ -19,3 +19,8 @@ class AuditLog(Base):
     new_value = Column(JSON, nullable=True)
     ip_address = Column(String(50), nullable=True)
     created_at = Column(DateTime, default=utc_now_naive)
+
+    __table_args__ = (
+        Index("idx_audit_logs_created_id", "created_at", "id"),
+        Index("idx_audit_logs_action_created_id", "action", "created_at", "id"),
+    )

@@ -19,8 +19,7 @@ class Base(DeclarativeBase):
 
 # Base connection options
 engine_options = {
-    # Dynamically log SQL queries based on the environment (e.g., True in dev, False in prod)
-    "echo": getattr(settings, "DEBUG", False),
+    "echo": False,
     "pool_pre_ping": True,  # Tests connection liveness before checking out from pool
 }
 
@@ -36,9 +35,9 @@ if settings.DATABASE_URL.startswith("postgresql+asyncpg://"):
 # 🌟 FIX: PostgreSQL/MySQL specific optimizations. SQLite doesn't support these pool args.
 if not settings.DATABASE_URL.startswith("sqlite"):
     engine_options.update(
-        pool_recycle=300,  # Reconnect after 5 minutes to prevent stale connections
-        pool_size=20,  # Number of connections to keep open
-        max_overflow=10,  # Allow up to 10 extra connections during spikes
+        pool_recycle=1800,
+        pool_size=10,
+        max_overflow=10,
         pool_timeout=30,  # Prevent waiting forever if the pool is exhausted
     )
 
