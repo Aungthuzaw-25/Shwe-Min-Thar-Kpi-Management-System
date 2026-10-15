@@ -1,7 +1,7 @@
 """Track profile avatar changes for cache invalidation.
 
 Revision ID: 20261014_avatar_updated_at
-Revises: 20261014_auth_session_reauthentication
+Revises: 20261014_session_reauth
 """
 
 import sqlalchemy as sa
@@ -9,7 +9,7 @@ from alembic import op
 
 
 revision = "20261014_avatar_updated_at"
-down_revision = "20261014_auth_session_reauthentication"
+down_revision = "20261014_session_reauth"
 branch_labels = None
 depends_on = None
 
