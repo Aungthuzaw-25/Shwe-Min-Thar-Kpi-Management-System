@@ -47,12 +47,20 @@
     }[char]));
   }
 
+  function trimTrailingPeriods(message) {
+    let end = message.length;
+    while (end > 0 && message[end - 1] === '.') {
+      end -= 1;
+    }
+    return message.slice(0, end);
+  }
+
   async function fetchJsonWithTimeout(url, options, failureMessage) {
     const controller = new AbortController();
     const parentSignal = options.signal;
     let timedOut = false;
     const abortFromParent = () => controller.abort(parentSignal.reason);
-    if (parentSignal && parentSignal.aborted) {
+    if (parentSignal?.aborted) {
       abortFromParent();
     } else if (parentSignal) {
       parentSignal.addEventListener('abort', abortFromParent, { once: true });
@@ -542,9 +550,9 @@
 
   function renderTrendAccessibleTable(trend) {
     const target = document.getElementById('kpiTrendAccessibleTable');
-    const points = trend && trend.points || [];
-    const scopeLabel = trend && trend.scopeLabel || 'Monthly average KPI scores';
-    const year = trend && trend.year || '';
+    const points = trend?.points || [];
+    const scopeLabel = trend?.scopeLabel || 'Monthly average KPI scores';
+    const year = trend?.year || '';
     const rows = points.map(point => {
       const average = point.average_percentage === null || point.average_percentage === undefined
         ? 'No finalized KPI results'
@@ -660,7 +668,7 @@
     });
     let scopeLabel = 'Company Average';
     if (selection.departmentMode) {
-      scopeLabel = selection.selectedDepartment && selection.selectedDepartment.name
+      scopeLabel = selection.selectedDepartment?.name
         ? selection.selectedDepartment.name
         : 'Individual Department';
     }
@@ -684,7 +692,7 @@
     panel.hidden = false;
     target.innerHTML = rows.map(row => {
       const value = row.average_percentage;
-      const valid = value !== null && value !== undefined && Number.isFinite(Number(value));
+      const valid = value != null && Number.isFinite(Number(value));
       const percentage = valid ? Math.max(0, Math.min(Number(value), 100)) : 0;
       let fillTone = '';
       if (valid && value < 60) {
@@ -784,7 +792,7 @@
       COVERAGE: { label: 'Coverage', tone: 'info' }
     };
     const signalTarget = document.getElementById('executiveSignals');
-    signalTarget.innerHTML = signals && signals.length ? signals.map(signal => {
+    signalTarget.innerHTML = signals?.length ? signals.map(signal => {
       const presentation = signalPresentation[signal.signal_type] || {
         label: 'Signal',
         tone: 'neutral'
@@ -803,7 +811,7 @@
     }).join('') : listEmpty('No measurable signals for this period.');
 
     const attentionTarget = document.getElementById('executiveAttentionAreas');
-    attentionTarget.innerHTML = attentionAreas && attentionAreas.length ? attentionAreas.map(area => {
+    attentionTarget.innerHTML = attentionAreas?.length ? attentionAreas.map(area => {
       const missingResults = area.area_type === 'MISSING_RESULTS';
       const label = missingResults ? 'Missing results' : 'Performance';
       const tone = area.severity === 'warning' ? 'warn' : 'info';
@@ -894,7 +902,7 @@
       summary.status !== 'available'
         ? 'The selected date range has no finalized KPI results.'
         : null
-    ].filter(Boolean).map(message => message.replace(/\.+$/, ''));
+    ].filter(Boolean).map(trimTrailingPeriods);
     if (qualityDetails && limitations.length) {
       qualityDetails.hidden = false;
       qualityDetails.innerHTML = `<strong>Data limitations:</strong> ${escapeHTML(limitations.join('. ') + '.')}`;
@@ -912,7 +920,7 @@
     let scopeLabel = 'Authorized scope';
     if (isSuperAdmin) {
       scopeLabel = 'Company-wide view';
-    } else if (scope.department_ids && scope.department_ids.length) {
+    } else if (scope.department_ids?.length) {
       scopeLabel = `${scope.department_ids.length} authorized department(s)`;
     }
     document.getElementById('dashboardContext').textContent =
@@ -924,7 +932,7 @@
   function renderAvailablePeriods(overview) {
     const options = overview.periods || [];
     updateYearOptions(options);
-    selectedPeriodId = overview.selected_period && overview.selected_period.id || null;
+    selectedPeriodId = overview.selected_period?.id || null;
     if (!options.length) {
       root.classList.add('exec-no-period');
       return null;
@@ -1047,7 +1055,7 @@
     }
 
     function renderEmployeeHistory(history) {
-      if (!history || !history.length) {
+      if (!history?.length) {
         return listEmpty('No KPI history is available for this result.');
       }
       const items = history.map(item => `<li>
@@ -1109,7 +1117,7 @@
       });
       void loadMonthlyAverages(Number(filterYear.value));
       renderKpiStatusDistribution(
-        intelligence.summary && intelligence.summary.status_distribution || []
+        intelligence.summary?.status_distribution || []
       );
       renderDepartments(intelligence.departments || []);
       renderExecutiveSignals(intelligence.signals || [], intelligence.attention_areas || []);

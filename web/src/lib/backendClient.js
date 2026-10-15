@@ -73,13 +73,9 @@ export function sendBackendError(error, response) {
     return false;
   }
 
-  response.status(error.status);
-  if (error.body === null) {
-    response.end();
-  } else if (typeof error.body === "string") {
-    response.type("text/plain; charset=utf-8").send(escapeHtml(error.body));
-  } else {
-    response.status(error.status).json(escapeJsonStrings(error.body));
-  }
+  const safeBody = typeof error.body === "string"
+    ? { detail: escapeHtml(error.body) }
+    : escapeJsonStrings(error.body);
+  response.status(error.status).type("application/json").json(safeBody);
   return true;
 }

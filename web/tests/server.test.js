@@ -182,7 +182,7 @@ describe("Express pages and CSP middleware", () => {
     });
   });
 
-  it("serves backend string errors as plain text instead of executable HTML", async () => {
+  it("returns backend string errors as sanitized JSON instead of executable HTML", async () => {
     const { BackendResponseError } = await import("../src/lib/backendClient.js");
     const backend = {
       get: vi.fn(async () => {
@@ -197,8 +197,10 @@ describe("Express pages and CSP middleware", () => {
     const response = await request(createApp({ backend })).get("/dashboard");
 
     expect(response.status).toBe(400);
-    expect(response.headers["content-type"]).toMatch(/^text\/plain/);
-    expect(response.text).toBe("&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;");
+    expect(response.headers["content-type"]).toMatch(/^application\/json/);
+    expect(response.body).toEqual({
+      detail: "&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;",
+    });
   });
 
   it("writes request failures as single-line structured logs", async () => {

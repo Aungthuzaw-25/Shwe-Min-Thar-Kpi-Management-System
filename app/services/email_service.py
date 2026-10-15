@@ -203,7 +203,7 @@ def _support_footer(message: EmailMessage, configuration: EmailConfiguration) ->
         f"{html.escape(configuration.support_email)}</a>"
         "</p>"
     )
-    return replace(
+    updated_message: EmailMessage = replace(
         message,
         text_body=(message.text_body or "") + footer_text,
         html_body=(
@@ -215,6 +215,7 @@ def _support_footer(message: EmailMessage, configuration: EmailConfiguration) ->
         from_email=message.from_email or configuration.from_email,
         from_name=message.from_name or configuration.from_name,
     )
+    return updated_message
 
 
 def _build_mime_email(message: EmailMessage, configuration: EmailConfiguration) -> MIMEEmailMessage:

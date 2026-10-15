@@ -57,6 +57,8 @@ router = APIRouter()
 INVALID_OAUTH_STATE_MESSAGE = "Invalid OAuth state."
 OIDC_SCOPES = ("openid", "email", "profile")
 OAUTH_PROFILE_PATH = "/account/profile"
+BEARER_PREFIX = "Bearer "
+INVALID_SESSION_DETAIL = "The current session is invalid."
 OAUTH_PROVIDER_DISABLED_MESSAGE = "OAuth provider is not enabled."
 OAUTH_PROVIDER_DISABLED_DESCRIPTION = "The OAuth provider is not enabled."
 OAUTH_PROVIDER_CANCELLED_MESSAGE = "Provider sign-in was cancelled."
@@ -444,10 +446,10 @@ def _validate_oauth_flow(state_data: dict[str, Any], provider_name: str, flow_ty
 
 def _request_session_id(request: Request, user: User) -> UUID:
     token = request.headers.get("authorization", "")
-    if token.lower().startswith("bearer "):
-        token = token[7:].strip()
+    if token.lower().startswith(BEARER_PREFIX.lower()):
+        token = token[len(BEARER_PREFIX):].strip()
     else:
-        token = request.cookies.get(ACCESS_TOKEN_KEY, "").removeprefix("Bearer ").strip()
+        token = request.cookies.get(ACCESS_TOKEN_KEY, "").removeprefix(BEARER_PREFIX).strip()
     try:
         payload = security.decode_token(token, "access", require_session=True)
         session_id = UUID(payload["sid"])
@@ -455,7 +457,7 @@ def _request_session_id(request: Request, user: User) -> UUID:
             raise ValueError(SESSION_USER_MISMATCH_MESSAGE)
         return session_id
     except (JWTError, KeyError, TypeError, ValueError):
-        raise HTTPException(status_code=401, detail="The current session is invalid.") from None
+        raise HTTPException(status_code=401, detail=INVALID_SESSION_DETAIL) from None
 
 
 async def _recent_authentication(db: AsyncSession, user_id, session_id: UUID) -> bool:
@@ -510,7 +512,7 @@ async def _complete_provider_reauthentication(
         AuthSession.expires_at > now,
     ).values(last_used_at=now, last_reauthenticated_at=now))
     if updated.rowcount != 1:
-        raise HTTPException(status_code=401, detail="The current session is invalid.")
+        raise HTTPException(status_code=401, detail=INVALID_SESSION_DETAIL)
     await db.commit()
     return RedirectResponse(url="/account/profile?reauthenticated=1", status_code=303)
 
@@ -992,7 +994,7 @@ async def microsoft_unlink(request: Request, user: User = Depends(get_current_us
 async def self_change_password(
     request: Request,
     payload: ChangePasswordRequest,
-    user: User = Depends(get_current_user),
+    user: Annotated[User, Depends(get_current_user)],
     db: AsyncSession = Depends(get_db),
 ):
     if not getattr(user, "local_password_enabled", True) or not user.hashed_password:
@@ -1031,14 +1033,14 @@ async def self_change_password(
     if access_token.lower().startswith("bearer "):
         access_token = access_token[7:].strip()
     else:
-        access_token = request.cookies.get(ACCESS_TOKEN_KEY, "").removeprefix("Bearer ").strip()
+        access_token = request.cookies.get(ACCESS_TOKEN_KEY, "").removeprefix(BEARER_PREFIX).strip()
     try:
         token_payload = security.decode_token(access_token, "access", require_session=True)
         current_session_id = UUID(token_payload["sid"])
         if UUID(token_payload["user_id"]) != user.id:
             raise ValueError(SESSION_USER_MISMATCH_MESSAGE)
     except (JWTError, KeyError, TypeError, ValueError):
-        raise HTTPException(status_code=401, detail="The current session is invalid.") from None
+        raise HTTPException(status_code=401, detail=INVALID_SESSION_DETAIL) from None
 
     now = datetime.now(UTC).replace(tzinfo=None)
     user.password_changed_at = now
@@ -1175,12 +1177,12 @@ def _logout_access_token(request: Request) -> str | None:
     # 1. Extract Access Token
     access_token = None
     auth_header = request.headers.get("Authorization")
-    if auth_header and auth_header.startswith("Bearer "):
+    if auth_header and auth_header.startswith(BEARER_PREFIX):
         access_token = auth_header.split(" ")[1]
     else:
         cookie_token = request.cookies.get(ACCESS_TOKEN_KEY)
         if cookie_token:
-            access_token = cookie_token.removeprefix("Bearer ").strip()
+            access_token = cookie_token.removeprefix(BEARER_PREFIX).strip()
     return access_token
 
 

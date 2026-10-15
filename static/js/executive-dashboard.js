@@ -379,10 +379,14 @@
       values: points.map(point => point.average_percentage),
       count: points.length,
       delta: trend.delta,
-      comparison_status: trend.comparison_available
-        ? 'available'
-        : points.length === 1 ? 'insufficient_data' : 'unavailable'
+      comparison_status: getComparisonStatus(trend.comparison_available, points.length)
     };
+  }
+
+  function getComparisonStatus(comparisonAvailable, pointCount) {
+    if (comparisonAvailable) return 'available';
+    if (pointCount === 1) return 'insufficient_data';
+    return 'unavailable';
   }
 
   async function loadEmployeeResults(periodId, signal) {
