@@ -60,6 +60,8 @@ from app.web.auth_web import router as auth_web_router
 from app.web.dashboard_web import router as dashboard_web_router
 
 logger = logging.getLogger("app.main")
+API_V1_PREFIX = "/api/v1"
+API_V1_KPI_PREFIX = f"{API_V1_PREFIX}/kpi"
 
 # ==============================================================================
 # 🌟 0. ENVIRONMENT & SECURITY SETUP
@@ -243,8 +245,11 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             parsed_storage_endpoint = urlparse(settings.S3_ENDPOINT)
             if parsed_storage_endpoint.scheme and parsed_storage_endpoint.hostname:
                 storage_origin = f"{parsed_storage_endpoint.scheme}://{parsed_storage_endpoint.hostname}"
-                if parsed_storage_endpoint.port:
-                    storage_origin += f":{parsed_storage_endpoint.port}"
+                storage_origin += (
+                    f":{parsed_storage_endpoint.port}"
+                    if parsed_storage_endpoint.port
+                    else ""
+                )
                 storage_origins += f" {storage_origin}"
         if not IS_PRODUCTION:
             storage_origins += " http://localhost:9000 http://minio:9000"
@@ -323,21 +328,21 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["Authentication"])
 app.include_router(dept_router, prefix="/api/v1/departments", tags=["Departments"])
 app.include_router(user_router, prefix="/api/v1/users", tags=["Users"]) 
-app.include_router(position_router, prefix="/api/v1", tags=["Positions"]) 
-app.include_router(permission_router, prefix="/api/v1", tags=["Permissions"]) 
+app.include_router(position_router, prefix=API_V1_PREFIX, tags=["Positions"])
+app.include_router(permission_router, prefix=API_V1_PREFIX, tags=["Permissions"])
 app.include_router(tasks_router, prefix="/api/v1/tasks", tags=["Tasks"])
-app.include_router(kpi_router, prefix="/api/v1/kpi", tags=["KPI"])
-app.include_router(kpi_period_router, prefix="/api/v1/kpi", tags=["KPI Periods"])
-app.include_router(kpi_assignment_router, prefix="/api/v1/kpi", tags=["KPI Assignments"])
-app.include_router(action_plan_router, prefix="/api/v1/kpi", tags=["KPI Action Plans"])
-app.include_router(upload_router.router, prefix="/api/v1", tags=["KPI Excel Uploads"])
+app.include_router(kpi_router, prefix=API_V1_KPI_PREFIX, tags=["KPI"])
+app.include_router(kpi_period_router, prefix=API_V1_KPI_PREFIX, tags=["KPI Periods"])
+app.include_router(kpi_assignment_router, prefix=API_V1_KPI_PREFIX, tags=["KPI Assignments"])
+app.include_router(action_plan_router, prefix=API_V1_KPI_PREFIX, tags=["KPI Action Plans"])
+app.include_router(upload_router.router, prefix=API_V1_PREFIX, tags=["KPI Excel Uploads"])
 app.include_router(targets_router, prefix="/api/v1/targets", tags=["Targets"])
 app.include_router(superadmin_dashboard_api_router, prefix="/api/v1/superadmin/dashboard", tags=["Super Admin Dashboard"])
 app.include_router(admin_dashboard_api_router, prefix="/api/v1/admin/dashboard", tags=["Admin Dashboard"])
 app.include_router(unified_dashboard_api_router, prefix="/api/v1/dashboard", tags=["Unified Dashboard"])
 app.include_router(notifications_router, prefix="/api/v1/notifications", tags=["Notifications"])
-app.include_router(activity_router, prefix="/api/v1")
-app.include_router(system_router, prefix="/api/v1", tags=["System Settings"])
+app.include_router(activity_router, prefix=API_V1_PREFIX)
+app.include_router(system_router, prefix=API_V1_PREFIX, tags=["System Settings"])
 
 # ==============================================================================
 # 💻 7. FRONTEND WEB ROUTERS (Jinja2 UI Pages)
@@ -367,7 +372,7 @@ async def health_check(request: Request):
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
     except Exception as e:
-        logger.error(f"Database health check failed: {e}")
+        logger.exception("Database health check failed: %s", e)
         db_status = "unhealthy"
 
     status_code = status.HTTP_200_OK if db_status == "healthy" else status.HTTP_503_SERVICE_UNAVAILABLE

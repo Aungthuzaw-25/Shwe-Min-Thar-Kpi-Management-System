@@ -9,9 +9,10 @@ BASE = "http://127.0.0.1:8001"
 REPO = Path(r"C:\Users\Aung Thu Zaw\Desktop\Project\Kpi_management_system")
 DEPT_A = "29c02451-c65d-47f9-8f77-177217ce2d05"
 DEPT_B = "5a25d02d-c4a2-4606-962f-31c25c87cc4e"
+SUPER_ADMIN_TOKEN_FILE = ".tmp_sa_token"
 
 roles = [
-    ("Super Admin", ".tmp_sa_token"),
+    ("Super Admin", SUPER_ADMIN_TOKEN_FILE),
     ("Admin A", ".tmp_admin_a_token"),
     ("L0 A", ".tmp_token_l0_a_at_example_com"),
     ("L1 A", ".tmp_token_l1_a_at_example_com"),
@@ -73,7 +74,7 @@ fixture_payload = {
 
 setup = requests.post(
     f"{BASE}/api/v1/targets/",
-    headers=auth(".tmp_sa_token"),
+    headers=auth(SUPER_ADMIN_TOKEN_FILE),
     json=fixture_payload,
 )
 setup.raise_for_status()
@@ -149,7 +150,7 @@ for role, token_file in roles[1:]:
 
 sa_create = requests.post(
     f"{BASE}/api/v1/targets/",
-    headers=auth(".tmp_sa_token"),
+    headers=auth(SUPER_ADMIN_TOKEN_FILE),
     json={
         **fixture_payload,
         "name": "Department B Synthetic Delete Target",
@@ -184,7 +185,7 @@ for role, token_file in roles[1:]:
 sa_delete_before = db_state(delete_target_id)
 sa_delete = requests.delete(
     f"{BASE}/api/v1/targets/{delete_target_id}",
-    headers=auth(".tmp_sa_token"),
+    headers=auth(SUPER_ADMIN_TOKEN_FILE),
 )
 sa_delete_after = db_state(delete_target_id)
 results.append(

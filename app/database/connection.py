@@ -73,12 +73,12 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             # Commit လုပ်ခြင်းကို Router (သို့) Repository အပိုင်းတွင်သာ သီးသန့် လုပ်ဆောင်ရပါမည်။
         except SQLAlchemyError as db_err:
             # 🌟 FIX: Explicitly rollback and log database-specific errors
-            logger.error(f"Database error occurred: {str(db_err)}", exc_info=True)
+            logger.exception("Database error occurred: %s", db_err)
             await session.rollback()
             raise
         except Exception as e:
             # 🌟 FIX: Explicitly rollback for any standard Python exceptions
-            logger.error(f"Application error during DB session: {str(e)}", exc_info=True)
+            logger.exception("Application error during DB session: %s", e)
             await session.rollback()
             raise
         finally:

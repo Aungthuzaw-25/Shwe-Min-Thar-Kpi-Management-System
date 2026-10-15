@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -39,7 +40,9 @@ class TaskUpdate(BaseModel):
 # ==============================================================================
 class TaskReviewInput(BaseModel):
     # 🌟 FIX: action နှင့် deduction_rule အား အသစ်ထည့်သွင်းထားသည်
-    action: str = Field(..., description="APPROVED, REJECTED, သို့မဟုတ် DELAY")
+    action: Literal["APPROVED", "REJECTED", "DELAY"] = Field(
+        ..., description="APPROVED, REJECTED, သို့မဟုတ် DELAY"
+    )
     comments: str = Field(..., description="စစ်ဆေးသည့် မှတ်ချက် (Delay/Reject တွင် မဖြစ်မနေ ထည့်ရန်)")
     deduction_rule: str | None = Field(None, description="Reject လုပ်ပါက KPI ဖြတ်မည့် ခေါင်းစဉ်")
 

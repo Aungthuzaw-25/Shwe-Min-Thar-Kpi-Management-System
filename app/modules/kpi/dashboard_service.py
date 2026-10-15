@@ -265,14 +265,16 @@ async def _build_kpi_trend(
             and rows[-2].percentage is not None
             else None
         ),
-        comparison_status=(
-            "available"
-            if len(rows) > 1
-            else "insufficient_data"
-            if len(rows) == 1
-            else "unavailable"
-        ),
+        comparison_status=_comparison_status(len(rows)),
     )
+
+
+def _comparison_status(row_count: int) -> str:
+    if row_count > 1:
+        return "available"
+    if row_count == 1:
+        return "insufficient_data"
+    return "unavailable"
 
 
 async def _build_kpi_status_distribution(

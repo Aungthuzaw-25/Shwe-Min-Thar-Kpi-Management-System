@@ -30,21 +30,23 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /code
 
-# Install system dependencies and clean up apt lists to keep image slim
+# Install runtime libraries and temporary build tools, then remove the build-only
+# packages in the same layer after installing the locked Python wheels.
+COPY requirements.lock .
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         build-essential \
         libpq-dev \
+        libpq5 \
         libmagic1 \
         curl && \
+    python -m pip install --no-cache-dir --only-binary=:all: --require-hashes --requirement requirements.lock && \
+    apt-get purge -y --auto-remove build-essential libpq-dev && \
+    apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
 # Create a non-root system user for security compliance
 RUN useradd --create-home --uid 1000 appuser
-
-# Install Python dependencies leveraging layer caching
-COPY requirements.lock .
-RUN python -m pip install --no-cache-dir --only-binary=:all: --require-hashes --requirement requirements.lock
 
 # Copy application source code
 COPY app/ ./app/

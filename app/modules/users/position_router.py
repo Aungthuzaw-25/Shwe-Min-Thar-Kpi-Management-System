@@ -19,6 +19,8 @@ router = APIRouter(prefix="/positions", tags=["Positions"])
 
 # 🌟 ပြင်ဆင်ချက်: RoleChecker သို့ ပြောင်းထားပါသည်
 admin_only = RoleChecker(["Super Admin", "Admin", "HR"])
+DEPARTMENT_EDIT_PERMISSION = "department.edit"
+POSITION_NOT_FOUND = "Position not found"
 
 @router.post("/", response_model=PositionResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(admin_only)])
 async def create_new_position(
@@ -26,7 +28,7 @@ async def create_new_position(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    enforce_permission(current_user, "department.edit")
+    enforce_permission(current_user, DEPARTMENT_EDIT_PERMISSION)
     await enforce_department_scope(db, current_user, position_in.department_id)
     return await position_repo.create_position(db, position_in)
 
@@ -48,7 +50,7 @@ async def read_position(
     enforce_permission(current_user, "department.view")
     position = await position_repo.get_position(db, position_id)
     if not position:
-        raise HTTPException(status_code=404, detail="Position not found")
+        raise HTTPException(status_code=404, detail=POSITION_NOT_FOUND)
     await enforce_department_scope(db, current_user, position.department_id)
     return position
 
@@ -59,14 +61,14 @@ async def update_existing_position(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    enforce_permission(current_user, "department.edit")
+    enforce_permission(current_user, DEPARTMENT_EDIT_PERMISSION)
     position = await position_repo.get_position(db, position_id)
     if not position:
-        raise HTTPException(status_code=404, detail="Position not found")
+        raise HTTPException(status_code=404, detail=POSITION_NOT_FOUND)
     await enforce_department_scope(db, current_user, position.department_id)
     updated = await position_repo.update_position(db, position_id, position_in)
     if not updated:
-        raise HTTPException(status_code=404, detail="Position not found")
+        raise HTTPException(status_code=404, detail=POSITION_NOT_FOUND)
     return updated
 
 @router.delete("/{position_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(admin_only)])
@@ -75,12 +77,12 @@ async def delete_existing_position(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    enforce_permission(current_user, "department.edit")
+    enforce_permission(current_user, DEPARTMENT_EDIT_PERMISSION)
     position = await position_repo.get_position(db, position_id)
     if not position:
-        raise HTTPException(status_code=404, detail="Position not found")
+        raise HTTPException(status_code=404, detail=POSITION_NOT_FOUND)
     await enforce_department_scope(db, current_user, position.department_id)
     success = await position_repo.delete_position(db, position_id)
     if not success:
-        raise HTTPException(status_code=404, detail="Position not found")
+        raise HTTPException(status_code=404, detail=POSITION_NOT_FOUND)
     return None

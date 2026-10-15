@@ -93,11 +93,20 @@ async def create_task(db: AsyncSession, task_in: TaskCreate, current_user_id: UU
         raise e
 
 async def submit_task(db: AsyncSession, task_id: UUID, current_user_id: UUID) -> Task:
-    stmt = select(Task).where(Task.id == task_id, Task.owner_id == current_user_id)
+    stmt = (
+        select(Task)
+        .where(Task.id == task_id, Task.owner_id == current_user_id)
+        .with_for_update()
+    )
     task = (await db.execute(stmt)).scalars().first()
 
     if not task:
         raise HTTPException(status_code=404, detail="Task မတွေ့ရှိပါ (သို့) မိမိ၏ Task မဟုတ်ပါ။")
+    if task.status not in {TaskStatus.DRAFT, TaskStatus.REJECTED}:
+        raise HTTPException(
+            status_code=409,
+            detail="Only draft or rejected tasks can be submitted for review.",
+        )
     
     try:
         task.status = TaskStatus.PENDING_L1
@@ -141,10 +150,11 @@ async def review_task_l1(db: AsyncSession, task_id: UUID, payload: TaskReviewInp
     await _authorize_reviewer(db, task, current_user_id, "L1")
 
     try:
-        if payload.action == "APPROVED":
-            task.status = TaskStatus.PENDING_L0
-        else:
-            task.status = TaskStatus.REJECTED 
+        task.status = {
+            "APPROVED": TaskStatus.PENDING_L0,
+            "REJECTED": TaskStatus.REJECTED,
+            "DELAY": TaskStatus.REJECTED,
+        }[payload.action]
         
         final_remarks = payload.comments
         if payload.action == "REJECTED" and payload.deduction_rule:
@@ -158,13 +168,10 @@ async def review_task_l1(db: AsyncSession, task_id: UUID, payload: TaskReviewInp
             comments=final_remarks
         )
         db.add(review)
-        status_msg = (
-            "Approved"
-            if payload.action == "APPROVED"
-            else "Rejected"
-            if payload.action == "REJECTED"
-            else "Delayed"
-        )
+        status_msg = {
+            "APPROVED": "Approved",
+            "REJECTED": "Rejected",
+        }.get(payload.action, "Delayed")
         record_activity(
             db,
             actor_id=current_user_id,
@@ -184,8 +191,7 @@ async def review_task_l1(db: AsyncSession, task_id: UUID, payload: TaskReviewInp
             },
             commit=False,
         )
-        await db.commit()
-        
+        await db.flush()
         if payload.action in ["APPROVED", "REJECTED"]:
             target_date = task.due_date if task.due_date else datetime.now(timezone)
             
@@ -195,8 +201,9 @@ async def review_task_l1(db: AsyncSession, task_id: UUID, payload: TaskReviewInp
                 
             await trigger_kpi_recalculation(
                 db=db, user_level="L2", user_id=task.owner_id, 
-                department_id=owner_dept_id, target_date=target_date
+                department_id=owner_dept_id, target_date=target_date, commit=False
             )
+        await db.commit()
         return task
 
     except Exception as e:
@@ -313,14 +320,14 @@ async def verify_task_l0(db: AsyncSession, task_id: UUID, payload: TaskReviewInp
                 },
                 commit=False,
             )
-        await db.commit()
-        
+        await db.flush()
         if target_kpi_user_id and target_kpi_dept:
             target_date = task.due_date if task.due_date else datetime.now(timezone)
             await trigger_kpi_recalculation(
                 db=db, user_level=target_kpi_level, user_id=target_kpi_user_id, 
-                department_id=target_kpi_dept, target_date=target_date
+                department_id=target_kpi_dept, target_date=target_date, commit=False
             )
+        await db.commit()
             
         return task
 

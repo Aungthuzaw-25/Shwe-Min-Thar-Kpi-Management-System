@@ -233,7 +233,7 @@ class KPIAssignment(BaseModel):
     assigner = relationship("User", foreign_keys=[assigned_by_id])
 
     __table_args__ = (
-        # 🌟 Data Integrity: ဝန်ထမ်းတစ်ဦးအား တူညီသော Formula ကို တစ်ကြိမ်ထက်ပို၍ မဆွဲထည့်စေရန် တားဆီးခြင်း
+        # The unique constraint also includes soft-deleted rows, so assignments are restored on reuse.
         UniqueConstraint('user_id', 'kpi_formula_id', 'kpi_period_id', name='uq_kpi_user_formula_period'),
         Index('idx_kpi_assignment_lookup', 'user_id', 'kpi_period_id'),
     )

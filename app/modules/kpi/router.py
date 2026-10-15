@@ -151,7 +151,7 @@ async def get_kpi_settings(
     try:
         return await kpi_service.get_kpi_level_settings(db)
     except Exception as e:
-        logger.error(f"Failed to fetch KPI settings: {str(e)}", exc_info=True)
+        logger.exception(f"Failed to fetch KPI settings: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to fetch KPI settings.")
 
 @router.put('/settings/{level_name}', response_model=KPILevelSettingResponse)
@@ -166,7 +166,7 @@ async def update_kpi_setting(
         return await kpi_service.update_kpi_level_setting(db, level_name, payload)
     except SQLAlchemyError as e:
         await db.rollback()
-        logger.error(f"Database error updating setting {level_name}: {str(e)}", exc_info=True)
+        logger.exception(f"Database error updating setting {level_name}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Database transaction failed while updating settings.")
 
 @router.put('/settings/department/{department_id}/kpi-levels', tags=["KPI Admin Controls"])
@@ -207,7 +207,7 @@ async def update_targeted_department_levels(
         }
     except SQLAlchemyError as e:
         await db.rollback()
-        logger.error(f"Database error updating targeted department levels for {department_id}: {str(e)}", exc_info=True)
+        logger.exception(f"Database error updating targeted department levels for {department_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to update department level settings.")
 
 
@@ -258,7 +258,7 @@ async def create_kpi_formula(
         return await kpi_service.create_kpi_formula(db, payload)
     except SQLAlchemyError as e:
         await db.rollback()
-        logger.error(f"Error creating formula: {str(e)}", exc_info=True)
+        logger.exception(f"Error creating formula: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to create KPI formula.")
 
 @router.put('/formulas/{formula_id}', response_model=KPIFormulaResponse)
@@ -274,7 +274,7 @@ async def edit_kpi_formula(
         return await kpi_service.update_kpi_formula(db, formula_id, payload)
     except SQLAlchemyError as e:
         await db.rollback()
-        logger.error(f"Error updating formula {formula_id}: {str(e)}", exc_info=True)
+        logger.exception(f"Error updating formula {formula_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to update KPI formula.")
 
 @router.get('/formulas', response_model=list[KPIFormulaResponse])
@@ -305,7 +305,7 @@ async def toggle_kpi_formula(
         return await kpi_repo.toggle_formula_status(db, formula, payload.is_active)
     except SQLAlchemyError as e:
         await db.rollback()
-        logger.error(f"Error toggling formula {formula_id}: {str(e)}", exc_info=True)
+        logger.exception(f"Error toggling formula {formula_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to toggle formula status.")
 
 # ------------------------------------------------------------------------------
@@ -336,7 +336,7 @@ async def _transition_formula_state(
         raise
     except SQLAlchemyError as e:
         await db.rollback()
-        logger.error(f"Database error transitioning formula {formula_id} to {new_status}: {str(e)}", exc_info=True)
+        logger.exception(f"Database error transitioning formula {formula_id} to {new_status}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="State transition failed due to a database error.")
 
 @router.post('/formulas/{formula_id}/submit', response_model=KPIFormulaResponse)
@@ -370,7 +370,7 @@ async def delete_kpi_formula(formula_id: UUID, db: AsyncSession = Depends(get_db
         await db.commit()
     except SQLAlchemyError as e:
         await db.rollback()
-        logger.error(f"Error deleting formula {formula_id}: {str(e)}", exc_info=True)
+        logger.exception(f"Error deleting formula {formula_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to delete formula.")
 
 
@@ -389,7 +389,7 @@ async def get_monthly_kpi_records(
     try:
         return await kpi_service.get_kpi_records_by_user(db, target_user_id, "MONTHLY")
     except Exception as e:
-        logger.error(f"Failed to fetch monthly records for {target_user_id}: {str(e)}", exc_info=True)
+        logger.exception(f"Failed to fetch monthly records for {target_user_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to retrieve records.")
 
 
@@ -440,7 +440,7 @@ async def freeze_kpi_record(
         return {"message": f"KPI Record is now {'Frozen' if payload.is_frozen else 'Unfrozen'}.", "is_frozen": record.is_frozen}
     except SQLAlchemyError as e:
         await db.rollback()
-        logger.error(f"Failed to freeze record {record_id}: {str(e)}", exc_info=True)
+        logger.exception(f"Failed to freeze record {record_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Database error while freezing record.")
 
 @router.put("/records/{record_id}/override", response_model=KPIRecordResponse, tags=["KPI Admin Controls"])
@@ -508,7 +508,7 @@ async def override_kpi_record(
         raise
     except SQLAlchemyError as e:
         await db.rollback()
-        logger.error(f"Database error overriding KPI {record_id}: {str(e)}", exc_info=True)
+        logger.exception(f"Database error overriding KPI {record_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Transaction failed while overriding KPI.")
 
 @router.put("/records/{record_id}/deduct", response_model=KPIRecordResponse, tags=["KPI Admin Controls"])
@@ -579,7 +579,7 @@ async def deduct_kpi_record(
         raise
     except SQLAlchemyError as e:
         await db.rollback()
-        logger.error(f"Database error deducting KPI {record_id}: {str(e)}", exc_info=True)
+        logger.exception(f"Database error deducting KPI {record_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Transaction failed while deducting from KPI.")
 
 
@@ -643,7 +643,7 @@ async def get_kpi_ranking(
             
         return ranking_list
     except Exception as e:
-        logger.error(f"Dashboard ranking generation failed: {str(e)}", exc_info=True)
+        logger.exception(f"Dashboard ranking generation failed: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to generate leaderboard.")
 
 
@@ -689,7 +689,7 @@ async def get_kpi_trend_chart(
             data_points=data_points
         )
     except Exception as e:
-        logger.error(f"Dashboard chart generation failed for {target_user_id}: {str(e)}", exc_info=True)
+        logger.exception(f"Dashboard chart generation failed for {target_user_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to load trend chart data.")
 
 
@@ -728,7 +728,7 @@ async def get_kpi_summary_report(
             ),
         )
     except Exception as e:
-        logger.error(f"Failed to generate summary report: {str(e)}", exc_info=True)
+        logger.exception(f"Failed to generate summary report: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to generate report.")
 
 
@@ -749,9 +749,11 @@ async def run_custom_kpi_background(user_ids: list[UUID], start_date: datetime, 
                         start_date=start_date, 
                         end_date=end_date
                     )
+                    await bg_db.commit()
                 except Exception as e:
+                    await bg_db.rollback()
                     # 🌟 FIX: Detailed traceback logging instead of basic print.
-                    logger.error(f"[Custom KPI Worker] Calculation failed for User {uid}. Reason: {str(e)}", exc_info=True)
+                    logger.exception(f"[Custom KPI Worker] Calculation failed for User {uid}. Reason: {str(e)}", exc_info=True)
     except Exception as connection_error:
         # Edge condition: What if AsyncSessionLocal fails to connect completely?
         logger.critical(f"[Custom KPI Worker] Fatal Database Connection Error: {str(connection_error)}", exc_info=True)
@@ -786,7 +788,7 @@ async def trigger_custom_calculation(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error triggering background KPI calculation: {str(e)}", exc_info=True)
+        logger.exception(f"Error triggering background KPI calculation: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to initialize background task.")
 
 
@@ -841,8 +843,7 @@ async def bulk_calculate_endpoint(
 
     if payload.run_in_background:
         background_tasks.add_task(
-            kpi_service.bulk_calculate_kpis,
-            db,
+            kpi_service.run_bulk_kpi_calculation_background,
             target_user_ids,
             payload.start_date.replace(tzinfo=None),
             payload.end_date.replace(tzinfo=None),
@@ -891,5 +892,5 @@ async def get_system_audit_logs(
 
         return logs
     except Exception as e:
-        logger.error(f"Error fetching audit logs: {str(e)}", exc_info=True)
+        logger.exception(f"Error fetching audit logs: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to retrieve audit logs.")

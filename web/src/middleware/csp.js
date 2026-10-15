@@ -22,7 +22,7 @@ export function rewriteHtml(html, nonce) {
     .replace(/<style([^>]*)>/gi, `<style nonce="${nonce}"$1>`)
     .replace(
       /\s(on(?:click|submit|change|keydown))\s*=\s*(["'])((?:(?!\2).)*)\2/gi,
-      (_match, handler, _quote, value) => ` data-csp-${handler}="${value}"`,
+      (_match, handler, _quote, value) => ` data-csp-${handler}="${value.replace(/"/g, "&quot;")}"`,
     );
 }
 

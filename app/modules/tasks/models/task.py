@@ -10,6 +10,9 @@ from sqlalchemy.orm import relationship
 
 from app.database.base import BaseModel
 
+SET_NULL = "SET NULL"
+ALL_DELETE_ORPHAN = "all, delete-orphan"
+
 
 # ==============================================================================
 # 🌟 1. ENUMS (Task Status & Frequency Lifecycle)
@@ -40,7 +43,7 @@ class Task(BaseModel):
     
     # 🌟 Weighted KPI အတွက် Admin သတ်မှတ်ထားသော Category 
     category = Column(String(100), nullable=True, index=True) 
-    category_id = Column(UUID(as_uuid=True), ForeignKey('kpi_categories.id', ondelete="SET NULL"), nullable=True, index=True)
+    category_id = Column(UUID(as_uuid=True), ForeignKey('kpi_categories.id', ondelete=SET_NULL), nullable=True, index=True)
     
     status = Column(SQLEnum(TaskStatus), default=TaskStatus.DRAFT, nullable=False, index=True)
     
@@ -54,14 +57,14 @@ class Task(BaseModel):
     owner_id = Column(UUID(as_uuid=True), ForeignKey('users.id', ondelete="CASCADE"), nullable=False, index=True)
     
     # Task Assign ချပေးသူ သို့မဟုတ် လက်ရှိ စစ်ဆေးနေသော Manager (L1/L0)
-    assigner_id = Column(UUID(as_uuid=True), ForeignKey('users.id', ondelete="SET NULL"), nullable=True, index=True)
+    assigner_id = Column(UUID(as_uuid=True), ForeignKey('users.id', ondelete=SET_NULL), nullable=True, index=True)
     
     # Task Versioning (V1, V2 Resubmission)
     version = Column(Integer, default=1, nullable=False)
-    parent_task_id = Column(UUID(as_uuid=True), ForeignKey('tasks.id', ondelete="SET NULL"), nullable=True, index=True)
+    parent_task_id = Column(UUID(as_uuid=True), ForeignKey('tasks.id', ondelete=SET_NULL), nullable=True, index=True)
 
     # Batch Submission Workflow (Multi-Task Grouping)
-    batch_id = Column(UUID(as_uuid=True), ForeignKey('submission_batches.id', ondelete="SET NULL"), nullable=True, index=True)
+    batch_id = Column(UUID(as_uuid=True), ForeignKey('submission_batches.id', ondelete=SET_NULL), nullable=True, index=True)
 
     # --------------------------------------------------------------------------
     # 🌟 AUTOMATION & SCHEDULER FIELDS
@@ -86,14 +89,14 @@ class Task(BaseModel):
     parent_task = relationship('Task', remote_side=lambda: [Task.id], foreign_keys=[parent_task_id])
     
     # Evidence & Reviews
-    evidence = relationship('TaskEvidence', back_populates='task', cascade="all, delete-orphan", lazy="selectin")
-    reviews = relationship('TaskReview', back_populates='task', cascade="all, delete-orphan", lazy="selectin")
+    evidence = relationship('TaskEvidence', back_populates='task', cascade=ALL_DELETE_ORPHAN, lazy="selectin")
+    reviews = relationship('TaskReview', back_populates='task', cascade=ALL_DELETE_ORPHAN, lazy="selectin")
     
     # Submission Batch Link
     batch = relationship("SubmissionBatch", back_populates="tasks")
 
     # Audit Trail History
-    histories = relationship("TaskHistory", backref="task", cascade="all, delete-orphan", lazy="selectin")
+    histories = relationship("TaskHistory", backref="task", cascade=ALL_DELETE_ORPHAN, lazy="selectin")
 
     # --------------------------------------------------------------------------
     # ⚡ 3. PERFORMANCE COMPOUND INDEXES (HIGH-THROUGHPUT OPTIMIZATION)

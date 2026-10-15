@@ -107,11 +107,7 @@ class OIDCProvider:
                 raise OIDCValidationError("Authorization code exchange failed.")
             return response.json()
 
-    async def validate_identity(self, token_response: dict[str, Any], nonce: str) -> OIDCIdentity:
-        id_token = token_response.get("id_token")
-        if not id_token:
-            raise OIDCValidationError("Provider did not return an ID token.")
-        metadata = await self.metadata()
+    async def _decode_identity_claims(self, id_token: str, metadata: dict) -> dict:
         try:
             header = jwt.get_unverified_header(id_token)
             allowed_algorithms = ["RS256", "RS384", "RS512", "ES256", "ES384", "ES512"]
@@ -144,7 +140,7 @@ class OIDCProvider:
             issuer = metadata["issuer"]
             if not isinstance(issuer, str) or not issuer:
                 raise OIDCValidationError("Provider identity validation failed.")
-            claims = jwt.decode(
+            return jwt.decode(
                 id_token,
                 jwt.PyJWK.from_dict(key),
                 algorithms=[algorithm],
@@ -158,6 +154,8 @@ class OIDCProvider:
             )
         except (JWTError, KeyError, TypeError) as exc:
             raise OIDCValidationError("Provider identity validation failed.") from exc
+
+    def _identity_from_claims(self, claims: dict, nonce: str) -> OIDCIdentity:
         if claims.get("nonce") != nonce:
             raise OIDCValidationError("Provider nonce validation failed.")
         audiences = claims.get("aud")
@@ -184,7 +182,7 @@ class OIDCProvider:
         parts = full_name.split(maxsplit=1)
         return OIDCIdentity(
             provider=self.name,
-            issuer=claims.get("iss", metadata["issuer"]),
+            issuer=claims["iss"],
             subject=subject,
             email=email,
             email_verified=email_verified is True,
@@ -192,6 +190,14 @@ class OIDCProvider:
             last_name=parts[1] if len(parts) > 1 else "",
             tenant_id=tenant_id,
         )
+
+    async def validate_identity(self, token_response: dict[str, Any], nonce: str) -> OIDCIdentity:
+        id_token = token_response.get("id_token")
+        if not id_token:
+            raise OIDCValidationError("Provider did not return an ID token.")
+        metadata = await self.metadata()
+        claims = await self._decode_identity_claims(id_token, metadata)
+        return self._identity_from_claims(claims, nonce)
 
     async def _jwks(self, url: str) -> dict[str, Any]:
         async with httpx.AsyncClient(timeout=10.0) as client:

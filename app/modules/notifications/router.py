@@ -40,7 +40,11 @@ async def get_my_notifications(
     # 🌟 FIX: Call the function directly
     return await get_notifications_by_user(db, current_user.id, skip=skip, limit=limit)
 
-@router.get("/{notification_id}", response_model=NotificationResponse)
+@router.get(
+    "/{notification_id}",
+    response_model=NotificationResponse,
+    responses={404: {"description": "Notification not found"}},
+)
 async def get_my_notification(
     notification_id: str,
     db: AsyncSession = Depends(get_db),
@@ -75,7 +79,11 @@ async def mark_all_as_read(
     return {"success": True, "message": f"{updated_count} notifications marked as read"}
 
 # 🌟 Dynamic Parameter (UUID) ကို အောက်ဆုံးတွင် ထားရပါမည်
-@router.put("/{notification_id}/read", status_code=status.HTTP_200_OK)
+@router.put(
+    "/{notification_id}/read",
+    status_code=status.HTTP_200_OK,
+    responses={404: {"description": "Notification not found"}},
+)
 async def mark_as_read(
     notification_id: UUID,
     db: AsyncSession = Depends(get_db),

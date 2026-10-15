@@ -57,7 +57,7 @@ async def _list_activity(
     return [activity_payload(item, item.user) for item in activities]
 
 
-@router.get("")
+@router.get("", responses={403: {"description": "Activity scope denied"}})
 async def get_activity(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, gt=0, le=100),
@@ -69,7 +69,7 @@ async def get_activity(
     return await _list_activity(db, current_user, skip, limit, actor_id, department_id)
 
 
-@router.get("/recent")
+@router.get("/recent", responses={403: {"description": "Activity scope denied"}})
 async def get_recent_activity(
     limit: int = Query(10, gt=0, le=100),
     actor_id: UUID | None = Query(None),

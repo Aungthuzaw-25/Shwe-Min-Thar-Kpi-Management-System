@@ -48,7 +48,12 @@ def _round_metric(value: float | None) -> float | None:
 
 def _trend_change(current: float, previous: float) -> tuple[float, str]:
     difference = current - previous
-    direction = "UP" if difference > 0 else "DOWN" if difference < 0 else "FLAT"
+    if difference > 0:
+        direction = "UP"
+    elif difference < 0:
+        direction = "DOWN"
+    else:
+        direction = "FLAT"
     return round(difference, 2), direction
 
 

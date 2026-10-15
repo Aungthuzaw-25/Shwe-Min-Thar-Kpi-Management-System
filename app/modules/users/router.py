@@ -49,8 +49,9 @@ from app.services.authority_notice import stage_super_admin_notice
 from app.utils.audit import log_audit_trail
 
 router = APIRouter()
-admin_checker = RoleChecker(['Super Admin', 'Admin'])
-SUPER_ADMIN_ROLE_NAMES = {'Super Admin'}
+SUPER_ADMIN_ROLE_NAME = "Super Admin"
+SUPER_ADMIN_ROLE_NAMES = {SUPER_ADMIN_ROLE_NAME}
+admin_checker = RoleChecker([SUPER_ADMIN_ROLE_NAME, 'Admin'])
 VALID_USER_LEVELS = {'L0', 'L1', 'L2'}
 
 
@@ -123,7 +124,7 @@ async def revoke_user_authentication(db: AsyncSession, user_id: UUID) -> None:
 
 
 async def get_super_admin_role(db: AsyncSession):
-    role_stmt = select(Role).where(Role.name == 'Super Admin')
+    role_stmt = select(Role).where(Role.name == SUPER_ADMIN_ROLE_NAME)
     role_result = await db.execute(role_stmt)
     role = role_result.scalar_one_or_none()
     if role is None:
@@ -183,7 +184,7 @@ async def create_new_user(payload: UserCreate, db: AsyncSession = Depends(get_db
     target_role = role_req.scalar_one_or_none()
     if not target_role:
         raise HTTPException(status_code=404, detail="Target role not found.")
-    if current_user.role.name != 'Super Admin' and target_role.name in {'Super Admin', 'Admin'}:
+    if current_user.role.name != SUPER_ADMIN_ROLE_NAME and target_role.name in {SUPER_ADMIN_ROLE_NAME, 'Admin'}:
         raise HTTPException(status_code=403, detail='Only Super Admins can manage administrative accounts.')
 
     # 🌟 FIX 1: Smart Soft-Delete Recovery (Ghost Account Prevention)
@@ -257,7 +258,7 @@ async def create_new_user(payload: UserCreate, db: AsyncSession = Depends(get_db
             entity_id=new_user.id,
             description=f"Created user {new_user.first_name} {new_user.last_name}".strip(),
         )
-        if target_role.name in {'Super Admin', 'Admin'}:
+        if target_role.name in {SUPER_ADMIN_ROLE_NAME, 'Admin'}:
             await stage_super_admin_notice(
                 db,
                 actor_id=current_user.id,
@@ -605,8 +606,8 @@ async def get_roles_list(db: AsyncSession = Depends(get_db), current_user: User 
     result = await db.execute(stmt)
     roles = result.scalars().all()
     
-    if current_user.role.name != 'Super Admin':
-        roles = [r for r in roles if r.name != 'Super Admin']
+    if current_user.role.name != SUPER_ADMIN_ROLE_NAME:
+        roles = [r for r in roles if r.name != SUPER_ADMIN_ROLE_NAME]
         
     return [{"id": r.id, "name": r.name} for r in roles]
 
@@ -628,8 +629,8 @@ async def get_deleted_users(
         result = await db.execute(stmt)
         users = result.scalars().all()
         
-        if current_user.role.name != 'Super Admin':
-            users = [u for u in users if getattr(u.role, 'name', '') != 'Super Admin']
+        if current_user.role.name != SUPER_ADMIN_ROLE_NAME:
+            users = [u for u in users if getattr(u.role, 'name', '') != SUPER_ADMIN_ROLE_NAME]
         return [serialize_user_obj(u) for u in users]
     except Exception as e:
         print("====== DELETED USERS ERROR ======")
@@ -670,8 +671,8 @@ async def get_users(
     result = await db.execute(stmt)
     users = result.scalars().all()
     
-    if current_user.role.name != 'Super Admin':
-        users = [u for u in users if getattr(u.role, 'name', '') != 'Super Admin']
+    if current_user.role.name != SUPER_ADMIN_ROLE_NAME:
+        users = [u for u in users if getattr(u.role, 'name', '') != SUPER_ADMIN_ROLE_NAME]
     return [serialize_user_obj(u) for u in users]
 
 @router.get('/{user_id}', response_model=UserResponse)
@@ -697,14 +698,14 @@ async def update_existing_user(user_id: UUID, payload: UserUpdate, db: AsyncSess
     if getattr(user, 'is_deleted', False):
         raise HTTPException(status_code=400, detail='Cannot edit a deleted account. Please restore the account first.')
         
-    if current_user.role.name != 'Super Admin':
-        if getattr(user.role, 'name', '') == 'Super Admin':
+    if current_user.role.name != SUPER_ADMIN_ROLE_NAME:
+        if getattr(user.role, 'name', '') == SUPER_ADMIN_ROLE_NAME:
             raise HTTPException(status_code=403, detail='You do not have permission to modify a Super Admin account.')
             
     if payload.role_id:
         role_req = await db.execute(select(Role).where(Role.id == payload.role_id))
         target_role = role_req.scalar_one_or_none()
-        if target_role and target_role.name == 'Super Admin':
+        if target_role and target_role.name == SUPER_ADMIN_ROLE_NAME:
             raise HTTPException(status_code=403, detail='You do not have permission to promote a user to Super Admin.')
         if target_role and target_role.name == 'Admin':
             raise HTTPException(status_code=403, detail='Only Super Admins can manage administrative accounts.')
@@ -840,7 +841,7 @@ async def delete_existing_user(user_id: UUID, db: AsyncSession = Depends(get_db)
 @router.delete('/{user_id}/permanent')
 async def permanent_delete_user(user_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     enforce_permission(current_user, "users.delete")
-    if current_user.role.name not in ['Super Admin']:
+    if current_user.role.name not in [SUPER_ADMIN_ROLE_NAME]:
         raise HTTPException(status_code=403, detail='Only Super Admins can permanently delete accounts.')
     stmt = select(User).where(User.id == user_id)
     result = await db.execute(stmt)
@@ -906,7 +907,7 @@ async def reset_user_password(user_id: UUID, payload: PasswordResetAdmin, db: As
     if getattr(user, 'is_deleted', False):
         raise HTTPException(status_code=400, detail='Cannot reset password for a deleted account. Please restore the account first.')
         
-    if current_user.role.name != 'Super Admin' and getattr(user.role, 'name', '') == 'Super Admin':
+    if current_user.role.name != SUPER_ADMIN_ROLE_NAME and getattr(user.role, 'name', '') == SUPER_ADMIN_ROLE_NAME:
         raise HTTPException(status_code=403, detail='You do not have permission to reset a Super Admin account password.')
         
     if (
@@ -937,7 +938,7 @@ async def reset_user_password(user_id: UUID, payload: PasswordResetAdmin, db: As
 @router.post('/{user_id}/restore', response_model=UserResponse)
 async def restore_user(user_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     enforce_permission(current_user, "users.edit")
-    if current_user.role.name not in ['Super Admin']:
+    if current_user.role.name not in [SUPER_ADMIN_ROLE_NAME]:
         raise HTTPException(status_code=403, detail='Only Super Admins can restore accounts.')
         
     stmt = select(User).where(User.id == user_id)
@@ -967,7 +968,7 @@ async def restore_user(user_id: UUID, db: AsyncSession = Depends(get_db), curren
 
 @router.post('/{user_id}/set-leave')
 async def set_user_leave(user_id: UUID, payload: UserLeaveRequest, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    if current_user.id != user_id and current_user.role.name not in ['Super Admin', 'Admin']:
+    if current_user.id != user_id and current_user.role.name not in [SUPER_ADMIN_ROLE_NAME, 'Admin']:
         raise HTTPException(status_code=403, detail='You do not have permission to set leave for this user.')
         
     stmt = select(User).where(User.id == user_id)

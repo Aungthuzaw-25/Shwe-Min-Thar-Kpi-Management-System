@@ -32,11 +32,27 @@ from app.modules.kpi.models import (
 )
 from app.modules.users.models import Permission, Position, Role, RolePermission, User
 
+SUPER_ADMIN_ROLE = "Super Admin"
+DEPARTMENT_USER_ROLE = "Department User"
+USERS_VIEW_PERMISSION = "users.view"
+KPI_VIEW_PERMISSION = "kpi.view"
+REPORT_VIEW_PERMISSION = "report.view"
+DEPARTMENT_VIEW_PERMISSION = "department.view"
+MDY_OFFICE = "MDY Office"
+YGN_OFFICE = "YGN Office"
+CASHIER_KPI_MDY = "Cashier KPI (MDY)"
+ACCOUNTING_ERROR_DEDUCTION = "စာရင်းလွဲချော်မှု"
+DISCIPLINE_VIOLATION_DEDUCTION = "စည်းကမ်းဖောက်ဖျက်မှု"
+REPORT_LATE_DEDUCTION = "Report နောက်ကျခြင်း"
+ATTENDANCE_SUPPORT_CATEGORY = "Attendance, Punctuality & Support"
+ATTENDANCE_FLEXIBILITY_CATEGORY = "Attendance, Punctuality & Flexibility"
+PHASE_2_5 = "Phase 2.5"
+
 ROLES = [
-    {"name": "Super Admin", "description": "Has full system control"},
+    {"name": SUPER_ADMIN_ROLE, "description": "Has full system control"},
     {"name": "Admin", "description": "Manages assigned organization"},
     {"name": "HR", "description": "Human resources administration"},
-    {"name": "Department User", "description": "Operational users (L0, L1, L2)"}
+    {"name": DEPARTMENT_USER_ROLE, "description": "Operational users (L0, L1, L2)"}
 ]
 SENIOR_ACCOUNTANT_POSITION = "Senior Accountant"
 
@@ -79,19 +95,19 @@ def resolve_test_account(name: str) -> tuple[str, str] | None:
     return email, password
 
 PERMISSION_CATALOG = [
-    ("users.view", "View users"), ("users.create", "Create users"), ("users.edit", "Edit users"),
+    (USERS_VIEW_PERMISSION, "View users"), ("users.create", "Create users"), ("users.edit", "Edit users"),
     ("users.delete", "Delete users"), ("users.activate", "Activate users"), ("users.deactivate", "Deactivate users"),
     ("users.password_reset", "Reset user passwords"),
     ("tasks.view", "View tasks"), ("tasks.create", "Create tasks"), ("tasks.edit", "Edit tasks"),
     ("tasks.delete", "Delete tasks"), ("tasks.submit", "Submit tasks"), ("tasks.resubmit", "Resubmit tasks"), ("tasks.approve", "Approve tasks"),
     ("tasks.reject", "Reject tasks"), ("tasks.return", "Return tasks"),
-    ("kpi.view", "View KPIs"), ("kpi.create", "Create KPIs"), ("kpi.edit", "Edit KPIs"),
+    (KPI_VIEW_PERMISSION, "View KPIs"), ("kpi.create", "Create KPIs"), ("kpi.edit", "Edit KPIs"),
     ("kpi.delete", "Delete KPIs"), ("kpi.assign", "Assign KPIs"), ("kpi.calculate", "Calculate KPIs"),
     ("kpi.rule.view", "View KPI rules"), ("kpi.rule.create", "Create KPI rules"),
     ("kpi.rule.edit", "Edit KPI rules"), ("kpi.rule.delete", "Delete KPI rules"),
-    ("report.view", "View reports"), ("report.create", "Create reports"), ("report.export", "Export reports"),
+    (REPORT_VIEW_PERMISSION, "View reports"), ("report.create", "Create reports"), ("report.export", "Export reports"),
     ("report.view_all", "View other users' reports"),
-    ("department.view", "View departments"), ("department.create", "Create departments"),
+    (DEPARTMENT_VIEW_PERMISSION, "View departments"), ("department.create", "Create departments"),
     ("department.edit", "Edit departments"), ("department.delete", "Delete departments"),
     ("system.settings.view", "View settings"), ("system.settings.edit", "Edit settings"),
     ("system.audit.view", "View audit history"),
@@ -99,20 +115,20 @@ PERMISSION_CATALOG = [
 ]
 
 ROLE_DEFAULTS = {
-    "Super Admin": {code for code, _ in PERMISSION_CATALOG},
+    SUPER_ADMIN_ROLE: {code for code, _ in PERMISSION_CATALOG},
     "Admin": {code for code, _ in PERMISSION_CATALOG}
     - {"system.settings.edit", "system.audit.view"},
     "HR": {
-        "users.view", "users.create", "users.edit", "users.activate",
-        "users.deactivate", "users.password_reset", "department.view",
-        "kpi.view", "report.view", "report.view_all",
+        USERS_VIEW_PERMISSION, "users.create", "users.edit", "users.activate",
+        "users.deactivate", "users.password_reset", DEPARTMENT_VIEW_PERMISSION,
+        KPI_VIEW_PERMISSION, REPORT_VIEW_PERMISSION, "report.view_all",
         "system.permissions.manage",
     },
-    "Department User": {
-        "users.view", "tasks.view", "tasks.create", "tasks.edit",
+    DEPARTMENT_USER_ROLE: {
+        USERS_VIEW_PERMISSION, "tasks.view", "tasks.create", "tasks.edit",
         "tasks.delete", "tasks.submit", "tasks.resubmit",
         "tasks.approve", "tasks.reject", "tasks.return",
-        "kpi.view", "report.view", "department.view",
+        KPI_VIEW_PERMISSION, REPORT_VIEW_PERMISSION, DEPARTMENT_VIEW_PERMISSION,
     },
 }
 
@@ -224,7 +240,7 @@ async def _ensure_super_admin(db, role_id):
         await db.execute(
             select(User)
             .join(Role, User.role_id == Role.id)
-            .where(Role.name == "Super Admin")
+            .where(Role.name == SUPER_ADMIN_ROLE)
             .limit(1)
         )
     ).scalar_one_or_none()
@@ -254,7 +270,7 @@ async def _ensure_super_admin(db, role_id):
         User(
             email=sa_email,
             first_name="System",
-            last_name="Super Admin",
+            last_name=SUPER_ADMIN_ROLE,
             hashed_password=get_password_hash(bootstrap_password),
             role_id=role_id,
             is_active=True,
@@ -301,7 +317,7 @@ async def _run_seed():
         await db.commit()
 
         # 3. Super Admin bootstrap (explicit seed only; create-only).
-        await _ensure_super_admin(db, role_dict["Super Admin"].id)
+        await _ensure_super_admin(db, role_dict[SUPER_ADMIN_ROLE].id)
         # KPI formulas and assignments are authored by the existing internal
         # Super Admin, not by the demo employee used for assignment coverage.
         sa_user = (
@@ -309,7 +325,7 @@ async def _run_seed():
                 select(User)
                 .join(Role, User.role_id == Role.id)
                 .where(
-                    Role.name == "Super Admin",
+                    Role.name == SUPER_ADMIN_ROLE,
                     User.is_deleted.is_(False),
                     User.is_active.is_(True),
                 )
@@ -350,55 +366,55 @@ async def _run_seed():
         finance_dept_id = dept_dict["Finance & Account"].id
         
         formulas = [
-            {"formula_title": "Cashier KPI (MDY)", "pos": "Cashier", "region": "MDY Office", "lvl": "L2", "cats": [
-                {"name": "Cash Handling Accuracy & Reconciliation", "weight": 0.30, "max_score": 5.0, "deductions": [{"name": "စာရင်းလွဲချော်မှု", "measure_type": "count", "rules": STRICT_ERROR_RULES}]},
+            {"formula_title": CASHIER_KPI_MDY, "pos": "Cashier", "region": MDY_OFFICE, "lvl": "L2", "cats": [
+                {"name": "Cash Handling Accuracy & Reconciliation", "weight": 0.30, "max_score": 5.0, "deductions": [{"name": ACCOUNTING_ERROR_DEDUCTION, "measure_type": "count", "rules": STRICT_ERROR_RULES}]},
                 {"name": "Voucher Management & Ledger Entry", "weight": 0.30, "max_score": 5.0, "deductions": [{"name": "ဘောက်ချာမှန်ကန်မှု ရာခိုင်နှုန်း", "measure_type": "percentage", "rules": VOUCHER_PERCENTAGE_RULES}]},
-                {"name": "Compliance with Financial Policies", "weight": 0.15, "max_score": 5.0, "deductions": [{"name": "စည်းကမ်းဖောက်ဖျက်မှု", "measure_type": "count", "rules": STANDARD_ERROR_RULES}]},
+                {"name": "Compliance with Financial Policies", "weight": 0.15, "max_score": 5.0, "deductions": [{"name": DISCIPLINE_VIOLATION_DEDUCTION, "measure_type": "count", "rules": STANDARD_ERROR_RULES}]},
                 {"name": "Cash Management & External Execution", "weight": 0.15, "max_score": 5.0, "deductions": [{"name": "ဘဏ်အပ်နှံမှု နောက်ကျခြင်း", "measure_type": "count", "rules": STANDARD_ERROR_RULES}]},
-                {"name": "Attendance, Punctuality & Support", "weight": 0.10, "max_score": 5.0, "deductions": ATTENDANCE_RULES}
+                {"name": ATTENDANCE_SUPPORT_CATEGORY, "weight": 0.10, "max_score": 5.0, "deductions": ATTENDANCE_RULES}
             ]},
-            {"formula_title": "Cashier KPI (YGN)", "pos": "Cashier", "region": "YGN Office", "lvl": "L2", "cats": [
-                {"name": "Cash Handling Accuracy & Reconciliation", "weight": 0.30, "max_score": 5.0, "deductions": [{"name": "စာရင်းလွဲချော်မှု", "measure_type": "count", "rules": STRICT_ERROR_RULES}]},
+            {"formula_title": "Cashier KPI (YGN)", "pos": "Cashier", "region": YGN_OFFICE, "lvl": "L2", "cats": [
+                {"name": "Cash Handling Accuracy & Reconciliation", "weight": 0.30, "max_score": 5.0, "deductions": [{"name": ACCOUNTING_ERROR_DEDUCTION, "measure_type": "count", "rules": STRICT_ERROR_RULES}]},
                 {"name": "Voucher Management & Ledger Entry", "weight": 0.30, "max_score": 5.0, "deductions": [{"name": "ဘောက်ချာမှန်ကန်မှု ရာခိုင်နှုန်း", "measure_type": "percentage", "rules": VOUCHER_PERCENTAGE_RULES}]},
-                {"name": "Compliance with Financial Policies", "weight": 0.15, "max_score": 5.0, "deductions": [{"name": "စည်းကမ်းဖောက်ဖျက်မှု", "measure_type": "count", "rules": STANDARD_ERROR_RULES}]},
+                {"name": "Compliance with Financial Policies", "weight": 0.15, "max_score": 5.0, "deductions": [{"name": DISCIPLINE_VIOLATION_DEDUCTION, "measure_type": "count", "rules": STANDARD_ERROR_RULES}]},
                 {"name": "Cash Management & External Execution", "weight": 0.15, "max_score": 5.0, "deductions": [{"name": "ဘဏ်အပ်နှံမှု နောက်ကျခြင်း", "measure_type": "count", "rules": STANDARD_ERROR_RULES}]},
-                {"name": "Attendance, Punctuality & Support", "weight": 0.10, "max_score": 5.0, "deductions": ATTENDANCE_RULES}
+                {"name": ATTENDANCE_SUPPORT_CATEGORY, "weight": 0.10, "max_score": 5.0, "deductions": ATTENDANCE_RULES}
             ]},
-            {"formula_title": "Cash Accountant KPI", "pos": "Cash Accountant", "region": "MDY Office", "lvl": "L2", "cats": [
-                {"name": "Cash & Bank Accuracy & Reconciliation", "weight": 0.35, "max_score": 5.0, "deductions": [{"name": "စာရင်းလွဲချော်မှု", "measure_type": "count", "rules": STRICT_ERROR_RULES}]},
-                {"name": "Reporting Timeliness & Verification", "weight": 0.25, "max_score": 5.0, "deductions": [{"name": "Report နောက်ကျခြင်း", "measure_type": "count", "rules": STANDARD_ERROR_RULES}]},
-                {"name": "Compliance, Documentation & Security", "weight": 0.20, "max_score": 5.0, "deductions": [{"name": "စည်းကမ်းဖောက်ဖျက်မှု", "measure_type": "count", "rules": STANDARD_ERROR_RULES}]},
+            {"formula_title": "Cash Accountant KPI", "pos": "Cash Accountant", "region": MDY_OFFICE, "lvl": "L2", "cats": [
+                {"name": "Cash & Bank Accuracy & Reconciliation", "weight": 0.35, "max_score": 5.0, "deductions": [{"name": ACCOUNTING_ERROR_DEDUCTION, "measure_type": "count", "rules": STRICT_ERROR_RULES}]},
+                {"name": "Reporting Timeliness & Verification", "weight": 0.25, "max_score": 5.0, "deductions": [{"name": REPORT_LATE_DEDUCTION, "measure_type": "count", "rules": STANDARD_ERROR_RULES}]},
+                {"name": "Compliance, Documentation & Security", "weight": 0.20, "max_score": 5.0, "deductions": [{"name": DISCIPLINE_VIOLATION_DEDUCTION, "measure_type": "count", "rules": STANDARD_ERROR_RULES}]},
                 {"name": "Audit Readiness & Team Support", "weight": 0.10, "max_score": 5.0, "deductions": [{"name": "စာရင်းစစ်ဆေးရာတွင် အမှားတွေ့ရှိမှု", "measure_type": "count", "rules": STANDARD_ERROR_RULES}]},
-                {"name": "Attendance, Punctuality & Flexibility", "weight": 0.10, "max_score": 5.0, "deductions": ATTENDANCE_RULES}
+                {"name": ATTENDANCE_FLEXIBILITY_CATEGORY, "weight": 0.10, "max_score": 5.0, "deductions": ATTENDANCE_RULES}
             ]},
-            {"formula_title": "AP/AR Accountant KPI", "pos": "AP/AR Accountant", "region": "MDY Office", "lvl": "L2", "cats": [
+            {"formula_title": "AP/AR Accountant KPI", "pos": "AP/AR Accountant", "region": MDY_OFFICE, "lvl": "L2", "cats": [
                 {"name": "Accounts Payable (AP) Control", "weight": 0.30, "max_score": 5.0, "deductions": [{"name": "ပေးရန်ကျန်စာရင်း အမှားအယွင်း", "measure_type": "count", "rules": STANDARD_ERROR_RULES}]},
                 {"name": "Accounts Receivable (AR) Control", "weight": 0.30, "max_score": 5.0, "deductions": [{"name": "ရရန်ကျန်စာရင်း အမှားအယွင်း", "measure_type": "count", "rules": STANDARD_ERROR_RULES}]},
-                {"name": "Compliance, Policy Adherence & Security", "weight": 0.20, "max_score": 5.0, "deductions": [{"name": "စည်းကမ်းဖောက်ဖျက်မှု", "measure_type": "count", "rules": STANDARD_ERROR_RULES}]},
-                {"name": "Variance Reporting & Stakeholder Support", "weight": 0.10, "max_score": 5.0, "deductions": [{"name": "Report နောက်ကျခြင်း", "measure_type": "count", "rules": STANDARD_ERROR_RULES}]},
-                {"name": "Attendance, Punctuality & Support", "weight": 0.10, "max_score": 5.0, "deductions": ATTENDANCE_RULES}
+                {"name": "Compliance, Policy Adherence & Security", "weight": 0.20, "max_score": 5.0, "deductions": [{"name": DISCIPLINE_VIOLATION_DEDUCTION, "measure_type": "count", "rules": STANDARD_ERROR_RULES}]},
+                {"name": "Variance Reporting & Stakeholder Support", "weight": 0.10, "max_score": 5.0, "deductions": [{"name": REPORT_LATE_DEDUCTION, "measure_type": "count", "rules": STANDARD_ERROR_RULES}]},
+                {"name": ATTENDANCE_SUPPORT_CATEGORY, "weight": 0.10, "max_score": 5.0, "deductions": ATTENDANCE_RULES}
             ]},
-            {"formula_title": "Stock Accountant KPI (MDY)", "pos": "Stock Accountant", "region": "MDY Office", "lvl": "L2", "cats": [
+            {"formula_title": "Stock Accountant KPI (MDY)", "pos": "Stock Accountant", "region": MDY_OFFICE, "lvl": "L2", "cats": [
                 {"name": "Inventory Control & Ledger Accuracy", "weight": 0.35, "max_score": 5.0, "deductions": [{"name": "ပစ္စည်းစာရင်းကွာဟမှု", "measure_type": "count", "rules": STRICT_ERROR_RULES}]},
                 {"name": "Costing Accuracy & Variance Analysis", "weight": 0.25, "max_score": 5.0, "deductions": [{"name": "တန်ဖိုးတွက်ချက်မှု အမှား", "measure_type": "count", "rules": STANDARD_ERROR_RULES}]},
                 {"name": "Stock Reconciliation & Risk Management", "weight": 0.20, "max_score": 5.0, "deductions": [{"name": "Reconciliation လွဲချော်မှု", "measure_type": "count", "rules": STANDARD_ERROR_RULES}]},
-                {"name": "Reporting Timeliness & Compliance", "weight": 0.10, "max_score": 5.0, "deductions": [{"name": "Report နောက်ကျခြင်း", "measure_type": "count", "rules": STANDARD_ERROR_RULES}]},
-                {"name": "Attendance, Punctuality & Flexibility", "weight": 0.10, "max_score": 5.0, "deductions": ATTENDANCE_RULES}
+                {"name": "Reporting Timeliness & Compliance", "weight": 0.10, "max_score": 5.0, "deductions": [{"name": REPORT_LATE_DEDUCTION, "measure_type": "count", "rules": STANDARD_ERROR_RULES}]},
+                {"name": ATTENDANCE_FLEXIBILITY_CATEGORY, "weight": 0.10, "max_score": 5.0, "deductions": ATTENDANCE_RULES}
             ]},
-            {"formula_title": "Stock Accountant KPI (YGN)", "pos": "Stock Accountant", "region": "YGN Office", "lvl": "L2", "cats": [
+            {"formula_title": "Stock Accountant KPI (YGN)", "pos": "Stock Accountant", "region": YGN_OFFICE, "lvl": "L2", "cats": [
                 {"name": "Inventory Control & Ledger Accuracy", "weight": 0.35, "max_score": 5.0, "deductions": [{"name": "ပစ္စည်းစာရင်းကွာဟမှု", "measure_type": "count", "rules": STRICT_ERROR_RULES}]},
                 {"name": "Costing Accuracy & Variance Analysis", "weight": 0.25, "max_score": 5.0, "deductions": [{"name": "တန်ဖိုးတွက်ချက်မှု အမှား", "measure_type": "count", "rules": STANDARD_ERROR_RULES}]},
                 {"name": "Stock Reconciliation & Risk Management", "weight": 0.20, "max_score": 5.0, "deductions": [{"name": "Reconciliation လွဲချော်မှု", "measure_type": "count", "rules": STANDARD_ERROR_RULES}]},
-                {"name": "Reporting Timeliness & Compliance", "weight": 0.10, "max_score": 5.0, "deductions": [{"name": "Report နောက်ကျခြင်း", "measure_type": "count", "rules": STANDARD_ERROR_RULES}]},
-                {"name": "Attendance, Punctuality & Flexibility", "weight": 0.10, "max_score": 5.0, "deductions": ATTENDANCE_RULES}
+                {"name": "Reporting Timeliness & Compliance", "weight": 0.10, "max_score": 5.0, "deductions": [{"name": REPORT_LATE_DEDUCTION, "measure_type": "count", "rules": STANDARD_ERROR_RULES}]},
+                {"name": ATTENDANCE_FLEXIBILITY_CATEGORY, "weight": 0.10, "max_score": 5.0, "deductions": ATTENDANCE_RULES}
             ]},
-            {"formula_title": "Senior Accountant KPI", "pos": SENIOR_ACCOUNTANT_POSITION, "region": "YGN Office", "lvl": "L1", "cats": [
+            {"formula_title": "Senior Accountant KPI", "pos": SENIOR_ACCOUNTANT_POSITION, "region": YGN_OFFICE, "lvl": "L1", "cats": [
                 {"name": "Financial Reporting & GL Accuracy", "weight": 0.25, "max_score": 5.0, "deductions": [{"name": "GL Report အမှား", "measure_type": "count", "rules": STRICT_ERROR_RULES}]},
                 {"name": "Internal Control & Budget Management", "weight": 0.25, "max_score": 5.0, "deductions": [{"name": "ဘတ်ဂျက်လွဲချော်မှု", "measure_type": "count", "rules": STANDARD_ERROR_RULES}]},
                 {"name": "Cost Accounting & Inventory Oversight", "weight": 0.20, "max_score": 5.0, "deductions": [{"name": "Costing အမှားအယွင်း", "measure_type": "count", "rules": STANDARD_ERROR_RULES}]},
                 {"name": "Leadership & Team Accountability", "weight": 0.10, "max_score": 5.0, "deductions": [{"name": "Team စီမံခန့်ခွဲမှု အားနည်းခြင်း", "measure_type": "count", "rules": STANDARD_ERROR_RULES}]},
                 {"name": "Audit Readiness & Compliance", "weight": 0.10, "max_score": 5.0, "deductions": [{"name": "Compliance လိုက်နာမှု အားနည်းခြင်း", "measure_type": "count", "rules": STANDARD_ERROR_RULES}]},
-                {"name": "Attendance, Punctuality & Flexibility", "weight": 0.10, "max_score": 5.0, "deductions": ATTENDANCE_RULES}
+                {"name": ATTENDANCE_FLEXIBILITY_CATEGORY, "weight": 0.10, "max_score": 5.0, "deductions": ATTENDANCE_RULES}
             ]}
         ]
 
@@ -555,8 +571,8 @@ async def _run_seed():
         stmt = select(User).where(User.email == test_email)
         test_user = (await db.execute(stmt)).scalars().first()
         
-        if "Cashier KPI (MDY)" in created_formula_maps:
-            f_map = created_formula_maps["Cashier KPI (MDY)"]
+        if CASHIER_KPI_MDY in created_formula_maps:
+            f_map = created_formula_maps[CASHIER_KPI_MDY]
 
             if not test_user and demo_password:
                 test_user = User(
@@ -565,7 +581,7 @@ async def _run_seed():
                     last_name="Cashier",
                     position_id=f_map["position_id"],
                     hashed_password=get_password_hash(demo_password),
-                    role_id=role_dict["Department User"].id,
+                    role_id=role_dict[DEPARTMENT_USER_ROLE].id,
                     is_active=True,
                     must_change_password=False,
                 )
@@ -668,7 +684,7 @@ async def _run_seed():
                 last_name=last_name,
                 position_id=position.id,
                 hashed_password=get_password_hash(password),
-                role_id=role_dict["Department User"].id,
+                role_id=role_dict[DEPARTMENT_USER_ROLE].id,
                 is_active=True,
                 must_change_password=False,
             )
@@ -743,15 +759,15 @@ async def _run_seed():
         if getattr(settings, "SEED_TEST_ACCOUNTS_ENABLED", False):
             await _ensure_local_test_account(
                 resolve_test_account("SUPERADMIN"),
-                "Super Admin",
-                "Phase 2.5",
-                "Super Admin",
+                SUPER_ADMIN_ROLE,
+                PHASE_2_5,
+                SUPER_ADMIN_ROLE,
                 must_change_password=False,
             )
             await _ensure_local_test_account(
                 resolve_test_account("ADMIN"),
                 "Admin",
-                "Phase 2.5",
+                PHASE_2_5,
                 "Admin",
                 must_change_password=False,
                 department_id=finance_dept_id,
@@ -760,8 +776,8 @@ async def _run_seed():
             )
             await _ensure_local_test_account(
                 resolve_test_account("FIRST_LOGIN"),
-                "Department User",
-                "Phase 2.5",
+                DEPARTMENT_USER_ROLE,
+                PHASE_2_5,
                 "First Login",
                 must_change_password=True,
                 department_id=finance_dept_id,

@@ -42,9 +42,9 @@ def _category_entries(formula: Any) -> list[dict[str, Any]]:
     ]
 
 
-def metric_headers_for_formula(formula: Any) -> tuple[MetricHeader, ...]:
-    """Build formula columns from persisted scoring rules and category metadata."""
-    categories = _category_entries(formula)
+def _rule_metric_headers(
+    categories: list[dict[str, Any]], scoring_rules: Any
+) -> dict[str, MetricHeader]:
     rule_labels: dict[str, set[str]] = {}
     for category in categories:
         for deduction in category.get("deductions") or []:
@@ -56,7 +56,7 @@ def metric_headers_for_formula(formula: Any) -> tuple[MetricHeader, ...]:
                 rule_labels.setdefault(key, set()).add(str(label).strip())
 
     fields: dict[str, MetricHeader] = {}
-    for rule in getattr(formula, "scoring_rules", None) or []:
+    for rule in scoring_rules or []:
         persisted_name = str(getattr(rule, "rule_name", "") or "").strip()
         key = normalize_header(persisted_name)
         if not key:
@@ -70,7 +70,12 @@ def metric_headers_for_formula(formula: Any) -> tuple[MetricHeader, ...]:
             )
         label = next(iter(labels)) if len(labels) == 1 else persisted_name
         _add_field(fields, MetricHeader(label=label, key=key, source="rule"))
+    return fields
 
+
+def _target_metric_headers(
+    categories: list[dict[str, Any]], fields: dict[str, MetricHeader]
+) -> None:
     for category in categories:
         if str(category.get("evaluation_type", "DEDUCTION")).upper() != "TARGET":
             continue
@@ -78,6 +83,15 @@ def metric_headers_for_formula(formula: Any) -> tuple[MetricHeader, ...]:
         key = normalize_header(label)
         if key:
             _add_field(fields, MetricHeader(label=label, key=key, source="target category"))
+
+
+def metric_headers_for_formula(formula: Any) -> tuple[MetricHeader, ...]:
+    """Build formula columns from persisted scoring rules and category metadata."""
+    categories = _category_entries(formula)
+    fields = _rule_metric_headers(
+        categories, getattr(formula, "scoring_rules", None)
+    )
+    _target_metric_headers(categories, fields)
 
     metadata_keys = {normalize_header(header) for header in EMPLOYEE_HEADERS}
     for field in fields.values():

@@ -288,7 +288,7 @@
                 <td class="p-4 sm:p-6">${getStatusBadge(period.status)}</td>
                 <td class="p-4 sm:p-6 text-right flex justify-end gap-2 items-center border-b border-slate-200/60">
                     <div class="relative inline-block w-36 sm:w-48">
-                        <select onchange="handleStatusChange('${period.id}', this, '${escapeHTML(period.status)}')" class="status-select w-full bg-white border border-slate-200 rounded-xl px-3 sm:px-4 py-2 sm:py-3 text-[10px] sm:text-xs font-black uppercase tracking-wider text-slate-700 hover:bg-slate-50 hover:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 shadow-sm cursor-pointer transition-all text-ellipsis">
+                        <select data-period-id="${escapeHTML(period.id)}" data-current-status="${escapeHTML(period.status)}" class="status-select w-full bg-white border border-slate-200 rounded-xl px-3 sm:px-4 py-2 sm:py-3 text-[10px] sm:text-xs font-black uppercase tracking-wider text-slate-700 hover:bg-slate-50 hover:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 shadow-sm cursor-pointer transition-all text-ellipsis">
                             <option value="" disabled selected>Change Status</option>
                             <option value="OPEN" ${period.status === 'OPEN' ? 'disabled' : ''}>Activate (OPEN)</option>
                             <option value="FINALIZED" ${period.status === 'FINALIZED' ? 'disabled' : ''}>Conclude (FINALIZED)</option>
@@ -297,13 +297,21 @@
                     </div>
                     
                     ${period.status === 'DRAFT' ? `
-                        <button onclick="deletePeriod('${period.id}')" class="text-slate-400 hover:text-white hover:bg-red-500 p-2 sm:p-2.5 rounded-xl border border-slate-200 hover:border-red-500 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-red-500 shrink-0" title="Delete Draft Period">
+                        <button type="button" data-period-delete="${escapeHTML(period.id)}" class="text-slate-400 hover:text-white hover:bg-red-500 p-2 sm:p-2.5 rounded-xl border border-slate-200 hover:border-red-500 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-red-500 shrink-0" title="Delete Draft Period">
                             <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                         </button>
                     ` : ''}
                 </td>
             </tr>
         `).join('');
+        tbody.querySelectorAll(".status-select").forEach(select => {
+            select.addEventListener("change", () => {
+                handleStatusChange(select.dataset.periodId, select, select.dataset.currentStatus);
+            });
+        });
+        tbody.querySelectorAll("[data-period-delete]").forEach(button => {
+            button.addEventListener("click", () => deletePeriod(button.dataset.periodDelete));
+        });
     }
 
     async function savePeriod(e) {

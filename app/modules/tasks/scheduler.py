@@ -18,7 +18,8 @@ async def generate_recurring_tasks(db: AsyncSession):
     # 🌟 Task များနှင့် ၎င်းတို့၏ Owner (User) အချက်အလက်များကိုပါ တစ်ပါတည်း ဆွဲထုတ်မည်
     stmt = select(Task).options(selectinload(Task.owner)).where(
         Task.frequency != TaskFrequency.ONCE, 
-        Task.next_run_date <= now
+        Task.next_run_date <= now,
+        Task.is_deleted.is_(False),
     )
     result = await db.execute(stmt)
     tasks = result.scalars().all()
@@ -32,9 +33,7 @@ async def generate_recurring_tasks(db: AsyncSession):
                 print(f"Skipping auto-task for {owner.email} (On Leave)")
                 
                 # Task အသစ်မဖန်တီးသော်လည်း နောက်တစ်ကြိမ် Date ကိုမူ Update လုပ်ပေးရမည် (Stuck မဖြစ်စေရန်)
-                if task.frequency == TaskFrequency.DAILY: task.next_run_date = now + timedelta(days=1)
-                elif task.frequency == TaskFrequency.WEEKLY: task.next_run_date = now + timedelta(weeks=1)
-                elif task.frequency == TaskFrequency.MONTHLY: task.next_run_date = now + timedelta(days=30)
+                _advance_next_run_date(task, now)
                 db.add(task)
                 continue
 
@@ -50,12 +49,7 @@ async def generate_recurring_tasks(db: AsyncSession):
         db.add(new_task)
         
         # Next run date ကို Update ပြန်လုပ်မည်
-        if task.frequency == TaskFrequency.DAILY:
-            task.next_run_date = now + timedelta(days=1)
-        elif task.frequency == TaskFrequency.WEEKLY:
-            task.next_run_date = now + timedelta(weeks=1)
-        elif task.frequency == TaskFrequency.MONTHLY:
-            task.next_run_date = now + timedelta(days=30)
+        _advance_next_run_date(task, now)
             
         db.add(task)
             
@@ -69,7 +63,8 @@ async def process_task_escalation(db: AsyncSession):
     stmt = select(Task).where(
         Task.status.in_([TaskStatus.PENDING_L1, TaskStatus.PENDING_L0]),
         Task.updated_at <= escalation_threshold,
-        Task.is_escalated == False
+        Task.is_escalated == False,
+        Task.is_deleted.is_(False),
     )
     result = await db.execute(stmt)
     stale_tasks = result.scalars().all()
@@ -96,3 +91,21 @@ async def process_task_escalation(db: AsyncSession):
 async def send_task_reminders(db: AsyncSession):
     """Dispatch the existing dashboard deadline reminders under the scheduler lock."""
     await check_and_send_task_reminders(db)
+
+
+def _advance_next_run_date(task: Task, now: datetime) -> None:
+    if task.frequency == TaskFrequency.DAILY:
+        task.next_run_date = now + timedelta(days=1)
+    elif task.frequency == TaskFrequency.WEEKLY:
+        task.next_run_date = now + timedelta(weeks=1)
+    elif task.frequency == TaskFrequency.MONTHLY:
+        task.next_run_date = now + timedelta(days=30)
+    elif task.frequency == TaskFrequency.YEARLY:
+        scheduled_date = task.next_run_date or now
+        try:
+            task.next_run_date = scheduled_date.replace(year=scheduled_date.year + 1)
+        except ValueError:
+            task.next_run_date = scheduled_date.replace(
+                year=scheduled_date.year + 1,
+                day=28,
+            )

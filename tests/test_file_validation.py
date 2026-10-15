@@ -1,4 +1,6 @@
 import io
+from types import SimpleNamespace
+from zipfile import ZIP_DEFLATED, ZipFile
 
 import pytest
 from fastapi import HTTPException, UploadFile
@@ -51,3 +53,43 @@ async def test_production_fails_closed_without_magic(monkeypatch):
     with pytest.raises(HTTPException) as exc:
         file_handler._detect_mime_type(b"%PDF", "evidence.pdf")
     assert exc.value.status_code == 503
+
+
+def test_task_upload_mime_detection_fails_closed_without_magic(monkeypatch):
+    from app.modules.tasks import router as tasks_router
+
+    monkeypatch.setattr(tasks_router, "magic", None)
+    with pytest.raises(HTTPException) as exc_info:
+        tasks_router._detect_mime_type(b"%PDF-1.7", "evidence.pdf")
+    assert exc_info.value.status_code == 503
+
+
+def test_task_upload_mime_detection_rejects_extension_mismatch(monkeypatch):
+    from app.modules.tasks import router as tasks_router
+
+    monkeypatch.setattr(
+        tasks_router,
+        "magic",
+        SimpleNamespace(from_buffer=lambda content, mime: "application/pdf"),
+    )
+    with pytest.raises(HTTPException) as exc_info:
+        tasks_router._detect_mime_type(b"%PDF-1.7", "evidence.jpg")
+    assert exc_info.value.status_code == 415
+
+
+def test_task_upload_mime_detection_recognizes_office_archive_structure(monkeypatch):
+    from app.modules.tasks import router as tasks_router
+
+    archive_bytes = io.BytesIO()
+    with ZipFile(archive_bytes, "w", compression=ZIP_DEFLATED) as archive:
+        archive.writestr("[Content_Types].xml", "<Types/>")
+        archive.writestr("xl/workbook.xml", "<workbook/>")
+    monkeypatch.setattr(
+        tasks_router,
+        "magic",
+        SimpleNamespace(from_buffer=lambda content, mime: "application/zip"),
+    )
+
+    detected = tasks_router._detect_mime_type(archive_bytes.getvalue(), "report.xlsx")
+
+    assert detected == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"

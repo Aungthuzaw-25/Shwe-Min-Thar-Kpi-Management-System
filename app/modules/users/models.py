@@ -24,6 +24,7 @@ USER_TABLE = "users"
 ROLE_PERMISSION_TABLE = "role_permissions"
 PERMISSION_TABLE = "permissions"
 PERMISSIONS_ROLES_OVERLAP = "permissions,roles"
+USER_ID_FOREIGN_KEY = "users.id"
 
 
 # ==============================================================================
@@ -70,7 +71,7 @@ class User(BaseModel):
     is_on_leave = Column(Boolean, default=False)
     leave_start_date = Column(DateTime, nullable=True)
     leave_end_date = Column(DateTime, nullable=True)
-    delegated_to_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    delegated_to_id = Column(UUID(as_uuid=True), ForeignKey(USER_ID_FOREIGN_KEY), nullable=True)
     
     role_id = Column(UUID(as_uuid=True), ForeignKey("roles.id"), nullable=False, index=True)
     
@@ -139,7 +140,7 @@ class UserPermissionOverride(BaseModel):
     """Explicit allow/deny overrides for one user, taking precedence over role grants."""
     __tablename__ = "user_permission_overrides"
 
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey(USER_ID_FOREIGN_KEY, ondelete="CASCADE"), nullable=False, index=True)
     permission_id = Column(UUID(as_uuid=True), ForeignKey("permissions.id", ondelete="CASCADE"), nullable=False, index=True)
     allowed = Column(Boolean, nullable=False)
     scope = Column(String(20), nullable=False, default="ALL")
@@ -159,7 +160,7 @@ class OAuthAccount(BaseModel):
 
     __tablename__ = "oauth_accounts"
 
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey(USER_ID_FOREIGN_KEY, ondelete="CASCADE"), nullable=False, index=True)
     provider = Column(String(32), nullable=False)
     issuer = Column(String(255), nullable=False)
     tenant_id = Column(String(128), nullable=False, default="")

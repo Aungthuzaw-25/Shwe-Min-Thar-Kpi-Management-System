@@ -34,6 +34,7 @@ router = APIRouter()
 superadmin_router = APIRouter()
 admin_router = APIRouter()
 unified_router = APIRouter()
+SUPER_ADMIN_ROLE_MARKER = "SUPER ADMIN"
 
 
 def _normalize_role_name(value: str | None) -> str:
@@ -92,7 +93,7 @@ async def fetch_unified_dashboard_summary(
     role_name = _normalize_role_name(
         getattr(getattr(current_user, "role", None), "name", None)
     )
-    if "SUPER ADMIN" in role_name or role_name == "HR":
+    if SUPER_ADMIN_ROLE_MARKER in role_name or role_name == "HR":
         department_ids = list(
             (
                 await db.execute(
@@ -141,7 +142,7 @@ async def _get_executive_scope(
         .replace("LEVEL ", "L")
         for row in memberships
     }
-    if "SUPER ADMIN" in role_name or role_name == "HR":
+    if SUPER_ADMIN_ROLE_MARKER in role_name or role_name == "HR":
         visible_departments = None
     else:
         visible_departments = list(
@@ -151,7 +152,7 @@ async def _get_executive_scope(
         "ADMIN" in role_name
         or role_name == "HR"
         or bool(levels.intersection({"L0", "L1"}))
-        or "SUPER ADMIN" in role_name
+        or SUPER_ADMIN_ROLE_MARKER in role_name
     )
     scope_user_ids = await _get_scope_user_ids(db, current_user)
     if scope_user_ids is not None:
@@ -268,7 +269,7 @@ async def _get_scope_user_ids(
     db: AsyncSession, current_user: User
 ) -> list[UUID] | None:
     role_name = _normalize_role_name(getattr(getattr(current_user, "role", None), "name", None))
-    if "SUPER ADMIN" in role_name or "SUPERADMIN" in role_name:
+    if SUPER_ADMIN_ROLE_MARKER in role_name or "SUPERADMIN" in role_name:
         return None
 
     if "ADMIN" in role_name:
@@ -506,7 +507,7 @@ async def fetch_process_tracking_summary(
 
 async def _get_admin_scope_departments(db: AsyncSession, current_user: User) -> list[str] | None:
     role_name = _normalize_role_name(getattr(getattr(current_user, "role", None), "name", None))
-    if "SUPER ADMIN" in role_name:
+    if SUPER_ADMIN_ROLE_MARKER in role_name:
         return None
 
     dept_ids = (await db.execute(

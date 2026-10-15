@@ -1,4 +1,4 @@
-name: KPI System CI Pipeline
+;name: KPI System CI Pipeline
 
 "on":
   push:
@@ -31,7 +31,7 @@ jobs:
 
       - name: Install Node dependencies
         working-directory: web
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Run Node tests
         working-directory: web

@@ -75,7 +75,7 @@
     {% if user_role in ['Super Admin', 'Admin'] %}
     
     <!-- 📱 MOBILE RESPONSIVE FIX: Sidebar Backdrop Overlay -->
-    <button id="sidebarBackdrop" class="fixed inset-0 bg-slate-900/50 z-20 hidden md:hidden transition-opacity" type="button" onclick="toggleMobileSidebar()" aria-label="Close mobile sidebar" onkeypress="if(event.key==='Enter' || event.key===' ') toggleMobileSidebar()" onkeydown="if(event.key==='Enter' || event.key===' ') toggleMobileSidebar()" onkeyup="if(event.key==='Enter' || event.key===' ') toggleMobileSidebar()"></button>
+    <button id="sidebarBackdrop" class="fixed inset-0 bg-slate-900/50 z-20 hidden md:hidden transition-opacity" type="button" onclick="toggleMobileSidebar()" aria-label="Close mobile sidebar"></button>
 
     <!-- 📱 MOBILE RESPONSIVE FIX: absolute positioning and transform classes -->
     <aside id="mainSidebar" class="w-64 bg-kpi-red text-white flex-col h-full shadow-xl z-30 shrink-0 absolute md:relative inset-y-0 left-0 transform -translate-x-full md:translate-x-0 transition-transform duration-300 flex">
@@ -335,8 +335,7 @@
                         return true;
                     }
 
-                    const refreshText = await refreshResponse.text().catch(() => '');
-                    console.warn('[AUTH] Refresh failed:', refreshResponse.status, refreshText);
+                    console.warn('[AUTH] Refresh failed:', refreshResponse.status);
                     return false;
                 } catch (error) {
                     console.warn('[AUTH] Refresh request failed:', error);
@@ -509,7 +508,18 @@
                 renderNotifications(notifications, unreadCount);
             } catch (err) {
                 const listContainer = document.getElementById("notifList");
-                if (listContainer) listContainer.innerHTML = '<div class="p-6 text-center text-red-600 text-xs font-medium">Unable to load notifications. <button type="button" class="underline font-bold" onclick="fetchNotifications()">Retry</button></div>';
+                if (listContainer) {
+                    const message = document.createElement("div");
+                    message.className = "p-6 text-center text-red-600 text-xs font-medium";
+                    message.append(document.createTextNode("Unable to load notifications. "));
+                    const retry = document.createElement("button");
+                    retry.type = "button";
+                    retry.className = "underline font-bold";
+                    retry.textContent = "Retry";
+                    retry.addEventListener("click", fetchNotifications);
+                    message.appendChild(retry);
+                    listContainer.replaceChildren(message);
+                }
                 console.warn("[NOTIFICATIONS]", err);
             }
         }
@@ -527,26 +537,39 @@
             }
 
             if (notifications.length === 0) {
-                listContainer.innerHTML = `<div class="p-6 text-center text-slate-400 text-xs font-medium">No new notifications</div>`;
+                const emptyMessage = document.createElement("div");
+                emptyMessage.className = "p-6 text-center text-slate-400 text-xs font-medium";
+                emptyMessage.textContent = "No new notifications";
+                listContainer.replaceChildren(emptyMessage);
                 return;
             }
 
-            listContainer.innerHTML = notifications.map(n => {
-                const bgClass = n.is_read ? "bg-white" : "bg-blue-50/40";
-                const dot = n.is_read ? "" : `<div class="w-2 h-2 rounded-full bg-blue-600 mt-1.5 shrink-0 shadow-sm"></div>`;
-                
-                // 🌟 SECURITY FIX: Applied window.escapeHTML
-                return `
-                    <button type="button" data-notification-id="${window.escapeHTML(n.id)}" onclick="viewNotificationDetail('${window.escapeHTML(n.id)}')" class="w-full text-left p-4 hover:bg-slate-50 transition flex gap-3 ${bgClass}">
-                        ${dot}
-                        <div class="flex-1 min-w-0">
-                            <p class="text-[13px] font-extrabold text-blue-950 mb-0.5 truncate">${window.escapeHTML(n.title)}</p>
-                            <p class="text-[11px] text-slate-600 leading-snug line-clamp-2">${window.escapeHTML(n.message)}</p>
-                            <p class="text-[9px] font-bold text-slate-400 mt-2">${formatAppDate(n.created_at)}</p>
-                        </button>
-                    </div>
-                `;
-            }).join('');
+            const notificationItems = notifications.map(notification => {
+                const item = document.createElement("button");
+                item.type = "button";
+                item.className = `w-full text-left p-4 hover:bg-slate-50 transition flex gap-3 ${notification.is_read ? "bg-white" : "bg-blue-50/40"}`;
+                item.addEventListener("click", () => viewNotificationDetail(notification.id));
+                if (!notification.is_read) {
+                    const dot = document.createElement("div");
+                    dot.className = "w-2 h-2 rounded-full bg-blue-600 mt-1.5 shrink-0 shadow-sm";
+                    item.appendChild(dot);
+                }
+                const content = document.createElement("div");
+                content.className = "flex-1 min-w-0";
+                const title = document.createElement("p");
+                title.className = "text-[13px] font-extrabold text-blue-950 mb-0.5 truncate";
+                title.textContent = notification.title || "Notification";
+                const text = document.createElement("p");
+                text.className = "text-[11px] text-slate-600 leading-snug line-clamp-2";
+                text.textContent = notification.message || "";
+                const createdAt = document.createElement("p");
+                createdAt.className = "text-[9px] font-bold text-slate-400 mt-2";
+                createdAt.textContent = formatAppDate(notification.created_at);
+                content.append(title, text, createdAt);
+                item.appendChild(content);
+                return item;
+            });
+            listContainer.replaceChildren(...notificationItems);
         }
 
         function formatAppDate(value) {

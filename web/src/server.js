@@ -40,7 +40,13 @@ export function createApp({
   registerActivityRoutes(app);
 
   app.use((error, request, response, _next) => {
-    console.error(`Web request failed for ${request.method} ${request.path}:`, error);
+    console.error(JSON.stringify({
+      level: "error",
+      message: "Web request failed",
+      method: request.method,
+      path: request.path,
+      error: error instanceof Error ? error.message : String(error),
+    }));
     if (response.headersSent) return;
     response.status(502).json({ detail: "The application service is temporarily unavailable." });
   });

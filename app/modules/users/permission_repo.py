@@ -54,7 +54,7 @@ async def assign_permissions_to_role(db: AsyncSession, role_id: UUID, permission
 # =====================================================================
 async def get_user_effective_permissions(
     db: AsyncSession, user_id: UUID
-) -> dict:
+) -> dict | None:
     """Compute the effective permission matrix for a user by merging
     role permissions with user-specific overrides.
 
@@ -87,24 +87,7 @@ async def get_user_effective_permissions(
 
     # Resolve overrides for the user's current department.  An explicit deny
     # wins over an allow when legacy data contains multiple scoped rows.
-    override_map: dict[str, UserPermissionOverride] = {}
-    for ov in (user.permission_overrides or []):
-        perm = getattr(ov, "permission", None)
-        if not perm:
-            continue
-        scope = (ov.scope or "ALL").upper()
-        applies = scope == "ALL" or (
-            scope == "DEPARTMENT"
-            and dept_id is not None
-            and str(ov.department_id) == str(dept_id)
-        )
-        if not applies:
-            continue
-        current = override_map.get(perm.code)
-        if current is None or (
-            ov.allowed is False and current.allowed is True
-        ):
-            override_map[perm.code] = ov
+    override_map = _effective_overrides(user, dept_id)
 
     # Build role permission codes set
     role_codes = set()
@@ -118,36 +101,7 @@ async def get_user_effective_permissions(
         code = perm.code
         override = override_map.get(code)
 
-        if override is not None:
-            # User override exists
-            effective.append({
-                "code": code,
-                "description": perm.description,
-                "allowed": override.allowed,
-                "source": "override" if override.allowed else "denied_override",
-                "scope": override.scope or "ALL",
-                "department_id": override.department_id,
-            })
-        elif code in role_codes:
-            # Inherited from role
-            effective.append({
-                "code": code,
-                "description": perm.description,
-                "allowed": True,
-                "source": "role",
-                "scope": "ALL",
-                "department_id": None,
-            })
-        else:
-            # Not granted
-            effective.append({
-                "code": code,
-                "description": perm.description,
-                "allowed": False,
-                "source": "default",
-                "scope": "ALL",
-                "department_id": None,
-            })
+        effective.append(_permission_entry(perm, override, code in role_codes))
 
     return {
         "user_id": user.id,
@@ -157,6 +111,53 @@ async def get_user_effective_permissions(
         "department_name": dept_name,
         "department_id": dept_id,
         "permissions": effective,
+    }
+
+
+def _effective_overrides(
+    user: User, department_id: UUID | None
+) -> dict[str, UserPermissionOverride]:
+    result: dict[str, UserPermissionOverride] = {}
+    for override in user.permission_overrides or []:
+        permission = getattr(override, "permission", None)
+        if not permission or not _override_applies(override, department_id):
+            continue
+        current = result.get(permission.code)
+        if current is None or (
+            override.allowed is False and current.allowed is True
+        ):
+            result[permission.code] = override
+    return result
+
+
+def _override_applies(
+    override: UserPermissionOverride, department_id: UUID | None
+) -> bool:
+    scope = (override.scope or "ALL").upper()
+    return scope == "ALL" or (
+        scope == "DEPARTMENT"
+        and department_id is not None
+        and str(override.department_id) == str(department_id)
+    )
+
+
+def _permission_entry(permission, override, granted_by_role: bool) -> dict:
+    if override is not None:
+        return {
+            "code": permission.code,
+            "description": permission.description,
+            "allowed": override.allowed,
+            "source": "override" if override.allowed else "denied_override",
+            "scope": override.scope or "ALL",
+            "department_id": override.department_id,
+        }
+    return {
+        "code": permission.code,
+        "description": permission.description,
+        "allowed": granted_by_role,
+        "source": "role" if granted_by_role else "default",
+        "scope": "ALL",
+        "department_id": None,
     }
 
 

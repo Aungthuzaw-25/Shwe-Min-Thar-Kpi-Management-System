@@ -31,6 +31,7 @@ from app.modules.kpi.models import (
 from app.modules.users.models import User
 
 router = APIRouter(prefix="/action-plans", tags=["KPI Action Plans"])
+KPI_RECORD_NOT_FOUND = "KPI Record not found."
 
 # Manager များ၊ HR နှင့် Admin များသာ Review လုပ်ခွင့်ရှိသည်
 reviewer_role = RoleChecker(["Super Admin", "Admin", "HR", "Department Head"])
@@ -46,7 +47,7 @@ async def _enforce_kpi_record_scope(
             raise
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="KPI Record not found.",
+            detail=KPI_RECORD_NOT_FOUND,
         ) from exc
 
 
@@ -66,7 +67,7 @@ async def submit_action_plan(
         ).where(KPIRecord.id == payload.kpi_record_id, KPIRecord.is_deleted == False)
     )).scalars().first()
     if not record:
-        raise HTTPException(status_code=404, detail="KPI Record not found.")
+        raise HTTPException(status_code=404, detail=KPI_RECORD_NOT_FOUND)
         
     await _enforce_kpi_record_scope(db, current_user, record.user_id)
     if record.user_id != current_user.id:
@@ -138,7 +139,7 @@ async def get_action_plan(
         )
     )).scalars().first()
     if not record:
-        raise HTTPException(status_code=404, detail="KPI Record not found.")
+        raise HTTPException(status_code=404, detail=KPI_RECORD_NOT_FOUND)
         
     await _enforce_kpi_record_scope(db, current_user, record.user_id)
 

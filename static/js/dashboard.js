@@ -30,15 +30,6 @@
     }).format(date);
   }
 
-  function escapeHTML(value) {
-    return String(value ?? '')
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
-  }
-
   // ---- Axios-lite fetch wrapper ----
   async function api(url, options = {}) {
     const headers = {
@@ -66,18 +57,32 @@
     const icon = icons[type] || icons.info;
     const id = 'toast-' + Date.now();
 
-    const toastHTML = `
-      <div class="toast-custom ${type}" id="${id}">
-        <div class="toast-header">
-          <i class="fas ${icon} me-2"></i>
-          <strong class="me-auto">KPI System</strong>
-          <small>${new Date().toLocaleTimeString()}</small>
-          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" onclick="document.getElementById('${id}').remove()"></button>
-        </div>
-        <div class="toast-body small">${message}</div>
-      </div>
-    `;
-    container.insertAdjacentHTML('beforeend', toastHTML);
+    const toast = document.createElement('div');
+    toast.className = `toast-custom ${type}`;
+    toast.id = id;
+
+    const header = document.createElement('div');
+    header.className = 'toast-header';
+    const iconElement = document.createElement('i');
+    iconElement.className = `fas ${icon} me-2`;
+    const title = document.createElement('strong');
+    title.className = 'me-auto';
+    title.textContent = 'KPI System';
+    const time = document.createElement('small');
+    time.textContent = new Date().toLocaleTimeString();
+    const closeButton = document.createElement('button');
+    closeButton.type = 'button';
+    closeButton.className = 'btn-close btn-close-white';
+    closeButton.dataset.bsDismiss = 'toast';
+    closeButton.setAttribute('aria-label', 'Close');
+    closeButton.addEventListener('click', () => toast.remove());
+    header.append(iconElement, title, time, closeButton);
+
+    const body = document.createElement('div');
+    body.className = 'toast-body small';
+    body.textContent = message;
+    toast.append(header, body);
+    container.appendChild(toast);
 
     setTimeout(() => {
       const el = document.getElementById(id);
@@ -135,16 +140,31 @@
       const list = document.getElementById('notificationList');
       if (!list || !Array.isArray(data)) return;
       if (data.length === 0) {
-        list.innerHTML = '<div class="notification-item text-muted text-center py-3">No notifications</div>';
+        const emptyMessage = document.createElement('div');
+        emptyMessage.className = 'notification-item text-muted text-center py-3';
+        emptyMessage.textContent = 'No notifications';
+        list.replaceChildren(emptyMessage);
         return;
       }
-      list.innerHTML = data.map(n => `
-        <div class="notification-item ${n.is_read ? '' : 'unread'}" onclick="markNotifRead('${n.id}')">
-          <div class="fw-semibold">${escapeHTML(n.title || 'Notification')}</div>
-          <div class="text-muted notification-message">${escapeHTML(n.message || '')}</div>
-          <div class="text-muted small">${formatApplicationTime(n.created_at)}</div>
-        </div>
-      `).join('');
+      const notificationItems = data.map(notification => {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = `notification-item w-full text-left ${notification.is_read ? '' : 'unread'}`;
+        item.addEventListener('click', () => window.markNotifRead(notification.id));
+
+        const title = document.createElement('div');
+        title.className = 'fw-semibold';
+        title.textContent = notification.title || 'Notification';
+        const message = document.createElement('div');
+        message.className = 'text-muted notification-message';
+        message.textContent = notification.message || '';
+        const createdAt = document.createElement('div');
+        createdAt.className = 'text-muted small';
+        createdAt.textContent = formatApplicationTime(notification.created_at);
+        item.append(title, message, createdAt);
+        return item;
+      });
+      list.replaceChildren(...notificationItems);
     } catch (error) {
       console.error('Unable to load notifications:', error);
     }

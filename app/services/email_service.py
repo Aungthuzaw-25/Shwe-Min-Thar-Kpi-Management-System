@@ -28,6 +28,7 @@ RESEND_API_BASE_URL = "https://api.resend.com"
 EMAIL_PROVIDER_TIMEOUT_SECONDS = 10.0
 DEFAULT_FROM_NAME = "Shwe Min Thar KPI Management System"
 RESEND_TEST_SENDER = "onboarding@resend.dev"
+EMAIL_PROVIDER_UNAVAILABLE_MESSAGE = "Unable to connect to the email provider."
 
 
 def _create_verified_ssl_context() -> ssl.SSLContext:
@@ -98,6 +99,36 @@ class EmailConfiguration:
 class EmailSecrets:
     resend_api_key: str | None
     smtp_password: str | None
+
+
+def _resend_payload(message: EmailMessage, configuration: EmailConfiguration) -> dict:
+    payload = {
+        "from": _sender(configuration, message),
+        "to": message.to,
+        "subject": message.subject,
+        "reply_to": message.reply_to or configuration.support_email,
+    }
+    if message.cc:
+        payload["cc"] = message.cc
+    if message.bcc:
+        payload["bcc"] = message.bcc
+    if message.text_body is not None:
+        payload["text"] = message.text_body
+    if message.html_body is not None:
+        payload["html"] = message.html_body
+    if message.attachments:
+        import base64
+
+        payload["attachments"] = [
+            {
+                "filename": attachment.filename,
+                "content": base64.b64encode(attachment.content).decode("ascii"),
+            }
+            for attachment in message.attachments
+        ]
+    if not payload["reply_to"]:
+        payload.pop("reply_to")
+    return payload
 
 
 def email_configuration_from_value(value: dict | None) -> EmailConfiguration:
@@ -318,32 +349,7 @@ class ResendProvider:
     ) -> None:
         self._validate(configuration, secrets)
         api_key = self._api_key(secrets)
-        payload = {
-            "from": _sender(configuration, message),
-            "to": message.to,
-            "subject": message.subject,
-            "reply_to": message.reply_to or configuration.support_email,
-        }
-        if message.cc:
-            payload["cc"] = message.cc
-        if message.bcc:
-            payload["bcc"] = message.bcc
-        if message.text_body is not None:
-            payload["text"] = message.text_body
-        if message.html_body is not None:
-            payload["html"] = message.html_body
-        if message.attachments:
-            import base64
-
-            payload["attachments"] = [
-                {
-                    "filename": attachment.filename,
-                    "content": base64.b64encode(attachment.content).decode("ascii"),
-                }
-                for attachment in message.attachments
-            ]
-        if not payload["reply_to"]:
-            payload.pop("reply_to")
+        payload = _resend_payload(message, configuration)
 
         try:
             async with httpx.AsyncClient(timeout=EMAIL_PROVIDER_TIMEOUT_SECONDS) as client:
@@ -362,7 +368,7 @@ class ResendProvider:
         except httpx.TimeoutException as exc:
             raise EmailConnectionError("Email provider connection timed out.") from exc
         except httpx.HTTPError as exc:
-            raise EmailConnectionError("Unable to connect to the email provider.") from exc
+            raise EmailConnectionError(EMAIL_PROVIDER_UNAVAILABLE_MESSAGE) from exc
 
     async def test_connection(
         self, configuration: EmailConfiguration, secrets: EmailSecrets
@@ -384,9 +390,9 @@ class ResendProvider:
         except EmailProviderError:
             raise
         except httpx.TimeoutException as exc:
-            raise EmailConnectionError("Unable to connect to the email provider.") from exc
+            raise EmailConnectionError(EMAIL_PROVIDER_UNAVAILABLE_MESSAGE) from exc
         except (httpx.HTTPError, ValueError) as exc:
-            raise EmailConnectionError("Unable to connect to the email provider.") from exc
+            raise EmailConnectionError(EMAIL_PROVIDER_UNAVAILABLE_MESSAGE) from exc
 
         if not isinstance(response_body, dict) or not isinstance(
             response_body.get("data"), list

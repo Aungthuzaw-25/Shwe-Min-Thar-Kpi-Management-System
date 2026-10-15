@@ -1,10 +1,13 @@
 import asyncio
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
+from pydantic import ValidationError
 
 from app.modules.tasks.models.task import TaskStatus
+from app.modules.tasks.scheduler import _advance_next_run_date
 from app.modules.tasks.schemas import TaskCreate, TaskReviewInput
 from app.modules.tasks.service import create_task, review_task_l1, submit_task, verify_task_l0
 
@@ -57,6 +60,9 @@ class FakeDB:
     async def commit(self):
         self.committed += 1
 
+    async def flush(self):
+        return None
+
     async def rollback(self):
         self.rolled_back += 1
 
@@ -88,6 +94,31 @@ def test_submit_task_moves_task_to_l1_review():
     assert db.committed == 1
 
 
+def test_submit_task_does_not_reopen_task_under_review():
+    task = SimpleNamespace(id="task-1", owner_id="user-1", status=TaskStatus.PENDING_L1)
+    db = FakeDB(task)
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(submit_task(db, "task-1", "user-1"))
+
+    assert exc_info.value.status_code == 409
+    assert db.committed == 0
+
+
+def test_task_review_action_rejects_unknown_values():
+    with pytest.raises(ValidationError):
+        TaskReviewInput(action="OVERRIDE_EVERYTHING", comments="Unexpected action")
+
+
+def test_yearly_recurring_task_advances_leap_day_safely():
+    scheduled = datetime(2024, 2, 29, tzinfo=UTC)
+    task = SimpleNamespace(frequency="YEARLY", next_run_date=scheduled)
+
+    _advance_next_run_date(task, datetime(2025, 3, 1, tzinfo=UTC))
+
+    assert task.next_run_date == datetime(2025, 2, 28, tzinfo=UTC)
+
+
 def test_l1_approval_promotes_task_to_l0_review(monkeypatch):
     task = SimpleNamespace(
         id="task-1",
@@ -117,6 +148,47 @@ def test_l1_approval_promotes_task_to_l0_review(monkeypatch):
 
     assert result.status == TaskStatus.PENDING_L0
     assert db.committed == 1
+
+
+def test_l1_recalculation_failure_rolls_back_review(monkeypatch):
+    task = SimpleNamespace(
+        id="task-1",
+        title="KPI review",
+        status=TaskStatus.PENDING_L1,
+        owner_id="user-1",
+        owner=SimpleNamespace(
+            user_departments=[
+                SimpleNamespace(department_id="dept-1", is_deleted=False)
+            ]
+        ),
+        due_date=None,
+    )
+    db = FakeDB(task)
+
+    async def fake_notification(*args, **kwargs):
+        return None
+
+    async def failed_recalculation(*args, **kwargs):
+        raise RuntimeError("recalculation failed")
+
+    monkeypatch.setattr("app.modules.tasks.service.create_notification", fake_notification)
+    monkeypatch.setattr(
+        "app.modules.tasks.service.trigger_kpi_recalculation",
+        failed_recalculation,
+    )
+
+    with pytest.raises(RuntimeError, match="recalculation failed"):
+        asyncio.run(
+            review_task_l1(
+                db,
+                "task-1",
+                TaskReviewInput(action="APPROVED", comments="Good work"),
+                "reviewer-1",
+            )
+        )
+
+    assert db.committed == 0
+    assert db.rolled_back == 1
 
 
 def test_l0_approval_marks_task_complete(monkeypatch):

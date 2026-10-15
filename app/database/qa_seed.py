@@ -37,14 +37,19 @@ QA_PERIOD_END = datetime(2026, 9, 30, 23, 59, 59, tzinfo=UTC)
 TIMELINESS = "အချိန်မှီမတင်ပြခြင်း"
 QA_SUPERADMIN_EMAIL = "qa.superadmin@example"
 LEGACY_QA_SUPERADMIN_EMAIL = "qa.superadmin@example.test"
+QA_L0_EMAIL = "qa.l0@example.test"
+QA_HOD_POSITION = "QA HOD Position"
+QA_SENIOR_ACCOUNTANT_POSITION = "QA Senior Accountant Position"
+QA_ACCOUNTANT_POSITION = "QA Accountant Position"
+DEPARTMENT_USER_ROLE = "Department User"
 
 QA_USERS = {
-    QA_SUPERADMIN_EMAIL: ("Super Admin", None, "QA HOD Position", "L0"),
-    "qa.admin@example.test": ("Admin", None, "QA HOD Position", "L0"),
-    "qa.hr@example.test": ("HR", None, "QA HOD Position", "L0"),
-    "qa.l0@example.test": ("Department User", "L0", "QA HOD Position", "L0"),
-    "qa.l1@example.test": ("Department User", "L1", "QA Senior Accountant Position", "L1"),
-    "qa.l2@example.test": ("Department User", "L2", "QA Accountant Position", "L2"),
+    QA_SUPERADMIN_EMAIL: ("Super Admin", None, QA_HOD_POSITION, "L0"),
+    "qa.admin@example.test": ("Admin", None, QA_HOD_POSITION, "L0"),
+    "qa.hr@example.test": ("HR", None, QA_HOD_POSITION, "L0"),
+    QA_L0_EMAIL: (DEPARTMENT_USER_ROLE, "L0", QA_HOD_POSITION, "L0"),
+    "qa.l1@example.test": (DEPARTMENT_USER_ROLE, "L1", QA_SENIOR_ACCOUNTANT_POSITION, "L1"),
+    "qa.l2@example.test": (DEPARTMENT_USER_ROLE, "L2", QA_ACCOUNTANT_POSITION, "L2"),
 }
 
 QA_FORMULA_CATEGORIES = [
@@ -67,7 +72,7 @@ def _require_qa_target() -> None:
         raise RuntimeError("QA seed requires the internal PostgreSQL port 5432.")
 
 
-def _password_for(email: str) -> str:
+def _password_for() -> str:
     password = os.getenv("QA_SEED_PASSWORD", "").strip()
     if not password:
         raise RuntimeError("Set QA_SEED_PASSWORD to a development-only QA password.")
@@ -83,6 +88,68 @@ async def _get_or_create(db, model, filters: dict, values: dict | None = None):
     return instance
 
 
+async def _get_or_create_qa_position(db, department, positions, name, parent):
+    parent_position = positions.get(parent) if parent else None
+    positions[name] = await _get_or_create(
+        db,
+        Position,
+        {"name": name},
+        {
+            "department_id": department.id,
+            "parent_position_id": getattr(parent_position, "id", None),
+            "is_active": True,
+        },
+    )
+
+
+async def _get_or_create_qa_user(
+    db, email, role_name, position_name, membership_level, roles, positions, department
+):
+    user = (
+        await db.execute(select(User).where(User.email == email))
+    ).scalar_one_or_none()
+    if user is None and email == QA_SUPERADMIN_EMAIL:
+        user = (
+            await db.execute(
+                select(User).where(User.email == LEGACY_QA_SUPERADMIN_EMAIL)
+            )
+        ).scalar_one_or_none()
+        if user is not None:
+            user.email = email
+
+    if user is None:
+        user = await _get_or_create(
+            db,
+            User,
+            {"email": email},
+            {
+                "first_name": email.split(".")[1].split("@")[0].title(),
+                "last_name": "QA",
+                "hashed_password": get_password_hash(_password_for()),
+                "local_password_enabled": True,
+                "role_id": roles[role_name].id,
+                "position_id": positions[position_name].id,
+                "is_active": True,
+                "is_locked": False,
+                "must_change_password": False,
+            },
+        )
+    user.hashed_password = get_password_hash(_password_for())
+    user.local_password_enabled = True
+    user.role_id = roles[role_name].id
+    user.position_id = positions[position_name].id
+    user.is_active = True
+    user.is_locked = False
+    user.must_change_password = False
+    await _get_or_create(
+        db,
+        UserDepartment,
+        {"user_id": user.id, "department_id": department.id},
+        {"user_level": membership_level},
+    )
+    return user
+
+
 async def seed_qa() -> dict[str, int]:
     _require_qa_target()
     async with AsyncSessionLocal() as db:
@@ -91,67 +158,26 @@ async def seed_qa() -> dict[str, int]:
 
         positions = {}
         for name, parent in (
-            ("QA HOD Position", None),
-            ("QA Senior Accountant Position", "QA HOD Position"),
-            ("QA Accountant Position", "QA Senior Accountant Position"),
+            (QA_HOD_POSITION, None),
+            (QA_SENIOR_ACCOUNTANT_POSITION, QA_HOD_POSITION),
+            (QA_ACCOUNTANT_POSITION, QA_SENIOR_ACCOUNTANT_POSITION),
         ):
-            parent_position = positions.get(parent) if parent else None
-            positions[name] = await _get_or_create(
-                db,
-                Position,
-                {"name": name},
-                {"department_id": department.id, "parent_position_id": getattr(parent_position, "id", None), "is_active": True},
-            )
+            await _get_or_create_qa_position(db, department, positions, name, parent)
 
         users = {}
         for email, (role_name, _level, position_name, membership_level) in QA_USERS.items():
-            user = (
-                await db.execute(select(User).where(User.email == email))
-            ).scalar_one_or_none()
-            if user is None and email == QA_SUPERADMIN_EMAIL:
-                user = (
-                    await db.execute(
-                        select(User).where(
-                            User.email == LEGACY_QA_SUPERADMIN_EMAIL
-                        )
-                    )
-                ).scalar_one_or_none(                )
-                if user is not None:
-                    user.email = email
-
-            if user is None:
-                user = await _get_or_create(
-                    db,
-                    User,
-                    {"email": email},
-                    {
-                        "first_name": email.split(".")[1].split("@")[0].title(),
-                        "last_name": "QA",
-                        "hashed_password": get_password_hash(_password_for(email)),
-                        "local_password_enabled": True,
-                        "role_id": roles[role_name].id,
-                        "position_id": positions[position_name].id,
-                        "is_active": True,
-                        "is_locked": False,
-                        "must_change_password": False,
-                    },
-                )
-            user.hashed_password = get_password_hash(_password_for(email))
-            user.local_password_enabled = True
-            user.role_id = roles[role_name].id
-            user.position_id = positions[position_name].id
-            user.is_active = True
-            user.is_locked = False
-            user.must_change_password = False
-            users[email] = user
-            await _get_or_create(
+            users[email] = await _get_or_create_qa_user(
                 db,
-                UserDepartment,
-                {"user_id": user.id, "department_id": department.id},
-                {"user_level": membership_level},
+                email,
+                role_name,
+                position_name,
+                membership_level,
+                roles,
+                positions,
+                department,
             )
 
-        department.head_id = users["qa.l0@example.test"].id
+        department.head_id = users[QA_L0_EMAIL].id
         period = await _get_or_create(
             db,
             KPIPeriod,
@@ -168,9 +194,9 @@ async def seed_qa() -> dict[str, int]:
 
         formulas = {}
         for level, email, position_name in (
-            ("L0", "qa.l0@example.test", "QA HOD Position"),
-            ("L1", "qa.l1@example.test", "QA Senior Accountant Position"),
-            ("L2", "qa.l2@example.test", "QA Accountant Position"),
+            ("L0", QA_L0_EMAIL, QA_HOD_POSITION),
+            ("L1", "qa.l1@example.test", QA_SENIOR_ACCOUNTANT_POSITION),
+            ("L2", "qa.l2@example.test", QA_ACCOUNTANT_POSITION),
         ):
             formula_name = f"QA Finance {level} Formula"
             category_payload = [

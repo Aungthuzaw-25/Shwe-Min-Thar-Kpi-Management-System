@@ -60,7 +60,7 @@ class StorageService:
             )
             self.is_available = self._ensure_bucket_exists()
         except Exception as exc:
-            logger.warning(f"S3 client could not be initialized; storage will stay unavailable: {exc}")
+            logger.exception("S3 client could not be initialized; storage will stay unavailable: %s", exc)
             self.s3_client = None
             self.is_available = False
 
@@ -93,18 +93,29 @@ class StorageService:
                     self.s3_client.create_bucket(Bucket=self.bucket_name)
                     return True
                 else:
-                    logger.warning(f"Unexpected S3 bucket error: {str(e)}. Storage will remain unavailable.")
+                    logger.exception("Unexpected S3 bucket error: %s. Storage will remain unavailable.", e)
                     return False
 
         return False
 
-    async def upload_file(self, file: UploadFile, folder: str = "evidence") -> str:
+    async def upload_file(
+        self,
+        file: UploadFile,
+        folder: str = "evidence",
+        *,
+        content_type: str | None = None,
+    ) -> str:
         """UploadFile ကို လက်ခံပြီး MinIO သို့ သိမ်းဆည်းမည်။ (Non-Blocking)"""
         if not settings.USE_S3 or not self.s3_client:
             raise HTTPException(status_code=503, detail="Storage backend is unavailable. Please try again later.")
 
         if not file or not file.filename:
              raise HTTPException(status_code=400, detail="No file provided")
+        if not content_type:
+            raise HTTPException(
+                status_code=415,
+                detail="A validated file content type is required.",
+            )
 
         try:
             # Handle files with no extension gracefully
@@ -135,7 +146,10 @@ class StorageService:
                 Bucket=self.bucket_name,
                 Key=object_name,
                 Fileobj=file_object,
-                ExtraArgs={"ContentType": file.content_type or "application/octet-stream"},
+                ExtraArgs={
+                    "ContentType": content_type,
+                    "ContentDisposition": "attachment",
+                },
             )
 
             return object_name
@@ -143,10 +157,10 @@ class StorageService:
         except HTTPException:
             raise
         except ClientError as e:
-            logger.error(f"AWS ClientError during upload: {str(e)}")
+            logger.exception("AWS ClientError during upload: %s", e)
             raise HTTPException(status_code=500, detail="Storage service error during upload")
         except Exception as e:
-            logger.error(f"File upload failed: {str(e)}")
+            logger.exception("File upload failed: %s", e)
             raise HTTPException(status_code=500, detail="Could not upload file to storage")
 
     def get_presigned_url(self, object_name: str, expiration: int = 3600) -> str:
@@ -168,7 +182,7 @@ class StorageService:
             )
             return response
         except ClientError as e:
-            logger.error(f"Generate presigned URL failed: {str(e)}")
+            logger.exception("Generate presigned URL failed: %s", e)
             raise HTTPException(status_code=500, detail="Could not generate file access link")
 
     # 🌟 ADDED: Missing delete_file function required by router.py
@@ -185,7 +199,7 @@ class StorageService:
                 Key=safe_object_name
             )
         except Exception as e:
-            logger.error(f"Failed to delete file {object_name}: {str(e)}")
+            logger.exception("Failed to delete file %s: %s", object_name, e)
             raise RuntimeError("Storage deletion failed") from e
 
 storage_service = StorageService()

@@ -50,8 +50,8 @@ async def check_and_send_task_reminders(db: AsyncSession):
             t.last_reminder_sent = now
             db.add(t)
             reminders_sent += 1
-        except Exception as e:
-            logger.error(f"Error sending deadline reminder for task {t.id}: {e}")
+        except Exception:
+            logger.exception("Error sending deadline reminder for task %s", t.id)
 
     await db.commit()
     logger.info(f"Dispatched {reminders_sent} task deadline reminders.")
@@ -61,5 +61,5 @@ async def run_reminders_cron():
     async with AsyncSessionLocal() as db:
         try:
             await check_and_send_task_reminders(db)
-        except Exception as e:
-            logger.error(f"Error in reminders cron job: {e}")
+        except Exception:
+            logger.exception("Error in reminders cron job")

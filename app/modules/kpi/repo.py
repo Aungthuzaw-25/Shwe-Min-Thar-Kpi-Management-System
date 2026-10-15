@@ -117,4 +117,4 @@ async def get_active_user_ids(db: AsyncSession) -> list[UUID]:
     """Return list of UUIDs for users where is_active is True."""
     stmt = select(User.id).where(User.is_active == True)
     result = await db.execute(stmt)
-    return [uid for uid in result.scalars().all()]
+    return list(result.scalars().all())

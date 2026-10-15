@@ -55,6 +55,7 @@ from app.modules.kpi.upload_contract import (
     EMPLOYEE_HEADERS,
     HeaderContract,
     HeaderContractError,
+    MetricHeader,
     build_header_contract,
     normalize_header,
 )
@@ -194,53 +195,8 @@ async def _read_upload_dataframe(file: UploadFile) -> ParsedWorkbook:
 
     def parse_file() -> ParsedWorkbook:
         if extension == ".csv":
-            try:
-                rows = list(csv.reader(io.StringIO(contents.decode("utf-8-sig"), newline="")))
-            except (UnicodeDecodeError, csv.Error) as exc:
-                raise UploadValidationError("The CSV file is malformed or not UTF-8.") from exc
-            if not rows:
-                raise UploadValidationError("The uploaded file has no header row.")
-            return _table_from_rows(rows)
-
-        try:
-            workbook = load_workbook(io.BytesIO(contents), data_only=False, read_only=False)
-        except (
-            BadZipFile,
-            InvalidFileException,
-            KeyError,
-            OSError,
-            ParseError,
-            ValueError,
-        ) as exc:
-            raise UploadValidationError("The XLSX file is corrupted or invalid.") from exc
-        try:
-            if "KPI_Data" not in workbook.sheetnames:
-                raise UploadValidationError(
-                    "The workbook must contain the KPI_Data worksheet."
-                )
-            worksheet = workbook["KPI_Data"]
-            values = list(worksheet.iter_rows(values_only=False))
-            if not values:
-                raise UploadValidationError("The KPI_Data worksheet is empty.")
-            headers = [cell.value for cell in values[0]]
-            rows: list[tuple[int, list[Any]]] = []
-            for row_number, cells in enumerate(values[1:], start=2):
-                row_values = [cell.value for cell in cells]
-                for column_index, cell in enumerate(cells):
-                    if cell.data_type == "f":
-                        header = (
-                            str(headers[column_index])
-                            if column_index < len(headers) and headers[column_index]
-                            else get_column_letter(column_index + 1)
-                        )
-                        raise UploadValidationError(
-                            f"Row {row_number} — {header}: formula cells are not supported."
-                        )
-                if any(value is not None and str(value).strip() for value in row_values):
-                    rows.append((row_number, row_values))
-            return ParsedWorkbook(headers=headers, rows=rows)
-        finally:
-            workbook.close()
+            return _parse_csv(contents)
+        return _parse_xlsx(contents)
 
     try:
         return await run_in_threadpool(parse_file)
@@ -248,6 +204,58 @@ async def _read_upload_dataframe(file: UploadFile) -> ParsedWorkbook:
         raise
     except (UnicodeDecodeError, csv.Error) as exc:
         raise UploadValidationError("The uploaded file is malformed.") from exc
+
+
+def _parse_csv(contents: bytes) -> ParsedWorkbook:
+    try:
+        rows = list(csv.reader(io.StringIO(contents.decode("utf-8-sig"), newline="")))
+    except (UnicodeDecodeError, csv.Error) as exc:
+        raise UploadValidationError("The CSV file is malformed or not UTF-8.") from exc
+    if not rows:
+        raise UploadValidationError("The uploaded file has no header row.")
+    return _table_from_rows(rows)
+
+
+def _parse_xlsx(contents: bytes) -> ParsedWorkbook:
+    try:
+        workbook = load_workbook(io.BytesIO(contents), data_only=False, read_only=False)
+    except (
+        BadZipFile,
+        InvalidFileException,
+        KeyError,
+        OSError,
+        ParseError,
+        ValueError,
+    ) as exc:
+        raise UploadValidationError("The XLSX file is corrupted or invalid.") from exc
+    try:
+        if "KPI_Data" not in workbook.sheetnames:
+            raise UploadValidationError(
+                "The workbook must contain the KPI_Data worksheet."
+            )
+        worksheet = workbook["KPI_Data"]
+        values = list(worksheet.iter_rows(values_only=False))
+        if not values:
+            raise UploadValidationError("The KPI_Data worksheet is empty.")
+        headers = [cell.value for cell in values[0]]
+        rows: list[tuple[int, list[Any]]] = []
+        for row_number, cells in enumerate(values[1:], start=2):
+            row_values = [cell.value for cell in cells]
+            for column_index, cell in enumerate(cells):
+                if cell.data_type == "f":
+                    header = (
+                        str(headers[column_index])
+                        if column_index < len(headers) and headers[column_index]
+                        else get_column_letter(column_index + 1)
+                    )
+                    raise UploadValidationError(
+                        f"Row {row_number} — {header}: formula cells are not supported."
+                    )
+            if any(value is not None and str(value).strip() for value in row_values):
+                rows.append((row_number, row_values))
+        return ParsedWorkbook(headers=headers, rows=rows)
+    finally:
+        workbook.close()
 
 
 def _table_from_rows(rows: list[list[Any]]) -> ParsedWorkbook:
@@ -307,6 +315,38 @@ def _finite_number(value: Any) -> float | None:
     except (InvalidOperation, TypeError, ValueError):
         return None
     return number if math.isfinite(number) else None
+
+
+def _read_upload_metrics(
+    row_number: int,
+    email: str,
+    values: list[Any],
+    header_indexes: dict[str, int],
+    metric_by_key: dict[str, MetricHeader],
+    applicable_keys: frozenset[str],
+) -> tuple[dict[str, float], list[str]]:
+    task_data: dict[str, float] = {}
+    errors: list[str] = []
+    for key, field in metric_by_key.items():
+        column_index = header_indexes[key]
+        value = values[column_index] if column_index < len(values) else None
+        if key not in applicable_keys:
+            if not _is_empty(value):
+                errors.append(
+                    f"Row {row_number} — Email '{email}', {field.label}: "
+                    "this KPI field does not apply to the employee's formula."
+                )
+            continue
+        number = _finite_number(value)
+        if number is None:
+            safe_value = repr(value)[:60]
+            errors.append(
+                f"Row {row_number} — Email '{email}', {field.label}: "
+                f"must be a finite number (received {safe_value})."
+            )
+            continue
+        task_data[key] = number
+    return task_data, errors
 
 
 async def _build_upload_rows(
@@ -412,31 +452,16 @@ async def _build_upload_rows(
             )
             continue
 
-        applicable_keys = contracts_by_user[user.id]
-        task_data: dict[str, float] = {}
-        row_has_error = False
-        for key, field in metric_by_key.items():
-            column_index = header_indexes[key]
-            value = values[column_index] if column_index < len(values) else None
-            if key not in applicable_keys:
-                if not _is_empty(value):
-                    errors.append(
-                        f"Row {row_number} — Email '{email}', {field.label}: "
-                        "this KPI field does not apply to the employee's formula."
-                    )
-                    row_has_error = True
-                continue
-            number = _finite_number(value)
-            if number is None:
-                safe_value = repr(value)[:60]
-                errors.append(
-                    f"Row {row_number} — Email '{email}', {field.label}: "
-                    f"must be a finite number (received {safe_value})."
-                )
-                row_has_error = True
-                continue
-            task_data[key] = number
-        if not row_has_error:
+        task_data, metric_errors = _read_upload_metrics(
+            row_number,
+            email,
+            values,
+            header_indexes,
+            metric_by_key,
+            contracts_by_user[user.id],
+        )
+        errors.extend(metric_errors)
+        if not metric_errors:
             validated_rows.append(
                 ValidatedUploadRow(
                     row_number=row_number,
@@ -535,7 +560,6 @@ def _user_metadata(user: User, department_ids: set[str] | None) -> dict[str, str
 
 
 async def list_import_periods(
-    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(admin_hr_checker),
 ):
@@ -568,7 +592,7 @@ async def get_import_periods(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(admin_hr_checker),
 ):
-    return await list_import_periods(request, db, current_user)
+    return await list_import_periods(db, current_user)
 
 
 @router.get("/export-template", summary="Download the official KPI import template")

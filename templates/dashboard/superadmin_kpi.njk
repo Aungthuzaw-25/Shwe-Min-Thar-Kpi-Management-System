@@ -435,14 +435,14 @@
             ]);
             const departmentSelect = document.getElementById("assignmentDepartment");
             departmentSelect.innerHTML = '<option value="">-- Select Department --</option>' +
-                departments.map(dept => `<option value="${dept.id}">${escapeHTML(dept.name)}</option>`).join("");
+                departments.map(dept => `<option value="${escapeHTML(dept.id)}">${escapeHTML(dept.name)}</option>`).join("");
             
             assignmentUsers = users.filter(user => !user.is_deleted && user.is_active);
             
             document.getElementById("assignmentPeriod").innerHTML =
                 '<option value="">-- Select Period --</option>' +
                 periods.filter(period => !period.is_deleted && period.status !== "CANCELLED")
-                    .map(period => `<option value="${period.id}">${escapeHTML(period.label)}</option>`).join("");
+                    .map(period => `<option value="${escapeHTML(period.id)}">${escapeHTML(period.label)}</option>`).join("");
         } catch (error) {
             console.error("Assignment options failed:", error);
             showToast("Failed to load KPI assignment options.", "error");
@@ -463,7 +463,7 @@
             if (!response.ok) throw new Error("Position lookup failed.");
             const positions = await response.json();
             positionSelect.innerHTML += positions.map(position =>
-                `<option value="${position.id}">${escapeHTML(position.name)}</option>`
+                `<option value="${escapeHTML(position.id)}">${escapeHTML(position.name)}</option>`
             ).join("");
         } catch (error) {
             console.error("Assignment positions failed:", error);
@@ -479,7 +479,7 @@
             return inDepartment && String(user.position_id) === String(positionId);
         });
         usersSelect.innerHTML = users.length
-            ? users.map(user => `<option value="${user.id}">${escapeHTML(`${user.first_name || ""} ${user.last_name || ""}`.trim())} - ${escapeHTML(user.email)}</option>`).join("")
+            ? users.map(user => `<option value="${escapeHTML(user.id)}">${escapeHTML(`${user.first_name || ""} ${user.last_name || ""}`.trim())} - ${escapeHTML(user.email)}</option>`).join("")
             : '<option value="">No employees match this department and position</option>';
     }
 
@@ -587,26 +587,26 @@
                 
                 // 🌟 BUG FIX & SECURITY FIX: XSS Protection / Single Quote Escape for JSON passing
                 const encodedFormula = encodeURIComponent(JSON.stringify(formula)).replaceAll("'", "%27");
-                menuItems += `<button onclick="editFormula('${encodedFormula}')" class="w-full text-left px-5 py-3 text-sm font-semibold text-slate-700 hover:text-blue-700 hover:bg-blue-50 border-b border-slate-100 transition-colors">Edit Settings</button>`;
+                menuItems += `<button type="button" data-formula-edit="${escapeHTML(encodedFormula)}" class="w-full text-left px-5 py-3 text-sm font-semibold text-slate-700 hover:text-blue-700 hover:bg-blue-50 border-b border-slate-100 transition-colors">Edit Settings</button>`;
                 
                 if(formula.status === 'DRAFT') {
                     statusBadge = `<span class="bg-slate-100 text-slate-600 ring-slate-200/60 px-3 py-1.5 rounded-lg text-[9px] sm:text-[10px] font-black uppercase tracking-wider ring-1 inset-ring shadow-sm">Draft V${formula.version}</span>`;
-                    menuItems += `<button onclick="workflowAction('${formula.id}', 'submit')" class="w-full text-left px-5 py-3 text-sm font-semibold text-blue-700 hover:bg-blue-50 transition-colors">Submit for Review</button>`;
+                    menuItems += `<button type="button" data-workflow-action="submit" data-formula-id="${escapeHTML(formula.id)}" class="w-full text-left px-5 py-3 text-sm font-semibold text-blue-700 hover:bg-blue-50 transition-colors">Submit for Review</button>`;
                 } else if(formula.status === 'REVIEW') {
                     statusBadge = `<span class="bg-amber-50 text-amber-700 ring-amber-200 px-3 py-1.5 rounded-lg text-[9px] sm:text-[10px] font-black uppercase tracking-wider ring-1 inset-ring shadow-sm">In Review</span>`;
                     menuItems += `
-                        <button onclick="workflowAction('${formula.id}', 'approve')" class="w-full text-left px-5 py-3 text-sm font-bold text-emerald-700 hover:bg-emerald-50 transition-colors">Approve Formula</button>
-                        <button onclick="workflowAction('${formula.id}', 'reject')" class="w-full text-left px-5 py-3 text-sm font-bold text-red-600 hover:bg-red-50 border-t border-slate-100 transition-colors">Reject</button>
+                        <button type="button" data-workflow-action="approve" data-formula-id="${escapeHTML(formula.id)}" class="w-full text-left px-5 py-3 text-sm font-bold text-emerald-700 hover:bg-emerald-50 transition-colors">Approve Formula</button>
+                        <button type="button" data-workflow-action="reject" data-formula-id="${escapeHTML(formula.id)}" class="w-full text-left px-5 py-3 text-sm font-bold text-red-600 hover:bg-red-50 border-t border-slate-100 transition-colors">Reject</button>
                     `;
                 } else if(formula.status === 'APPROVED') {
                     statusBadge = `<span class="bg-emerald-50 text-emerald-700 ring-emerald-200 px-3 py-1.5 rounded-lg text-[9px] sm:text-[10px] font-black uppercase tracking-wider ring-1 inset-ring shadow-sm">Approved</span>`;
-                    menuItems += `<button onclick="workflowAction('${formula.id}', 'activate')" class="w-full text-left px-5 py-3 text-sm font-bold text-blue-700 hover:bg-blue-50 transition-colors">Activate Now</button>`;
+                    menuItems += `<button type="button" data-workflow-action="activate" data-formula-id="${escapeHTML(formula.id)}" class="w-full text-left px-5 py-3 text-sm font-bold text-blue-700 hover:bg-blue-50 transition-colors">Activate Now</button>`;
                 } else if(formula.status === 'ACTIVE') {
                     statusBadge = `<span class="bg-blue-50 text-blue-700 ring-blue-200 px-3 py-1.5 rounded-lg text-[9px] sm:text-[10px] font-black uppercase tracking-wider ring-1 inset-ring shadow-sm">Active V${formula.version}</span>`;
-                    menuItems += `<button onclick="workflowAction('${formula.id}', 'archive')" class="w-full text-left px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors">Archive Formula</button>`;
+                    menuItems += `<button type="button" data-workflow-action="archive" data-formula-id="${escapeHTML(formula.id)}" class="w-full text-left px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors">Archive Formula</button>`;
                 } else {
                     statusBadge = `<span class="bg-slate-50 text-slate-400 ring-slate-200 px-3 py-1.5 rounded-lg text-[9px] sm:text-[10px] font-black uppercase tracking-wider ring-1 inset-ring shadow-sm">Archived</span>`;
-                    menuItems += `<button onclick="workflowAction('${formula.id}', 'activate')" class="w-full text-left px-5 py-3 text-sm font-bold text-blue-700 hover:bg-blue-50 transition-colors">Restore (Activate)</button>`;
+                    menuItems += `<button type="button" data-workflow-action="activate" data-formula-id="${escapeHTML(formula.id)}" class="w-full text-left px-5 py-3 text-sm font-bold text-blue-700 hover:bg-blue-50 transition-colors">Restore (Activate)</button>`;
                 }
 
                 const isActiveStyle = formula.status === 'ACTIVE' ? 'border-blue-300 shadow-lg ring-4 ring-blue-50 scale-[1.01]' : 'border-slate-200 shadow-sm hover:shadow-md hover:-translate-y-1';
@@ -643,7 +643,7 @@
                         </div>
                         
                         <div class="pt-4 sm:pt-5 border-t border-slate-100 flex justify-between items-center shrink-0">
-                            <button onclick="deleteFormula('${formula.id}')" class="text-xs font-bold text-red-500 hover:text-red-700 hover:bg-red-50 px-3 sm:px-4 py-2 rounded-xl transition-colors">Delete</button>
+                            <button type="button" data-delete-formula="${escapeHTML(formula.id)}" class="text-xs font-bold text-red-500 hover:text-red-700 hover:bg-red-50 px-3 sm:px-4 py-2 rounded-xl transition-colors">Delete</button>
                             
                             <div class="relative group/menu">
                                 <button class="text-blue-700 bg-blue-50 hover:bg-blue-100 px-4 sm:px-5 py-2 sm:py-2.5 rounded-xl border border-blue-100 text-[10px] sm:text-xs font-black uppercase tracking-wider transition-all shadow-sm flex items-center gap-2">
@@ -656,6 +656,15 @@
                         </div>
                     </div>
                 `;
+            });
+            container.querySelectorAll("[data-formula-edit]").forEach(button => {
+                button.addEventListener("click", () => editFormula(button.dataset.formulaEdit));
+            });
+            container.querySelectorAll("[data-workflow-action]").forEach(button => {
+                button.addEventListener("click", () => workflowAction(button.dataset.formulaId, button.dataset.workflowAction));
+            });
+            container.querySelectorAll("[data-delete-formula]").forEach(button => {
+                button.addEventListener("click", () => deleteFormula(button.dataset.deleteFormula));
             });
         } catch (err) { console.error(err); }
     }
@@ -816,7 +825,7 @@
         const typeVal = catData && catData.evaluation_type ? escapeHTML(catData.evaluation_type) : "DEDUCTION";
         
         const removeButtonHtml = isTimeliness ? '' : `
-            <button type="button" onclick="document.getElementById('${cId}').remove(); updateTotalWeightIndicator();" class="absolute top-4 sm:top-6 right-4 sm:right-6 text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 sm:p-2.5 rounded-full transition-colors focus:outline-none" title="Remove Category">
+            <button type="button" data-remove-category class="absolute top-4 sm:top-6 right-4 sm:right-6 text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 sm:p-2.5 rounded-full transition-colors focus:outline-none" title="Remove Category" aria-label="Remove category">
                 <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
             </button>
         `;
@@ -836,7 +845,7 @@
                     
                     <div class="md:col-span-2">
                         <label for="cat_type_${cId}" class="block text-[10px] sm:text-xs font-black text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-widest">Evaluation Type <span class="text-red-500">*</span></label>
-                        <select id="cat_type_${cId}" class="cat-eval-type w-full bg-slate-50 border border-slate-200 p-3 sm:p-4 rounded-xl text-xs sm:text-sm font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none transition-all shadow-inner cursor-pointer appearance-none" onchange="handleEvalTypeChange(this)">
+                        <select id="cat_type_${cId}" class="cat-eval-type w-full bg-slate-50 border border-slate-200 p-3 sm:p-4 rounded-xl text-xs sm:text-sm font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none transition-all shadow-inner cursor-pointer appearance-none">
                             <option value="DEDUCTION" ${typeVal === 'DEDUCTION' ? 'selected' : ''}>Deduction (Penalty)</option>
                             <option value="TARGET" ${typeVal === 'TARGET' ? 'selected' : ''}>Target (Achievement %)</option>
                         </select>
@@ -845,7 +854,7 @@
                     <div>
                         <label for="cat_weight_${cId}" class="block text-[10px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-widest">Weight <span class="text-red-500">*</span></label>
                         <div class="relative">
-                            <input type="number" id="cat_weight_${cId}" oninput="updateTotalWeightIndicator()" class="cat-weight w-full bg-slate-50 border border-slate-200 p-3 sm:p-4 rounded-xl text-xs sm:text-sm font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none pr-8 transition-all shadow-inner" placeholder="0" value="${weightVal}">
+                            <input type="number" id="cat_weight_${cId}" class="cat-weight w-full bg-slate-50 border border-slate-200 p-3 sm:p-4 rounded-xl text-xs sm:text-sm font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none pr-8 transition-all shadow-inner" placeholder="0" value="${weightVal}">
                             <span class="absolute right-3 top-3 sm:top-4 text-xs sm:text-sm font-bold text-slate-400">%</span>
                         </div>
                     </div>
@@ -857,7 +866,7 @@
                             <svg class="w-4 h-4 sm:w-5 sm:h-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
                             <h5 class="text-[10px] sm:text-xs font-black text-slate-900 uppercase tracking-widest">Evaluation Metrics</h5>
                         </div>
-                        <button type="button" onclick="addDeduction('${cId}')" class="w-full sm:w-auto text-[10px] sm:text-[11px] bg-white border border-blue-200 text-blue-700 font-extrabold uppercase tracking-wider px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl shadow-sm hover:bg-blue-50 transition-colors flex items-center justify-center gap-1.5 active:scale-95">
+                        <button type="button" data-add-deduction class="w-full sm:w-auto text-[10px] sm:text-[11px] bg-white border border-blue-200 text-blue-700 font-extrabold uppercase tracking-wider px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl shadow-sm hover:bg-blue-50 transition-colors flex items-center justify-center gap-1.5 active:scale-95">
                             <svg class="w-3 h-3 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg> Add Metric
                         </button>
                     </div>
@@ -866,7 +875,15 @@
             </div>
         `;
         document.getElementById("categoriesContainer").insertAdjacentHTML('beforeend', html);
-        
+        const categoryBlock = document.getElementById(cId);
+        categoryBlock.querySelector("[data-remove-category]")?.addEventListener("click", () => {
+            categoryBlock.remove();
+            updateTotalWeightIndicator();
+        });
+        categoryBlock.querySelector(".cat-eval-type").addEventListener("change", event => handleEvalTypeChange(event.currentTarget));
+        categoryBlock.querySelector(".cat-weight").addEventListener("input", updateTotalWeightIndicator);
+        categoryBlock.querySelector("[data-add-deduction]").addEventListener("click", () => addDeduction(cId));
+
         if (catData && catData.deductions && catData.deductions.length > 0) {
             catData.deductions.forEach(ded => addDeduction(cId, ded));
         } else {
@@ -903,7 +920,7 @@
         
         const html = `
             <div id="${dId}" class="ded-block bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-sm relative animate-fade-in-up">
-                <button type="button" onclick="document.getElementById('${dId}').remove();" class="absolute top-3 sm:top-4 right-3 sm:right-4 text-slate-300 hover:text-red-500 transition-colors bg-white rounded-full p-1.5 sm:p-2 hover:bg-red-50 focus:outline-none" title="Remove Metric">
+                <button type="button" data-remove-metric class="absolute top-3 sm:top-4 right-3 sm:right-4 text-slate-300 hover:text-red-500 transition-colors bg-white rounded-full p-1.5 sm:p-2 hover:bg-red-50 focus:outline-none" title="Remove Metric" aria-label="Remove metric">
                     <svg class="w-3 h-3 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                 </button>
                 
@@ -916,7 +933,7 @@
                         <input type="text" id="input_name_${dId}" class="ded-name w-full bg-slate-50 border border-slate-200 p-2.5 sm:p-3 rounded-xl text-xs sm:text-sm font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none transition-colors" placeholder="${typeVal === 'percentage' ? 'e.g. Accuracy...' : 'e.g. Absences...'}" value="${nameVal}">
                     </div>
                     <div class="w-full md:w-56 lg:w-64 shrink-0 relative">
-                        <select aria-label="Metric measurement type" onchange="handleMetricTypeChange('${dId}', this.value)" class="ded-type w-full bg-slate-50 border border-slate-200 text-slate-800 p-2.5 sm:p-3 rounded-xl text-xs sm:text-sm font-bold focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none transition-colors appearance-none cursor-pointer">
+                        <select aria-label="Metric measurement type" class="ded-type w-full bg-slate-50 border border-slate-200 text-slate-800 p-2.5 sm:p-3 rounded-xl text-xs sm:text-sm font-bold focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none transition-colors appearance-none cursor-pointer">
                             <option value="count" ${typeVal === 'count' ? 'selected' : ''}>Occurrences / Count</option>
                             <option value="percentage" ${typeVal === 'percentage' ? 'selected' : ''}>Percentage (%)</option>
                         </select>
@@ -929,13 +946,20 @@
                 <div class="bg-blue-50/50 rounded-xl border border-blue-100 p-3 sm:p-5">
                     <h6 class="text-[9px] sm:text-[10px] font-black text-blue-800 uppercase tracking-widest mb-3 sm:mb-4">Deduction Conditions <span class="normal-case font-semibold text-slate-500">(Subtracts from 5.0 base)</span></h6>
                     <div id="rules_${dId}" class="space-y-2 sm:space-y-3 mb-3 sm:mb-4" data-type="${typeVal}"></div>
-                    <button type="button" onclick="addRule('${dId}')" class="text-[10px] sm:text-xs font-bold text-blue-700 hover:text-blue-900 flex items-center gap-1 sm:gap-1.5 transition-colors px-2 sm:px-3 py-1.5 rounded-lg hover:bg-blue-100 w-max">
+                    <button type="button" data-add-rule class="text-[10px] sm:text-xs font-bold text-blue-700 hover:text-blue-900 flex items-center gap-1 sm:gap-1.5 transition-colors px-2 sm:px-3 py-1.5 rounded-lg hover:bg-blue-100 w-max">
                         <svg class="w-3 h-3 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg> Add Condition
                     </button>
                 </div>
             </div>
         `;
-        document.getElementById(`deductions_${categoryId}`).insertAdjacentHTML('beforeend', html);
+        const category = document.getElementById(`deductions_${categoryId}`);
+        category.insertAdjacentHTML('beforeend', html);
+        const deduction = document.getElementById(dId);
+        deduction.querySelector("[data-remove-metric]").addEventListener("click", () => deduction.remove());
+        deduction.querySelector(".ded-type").addEventListener("change", event => {
+            handleMetricTypeChange(dId, event.currentTarget.value);
+        });
+        deduction.querySelector("[data-add-rule]").addEventListener("click", () => addRule(dId));
         
         if (dedData && dedData.rules && dedData.rules.length > 0) {
             dedData.rules.forEach(rule => addRule(dId, rule));
@@ -975,12 +999,16 @@
                 <span class="condition-unit text-[10px] sm:text-xs font-bold text-slate-600">${unitText}</span>
                 <input type="number" step="0.1" max="5.0" min="0" aria-label="Deduction score" class="rule-score w-16 sm:w-24 bg-red-50 border border-red-200 text-red-700 font-black text-center p-1.5 sm:p-2 text-xs sm:text-sm rounded-lg focus:bg-white focus:outline-none focus:border-red-500 shadow-inner" placeholder="1.0" value="${scoreVal}">
                 <span class="text-[10px] sm:text-xs font-bold text-slate-600 hidden sm:inline">points.</span>
-                <button type="button" onclick="this.parentElement.remove()" class="absolute right-2 top-1/2 transform -translate-y-1/2 text-slate-300 hover:text-red-500 p-1.5 rounded-lg hover:bg-red-50 transition-colors sm:opacity-0 group-hover:opacity-100" title="Remove condition">
+                <button type="button" class="rule-remove absolute right-2 top-1/2 transform -translate-y-1/2 text-slate-300 hover:text-red-500 p-1.5 rounded-lg hover:bg-red-50 transition-colors sm:opacity-0 group-hover:opacity-100" title="Remove condition" aria-label="Remove condition">
                     <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                 </button>
             </div>
         `;
-        document.getElementById(`rules_${deductionId}`).insertAdjacentHTML('beforeend', html);
+        const container = document.getElementById(`rules_${deductionId}`);
+        container.insertAdjacentHTML('beforeend', html);
+        container.lastElementChild.querySelector(".rule-remove").addEventListener("click", event => {
+            event.currentTarget.closest(".rule-block").remove();
+        });
     }
 
     function updateTotalWeightIndicator() {
@@ -1161,12 +1189,25 @@
                         <td class="p-4 sm:p-5"><span class="px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[9px] sm:text-[10px] font-black uppercase tracking-wider ring-1 inset-ring shadow-sm ${badgeClass}">${escapeHTML(r.grade)}</span></td>
                         <td class="p-4 sm:p-5 text-center">${freezeStatus}</td>
                         <td class="p-4 sm:p-5 text-right space-x-1 sm:space-x-2 whitespace-nowrap">
-                            <button onclick="openIntervention('${r.id}', 'override', '${escapeHTML(displayName)}')" class="text-[9px] sm:text-[10px] font-bold bg-white hover:bg-slate-50 text-slate-600 px-2 sm:px-3.5 py-1.5 sm:py-2 rounded-lg border border-slate-200 shadow-sm transition-colors opacity-100 sm:opacity-0 group-hover:opacity-100">Override</button>
-                            <button onclick="openIntervention('${r.id}', 'deduct', '${escapeHTML(displayName)}')" class="text-[9px] sm:text-[10px] font-bold bg-white hover:bg-red-50 text-red-600 px-2 sm:px-3.5 py-1.5 sm:py-2 rounded-lg border border-slate-200 shadow-sm transition-colors opacity-100 sm:opacity-0 group-hover:opacity-100">Deduct</button>
-                            <button onclick="freezeRecord('${r.id}', ${!r.is_frozen})" class="text-[9px] sm:text-[10px] font-bold ${r.is_frozen ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100' : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'} px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg border shadow-sm transition-colors opacity-100 sm:opacity-0 group-hover:opacity-100">${r.is_frozen ? 'Unfreeze' : 'Freeze'}</button>
+                            <button type="button" data-intervention="override" data-record-id="${escapeHTML(r.id)}" data-user-name="${escapeHTML(displayName)}" class="text-[9px] sm:text-[10px] font-bold bg-white hover:bg-slate-50 text-slate-600 px-2 sm:px-3.5 py-1.5 sm:py-2 rounded-lg border border-slate-200 shadow-sm transition-colors opacity-100 sm:opacity-0 group-hover:opacity-100">Override</button>
+                            <button type="button" data-intervention="deduct" data-record-id="${escapeHTML(r.id)}" data-user-name="${escapeHTML(displayName)}" class="text-[9px] sm:text-[10px] font-bold bg-white hover:bg-red-50 text-red-600 px-2 sm:px-3.5 py-1.5 sm:py-2 rounded-lg border border-slate-200 shadow-sm transition-colors opacity-100 sm:opacity-0 group-hover:opacity-100">Deduct</button>
+                            <button type="button" data-freeze-record="${escapeHTML(r.id)}" data-frozen="${Boolean(r.is_frozen)}" class="text-[9px] sm:text-[10px] font-bold ${r.is_frozen ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100' : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'} px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg border shadow-sm transition-colors opacity-100 sm:opacity-0 group-hover:opacity-100">${r.is_frozen ? 'Unfreeze' : 'Freeze'}</button>
                         </td>
                     </tr>
                 `;
+            });
+            tbody.querySelectorAll("[data-intervention]").forEach(button => {
+                button.addEventListener("click", () => openIntervention(
+                    button.dataset.recordId,
+                    button.dataset.intervention,
+                    button.dataset.userName,
+                ));
+            });
+            tbody.querySelectorAll("[data-freeze-record]").forEach(button => {
+                button.addEventListener("click", () => freezeRecord(
+                    button.dataset.freezeRecord,
+                    button.dataset.frozen !== "true",
+                ));
             });
         } catch(err) { console.error(err); }
     }
@@ -1287,14 +1328,17 @@
                 tbody.innerHTML += `
                     <tr class="hover:bg-slate-50/50 transition-colors border-b border-slate-100 animate-fade-in-up">
                         <td class="p-4 sm:p-5 font-black text-slate-900 whitespace-nowrap">${escapeHTML(dept.name)}</td>
-                        <td class="p-4 sm:p-5 text-center"><input type="checkbox" id="l0_${dept.id}" aria-label="L0 access for ${escapeHTML(dept.name)}" ${l0 ? 'checked' : ''} class="accent-blue-700 w-4 h-4 sm:w-5 sm:h-5 cursor-pointer rounded border-slate-300"></td>
-                        <td class="p-4 sm:p-5 text-center"><input type="checkbox" id="l1_${dept.id}" aria-label="L1 access for ${escapeHTML(dept.name)}" ${l1 ? 'checked' : ''} class="accent-blue-700 w-4 h-4 sm:w-5 sm:h-5 cursor-pointer rounded border-slate-300"></td>
-                        <td class="p-4 sm:p-5 text-center"><input type="checkbox" id="l2_${dept.id}" aria-label="L2 access for ${escapeHTML(dept.name)}" ${l2 ? 'checked' : ''} class="accent-blue-700 w-4 h-4 sm:w-5 sm:h-5 cursor-pointer rounded border-slate-300"></td>
+                        <td class="p-4 sm:p-5 text-center"><input type="checkbox" id="l0_${escapeHTML(dept.id)}" aria-label="L0 access for ${escapeHTML(dept.name)}" ${l0 ? 'checked' : ''} class="accent-blue-700 w-4 h-4 sm:w-5 sm:h-5 cursor-pointer rounded border-slate-300"></td>
+                        <td class="p-4 sm:p-5 text-center"><input type="checkbox" id="l1_${escapeHTML(dept.id)}" aria-label="L1 access for ${escapeHTML(dept.name)}" ${l1 ? 'checked' : ''} class="accent-blue-700 w-4 h-4 sm:w-5 sm:h-5 cursor-pointer rounded border-slate-300"></td>
+                        <td class="p-4 sm:p-5 text-center"><input type="checkbox" id="l2_${escapeHTML(dept.id)}" aria-label="L2 access for ${escapeHTML(dept.name)}" ${l2 ? 'checked' : ''} class="accent-blue-700 w-4 h-4 sm:w-5 sm:h-5 cursor-pointer rounded border-slate-300"></td>
                         <td class="p-4 sm:p-5 text-right">
-                            <button onclick="saveDeptLevelSettings('${dept.id}', this)" class="text-[10px] sm:text-[11px] bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 px-3 sm:px-5 py-2 sm:py-2.5 rounded-lg font-black uppercase tracking-wider shadow-sm transition-all active:scale-95 w-24 sm:w-32 flex justify-center mx-auto sm:mr-0">Apply</button>
+                            <button type="button" data-save-dept="${escapeHTML(dept.id)}" class="text-[10px] sm:text-[11px] bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 px-3 sm:px-5 py-2 sm:py-2.5 rounded-lg font-black uppercase tracking-wider shadow-sm transition-all active:scale-95 w-24 sm:w-32 flex justify-center mx-auto sm:mr-0">Apply</button>
                         </td>
                     </tr>
                 `;
+            });
+            tbody.querySelectorAll("[data-save-dept]").forEach(button => {
+                button.addEventListener("click", () => saveDeptLevelSettings(button.dataset.saveDept, button));
             });
         } catch (err) {
             tbody.innerHTML = "<tr><td colspan='5' class='p-10 sm:p-16 text-center text-red-500 font-bold'>Failed to load settings.</td></tr>";

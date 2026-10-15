@@ -8,6 +8,8 @@ export class BackendResponseError extends Error {
   }
 }
 
+const FETCH_TIMEOUT_MS = 15_000;
+
 export function createBackendClient({
   baseUrl = process.env.API_BASE_URL || "http://127.0.0.1:8000",
   fetchImpl = fetch,
@@ -24,6 +26,7 @@ export function createBackendClient({
         method: "GET",
         headers,
         redirect: "manual",
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       });
       const contentType = response.headers.get("content-type") || "";
       const text = await response.text();
@@ -55,8 +58,7 @@ export function sendBackendError(error, response) {
   if (error.body === null) {
     response.end();
   } else if (typeof error.body === "string") {
-    if (error.contentType) response.type(error.contentType);
-    response.send(error.body);
+    response.type("text/plain").send(error.body);
   } else {
     response.type("application/json").send(JSON.stringify(error.body));
   }

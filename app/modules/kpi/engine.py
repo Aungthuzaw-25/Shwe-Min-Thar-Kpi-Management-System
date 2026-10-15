@@ -64,6 +64,7 @@ OPERATORS = {
 # 🌟 ENTERPRISE FIX: Extract hardcoded localization strings to maintainable constants
 LATE_SUBMISSION_KEYWORDS = ["late", "အချိန်", "နောက်ကျ"]
 DEFAULT_LATE_CAT_NAME = "အချိန်မှီမတင်ပြခြင်း"
+KPI_RECORD_NOT_FOUND = "KPI record was not found."
 
 
 def _parse_numeric(value, context: str) -> float | None:
@@ -134,25 +135,25 @@ async def _find_fallback_formula(db, user, target_month: str):
         department_id = user.position.department_id
     if not department_id or not user_level:
         return None
+    if user.position_id and user.position:
+        position_filter = or_(
+            KPIFormula.position_id == user.position_id,
+            and_(
+                KPIFormula.position_id.is_(None),
+                KPIFormula.position_name == user.position.name,
+            ),
+        )
+    else:
+        position_filter = and_(
+            KPIFormula.position_id.is_(None),
+            KPIFormula.position_name == (user.position.name if user.position else "Unknown"),
+        )
     statement = select(KPIFormula).options(
         selectinload(KPIFormula.scoring_rules)
     ).where(
         KPIFormula.department_id == department_id,
         KPIFormula.user_level == user_level,
-        (
-            or_(
-                KPIFormula.position_id == user.position_id,
-                and_(
-                    KPIFormula.position_id.is_(None),
-                    KPIFormula.position_name == user.position.name,
-                ),
-            )
-            if user.position_id and user.position
-            else and_(
-                KPIFormula.position_id.is_(None),
-                KPIFormula.position_name == (user.position.name if user.position else "Unknown"),
-            )
-        ),
+        position_filter,
         KPIFormula.status == FormulaStatus.ACTIVE,
         KPIFormula.is_active == True,
         KPIFormula.is_deleted == False,
@@ -274,7 +275,7 @@ async def _save_kpi_record(
     record = (await db.execute(statement)).scalars().first()
     if explicit_record_id is not None:
         if record is None:
-            raise ValueError("KPI record was not found.")
+            raise ValueError(KPI_RECORD_NOT_FOUND)
         if (
             record.user_id != user.id
             or record.formula_id != formula.id
@@ -342,7 +343,7 @@ async def _save_kpi_record(
             ))
         return
     if explicit_record_id is not None:
-        raise ValueError("KPI record was not found.")
+        raise ValueError(KPI_RECORD_NOT_FOUND)
     db.add(KPIRecord(
         user_id=user.id,
         department_id=formula.department_id,
@@ -478,7 +479,7 @@ class KPICalculationEngine:
             )
         ).scalars().first()
         if record is None:
-            raise ValueError("KPI record was not found.")
+            raise ValueError(KPI_RECORD_NOT_FOUND)
         if context.user_id is not None and context.user_id != record.user_id:
             raise ValueError("KPI record does not belong to the requested user.")
         if context.period_id is not None and context.period_id != record.kpi_period_id:
@@ -560,7 +561,9 @@ class KPICalculationEngine:
         Core Engine: Aggregates tasks, parses text-based deductions, calculates target completion, 
         and updates or creates the final KPI Record securely with Transaction rollback protection.
         """
-        user_id = user.id if user is not None else context.user_id if context else None
+        user_id = user.id if user is not None else None
+        if user_id is None and context is not None:
+            user_id = context.user_id
         try:
             explicit_record_id = None
             if context is not None:
@@ -644,7 +647,15 @@ async def is_level_kpi_enabled(db: AsyncSession, level_name: str, department_id:
 # ==============================================================================
 # 3. Master Routing Operations
 # ==============================================================================
-async def trigger_kpi_recalculation(db: AsyncSession, user_level: str, user_id: UUID, target_date: datetime, department_id: UUID | None = None):
+async def trigger_kpi_recalculation(
+    db: AsyncSession,
+    user_level: str,
+    user_id: UUID,
+    target_date: datetime,
+    department_id: UUID | None = None,
+    *,
+    commit: bool = True,
+):
     """Entry Point for on-the-fly recalculations whenever a task is processed."""
     
     stmt = select(User).options(
@@ -664,7 +675,15 @@ async def trigger_kpi_recalculation(db: AsyncSession, user_level: str, user_id: 
     if not department_id: return
     if not await is_level_kpi_enabled(db, user_level, department_id): return
 
-    await KPICalculationEngine.calculate_monthly_kpi_for_user(db, user, target_date)
+    period_range = calendar_period_range(PeriodType.MONTHLY, target_date)
+    await KPICalculationEngine.execute_kpi_calculation(
+        db,
+        user,
+        period_range.start_inclusive,
+        period_range.end_exclusive,
+        PeriodType.MONTHLY,
+        commit=commit,
+    )
 
 async def calculate_custom_period_kpi(db: AsyncSession, user_id: UUID, start_date: datetime, end_date: datetime, task_data: dict = None):
     """Generates ad-hoc KPI records for custom manual evaluation scopes."""

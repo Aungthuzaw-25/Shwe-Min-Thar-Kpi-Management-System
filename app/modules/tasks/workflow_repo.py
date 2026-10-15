@@ -1,3 +1,4 @@
+import logging
 import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +13,8 @@ from app.modules.tasks.models.task import Task, TaskStatus
 from app.modules.tasks.models.task_history import TaskHistory
 from app.modules.tasks.models.task_review import TaskReview
 
+logger = logging.getLogger(__name__)
+
 
 async def submit_task_batch(
     db: AsyncSession,
@@ -23,11 +26,15 @@ async def submit_task_batch(
         Task.id.in_(task_ids),
         Task.owner_id == submitter_id,
         Task.status.in_([TaskStatus.DRAFT, TaskStatus.REJECTED])
-    )
+    ).with_for_update()
     result = await db.execute(stmt)
     tasks = result.scalars().all()
     requested_ids = set(task_ids)
-    if not tasks or {task.id for task in tasks} != requested_ids:
+    if (
+        not tasks
+        or len(task_ids) != len(requested_ids)
+        or {task.id for task in tasks} != requested_ids
+    ):
         raise ValueError("တင်ပြရန် သင့်လျော်သော Task များ မတွေ့ရှိပါ။")
 
     if not reviewer_id:
@@ -65,14 +72,17 @@ async def submit_task_batch(
                 "notification_type": "APPROVAL",
                 "channel": "DASHBOARD"
             })
-        except Exception:  # noqa: S110 - notification failure must not abort submission
-            pass # Notification error ကြောင့် ပင်မ Business Logic မရပ်သွားစေရန်
+        except Exception:
+            logger.exception(
+                "Batch %s was submitted, but reviewer notification failed.",
+                batch.id,
+            )
 
         return batch
 
-    except Exception as e:
+    except Exception:
         await db.rollback()
-        raise e
+        raise
 
 async def get_my_approval_queue(db: AsyncSession, reviewer_id: uuid.UUID):
     stmt = select(ApprovalQueue).options(
@@ -85,6 +95,96 @@ async def get_my_approval_queue(db: AsyncSession, reviewer_id: uuid.UUID):
     result = await db.execute(stmt)
     # ⚡ FIX: unique() added to prevent collection duplication in joins
     return result.unique().scalars().all()
+
+
+def _reviewed_task_status(
+    status: TaskStatus,
+    action: str,
+    reviewer_level: str,
+) -> tuple[TaskStatus, bool]:
+    if action == "APPROVED" and reviewer_level == "L1" and status == TaskStatus.PENDING_L1:
+        return TaskStatus.PENDING_L0, True
+    if action == "APPROVED" and reviewer_level == "L0" and status == TaskStatus.PENDING_L0:
+        return TaskStatus.APPROVED, True
+    if status == TaskStatus.REJECTED:
+        return status, False
+    if action == "DELAY":
+        return TaskStatus.REJECTED, False
+    if action == "REJECTED":
+        if reviewer_level == "L1":
+            return TaskStatus.REJECTED, False
+        if reviewer_level == "L0":
+            return TaskStatus.PENDING_L1, False
+    return status, False
+
+
+def _record_batch_task_review(
+    db: AsyncSession,
+    task: Task,
+    reviewer_id: uuid.UUID,
+    reviewer_level: str,
+    action: str,
+    comments: str,
+    deduction_rule: str | None,
+    new_status: TaskStatus,
+) -> None:
+    if task.status == new_status:
+        return
+
+    old_status_val = getattr(task.status, "value", str(task.status))
+    new_status_val = getattr(new_status, "value", str(new_status))
+    final_remarks = comments
+    if action == "REJECTED" and deduction_rule:
+        final_remarks = f"[KPI Deduction: {deduction_rule}] {comments}"
+
+    db.add(TaskHistory(
+        task_id=task.id,
+        changed_by=reviewer_id,
+        action=f"BATCH_{action}",
+        old_value=old_status_val,
+        new_value=new_status_val,
+        remarks=final_remarks,
+    ))
+    task.status = new_status
+    db.add(TaskReview(
+        task_id=task.id,
+        reviewer_id=reviewer_id,
+        reviewer_level=reviewer_level,
+        action=action,
+        comments=final_remarks,
+    ))
+
+
+async def _notify_batch_review(
+    db: AsyncSession,
+    batch: SubmissionBatch,
+    reviewer_level: str,
+    action: str,
+    next_reviewer_id: uuid.UUID | None,
+) -> None:
+    try:
+        status_msg = {
+            "APPROVED": "Approved",
+            "REJECTED": "Rejected",
+        }.get(action, "Delayed")
+        await create_notification(db, {
+            "user_id": batch.submitter_id,
+            "title": f"Batch Review: {status_msg}",
+            "message": f"Your submitted tasks have been {status_msg.lower()} by Level {reviewer_level[-1]}.",
+            "notification_type": action,
+            "channel": "DASHBOARD",
+        })
+        if action == "APPROVED" and reviewer_level == "L1" and next_reviewer_id:
+            await create_notification(db, {
+                "user_id": next_reviewer_id,
+                "title": "Tasks Forwarded for Final Approval",
+                "message": "A batch of tasks has been approved by L1 and forwarded to you for final review.",
+                "notification_type": "APPROVAL",
+                "channel": "DASHBOARD",
+            })
+    except Exception:  # noqa: S110 - notification failure must not abort approval
+        pass
+
 
 async def review_task_batch(
     db: AsyncSession,
@@ -112,49 +212,18 @@ async def review_task_batch(
         passed_count = 0
 
         for task in batch.tasks:
-            new_status = task.status
-
-            # 🌟 Workflow Rules Logic
-            if action == "APPROVED" and reviewer_level == 'L1' and task.status == TaskStatus.PENDING_L1:
-                new_status = TaskStatus.PENDING_L0
-                passed_count += 1
-            elif action == "APPROVED" and reviewer_level == 'L0' and task.status == TaskStatus.PENDING_L0:
-                new_status = TaskStatus.APPROVED
-                passed_count += 1
-            elif task.status == TaskStatus.REJECTED:
-                continue
-            elif action == "DELAY":
-                new_status = TaskStatus.REJECTED
-            elif action == "REJECTED":
-                if reviewer_level == 'L1':
-                    new_status = TaskStatus.REJECTED
-                elif reviewer_level == 'L0':
-                    new_status = TaskStatus.PENDING_L1
-
-            if task.status != new_status:
-                old_status_val = getattr(task.status, 'value', str(task.status))
-                new_status_val = getattr(new_status, 'value', str(new_status))
-
-                final_remarks = comments
-                if action == "REJECTED" and deduction_rule:
-                    final_remarks = f"[KPI Deduction: {deduction_rule}] {comments}"
-
-                db.add(TaskHistory(
-                    task_id=task.id,
-                    changed_by=reviewer_id,
-                    action=f"BATCH_{action}",
-                    old_value=old_status_val,
-                    new_value=new_status_val,
-                    remarks=final_remarks
-                ))
-                task.status = new_status
-                db.add(TaskReview(
-                    task_id=task.id,
-                    reviewer_id=reviewer_id,
-                    reviewer_level=reviewer_level,
-                    action=action,
-                    comments=final_remarks
-                ))
+            new_status, passed = _reviewed_task_status(task.status, action, reviewer_level)
+            passed_count += passed
+            _record_batch_task_review(
+                db,
+                task,
+                reviewer_id,
+                reviewer_level,
+                action,
+                comments,
+                deduction_rule,
+                new_status,
+            )
 
         if current_queue:
             current_queue.pending_count = 0
@@ -172,28 +241,7 @@ async def review_task_batch(
 
         await db.commit()
 
-        # 🌟 TRIGGER: Task ပိုင်ရှင်ဆီသို့ Notification ပို့ခြင်း
-        try:
-            status_msg = "Approved" if action == "APPROVED" else "Rejected" if action == "REJECTED" else "Delayed"
-            await create_notification(db, {
-                "user_id": batch.submitter_id,
-                "title": f"Batch Review: {status_msg}",
-                "message": f"Your submitted tasks have been {status_msg.lower()} by Level {reviewer_level[-1]}.",
-                "notification_type": action,
-                "channel": "DASHBOARD"
-            })
-
-            # L1 မှ Approve လုပ်၍ L0 ဆီသို့ ဆက်ပို့သောအခါ L0 ဆီသို့ Notification ပို့ခြင်း
-            if action == "APPROVED" and reviewer_level == 'L1' and next_reviewer_id:
-                await create_notification(db, {
-                    "user_id": next_reviewer_id,
-                    "title": "Tasks Forwarded for Final Approval",
-                    "message": "A batch of tasks has been approved by L1 and forwarded to you for final review.",
-                    "notification_type": "APPROVAL",
-                    "channel": "DASHBOARD"
-                })
-        except Exception:  # noqa: S110 - notification failure must not abort approval
-            pass
+        await _notify_batch_review(db, batch, reviewer_level, action, next_reviewer_id)
 
         return batch
 

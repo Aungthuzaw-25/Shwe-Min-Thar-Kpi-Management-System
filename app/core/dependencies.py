@@ -20,6 +20,7 @@ from app.modules.users.models import Role, User, UserPermissionOverride
 SUPER_ADMIN_ROLE = "Super Admin"
 GLOBAL_SCOPE_ROLES = {"Super Admin", "HR"}
 LEVEL_RESTRICTED_TASK_PERMISSIONS = {"tasks.approve", "tasks.reject", "tasks.return"}
+ACCESS_DENIED_MESSAGE = "Access Denied. You do not have permission to perform this action."
 
 
 async def get_authorized_department_ids(
@@ -154,7 +155,7 @@ def enforce_permission(
         user, permission_code, owner_id=owner_id, department_id=department_id
     ):
         raise PermissionDeniedException(
-            detail="Access Denied. You do not have permission to perform this action."
+            detail=ACCESS_DENIED_MESSAGE
         )
     return user
 
@@ -277,7 +278,7 @@ class RoleChecker:
     def __call__(self, user: User = Depends(get_current_user)):
         if not user.role or user.role.name not in self.allowed_roles:
             raise PermissionDeniedException(
-                detail="Access Denied. You do not have permission to perform this action."
+                detail=ACCESS_DENIED_MESSAGE
             )
         return user
 
@@ -377,5 +378,5 @@ class RequirePermission:
             ):
                 return current_user
         raise PermissionDeniedException(
-            detail="Access Denied. You do not have permission to perform this action."
+            detail=ACCESS_DENIED_MESSAGE
         )

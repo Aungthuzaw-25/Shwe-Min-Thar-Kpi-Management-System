@@ -192,7 +192,7 @@ def update_references(files: list[Path]) -> list[tuple[Path, str]]:
         for old, new in basenames.items():
             updated = re.sub(
                 rf"(?P<q>['\"]){re.escape(old)}(?P=q)",
-                lambda match: f"{match.group('q')}{new}{match.group('q')}",
+                lambda match, new=new: f"{match.group('q')}{new}{match.group('q')}",
                 updated,
             )
         if path.name == "tailwind.config.js":
@@ -202,6 +202,116 @@ def update_references(files: list[Path]) -> list[tuple[Path, str]]:
         if updated != original:
             changed.append((path, updated))
     return changed
+
+
+def _convert_files(
+    files: list[Path], syntax_check: bool
+) -> tuple[list[tuple[Path, str, list[str]]], Counter[str], list[str], list[str]]:
+    reviews: list[str] = []
+    summary: Counter[str] = Counter()
+    results: list[tuple[Path, str, list[str]]] = []
+    errors: list[str] = []
+    for path in files:
+        source = path.read_text(encoding="utf-8")
+        summary.update(constructs(source))
+        converted = convert_source(source, reviews)
+        results.append((path, source, [converted]))
+        if syntax_check:
+            errors.extend(validate_syntax(converted, path.as_posix()))
+    return results, summary, reviews, errors
+
+
+def _print_plan(
+    files: list[Path],
+    summary: Counter[str],
+    reviews: list[str],
+    errors: list[str],
+    references: list[tuple[Path, str]],
+    syntax_check: bool,
+) -> None:
+    print(f"Templates found: {len(files)}")
+    print("Construct counts:")
+    for name, count in sorted(summary.items()):
+        print(f"  {name}: {count}")
+    print("Planned template renames:")
+    for path in files:
+        print(f"  {path.relative_to(ROOT).as_posix()} -> "
+              f"{path.relative_to(ROOT).with_suffix('.njk').as_posix()}")
+    print("Planned code/config reference updates:")
+    for path, _ in references:
+        print(f"  {path.relative_to(ROOT).as_posix()}")
+    if reviews:
+        print("Needs manual review:")
+        for item in sorted(set(reviews)):
+            print(f"  {item}")
+    else:
+        print("Needs manual review: none")
+    if errors:
+        print("Syntax check failures:")
+        for item in errors:
+            print(f"  {item}")
+    elif syntax_check:
+        print("Syntax check: passed")
+
+
+def _apply_conversion(
+    results: list[tuple[Path, str, list[str]]],
+    references: list[tuple[Path, str]],
+    remove_init: bool,
+) -> None:
+    for old_path, source, [converted] in results:
+        new_path = old_path.with_suffix(".njk")
+        subprocess.run(
+            ["git", "mv", str(old_path.relative_to(ROOT)), str(new_path.relative_to(ROOT))],
+            cwd=ROOT,
+            check=True,
+        )
+        new_path.write_text(converted, encoding="utf-8", newline="")
+        if masked_non_template_text(source) != masked_non_template_text(converted):
+            raise RuntimeError(f"Non-template text changed in {old_path.relative_to(ROOT)}")
+
+    for path, updated in references:
+        path.write_text(updated, encoding="utf-8", newline="")
+
+    if remove_init:
+        for relative in EMPTY_INIT_PATHS:
+            candidate = TEMPLATES / relative
+            if candidate.is_file() and candidate.stat().st_size == 0:
+                subprocess.run(
+                    ["git", "rm", str(candidate.relative_to(ROOT))],
+                    cwd=ROOT,
+                    check=True,
+                )
+
+
+def _write_report(
+    files: list[Path], references: list[tuple[Path, str]], reviews: list[str], errors: list[str]
+) -> None:
+    report = [
+        "# Template conversion report",
+        "",
+        f"- Converted {len(files)} templates in place, preserving directory and base names.",
+        "- Changes inside Jinja delimiters are limited to path extensions, `.get()`, "
+          "`.strftime()`, and the `[:1]` slice conversions listed above.",
+        "- Verified text outside template delimiters remains byte-for-byte unchanged.",
+        f"- Updated {len(references)} route, test, or Tailwind configuration files.",
+        "",
+        "## Syntax check",
+        "",
+        "Balanced Jinja/Nunjucks delimiter and block check passed." if not errors
+        else "\n".join(f"- {error}" for error in errors),
+        "",
+        "## Needs manual review",
+        "",
+        "\n".join(f"- {item}" for item in sorted(set(reviews))) or "- None.",
+        "",
+        "## Converted template files",
+        "",
+        *[f"- `{path.relative_to(ROOT).with_suffix('.njk').as_posix()}`" for path in files],
+    ]
+    (ROOT / "TEMPLATE_CONVERSION_REPORT.md").write_text(
+        "\n".join(report) + "\n", encoding="utf-8", newline=""
+    )
 
 
 def main() -> int:
@@ -221,42 +331,9 @@ def main() -> int:
     if not files:
         parser.error("no templates/**/*.html files found")
 
-    reviews: list[str] = []
-    summary: Counter[str] = Counter()
-    results: list[tuple[Path, str, list[str]]] = []
-    all_errors: list[str] = []
-    for path in files:
-        source = path.read_text(encoding="utf-8")
-        summary.update(constructs(source))
-        converted = convert_source(source, reviews)
-        results.append((path, source, [converted]))
-        if args.syntax_check:
-            all_errors.extend(validate_syntax(converted, path.as_posix()))
-
-    print(f"Templates found: {len(files)}")
-    print("Construct counts:")
-    for name, count in sorted(summary.items()):
-        print(f"  {name}: {count}")
-    print("Planned template renames:")
-    for path in files:
-        print(f"  {path.relative_to(ROOT).as_posix()} -> "
-              f"{path.relative_to(ROOT).with_suffix('.njk').as_posix()}")
+    results, summary, reviews, all_errors = _convert_files(files, args.syntax_check)
     references = update_references(files)
-    print("Planned code/config reference updates:")
-    for path, _ in references:
-        print(f"  {path.relative_to(ROOT).as_posix()}")
-    if reviews:
-        print("Needs manual review:")
-        for item in sorted(set(reviews)):
-            print(f"  {item}")
-    else:
-        print("Needs manual review: none")
-    if all_errors:
-        print("Syntax check failures:")
-        for item in all_errors:
-            print(f"  {item}")
-    elif args.syntax_check:
-        print("Syntax check: passed")
+    _print_plan(files, summary, reviews, all_errors, references, args.syntax_check)
 
     if not args.apply:
         print("Dry run only; no files changed.")
@@ -265,55 +342,8 @@ def main() -> int:
         print("Refusing to apply because syntax checks failed.", file=sys.stderr)
         return 1
 
-    for old_path, source, [converted] in results:
-        new_path = old_path.with_suffix(".njk")
-        subprocess.run(
-            ["git", "mv", str(old_path.relative_to(ROOT)), str(new_path.relative_to(ROOT))],
-            cwd=ROOT,
-            check=True,
-        )
-        new_path.write_text(converted, encoding="utf-8", newline="")
-        if masked_non_template_text(source) != masked_non_template_text(converted):
-            raise RuntimeError(f"Non-template text changed in {old_path.relative_to(ROOT)}")
-
-    for path, updated in references:
-        path.write_text(updated, encoding="utf-8", newline="")
-
-    if args.remove_init:
-        for relative in EMPTY_INIT_PATHS:
-            candidate = TEMPLATES / relative
-            if candidate.is_file() and candidate.stat().st_size == 0:
-                subprocess.run(
-                    ["git", "rm", str(candidate.relative_to(ROOT))],
-                    cwd=ROOT,
-                    check=True,
-                )
-
-    report = [
-        "# Template conversion report",
-        "",
-        f"- Converted {len(files)} templates in place, preserving directory and base names.",
-        "- Changes inside Jinja delimiters are limited to path extensions, `.get()`, "
-          "`.strftime()`, and the `[:1]` slice conversions listed above.",
-        "- Verified text outside template delimiters remains byte-for-byte unchanged.",
-        f"- Updated {len(references)} route, test, or Tailwind configuration files.",
-        "",
-        "## Syntax check",
-        "",
-        "Balanced Jinja/Nunjucks delimiter and block check passed." if not all_errors
-        else "\n".join(f"- {error}" for error in all_errors),
-        "",
-        "## Needs manual review",
-        "",
-        "\n".join(f"- {item}" for item in sorted(set(reviews))) or "- None.",
-        "",
-        "## Converted template files",
-        "",
-        *[f"- `{path.relative_to(ROOT).with_suffix('.njk').as_posix()}`" for path in files],
-    ]
-    (ROOT / "TEMPLATE_CONVERSION_REPORT.md").write_text(
-        "\n".join(report) + "\n", encoding="utf-8", newline=""
-    )
+    _apply_conversion(results, references, args.remove_init)
+    _write_report(files, references, reviews, all_errors)
     print("Applied conversion and wrote TEMPLATE_CONVERSION_REPORT.md.")
     return 0
 

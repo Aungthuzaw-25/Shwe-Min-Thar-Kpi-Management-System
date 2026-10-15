@@ -1,4 +1,5 @@
 (function () {
+    let modalId = 0;
     const icons = {
         success: "✓",
         error: "!",
@@ -75,7 +76,9 @@
                     </div>
                 </div>`;
 
+            let deactivateModal = () => {};
             const finish = (value) => {
+                deactivateModal();
                 overlay.remove();
                 resolve(value);
             };
@@ -84,8 +87,11 @@
             overlay.addEventListener("click", (event) => {
                 if (event.target === overlay) finish(false);
             });
-            document.body.appendChild(overlay);
-            overlay.querySelector(".app-confirm-submit").focus();
+            deactivateModal = activateModal(
+                overlay,
+                overlay.querySelector(".app-confirm-submit"),
+                () => finish(false)
+            );
         });
     }
 
@@ -108,14 +114,15 @@
                     </div>
                 </div>`;
             const input = overlay.querySelector(".app-prompt-input");
+            let deactivateModal = () => {};
             const finish = (value) => {
+                deactivateModal();
                 overlay.remove();
                 resolve(value);
             };
             overlay.querySelector(".app-confirm-cancel").addEventListener("click", () => finish(null));
             overlay.querySelector(".app-confirm-submit").addEventListener("click", () => finish(input.value));
-            document.body.appendChild(overlay);
-            input.focus();
+            deactivateModal = activateModal(overlay, input, () => finish(null));
         });
     }
 
@@ -147,7 +154,9 @@
             dialog.append(content, actions);
             overlay.appendChild(dialog);
 
+            let deactivateModal = () => {};
             const finish = () => {
+                deactivateModal();
                 overlay.remove();
                 resolve();
             };
@@ -155,9 +164,62 @@
             overlay.addEventListener("click", (event) => {
                 if (event.target === overlay) finish();
             });
-            document.body.appendChild(overlay);
-            close.focus();
+            deactivateModal = activateModal(overlay, close, finish);
         });
+    }
+
+    function activateModal(overlay, initialFocus, onEscape) {
+        const previouslyFocused = document.activeElement;
+        const title = overlay.querySelector("h2");
+        if (title) {
+            title.id = `app-dialog-title-${++modalId}`;
+            overlay.setAttribute("aria-labelledby", title.id);
+        }
+        overlay.tabIndex = -1;
+
+        const getFocusableElements = () => Array.from(
+            overlay.querySelectorAll(
+                'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+            )
+        ).filter((element) => element.getAttribute("aria-hidden") !== "true");
+
+        const handleKeydown = (event) => {
+            if (event.key === "Escape") {
+                event.preventDefault();
+                onEscape();
+                return;
+            }
+            if (event.key !== "Tab") return;
+
+            const focusable = getFocusableElements();
+            if (focusable.length === 0) {
+                event.preventDefault();
+                overlay.focus();
+                return;
+            }
+
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (event.shiftKey && (document.activeElement === first || !overlay.contains(document.activeElement))) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && (document.activeElement === last || !overlay.contains(document.activeElement))) {
+                event.preventDefault();
+                first.focus();
+            }
+        };
+
+        document.addEventListener("keydown", handleKeydown, true);
+        document.body.appendChild(overlay);
+        initialFocus.focus();
+
+        return () => {
+            document.removeEventListener("keydown", handleKeydown, true);
+            if (overlay.isConnected) overlay.remove();
+            if (previouslyFocused instanceof HTMLElement && previouslyFocused.isConnected) {
+                previouslyFocused.focus();
+            }
+        };
     }
 
     function escapeHtml(value) {
@@ -188,13 +250,16 @@
                     <button type="button" class="app-confirm-submit">Close</button>
                 </div>
             </div>`;
-        const close = () => overlay.remove();
+        let deactivateModal = () => {};
+        const close = () => {
+            deactivateModal();
+            overlay.remove();
+        };
         overlay.querySelector(".app-confirm-submit").addEventListener("click", close);
         overlay.addEventListener("click", (event) => {
             if (event.target === overlay) close();
         });
-        document.body.appendChild(overlay);
-        overlay.querySelector(".app-confirm-submit").focus();
+        deactivateModal = activateModal(overlay, overlay.querySelector(".app-confirm-submit"), close);
     }
 
     window.showToast = showToast;

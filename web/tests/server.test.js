@@ -152,4 +152,42 @@ describe("Express pages and CSP middleware", () => {
     expect(response.status).toBe(401);
     expect(response.body).toEqual({ detail: "Token expired or invalid." });
   });
+
+  it("serves backend string errors as plain text instead of executable HTML", async () => {
+    const { BackendResponseError } = await import("../src/lib/backendClient.js");
+    const backend = {
+      get: vi.fn(async () => {
+        throw new BackendResponseError(
+          400,
+          "text/html",
+          '<script>alert("xss")</script>',
+        );
+      }),
+    };
+
+    const response = await request(createApp({ backend })).get("/dashboard");
+
+    expect(response.status).toBe(400);
+    expect(response.headers["content-type"]).toMatch(/^text\/plain/);
+    expect(response.text).toBe('<script>alert("xss")</script>');
+  });
+
+  it("writes request failures as single-line structured logs", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const backend = {
+      get: vi.fn(async () => {
+        throw new Error("failure\r\nforged log entry");
+      }),
+    };
+
+    try {
+      await request(createApp({ backend })).get("/dashboard");
+
+      expect(log).toHaveBeenCalledOnce();
+      expect(log.mock.calls[0][0]).toContain('"error":"failure\\r\\nforged log entry"');
+      expect(log.mock.calls[0][0]).not.toMatch(/[\r\n]/);
+    } finally {
+      log.mockRestore();
+    }
+  });
 });

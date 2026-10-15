@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import logging
+import os
 from datetime import datetime, timedelta
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -210,20 +211,27 @@ def start_scheduler():
     scheduler.add_job(_locked_escalation, 'cron', hour=18, minute=0,
                       id='task_escalation', coalesce=True, max_instances=1)
 
-    # --------------------------------------------------------------------------
-    # C. Notifications Schedule
-    # --------------------------------------------------------------------------
-    # Grouped/Batch Notifications များကို မိနစ် ၃၀ တစ်ခါ ပို့ပေးရန်
-    scheduler.add_job(
-        _locked_notifications,
-        'interval', 
-        minutes=30, 
-        id='batch_notification_job',
-        replace_existing=True,
-        coalesce=True,
-        max_instances=1,
-    )
+    # Batch delivery is currently a no-op, so keep it opt-in until delivery exists.
+    notifications_enabled = os.getenv(
+        "ENABLE_BATCH_NOTIFICATIONS", "false"
+    ).strip().lower() in {"1", "true", "yes", "on"}
+    if notifications_enabled:
+        scheduler.add_job(
+            _locked_notifications,
+            'interval',
+            minutes=30,
+            id='batch_notification_job',
+            replace_existing=True,
+            coalesce=True,
+            max_instances=1,
+        )
+        logger.info("Batch notification no-op job registered by ENABLE_BATCH_NOTIFICATIONS.")
+    else:
+        logger.info(
+            "Batch notification job is disabled; set ENABLE_BATCH_NOTIFICATIONS=true "
+            "to register it (delivery is not implemented)."
+        )
 
     scheduler.start()
-    logger.info("🚀 System Scheduler (KPI & Workflow Engine & Notifications) started successfully.")
+    logger.info("🚀 System Scheduler (KPI & Workflow Engine) started successfully.")
     return scheduler

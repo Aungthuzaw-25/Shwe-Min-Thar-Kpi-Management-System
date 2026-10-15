@@ -23,7 +23,12 @@ from app.models.audit_log import AuditLog
 
 # 🌟 MODIFIED: Imported TokenBlacklist from unified models
 from app.modules.auth.models import AuthSession, TokenBlacklist
-from app.modules.auth.oauth_state import consume_oauth_state, create_oauth_state, get_oauth_redis
+from app.modules.auth.oauth_state import (
+    INVALID_OAUTH_STATE_MESSAGE,
+    consume_oauth_state,
+    create_oauth_state,
+    get_oauth_redis,
+)
 from app.modules.auth.oidc import (
     OIDCProvider,
     OIDCValidationError,
@@ -45,6 +50,7 @@ from app.modules.users.router import revoke_user_authentication
 limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter()
+PROFILE_RETURN_PATH = "/profile"
 
 def _provider(name: str) -> OIDCProvider:
     if name == "google":
@@ -285,7 +291,7 @@ async def _complete_oauth_login(
         redis = get_oauth_redis(request)
         state_data = await consume_oauth_state(redis, state or "")
         if state_data.get("provider") != provider_name:
-            raise HTTPException(status_code=400, detail="Invalid OAuth state.")
+            raise HTTPException(status_code=400, detail=INVALID_OAUTH_STATE_MESSAGE)
         provider = _provider(provider_name)
         await provider.validate_callback_issuer(callback_issuer)
         if state_data.get("flow_type") == "LINK":
@@ -301,7 +307,7 @@ async def _complete_oauth_login(
                 provider=provider,
             )
         if state_data.get("flow_type") != "LOGIN":
-            raise HTTPException(status_code=400, detail="Invalid OAuth state.")
+            raise HTTPException(status_code=400, detail=INVALID_OAUTH_STATE_MESSAGE)
         token_response = await provider.exchange_code(code or "", state_data["pkce_verifier"])
         identity = await provider.validate_identity(token_response, state_data["nonce"])
         user, identity_row = await _resolve_oauth_user(db, identity)
@@ -367,27 +373,27 @@ async def _recent_authentication(db: AsyncSession, user_id) -> bool:
     ))).scalars().first() is not None
 
 
-async def _link_start(request: Request, provider_name: str, user: User, db: AsyncSession, redis):
+async def _link_start(provider_name: str, user: User, db: AsyncSession, redis):
     if not await _recent_authentication(db, user.id):
         raise HTTPException(status_code=403, detail="Recent authentication is required before linking an account.")
     provider = _provider(provider_name)
     nonce, verifier = create_nonce(), create_pkce_verifier()
     state = await create_oauth_state(redis, provider=provider_name, nonce=nonce,
                                      pkce_verifier=verifier, mode="link", user_id=str(user.id),
-                                     return_path="/profile")
+                                     return_path=PROFILE_RETURN_PATH)
     return RedirectResponse(await provider.authorization_url(state, nonce, verifier), status_code=303)
 
 
 @router.get("/google/link/start")
-async def google_link_start(request: Request, user: User = Depends(get_current_user),
+async def google_link_start(user: User = Depends(get_current_user),
                             db: AsyncSession = Depends(get_db), redis=Depends(get_oauth_redis)):
-    return await _link_start(request, "google", user, db, redis)
+    return await _link_start("google", user, db, redis)
 
 
 @router.get("/microsoft/link/start")
-async def microsoft_link_start(request: Request, user: User = Depends(get_current_user),
+async def microsoft_link_start(user: User = Depends(get_current_user),
                                db: AsyncSession = Depends(get_db), redis=Depends(get_oauth_redis)):
-    return await _link_start(request, "microsoft", user, db, redis)
+    return await _link_start("microsoft", user, db, redis)
 
 
 async def _complete_link(request: Request, db: AsyncSession, provider_name: str,
@@ -400,7 +406,7 @@ async def _complete_link(request: Request, db: AsyncSession, provider_name: str,
         if state_data is None:
             state_data = await consume_oauth_state(get_oauth_redis(request), state or "")
         if state_data.get("provider") != provider_name or state_data.get("flow_type") != "LINK":
-            raise HTTPException(status_code=400, detail="Invalid OAuth state.")
+            raise HTTPException(status_code=400, detail=INVALID_OAUTH_STATE_MESSAGE)
         provider = provider or _provider(provider_name)
         await provider.validate_callback_issuer(request.query_params.get("iss"))
         identity = await provider.validate_identity(
@@ -440,9 +446,9 @@ async def _complete_link(request: Request, db: AsyncSession, provider_name: str,
         db.add(AuditLog(user_id=user.id, action="OAUTH_IDENTITY_LINKED",
                         table_name="oauth_accounts", new_value={"provider": provider_name}))
         await db.commit()
-        return_path = state_data.get("return_path") or "/profile"
+        return_path = state_data.get("return_path") or PROFILE_RETURN_PATH
         if not return_path.startswith("/") or return_path.startswith("//"):
-            return_path = "/profile"
+            return_path = PROFILE_RETURN_PATH
         separator = "&" if "?" in return_path else "?"
         return RedirectResponse(
             url=f"{return_path}{separator}oauth_linked=1",

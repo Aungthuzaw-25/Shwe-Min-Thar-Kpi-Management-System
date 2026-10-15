@@ -21,7 +21,12 @@ from app.modules.users.models import User
 router = APIRouter()
 admin_checker = RoleChecker(['Super Admin', 'Admin'])
 
-@router.post("/", response_model=TargetResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/",
+    response_model=TargetResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses={500: {"description": "Failed to assign target"}},
+)
 async def create_target(
     payload: TargetCreate, 
     db: AsyncSession = Depends(get_db), 
@@ -102,7 +107,14 @@ async def get_targets(
         
     return response_list
 
-@router.delete("/{target_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{target_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        404: {"description": "Target not found"},
+        500: {"description": "Cannot delete target"},
+    },
+)
 async def delete_target(
     target_id: UUID, 
     db: AsyncSession = Depends(get_db), 

@@ -1,4 +1,5 @@
 const CACHE_NAME = 'kpi-portal-v1';
+const CACHE_PREFIX = 'kpi-portal-';
 const ASSETS_TO_CACHE = [
   '/auth/login',
   '/static/css/dashboard.css',
@@ -23,7 +24,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
-          if (cacheName !== CACHE_NAME) {
+          if (cacheName.startsWith(CACHE_PREFIX) && cacheName !== CACHE_NAME) {
             return caches.delete(cacheName);
           }
         })

@@ -101,7 +101,7 @@ async def test_admin_task_detail_uses_department_scope(monkeypatch):
 
     called = False
 
-    async def deny_cross_department_task(db, task_id, current_user):
+    async def deny_cross_department_task(db, task_id, current_user, **kwargs):
         nonlocal called
         called = True
         raise HTTPException(status_code=404, detail="Task not found.")

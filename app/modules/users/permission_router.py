@@ -454,7 +454,7 @@ async def permission_audit_history(
         # Try users first
         users = (await db.execute(
             select(User.id, User.first_name, User.last_name, User.email)
-            .where(User.id.in_([uid for uid in target_ids]))
+            .where(User.id.in_(target_ids))
         )).all()
         for uid, fn, ln, email in users:
             target_map[str(uid)] = f"{fn} {ln} ({email})"
@@ -462,7 +462,7 @@ async def permission_audit_history(
         remaining = target_ids - set(target_map.keys())
         if remaining:
             roles = (await db.execute(
-                select(Role.id, Role.name).where(Role.id.in_([rid for rid in remaining]))
+                select(Role.id, Role.name).where(Role.id.in_(remaining))
             )).all()
             for rid, name in roles:
                 target_map[str(rid)] = f"Role: {name}"

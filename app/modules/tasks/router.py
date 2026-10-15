@@ -1,9 +1,11 @@
 import hashlib
 import json
-import mimetypes
+import logging
 import os
 from datetime import UTC, datetime  # 🌟 FIX: Added timezone for late calculation
+from io import BytesIO
 from uuid import UUID
+from zipfile import BadZipFile, ZipFile
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy import or_
@@ -51,7 +53,13 @@ from app.services.activity_service import record_activity
 from app.services.storage_service import storage_service
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 app_timezone = APPLICATION_TIMEZONE
+TASK_APPROVE_PERMISSION = "tasks.approve"
+LEVEL_PREFIX = "LEVEL "
+SUPER_ADMIN_ROLE_NAME = "Super Admin"
+LEVEL_ONE_ROLE_NAME = "Level 1"
+LEVEL_ZERO_ROLE_NAME = "Level 0"
 
 
 async def _authorized_task(
@@ -106,7 +114,7 @@ async def _authorize_workflow_actor(
     task_id: UUID,
     current_user: User,
     required_level: str,
-    permission: str = "tasks.approve",
+    permission: str = TASK_APPROVE_PERMISSION,
 ) -> Task:
     """Authorize a workflow mutation against the task's owner and reviewer scope."""
     enforce_permission(current_user, permission)
@@ -137,7 +145,7 @@ async def _authorize_workflow_actor(
     if (
         not membership
         or str(membership.department_id) not in owner_department_ids
-        or str(membership.user_level).upper().replace("LEVEL ", "") != required_level
+        or str(membership.user_level).upper().replace(LEVEL_PREFIX, "") != required_level
     ):
         raise HTTPException(status_code=403, detail="You are not authorized for this workflow stage.")
     return task
@@ -166,31 +174,61 @@ ALLOWED_MIME_TYPES = [
 
 
 def _detect_mime_type(file_bytes: bytes, filename: str | None = None) -> str:
-    """Best-effort MIME detection with a safe fallback when libmagic is unavailable."""
-    if magic is not None:
+    """Require content sniffing and verify Office archives against their structure."""
+    if magic is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Secure file inspection is unavailable.",
+        )
+    try:
+        detected = magic.from_buffer(file_bytes, mime=True)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Unable to inspect file content safely.",
+        ) from exc
+    if not detected:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Unable to determine the file content type.",
+        )
+
+    extension = os.path.splitext(filename or "")[1].lower()
+    if detected == "application/zip" and extension in {".xlsx", ".docx"}:
         try:
-            detected = magic.from_buffer(file_bytes, mime=True)
-            if detected:
-                return detected
-        except Exception:  # noqa: S110 - optional libmagic failure uses safe fallback
-            pass
+            with ZipFile(BytesIO(file_bytes)) as archive:
+                names = set(archive.namelist())
+        except BadZipFile as exc:
+            raise HTTPException(
+                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                detail="Office document archive is invalid.",
+            ) from exc
+        if "[Content_Types].xml" not in names:
+            raise HTTPException(
+                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                detail="Office document archive is invalid.",
+            )
+        if extension == ".xlsx" and "xl/workbook.xml" in names:
+            return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        if extension == ".docx" and "word/document.xml" in names:
+            return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
-    if filename:
-        guessed = mimetypes.guess_type(filename)[0]
-        if guessed:
-            return guessed
-
-    if file_bytes.startswith(b"%PDF"):
-        return "application/pdf"
-    if file_bytes.startswith(b"\x89PNG"):
-        return "image/png"
-    if file_bytes.startswith(b"\xff\xd8\xff"):
-        return "image/jpeg"
-    if file_bytes.startswith(b"PK"):
-        return "application/zip"
-    if file_bytes.startswith(b"ID"):
-        return "application/vnd.ms-excel"
-    return "application/octet-stream"
+    extension_mimes = {
+        ".pdf": {"application/pdf"},
+        ".jpg": {"image/jpeg"},
+        ".jpeg": {"image/jpeg"},
+        ".png": {"image/png"},
+        ".csv": {"text/csv", "text/plain", "application/csv"},
+        ".xlsx": {"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},
+        ".doc": {"application/msword"},
+        ".docx": {"application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
+    }
+    if detected not in extension_mimes.get(extension, set()):
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="File content does not match its extension.",
+        )
+    return "text/csv" if extension == ".csv" else detected
 
 
 async def _get_user_allowed_categories(db: AsyncSession, user_id: UUID):
@@ -220,8 +258,8 @@ async def _validate_assigned_task_payload(db: AsyncSession, current_user: User, 
     if current_user_department.department_id != assignee_department.department_id:
         raise HTTPException(status_code=403, detail="Cross-department task assignment is not allowed.")
 
-    current_level = str(current_user_department.user_level).upper().replace("LEVEL ", "")
-    target_level = str(assignee_department.user_level).upper().replace("LEVEL ", "")
+    current_level = str(current_user_department.user_level).upper().replace(LEVEL_PREFIX, "")
+    target_level = str(assignee_department.user_level).upper().replace(LEVEL_PREFIX, "")
 
     allowed_hierarchy = {
         "L0": {"L1", "L2"},
@@ -278,8 +316,8 @@ async def get_task_categories_for_user(
     if current_ud.department_id != assignee_ud.department_id:
         raise HTTPException(status_code=403, detail="Cross-department task assignment is not allowed.")
 
-    current_level = str(current_ud.user_level).upper().replace("LEVEL ", "")
-    target_level = str(assignee_ud.user_level).upper().replace("LEVEL ", "")
+    current_level = str(current_ud.user_level).upper().replace(LEVEL_PREFIX, "")
+    target_level = str(assignee_ud.user_level).upper().replace(LEVEL_PREFIX, "")
     allowed_hierarchy = {"L0": {"L1", "L2"}, "L1": {"L2"}, "L2": set()}
     if current_user.role and current_user.role.name not in GLOBAL_SCOPE_ROLES:
         if target_level not in allowed_hierarchy.get(current_level, set()):
@@ -301,14 +339,34 @@ async def get_batch_deductions(
     if not target_user:
         raise HTTPException(status_code=404, detail="Batch submitter not found.")
 
-    allowed_roles = {"Super Admin", "Admin", "HR", "Department Head"}
-    if target_user.id != current_user.id and current_user.role.name not in allowed_roles:
+    allowed_roles = {SUPER_ADMIN_ROLE_NAME, "Admin", "HR", "Department Head"}
+    role_name = current_user.role.name if current_user.role else ""
+    if target_user.id != current_user.id and role_name not in allowed_roles:
         raise HTTPException(status_code=403, detail="Not authorized to view batch deductions.")
 
-    ud_stmt = select(UserDepartment).where(UserDepartment.user_id == target_user.id)
+    ud_stmt = select(UserDepartment).where(
+        UserDepartment.user_id == target_user.id,
+        UserDepartment.is_deleted.is_(False),
+    )
     ud = (await db.execute(ud_stmt)).scalars().first()
     if not ud:
         return {"deductions": []}
+    if role_name == "Department Head" and target_user.id != current_user.id:
+        caller_departments = set(
+            (
+                await db.execute(
+                    select(UserDepartment.department_id).where(
+                        UserDepartment.user_id == current_user.id,
+                        UserDepartment.is_deleted.is_(False),
+                    )
+                )
+            ).scalars().all()
+        )
+        if ud.department_id not in caller_departments:
+            raise HTTPException(
+                status_code=403,
+                detail="Department Heads can only view deductions for their department.",
+            )
 
     pos_obj = await db.get(Position, target_user.position_id) if target_user.position_id else None
     user_pos_name = pos_obj.name.strip().lower() if pos_obj and pos_obj.name else ""
@@ -437,10 +495,10 @@ async def create_bulk_tasks(payload: BulkTaskCreate, db: AsyncSession = Depends(
     """ 🌟 Manager/Admin များမှ Task ကို Assign ချပေးသော Endpoint """
     enforce_permission(current_user, "tasks.create")
     try:
-        if current_user.role.name not in ['Super Admin', 'Admin']:
+        if current_user.role.name not in [SUPER_ADMIN_ROLE_NAME, 'Admin']:
             ud_stmt = select(UserDepartment).where(UserDepartment.user_id == current_user.id)
             ud = (await db.execute(ud_stmt)).scalars().first()
-            if not ud or str(ud.user_level).upper().replace('LEVEL ', '') not in ['L0', 'L1']:
+            if not ud or str(ud.user_level).upper().replace(LEVEL_PREFIX, '') not in ['L0', 'L1']:
                 raise HTTPException(status_code=403, detail="Only Managers or Admins can assign tasks to other users.")
 
         created_tasks = []
@@ -554,7 +612,7 @@ async def get_department_managers(db: AsyncSession = Depends(get_db), current_us
             .join(UserDepartment, User.id == UserDepartment.user_id)
             .where(
                 UserDepartment.department_id == department_id,
-                UserDepartment.user_level.in_(['L0', 'L1', 'Level 0', 'Level 1']),
+                UserDepartment.user_level.in_(['L0', 'L1', LEVEL_ZERO_ROLE_NAME, LEVEL_ONE_ROLE_NAME]),
                 UserDepartment.is_deleted == False,
                 User.id != current_user.id,
                 User.is_active == True
@@ -594,7 +652,7 @@ async def get_task_assignees(
     if not current_link:
         return []
 
-    current_level = str(current_link.user_level).upper().replace("LEVEL ", "")
+    current_level = str(current_link.user_level).upper().replace(LEVEL_PREFIX, "")
     allowed_levels = {"L0": {"L1", "L2"}, "L1": {"L2"}}.get(current_level, set())
     if not allowed_levels:
         return []
@@ -652,7 +710,7 @@ async def get_my_tasks(
         is_l2 = ud.user_level in ['L2', 'Level 2'] if ud else True
         
         # 🌟 PERFORMANCE FIX: Database-Level Filtering instead of Python Loop Filtering
-        if current_user.role.name not in ['Super Admin', 'Admin', 'Level 0']:
+        if current_user.role.name not in [SUPER_ADMIN_ROLE_NAME, 'Admin', LEVEL_ZERO_ROLE_NAME]:
             stmt = stmt.where(
                 or_(
                     Task.owner_id == current_user.id,
@@ -671,13 +729,13 @@ async def get_my_tasks(
         tasks = result.scalars().all()
         
         # Preserve the UI/UX logic for L2 users (Masking L0 rejection comments)
-        if current_user.role.name not in ['Super Admin', 'Admin', 'Level 0']:
+        if current_user.role.name not in [SUPER_ADMIN_ROLE_NAME, 'Admin', LEVEL_ZERO_ROLE_NAME]:
             my_tasks = []
             for t in tasks:
                 task_dict = TaskResponse.model_validate(t)
                 if is_l2:
                     for r in task_dict.reviews:
-                        if r.reviewer_level in ['L0', 'Level 0'] and r.action in ['REJECTED', 'REJECTED_OVERRIDE']:
+                        if r.reviewer_level in ['L0', LEVEL_ZERO_ROLE_NAME] and r.action in ['REJECTED', 'REJECTED_OVERRIDE']:
                             r.comments = "Returned from Management. Please wait for L1 supervisor instructions."
                 my_tasks.append(task_dict)
             return my_tasks
@@ -783,7 +841,7 @@ async def submit_task_batch(payload: BatchSubmitRequest, db: AsyncSession = Depe
 # 🌟 PERFORMANCE FIX: Eliminate N+1 DB Queries from the Loop
 @router.get('/approval-queue', response_model=list[QueueItemResponse])
 async def get_approval_queue(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    enforce_permission(current_user, "tasks.approve")
+    enforce_permission(current_user, TASK_APPROVE_PERMISSION)
     queues = await workflow_repo.get_my_approval_queue(db, current_user.id)
     result = []
     
@@ -809,7 +867,7 @@ async def get_approval_queue(db: AsyncSession = Depends(get_db), current_user: U
 @router.post('/batch/{batch_id}/review', response_model=BatchSubmitResponse)
 async def review_task_batch_api(batch_id: UUID, payload: BatchReviewRequest, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     if payload.action == "APPROVED":
-        enforce_permission(current_user, "tasks.approve")
+        enforce_permission(current_user, TASK_APPROVE_PERMISSION)
     elif payload.action == "REJECTED":
         enforce_permission(current_user, "tasks.reject")
     elif payload.action == "DELAY":
@@ -854,13 +912,13 @@ async def review_task_batch_api(batch_id: UUID, payload: BatchReviewRequest, db:
                 owner_dept_id = t.owner.user_departments[0].department_id
             
             if payload.action == "REJECTED":
-                if user_level in ['L1', 'Level 1']:
+                if user_level in ['L1', LEVEL_ONE_ROLE_NAME]:
                     target_kpi_user_id = t.owner_id
                     target_kpi_level = "L2"
                     target_kpi_dept = owner_dept_id
-                elif user_level in ['L0', 'Level 0']:
+                elif user_level in ['L0', LEVEL_ZERO_ROLE_NAME]:
                     l1_review_stmt = select(TaskReview).where(
-                        TaskReview.task_id == t.id, TaskReview.reviewer_level.in_(['L1', 'Level 1']), TaskReview.action == 'APPROVED'
+                        TaskReview.task_id == t.id, TaskReview.reviewer_level.in_(['L1', LEVEL_ONE_ROLE_NAME]), TaskReview.action == 'APPROVED'
                     ).order_by(TaskReview.created_at.desc())
                     l1_review = (await db.execute(l1_review_stmt)).scalars().first()
                     
@@ -905,7 +963,7 @@ async def resign_task_to_l2(task_id: UUID, payload: TaskReviewInput, db: AsyncSe
     latest_l1_review = max(
         (
             review for review in (task.reviews or [])
-            if review.reviewer_level in {"L1", "Level 1"}
+            if review.reviewer_level in {"L1", LEVEL_ONE_ROLE_NAME}
             and review.action == "APPROVED"
         ),
         key=lambda review: review.created_at,
@@ -964,7 +1022,11 @@ async def upload_task_evidence(task_id: UUID, file: UploadFile = File(...), db: 
         file_hash = hashlib.sha256(content).hexdigest()
         await file.seek(0)
         
-        object_name = await storage_service.upload_file(file, folder=f"task_evidence/task_{task_id}")
+        object_name = await storage_service.upload_file(
+            file,
+            folder=f"task_evidence/task_{task_id}",
+            content_type=mime_type,
+        )
         evidence_data = {
             "task_id": task.id,
             "file_name": file.filename,
@@ -1016,26 +1078,82 @@ async def get_evidence_url(
 @router.delete("/evidence/{evidence_id}", status_code=status.HTTP_200_OK, tags=["Tasks"])
 async def delete_task_evidence(evidence_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     try:
-        stmt = select(TaskEvidence).where(TaskEvidence.id == evidence_id)
+        stmt = select(TaskEvidence).where(TaskEvidence.id == evidence_id).with_for_update()
         evidence = (await db.execute(stmt)).scalars().first()
         
         if not evidence:
             raise HTTPException(status_code=404, detail="Evidence file not found.")
-        await _authorized_task(db, evidence.task_id, current_user)
-            
-        if hasattr(storage_service, 'delete_file'):
-            await storage_service.delete_file(evidence.file_path)
-        elif hasattr(storage_service, 'remove_file'):
-            await storage_service.remove_file(evidence.file_path)
-            
+        task = (
+            await db.execute(
+                select(Task).where(Task.id == evidence.task_id).with_for_update()
+            )
+        ).scalars().first()
+        if not task:
+            raise HTTPException(status_code=404, detail="Task not found.")
+
+        role_name = current_user.role.name if current_user.role else ""
+        is_admin = role_name in {SUPER_ADMIN_ROLE_NAME, "HR", "Admin"}
+        is_owner_or_uploader = (
+            evidence.uploaded_by == current_user.id
+            or task.owner_id == current_user.id
+        )
+        is_editable = task.status in {TaskStatus.DRAFT, TaskStatus.REJECTED}
+        if not is_admin and not (is_owner_or_uploader and is_editable):
+            raise HTTPException(
+                status_code=403,
+                detail="Only the evidence uploader or task owner may delete evidence while the task is editable.",
+            )
+
+        delete_storage_file = getattr(storage_service, "delete_file", None)
+        if not callable(delete_storage_file):
+            delete_storage_file = getattr(storage_service, "remove_file", None)
+        if not callable(delete_storage_file):
+            raise HTTPException(
+                status_code=503,
+                detail="Evidence storage cleanup is unavailable.",
+            )
+
+        task_id = task.id
+        object_name = evidence.file_path
+        db.add(
+            TaskHistory(
+                task_id=task_id,
+                changed_by=current_user.id,
+                action="EVIDENCE_DELETED",
+                old_value="PRESENT",
+                new_value="DELETED",
+                remarks=f"Evidence '{evidence.file_name}' removed.",
+            )
+        )
+        record_activity(
+            db,
+            actor_id=current_user.id,
+            action="TASK_EVIDENCE_DELETED",
+            entity_type="task",
+            entity_id=task_id,
+            description=f"Deleted evidence '{evidence.file_name}' from task '{task.title}'",
+        )
         await db.delete(evidence)
         await db.commit()
+        try:
+            await delete_storage_file(object_name)
+        except Exception as storage_error:
+            logger.exception(
+                "Evidence database record deleted but object cleanup failed; "
+                "orphan cleanup required for task %s",
+                task_id,
+            )
+            raise HTTPException(
+                status_code=500,
+                detail="Evidence record was removed, but storage cleanup failed; contact an administrator.",
+            ) from storage_error
         return {"message": "Evidence file removed successfully."}
     except HTTPException:
         raise
-    except Exception:
+    except Exception as exc:
         await db.rollback()
-        raise HTTPException(status_code=500, detail="Failed to remove evidence.")
+        logger.exception("Failed to remove task evidence %s", evidence_id)
+        raise HTTPException(status_code=500, detail="Failed to remove evidence.") from exc
 
 # =====================================================================
 # 🌟 FIX 2: V2 Resubmit လလုပ်ရာတွင် Auto Submit မလုပ်ရန်နှင့် Old Task မဖျက်ရန်
@@ -1076,7 +1194,7 @@ async def resubmit_task(task_id: UUID, payload: TaskCreate, db: AsyncSession = D
         # နောက်ဆုံး Review လုပ်ခဲ့သော Manager ဆီသို့သာ ပြန်လည်ရောက်ရှိစေရန်
         l1_review_stmt = select(TaskReview).where(
             TaskReview.task_id == old_task.id, 
-            TaskReview.reviewer_level.in_(['L1', 'Level 1'])
+            TaskReview.reviewer_level.in_(['L1', LEVEL_ONE_ROLE_NAME])
         ).order_by(TaskReview.created_at.desc()) # နောက်ဆုံး Review ကို ယူမည်
         
         l1_review = (await db.execute(l1_review_stmt)).scalars().first()
@@ -1125,26 +1243,12 @@ async def resubmit_task(task_id: UUID, payload: TaskCreate, db: AsyncSession = D
 # 🌟 CRITICAL FIX: Data Stealing (Insecure Direct Object Reference) Prevention applied
 @router.get('/{task_id}', response_model=TaskResponse)
 async def get_single_task(task_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    # 🌟 Added selectinload to eagerly load the reviews, preventing DetachedInstanceErrors during the security check.
-    stmt = select(Task).options(selectinload(Task.reviews)).where(Task.id == task_id)
-    result = await db.execute(stmt)
-    task = result.scalars().first()
-
-    if not task:
-        raise HTTPException(status_code=404, detail='Task not found')
-
-    # Admins remain department-scoped; global roles retain unrestricted access.
-    if current_user.role and current_user.role.name == "Admin":
-        task = await _authorized_task(db, task_id, current_user)
-    elif current_user.role.name not in ['Super Admin', 'Level 0']:
-        is_owner = str(task.owner_id) == str(current_user.id)
-        is_assigner = str(task.assigner_id) == str(current_user.id)
-        is_reviewer = any(str(r.reviewer_id) == str(current_user.id) for r in task.reviews)
-        
-        if not (is_owner or is_assigner or is_reviewer):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Security Exception: You are not authorized to view this task.")
-
-    return task
+    return await _authorized_task(
+        db,
+        task_id,
+        current_user,
+        allow_workflow_scope=True,
+    )
 
 @router.post('/{task_id}/review/l1', response_model=TaskResponse)
 async def l1_review_task(task_id: UUID, payload: TaskReviewInput, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):

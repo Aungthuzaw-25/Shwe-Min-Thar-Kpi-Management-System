@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from app.modules.kpi.models import FormulaScope, FormulaStatus, KPIStatus, PeriodType
 
 TIMELINESS_CATEGORY_NAME = "အချိန်မှီမတင်ပြခြင်း"
+TIMELINESS_CATEGORY_DESCRIPTION = "System-defined timeliness KPI category"
 
 
 def _is_timeliness_category_name(name: str) -> bool:
@@ -30,13 +31,13 @@ def _normalize_timeliness_category(categories: list["KPICategoryConfig"]) -> lis
     late_category = next((cat for cat in normalized if _is_timeliness_category_name(cat.name)), None)
     if late_category is not None:
         late_category.name = TIMELINESS_CATEGORY_NAME
-        late_category.description = late_category.description or "System-defined timeliness KPI category"
+        late_category.description = late_category.description or TIMELINESS_CATEGORY_DESCRIPTION
         late_category.weight = max(float(late_category.weight), 0.01)
         late_category.evaluation_type = "DEDUCTION"
     else:
         late_category = KPICategoryConfig(
             name=TIMELINESS_CATEGORY_NAME,
-            description="System-defined timeliness KPI category",
+            description=TIMELINESS_CATEGORY_DESCRIPTION,
             weight=0.01,
             max_score=5.0,
             evaluation_type="DEDUCTION",
@@ -49,7 +50,7 @@ def _normalize_timeliness_category(categories: list["KPICategoryConfig"]) -> lis
     if late_category_merged is None:
         late_category_merged = KPICategoryConfig(
             name=TIMELINESS_CATEGORY_NAME,
-            description="System-defined timeliness KPI category",
+            description=TIMELINESS_CATEGORY_DESCRIPTION,
             weight=0.01,
             max_score=5.0,
             evaluation_type="DEDUCTION",
@@ -61,7 +62,7 @@ def _normalize_timeliness_category(categories: list["KPICategoryConfig"]) -> lis
         if cat.name != TIMELINESS_CATEGORY_NAME:
             continue
         cat.name = TIMELINESS_CATEGORY_NAME
-        cat.description = cat.description or "System-defined timeliness KPI category"
+        cat.description = cat.description or TIMELINESS_CATEGORY_DESCRIPTION
         cat.weight = max(float(cat.weight), 0.01)
         cat.evaluation_type = "DEDUCTION"
 

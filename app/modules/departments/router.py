@@ -32,6 +32,8 @@ from app.modules.users.models import Position, User
 router = APIRouter()
 
 admin_checker = RoleChecker(['Super Admin', 'Admin'])
+DEPARTMENT_VIEW_PERMISSION = "department.view"
+DEPARTMENT_NOT_FOUND = "Department not found."
 
 class ChangeLevelRequest(BaseModel):
     user_level: str
@@ -44,7 +46,15 @@ class TransferUserRequest(BaseModel):
 class DepartmentPriorityRequest(BaseModel):
     priority: int
 
-@router.post("/", response_model=DepartmentResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/",
+    response_model=DepartmentResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        400: {"description": "Department name is already in use"},
+        422: {"description": "Invalid department data"},
+    },
+)
 async def create_department(payload: DepartmentCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
     enforce_permission(current_user, "department.create")
     existing_dept = await department_repo.get_department_by_name(db, payload.name)
@@ -66,7 +76,7 @@ async def get_departments(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    enforce_permission(current_user, "department.view")
+    enforce_permission(current_user, DEPARTMENT_VIEW_PERMISSION)
     if is_active:
         stmt = select(Department).where(Department.is_deleted == False).order_by(Department.priority.desc(), Department.name, Department.id).offset(skip).limit(limit)
     else:
@@ -83,16 +93,24 @@ async def get_departments(
     result = await db.execute(stmt)
     return result.scalars().all()
 
-@router.get("/{dept_id}", response_model=DepartmentResponse)
+@router.get(
+    "/{dept_id}",
+    response_model=DepartmentResponse,
+    responses={404: {"description": "Department not found"}},
+)
 async def get_department(dept_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    enforce_permission(current_user, "department.view")
+    enforce_permission(current_user, DEPARTMENT_VIEW_PERMISSION)
     await enforce_department_scope(db, current_user, dept_id)
     dept = await department_repo.get_department_by_id(db, dept_id)
     if not dept:
-        raise HTTPException(status_code=404, detail="Department not found.")
+        raise HTTPException(status_code=404, detail=DEPARTMENT_NOT_FOUND)
     return dept
 
-@router.get("/{dept_id}/positions", response_model=list[PositionInDepartment])
+@router.get(
+    "/{dept_id}/positions",
+    response_model=list[PositionInDepartment],
+    responses={404: {"description": "Department not found"}},
+)
 async def get_department_positions(
     dept_id: UUID,
     skip: int = Query(0, ge=0),
@@ -100,23 +118,31 @@ async def get_department_positions(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    enforce_permission(current_user, "department.view")
+    enforce_permission(current_user, DEPARTMENT_VIEW_PERMISSION)
     await enforce_department_scope(db, current_user, dept_id)
     dept = await department_repo.get_department_by_id(db, dept_id)
     if not dept:
-        raise HTTPException(status_code=404, detail="Department not found.")
+        raise HTTPException(status_code=404, detail=DEPARTMENT_NOT_FOUND)
 
     stmt = select(Position).where(Position.department_id == dept_id).offset(skip).limit(limit)
     result = await db.execute(stmt)
     return result.scalars().all()
 
-@router.put("/{dept_id}", response_model=DepartmentResponse)
+@router.put(
+    "/{dept_id}",
+    response_model=DepartmentResponse,
+    responses={
+        400: {"description": "Department name is already in use"},
+        404: {"description": "Department not found"},
+        422: {"description": "Invalid department data"},
+    },
+)
 async def update_department(dept_id: UUID, payload: DepartmentUpdate, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
     enforce_permission(current_user, "department.edit")
     await enforce_department_scope(db, current_user, dept_id)
     dept = await department_repo.get_department_by_id(db, dept_id)
     if not dept:
-        raise HTTPException(status_code=404, detail="Department not found.")
+        raise HTTPException(status_code=404, detail=DEPARTMENT_NOT_FOUND)
 
     if payload.name and payload.name != dept.name:
         existing_dept = await department_repo.get_department_by_name(db, payload.name)
@@ -130,7 +156,14 @@ async def update_department(dept_id: UUID, payload: DepartmentUpdate, db: AsyncS
         await db.rollback()
         raise HTTPException(status_code=400, detail="Invalid data provided for department update.")
 
-@router.patch("/{dept_id}/priority", response_model=DepartmentResponse)
+@router.patch(
+    "/{dept_id}/priority",
+    response_model=DepartmentResponse,
+    responses={
+        404: {"description": "Department not found"},
+        422: {"description": "Priority is outside the accepted range"},
+    },
+)
 async def update_department_priority(
     dept_id: UUID,
     payload: DepartmentPriorityRequest,
@@ -141,7 +174,7 @@ async def update_department_priority(
     await enforce_department_scope(db, current_user, dept_id)
     dept = await department_repo.get_department_by_id(db, dept_id)
     if not dept:
-        raise HTTPException(status_code=404, detail="Department not found.")
+        raise HTTPException(status_code=404, detail=DEPARTMENT_NOT_FOUND)
     if payload.priority < 0 or payload.priority > 100:
         raise HTTPException(status_code=422, detail="Priority must be between 0 and 100.")
     dept.priority = payload.priority
@@ -149,13 +182,16 @@ async def update_department_priority(
     await db.refresh(dept)
     return dept
 
-@router.delete("/{dept_id}")
+@router.delete(
+    "/{dept_id}",
+    responses={404: {"description": "Department not found"}},
+)
 async def delete_department(dept_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
     enforce_permission(current_user, "department.delete")
     await enforce_department_scope(db, current_user, dept_id)
     dept = await department_repo.get_department_by_id(db, dept_id)
     if not dept:
-        raise HTTPException(status_code=404, detail="Department not found.")
+        raise HTTPException(status_code=404, detail=DEPARTMENT_NOT_FOUND)
 
     # 🌟 REFACTOR FIX: Using Repo function instead of direct query for better architecture
     has_users = await department_repo.check_users_in_dept(db, dept_id)
@@ -168,26 +204,39 @@ async def delete_department(dept_id: UUID, db: AsyncSession = Depends(get_db), c
     await department_repo.delete_department(db, dept)
     return {"message": "Department deactivated successfully (Soft Delete)"}
 
-@router.post("/{dept_id}/restore", response_model=DepartmentResponse)
+@router.post(
+    "/{dept_id}/restore",
+    response_model=DepartmentResponse,
+    responses={
+        400: {"description": "Department is not deleted"},
+        404: {"description": "Department not found"},
+    },
+)
 async def restore_department(dept_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
     enforce_permission(current_user, "department.edit")
     await enforce_department_scope(db, current_user, dept_id)
     dept = await department_repo.get_department_any(db, dept_id)
     if not dept:
-        raise HTTPException(status_code=404, detail="Department not found.")
+        raise HTTPException(status_code=404, detail=DEPARTMENT_NOT_FOUND)
 
     if not dept.is_deleted:
         raise HTTPException(status_code=400, detail="Department is not deleted.")
 
     return await department_repo.restore_department(db, dept)
 
-@router.delete("/{dept_id}/permanent")
+@router.delete(
+    "/{dept_id}/permanent",
+    responses={
+        404: {"description": "Department not found"},
+        500: {"description": "Permanent deletion failed"},
+    },
+)
 async def permanent_delete_department(dept_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
     enforce_permission(current_user, "department.delete")
     await enforce_department_scope(db, current_user, dept_id)
     dept = await department_repo.get_department_any(db, dept_id)
     if not dept:
-        raise HTTPException(status_code=404, detail="Department not found.")
+        raise HTTPException(status_code=404, detail=DEPARTMENT_NOT_FOUND)
 
     # 🌟 REFACTOR FIX: Using Repo function instead of direct query
     has_users = await department_repo.check_users_in_dept(db, dept_id)
@@ -210,7 +259,14 @@ async def permanent_delete_department(dept_id: UUID, db: AsyncSession = Depends(
         await db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/{dept_id}/users")
+@router.post(
+    "/{dept_id}/users",
+    responses={
+        400: {"description": "User is already assigned to this department"},
+        404: {"description": "Department or user not found"},
+        500: {"description": "Database transaction failed"},
+    },
+)
 async def assign_user_to_department(
     dept_id: UUID,
     payload: AssignUserRequest,
@@ -220,7 +276,7 @@ async def assign_user_to_department(
     enforce_permission(current_user, "department.edit")
     await enforce_department_scope(db, current_user, dept_id)
     dept = await department_repo.get_department_by_id(db, dept_id)
-    if not dept: raise HTTPException(status_code=404, detail="Department not found.")
+    if not dept: raise HTTPException(status_code=404, detail=DEPARTMENT_NOT_FOUND)
     await enforce_user_scope(db, current_user, payload.user_id)
 
     target_user = (await db.execute(select(User).where(User.id == payload.user_id, User.is_deleted == False))).scalars().first()
@@ -254,7 +310,10 @@ async def assign_user_to_department(
         await db.rollback()
         raise HTTPException(status_code=500, detail=f"Database transaction failed: {str(e)}")
 
-@router.get("/{dept_id}/users")
+@router.get(
+    "/{dept_id}/users",
+    responses={404: {"description": "Department not found"}},
+)
 async def get_department_users(
     dept_id: UUID,
     skip: int = Query(0, ge=0),
@@ -264,7 +323,7 @@ async def get_department_users(
 ):
     await enforce_department_scope(db, current_user, dept_id)
     dept = await department_repo.get_department_by_id(db, dept_id)
-    if not dept: raise HTTPException(status_code=404, detail="Department not found.")
+    if not dept: raise HTTPException(status_code=404, detail=DEPARTMENT_NOT_FOUND)
 
     stmt = select(UserDepartment, User).join(User).where(
         UserDepartment.department_id == dept_id,
@@ -286,7 +345,13 @@ async def get_department_users(
         "is_department_head": str(user.id) == str(dept.head_id) if dept.head_id else False
     } for ud, user in rows]
 
-@router.delete("/{dept_id}/users/{user_id}")
+@router.delete(
+    "/{dept_id}/users/{user_id}",
+    responses={
+        404: {"description": "User is not found in this department"},
+        500: {"description": "Database transaction failed"},
+    },
+)
 async def remove_user_from_department(dept_id: UUID, user_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
     await enforce_department_scope(db, current_user, dept_id)
     ud = (await db.execute(select(UserDepartment).where(UserDepartment.department_id == dept_id, UserDepartment.user_id == user_id))).scalars().first()
@@ -305,7 +370,14 @@ async def remove_user_from_department(dept_id: UUID, user_id: UUID, db: AsyncSes
         await db.rollback()
         raise HTTPException(status_code=500, detail=f"Database transaction failed: {str(e)}")
 
-@router.put("/{dept_id}/users/{user_id}/level")
+@router.put(
+    "/{dept_id}/users/{user_id}/level",
+    responses={
+        404: {"description": "User is not found in this department"},
+        422: {"description": "User level must be L0, L1, or L2"},
+        500: {"description": "Database transaction failed"},
+    },
+)
 async def change_user_level(dept_id: UUID, user_id: UUID, payload: ChangeLevelRequest, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
     await enforce_department_scope(db, current_user, dept_id)
     ud = (await db.execute(select(UserDepartment).where(UserDepartment.department_id == dept_id, UserDepartment.user_id == user_id))).scalars().first()
@@ -338,7 +410,14 @@ async def change_user_level(dept_id: UUID, user_id: UUID, payload: ChangeLevelRe
         await db.rollback()
         raise HTTPException(status_code=500, detail=f"Database transaction failed: {str(e)}")
 
-@router.put("/transfer-user")
+@router.put(
+    "/transfer-user",
+    responses={
+        400: {"description": "User is already assigned to the target department"},
+        404: {"description": "User is not found in the old department"},
+        500: {"description": "Database transaction failed"},
+    },
+)
 async def transfer_user(payload: TransferUserRequest, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
     await enforce_department_scope(db, current_user, payload.old_department_id)
     await enforce_department_scope(db, current_user, payload.new_department_id)
@@ -369,7 +448,11 @@ async def transfer_user(payload: TransferUserRequest, db: AsyncSession = Depends
 # ==============================================================================
 # 🌟 SUPER ADMIN: Department Process Tracking API
 # ==============================================================================
-@router.get("/{dept_id}/process-tracking", tags=["Super Admin Tracking"])
+@router.get(
+    "/{dept_id}/process-tracking",
+    tags=["Super Admin Tracking"],
+    responses={404: {"description": "Department not found"}},
+)
 async def get_department_process_tracking(
     dept_id: UUID,
     db: AsyncSession = Depends(get_db),
@@ -381,7 +464,7 @@ async def get_department_process_tracking(
     # 1. ဌာန ရှိ/မရှိ စစ်ဆေးခြင်း
     dept_check = await db.get(Department, dept_id)
     if not dept_check:
-        raise HTTPException(status_code=404, detail="Department not found.")
+        raise HTTPException(status_code=404, detail=DEPARTMENT_NOT_FOUND)
 
     # 2. ထိုဌာနအတွင်းရှိ User များ၏ Process Status များကို ရေတွက်ခြင်း (Metrics)
     metrics_stmt = (

@@ -38,6 +38,10 @@ from app.services.email_service import (
 
 router = APIRouter(prefix="/system", tags=["System Settings & Logs"])
 logger = logging.getLogger(__name__)
+SYSTEM_SETTINGS_VIEW_PERMISSION = "system.settings.view"
+SYSTEM_SETTINGS_EDIT_PERMISSION = "system.settings.edit"
+EMAIL_PROVIDER_NOT_CONFIGURED = "Email provider is not configured."
+NO_ACTIVE_EMAIL_PROVIDER = "No active email provider is configured."
 
 def _is_secret_field(field: str) -> bool:
     normalized = field.lower().replace("-", "_")
@@ -235,7 +239,7 @@ async def read_all_settings(
     current_user: User = Depends(get_current_user),
 ):
     """System Setting အားလုံးကို ဆွဲထုတ်ရန်"""
-    enforce_permission(current_user, "system.settings.view")
+    enforce_permission(current_user, SYSTEM_SETTINGS_VIEW_PERMISSION)
     result = []
     email_setting_found = False
     for setting in await repo.get_all_settings(db):
@@ -279,14 +283,22 @@ async def read_all_settings(
         )
     return result
 
-@router.post("/settings", response_model=SystemSettingResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/settings",
+    response_model=SystemSettingResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        400: {"description": "Setting key already exists"},
+        422: {"description": "Invalid setting value"},
+    },
+)
 async def create_new_setting(
     payload: SystemSettingCreate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """System Setting အသစ်ထည့်ရန်"""
-    enforce_permission(current_user, "system.settings.edit")
+    enforce_permission(current_user, SYSTEM_SETTINGS_EDIT_PERMISSION)
     if "api_key" in payload.key.lower().replace("-", "_") or "apikey" in payload.key.lower():
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -310,7 +322,7 @@ async def list_email_providers(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    enforce_permission(current_user, "system.settings.view")
+    enforce_permission(current_user, SYSTEM_SETTINGS_VIEW_PERMISSION)
     state, _setting = await _email_settings_value(db)
     configurations = state["providers"]
     definitions = [
@@ -358,14 +370,20 @@ async def list_email_providers(
     }
 
 
-@router.put("/settings/email/providers/{provider_type}")
+@router.put(
+    "/settings/email/providers/{provider_type}",
+    responses={
+        404: {"description": "Email provider is not implemented"},
+        422: {"description": "Provider does not match the URL"},
+    },
+)
 async def save_email_provider(
     provider_type: str,
     payload: EmailProviderSaveRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    enforce_permission(current_user, "system.settings.edit")
+    enforce_permission(current_user, SYSTEM_SETTINGS_EDIT_PERMISSION)
     _require_super_admin_email_settings(current_user)
     provider_type = provider_type.lower()
     if provider_type != payload.provider:
@@ -413,19 +431,27 @@ async def save_email_provider(
     }
 
 
-@router.post("/settings/email/providers/{provider_type}/test-connection")
+@router.post(
+    "/settings/email/providers/{provider_type}/test-connection",
+    responses={
+        404: {"description": "Email provider is not configured"},
+        422: {"description": "Email provider configuration is invalid"},
+        502: {"description": "Email provider rejected the connection"},
+        503: {"description": "Email provider is unavailable"},
+    },
+)
 async def test_configured_email_provider(
     provider_type: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    enforce_permission(current_user, "system.settings.edit")
+    enforce_permission(current_user, SYSTEM_SETTINGS_EDIT_PERMISSION)
     _require_super_admin_email_settings(current_user)
     provider_type = provider_type.lower()
     state, setting = await _email_settings_value(db)
     provider_value = state["providers"].get(provider_type)
     if provider_value is None:
-        raise HTTPException(status_code=404, detail="Email provider is not configured.")
+        raise HTTPException(status_code=404, detail=EMAIL_PROVIDER_NOT_CONFIGURED)
     try:
         diagnostic = await email_service.test_provider(
             provider_type, provider_value
@@ -464,20 +490,28 @@ async def test_configured_email_provider(
     }
 
 
-@router.post("/settings/email/providers/{provider_type}/lifecycle")
+@router.post(
+    "/settings/email/providers/{provider_type}/lifecycle",
+    responses={
+        404: {"description": "Email provider is not configured"},
+        409: {"description": "Email provider cannot be disabled"},
+        422: {"description": "Email provider configuration is invalid"},
+        500: {"description": "Email provider operation failed"},
+    },
+)
 async def update_email_provider_lifecycle(
     provider_type: str,
     payload: EmailProviderLifecycleRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    enforce_permission(current_user, "system.settings.edit")
+    enforce_permission(current_user, SYSTEM_SETTINGS_EDIT_PERMISSION)
     _require_super_admin_email_settings(current_user)
     provider_type = provider_type.lower()
     state, setting = await _email_settings_value(db)
     provider_value = state["providers"].get(provider_type)
     if provider_value is None:
-        raise HTTPException(status_code=404, detail="Email provider is not configured.")
+        raise HTTPException(status_code=404, detail=EMAIL_PROVIDER_NOT_CONFIGURED)
 
     if payload.action == "enable":
         if not provider_value.get("tested"):
@@ -548,18 +582,21 @@ async def update_email_provider_lifecycle(
     }
 
 
-@router.delete("/settings/email/providers/{provider_type}")
+@router.delete(
+    "/settings/email/providers/{provider_type}",
+    responses={404: {"description": "Email provider is not configured"}},
+)
 async def remove_email_provider(
     provider_type: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    enforce_permission(current_user, "system.settings.edit")
+    enforce_permission(current_user, SYSTEM_SETTINGS_EDIT_PERMISSION)
     _require_super_admin_email_settings(current_user)
     provider_type = provider_type.lower()
     state, setting = await _email_settings_value(db)
     if provider_type not in state["providers"]:
-        raise HTTPException(status_code=404, detail="Email provider is not configured.")
+        raise HTTPException(status_code=404, detail=EMAIL_PROVIDER_NOT_CONFIGURED)
     del state["providers"][provider_type]
     if state.get("active_provider") == provider_type:
         state["active_provider"] = None
@@ -567,7 +604,14 @@ async def remove_email_provider(
     return {"success": True, "provider": provider_type, "message": "Provider removed."}
 
 
-@router.put("/settings/{key}", response_model=SystemSettingResponse)
+@router.put(
+    "/settings/{key}",
+    response_model=SystemSettingResponse,
+    responses={
+        404: {"description": "Setting not found"},
+        422: {"description": "Invalid setting value"},
+    },
+)
 async def update_existing_setting(
     key: str,
     payload: SystemSettingUpdate,
@@ -575,7 +619,7 @@ async def update_existing_setting(
     current_user: User = Depends(get_current_user),
 ):
     """System Setting ပြင်ဆင်ရန် (ဥပမာ - Maintenance Mode ပိတ်/ဖွင့်)"""
-    enforce_permission(current_user, "system.settings.edit")
+    enforce_permission(current_user, SYSTEM_SETTINGS_EDIT_PERMISSION)
     if "api_key" in key.lower().replace("-", "_") or "apikey" in key.lower():
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -608,18 +652,25 @@ async def update_existing_setting(
     return updated
 
 
-@router.post("/settings/email/test-connection")
+@router.post(
+    "/settings/email/test-connection",
+    responses={
+        422: {"description": "Email provider configuration is invalid"},
+        502: {"description": "Email provider rejected the connection"},
+        503: {"description": "Email provider is unavailable"},
+    },
+)
 async def test_email_connection(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    enforce_permission(current_user, "system.settings.edit")
+    enforce_permission(current_user, SYSTEM_SETTINGS_EDIT_PERMISSION)
     _require_super_admin_email_settings(current_user)
     setting = await repo.get_setting_by_key(db, "email")
     if not setting:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="No active email provider is configured.",
+            detail=NO_ACTIVE_EMAIL_PROVIDER,
         )
     try:
         state = normalize_email_settings(setting.value)
@@ -627,7 +678,7 @@ async def test_email_connection(
         if not provider_type and len(state["providers"]) == 1:
             provider_type = next(iter(state["providers"]))
         if not provider_type:
-            raise EmailDisabledError("No active email provider is configured.")
+            raise EmailDisabledError(NO_ACTIVE_EMAIL_PROVIDER)
         diagnostic = await email_service.test_connection(provider_type)
     except ValidationError as exc:
         raise HTTPException(
@@ -637,7 +688,7 @@ async def test_email_connection(
     except EmailDisabledError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="No active email provider is configured.",
+            detail=NO_ACTIVE_EMAIL_PROVIDER,
         ) from exc
     except EmailConfigurationError as exc:
         raise HTTPException(
@@ -671,7 +722,7 @@ async def read_system_logs(
     current_user: User = Depends(get_current_user),
 ):
     """Background Jobs နှင့် System Event များကို ကြည့်ရန်"""
-    enforce_permission(current_user, "system.settings.view")
+    enforce_permission(current_user, SYSTEM_SETTINGS_VIEW_PERMISSION)
     effective_size = limit or page_size
     effective_skip = skip if skip is not None else (page - 1) * effective_size
     event_filter = event_type or service
@@ -697,13 +748,17 @@ async def read_system_logs(
     }
 
 
-@router.get("/logs/{log_id}", response_model=SystemEventLogDetailResponse)
+@router.get(
+    "/logs/{log_id}",
+    response_model=SystemEventLogDetailResponse,
+    responses={404: {"description": "System log not found"}},
+)
 async def read_system_log_detail(
     log_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    enforce_permission(current_user, "system.settings.view")
+    enforce_permission(current_user, SYSTEM_SETTINGS_VIEW_PERMISSION)
     try:
         parsed_log_id = UUID(log_id)
     except ValueError as exc:
@@ -728,14 +783,17 @@ async def clear_system_cache(
     The application currently has no generic cache namespace. OAuth Redis holds
     security-sensitive transient state and must not be flushed by this endpoint.
     """
-    enforce_permission(current_user, "system.settings.edit")
+    enforce_permission(current_user, SYSTEM_SETTINGS_EDIT_PERMISSION)
     raise HTTPException(
         status_code=status.HTTP_501_NOT_IMPLEMENTED,
         detail="No clearable application cache is configured.",
     )
 
 
-@router.get("/backup")
+@router.get(
+    "/backup",
+    responses={500: {"description": "Failed to generate backup"}},
+)
 async def generate_database_backup(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -743,7 +801,7 @@ async def generate_database_backup(
     """
     Database ထဲရှိ System Settings များကို JSON File အဖြစ် Backup ထုတ်ပေးရန်။
     """
-    enforce_permission(current_user, "system.settings.view")
+    enforce_permission(current_user, SYSTEM_SETTINGS_VIEW_PERMISSION)
     try:
         settings = await repo.get_all_settings(db)
         backup_data = {

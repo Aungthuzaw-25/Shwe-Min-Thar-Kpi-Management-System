@@ -7,6 +7,7 @@ from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
+from app.database.connection import AsyncSessionLocal
 from app.modules.kpi import repo as kpi_repo
 from app.modules.kpi.engine import KPICalculationEngine, calculate_custom_period_kpi
 
@@ -312,11 +313,31 @@ async def bulk_calculate_kpis(
             await calculate_custom_period_kpi(db, uid, start_date, end_date)
             success += 1
         except Exception as e:
+            await db.rollback()
             failed += 1
             errors.append({"user_id": str(uid), "error": str(e)})
             # Log the error for debugging
             logger.exception("Bulk KPI calculation failed for user %s", uid)
     return {"total": len(user_ids), "success": success, "failed": failed, "errors": errors}
+
+
+async def run_bulk_kpi_calculation_background(
+    user_ids: list[UUID],
+    start_date: datetime,
+    end_date: datetime,
+) -> None:
+    """Run bulk KPI calculations using a session owned by the background job."""
+    try:
+        async with AsyncSessionLocal() as db:
+            try:
+                await bulk_calculate_kpis(db, user_ids, start_date, end_date)
+                await db.commit()
+            except Exception:
+                await db.rollback()
+                raise
+    except Exception:
+        logger.exception("Background bulk KPI calculation failed")
+
 
 async def get_kpi_records_by_user(db: AsyncSession, user_id: UUID, period_type_str: str = "MONTHLY"):
     """ဝန်ထမ်း၏ လစဉ် KPI မှတ်တမ်းများကို Database မှ ဆွဲထုတ်ရန်"""
