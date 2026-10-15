@@ -47,6 +47,7 @@ REPORT_LATE_DEDUCTION = "Report နောက်ကျခြင်း"
 ATTENDANCE_SUPPORT_CATEGORY = "Attendance, Punctuality & Support"
 ATTENDANCE_FLEXIBILITY_CATEGORY = "Attendance, Punctuality & Flexibility"
 PHASE_2_5 = "Phase 2.5"
+SEED_CASHIER_MDY_EMAIL = "cashier.mdy@kpi.com"
 
 ROLES = [
     {"name": SUPER_ADMIN_ROLE, "description": "Has full system control"},
@@ -66,7 +67,7 @@ def resolve_seed_password(*candidate_names: str) -> str | None:
 
 def resolve_user_password(email: str) -> str | None:
     password_map = {
-        "cashier.mdy@kpi.com": (
+        SEED_CASHIER_MDY_EMAIL: (
             "SEED_L2_PASSWORD",
             "UI_TEST_L2_PASSWORD",
             "SEED_DEMO_PASSWORD",
@@ -524,7 +525,7 @@ async def _seed_formula_records(db, formulas, department_id, creator_id):
 async def _seed_cashier_assignment(
     db, created_formula_maps, role_dict, department_id, period, sa_user
 ):
-    test_email = "cashier.mdy@kpi.com"
+    test_email = SEED_CASHIER_MDY_EMAIL
     demo_password = (
         resolve_seed_password("SEED_TEST_L2_PASSWORD")
         if getattr(settings, "SEED_TEST_ACCOUNTS_ENABLED", False)
@@ -550,7 +551,7 @@ async def _synchronize_cashier_user(
 ):
     if not test_user and demo_password:
         test_user = User(
-            email="cashier.mdy@kpi.com",
+            email=SEED_CASHIER_MDY_EMAIL,
             first_name="Aung",
             last_name="Cashier",
             position_id=formula_map["position_id"],

@@ -65,48 +65,60 @@ def parse_tag(tag: str) -> tuple[str, str] | None:
 def replace_in_tag(tag: str, review: list[str]) -> str:
     if tag.startswith("{#"):
         return tag
+    return _convert_tag_content(tag, review)
 
-    def replace_get(match: re.Match[str]) -> str:
-        obj = match.group(1)
-        key = repr(match.group(3)) if match.group(2) else match.group(4)
-        default = match.group(5)
-        if default is None:
-            return f"{obj}[{key}]"
-        if default == "None":
-            default = "null"
-        return f"({obj}[{key}] if {obj}[{key}] is defined else {default})"
 
-    converted = GET_PATTERN.sub(replace_get, tag)
-    converted = STRFTIME_PATTERN.sub(
-        lambda match: f"({match.group(1)}|strftime({match.group(3)!r}))", converted
-    )
-    converted = SLICE_PATTERN.sub(
-        lambda match: (
-            f"{match.group(1)}|first"
-            if not match.group(2).strip() and match.group(3).strip() == "1"
-            else _unhandled_slice(match, review)
-        ),
-        converted,
-    )
+def _convert_tag_content(tag: str, review: list[str]) -> str:
+    converted = GET_PATTERN.sub(_replace_get_expression, tag)
+    converted = STRFTIME_PATTERN.sub(_replace_strftime_expression, converted)
+    converted = _replace_template_slices(converted, review)
     if ".get(" in converted:
         review.append(f"Unsupported `.get()` expression: {converted}")
 
-    # Template paths are the only HTML names rewritten inside template syntax.
-    converted = re.sub(
+    return _rewrite_template_paths(converted)
+
+
+def _unhandled_slice(match: re.Match[str], review: list[str]) -> str:
+    review.append(f"Unsupported Python slice: {match.group(0)}")
+    return match.group(0)
+
+
+def _replace_get_expression(match: re.Match[str]) -> str:
+    obj = match.group(1)
+    key = repr(match.group(3)) if match.group(2) else match.group(4)
+    default = match.group(5)
+    if default is None:
+        return f"{obj}[{key}]"
+    if default == "None":
+        default = "null"
+    return f"({obj}[{key}] if {obj}[{key}] is defined else {default})"
+
+
+def _replace_strftime_expression(match: re.Match[str]) -> str:
+    return f"({match.group(1)}|strftime({match.group(3)!r}))"
+
+
+def _rewrite_template_paths(source: str) -> str:
+    return re.sub(
         r"(?P<quote>['\"])(?P<path>[^'\"]+)\.html(?P=quote)",
         lambda match: (
             f"{match.group('quote')}{match.group('path')}.njk{match.group('quote')}"
             if (TEMPLATES / f"{match.group('path')}.html").is_file()
             else match.group(0)
         ),
-        converted,
+        source,
     )
-    return converted
 
 
-def _unhandled_slice(match: re.Match[str], review: list[str]) -> str:
-    review.append(f"Unsupported Python slice: {match.group(0)}")
-    return match.group(0)
+def _replace_template_slices(source: str, review: list[str]) -> str:
+    return SLICE_PATTERN.sub(
+        lambda match: (
+            f"{match.group(1)}|first"
+            if not match.group(2).strip() and match.group(3).strip() == "1"
+            else _unhandled_slice(match, review)
+        ),
+        source,
+    )
 
 
 def convert_source(source: str, review: list[str]) -> str:
@@ -118,25 +130,37 @@ def validate_syntax(source: str, filename: str) -> list[str]:
     stack: list[tuple[str, int]] = []
     for match in TAG_PATTERN.finditer(source):
         parsed = parse_tag(match.group(0))
-        if parsed is None:
-            continue
-        command, _ = parsed
-        line = source.count("\n", 0, match.start()) + 1
-        if command in BLOCK_OPENERS:
-            stack.append((command, line))
-        elif command in BLOCK_CLOSERS:
-            expected = BLOCK_CLOSERS[command]
-            if not stack or stack[-1][0] != expected:
-                errors.append(f"{filename}:{line}: unexpected {command}")
-            else:
-                stack.pop()
-        elif command in {"elif", "else"}:
-            if not stack or stack[-1][0] not in {"if", "for"}:
-                errors.append(f"{filename}:{line}: unexpected {command}")
+        if parsed is not None:
+            command, _ = parsed
+            line = source.count("\n", 0, match.start()) + 1
+            _validate_tag_command(command, line, filename, stack, errors)
 
     for command, line in reversed(stack):
         errors.append(f"{filename}:{line}: unclosed {command}")
     return errors
+
+
+def _validate_tag_command(
+    command: str,
+    line: int,
+    filename: str,
+    stack: list[tuple[str, int]],
+    errors: list[str],
+) -> None:
+    if command in BLOCK_OPENERS:
+        stack.append((command, line))
+        return
+    if command in BLOCK_CLOSERS:
+        expected = BLOCK_CLOSERS[command]
+        if stack and stack[-1][0] == expected:
+            stack.pop()
+        else:
+            errors.append(f"{filename}:{line}: unexpected {command}")
+        return
+    if command in {"elif", "else"} and (
+        not stack or stack[-1][0] not in {"if", "for"}
+    ):
+        errors.append(f"{filename}:{line}: unexpected {command}")
 
 
 def constructs(source: str) -> Counter[str]:

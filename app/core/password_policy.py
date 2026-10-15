@@ -87,7 +87,7 @@ def validate_password_strength(
         raise HTTPException(status_code=400, detail='Password must contain at least one uppercase letter')
     if not re.search(r'[a-z]', password):
         raise HTTPException(status_code=400, detail='Password must contain at least one lowercase letter')
-    if not re.search(r'[0-9]', password):
+    if not re.search(r'\d', password):
         raise HTTPException(status_code=400, detail='Password must contain at least one number')
     if not re.search(r'[!@#$%^&*(),.?"{}|<>]', password):
         raise HTTPException(status_code=400, detail='Password must contain at least one special character')

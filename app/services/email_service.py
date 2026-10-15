@@ -217,6 +217,30 @@ def _support_footer(message: EmailMessage, configuration: EmailConfiguration) ->
     )
 
 
+def _build_mime_email(message: EmailMessage, configuration: EmailConfiguration) -> MIMEEmailMessage:
+    mail = MIMEEmailMessage()
+    mail["Subject"] = message.subject
+    mail["From"] = _sender(configuration, message)
+    mail["To"] = ", ".join(message.to)
+    if message.cc:
+        mail["Cc"] = ", ".join(message.cc)
+    if message.reply_to or configuration.support_email:
+        mail["Reply-To"] = message.reply_to or configuration.support_email
+    if message.text_body is not None:
+        mail.set_content(message.text_body)
+    if message.html_body is not None:
+        mail.add_alternative(message.html_body, subtype="html")
+    for attachment in message.attachments:
+        main_type, _, sub_type = attachment.content_type.partition("/")
+        mail.add_attachment(
+            attachment.content,
+            maintype=main_type or "application",
+            subtype=sub_type or "octet-stream",
+            filename=attachment.filename,
+        )
+    return mail
+
+
 class EmailProvider(Protocol):
     def validate_configuration(
         self, configuration: EmailConfiguration, secrets: EmailSecrets
@@ -469,26 +493,7 @@ class SMTPProvider:
         def send_sync() -> None:
             smtp = self._connect(configuration, secrets)
             try:
-                mail = MIMEEmailMessage()
-                mail["Subject"] = message.subject
-                mail["From"] = _sender(configuration, message)
-                mail["To"] = ", ".join(message.to)
-                if message.cc:
-                    mail["Cc"] = ", ".join(message.cc)
-                if message.reply_to or configuration.support_email:
-                    mail["Reply-To"] = message.reply_to or configuration.support_email
-                if message.text_body is not None:
-                    mail.set_content(message.text_body)
-                if message.html_body is not None:
-                    mail.add_alternative(message.html_body, subtype="html")
-                for attachment in message.attachments:
-                    main_type, _, sub_type = attachment.content_type.partition("/")
-                    mail.add_attachment(
-                        attachment.content,
-                        maintype=main_type or "application",
-                        subtype=sub_type or "octet-stream",
-                        filename=attachment.filename,
-                    )
+                mail = _build_mime_email(message, configuration)
                 smtp.send_message(
                     mail,
                     to_addrs=message.to + message.cc + message.bcc,

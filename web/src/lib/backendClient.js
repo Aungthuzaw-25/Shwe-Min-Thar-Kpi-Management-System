@@ -18,6 +18,17 @@ function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
+function escapeJsonStrings(value) {
+  if (typeof value === "string") return escapeHtml(value);
+  if (Array.isArray(value)) return value.map(escapeJsonStrings);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [escapeHtml(key), escapeJsonStrings(item)]),
+    );
+  }
+  return value;
+}
+
 export function createBackendClient({
   baseUrl = process.env.API_BASE_URL || "http://127.0.0.1:8000",
   fetchImpl = fetch,
@@ -68,7 +79,7 @@ export function sendBackendError(error, response) {
   } else if (typeof error.body === "string") {
     response.type("text/plain").send(escapeHtml(error.body));
   } else {
-    response.type("application/json").send(JSON.stringify(error.body));
+    response.status(error.status).json(escapeJsonStrings(error.body));
   }
   return true;
 }

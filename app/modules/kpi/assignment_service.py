@@ -19,7 +19,6 @@ def _validate_assignment_scope_entities(
     has_membership: bool,
     department_id: UUID,
     position_id: UUID,
-    user_id: UUID,
 ) -> None:
     if not department or department.is_deleted:
         raise HTTPException(status_code=400, detail="Selected department is not available.")
@@ -181,7 +180,6 @@ async def bulk_assign_kpi(db: AsyncSession, data: dict, assigner_id: UUID):
             user_id in member_user_ids,
             data["department_id"],
             data["position_id"],
-            user_id,
         )
         existing = existing_assignments.get(user_id)
         if existing and not existing.is_deleted:

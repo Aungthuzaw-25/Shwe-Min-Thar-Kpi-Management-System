@@ -41,12 +41,11 @@ async def change_period_status(
             detail="Only Super Admins can authorize reopening a finalized or locked KPI period.",
         )
 
-    if reopening:
-        if not reason or len(reason.strip()) < 5:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="A valid, detailed reason is strictly required to reopen a finalized or locked period."
-            )
+    if reopening and (not reason or len(reason.strip()) < 5):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A valid, detailed reason is strictly required to reopen a finalized or locked period."
+        )
 
     transition = await db.execute(
         update(KPIPeriod)

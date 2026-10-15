@@ -36,10 +36,10 @@ COPY requirements.lock .
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         build-essential \
-        libpq-dev \
-        libpq5 \
+        curl \
         libmagic1 \
-        curl && \
+        libpq-dev \
+        libpq5 && \
     python -m pip install --no-cache-dir --only-binary=:all: --require-hashes --requirement requirements.lock && \
     apt-get purge -y --auto-remove build-essential libpq-dev && \
     apt-get clean && \

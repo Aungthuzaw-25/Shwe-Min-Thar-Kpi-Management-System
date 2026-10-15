@@ -283,14 +283,22 @@ class CSRFMiddleware(BaseHTTPMiddleware):
                 "/api/v1/auth/login",
                 "/api/v1/auth/swagger-login",
             }
-            if cookie_authenticated and not has_bearer and not exempt_login:
-                if not csrf_cookie or not csrf_header or not secrets.compare_digest(
-                    csrf_cookie, csrf_header
-                ):
-                    return JSONResponse(
-                        status_code=status.HTTP_403_FORBIDDEN,
-                        content={"detail": "CSRF validation failed."},
+            if (
+                cookie_authenticated
+                and not has_bearer
+                and not exempt_login
+                and (
+                    not csrf_cookie
+                    or not csrf_header
+                    or not secrets.compare_digest(
+                        csrf_cookie, csrf_header
                     )
+                )
+            ):
+                return JSONResponse(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    content={"detail": "CSRF validation failed."},
+                )
 
         response = await call_next(request)
         if not request.cookies.get("csrf_token"):

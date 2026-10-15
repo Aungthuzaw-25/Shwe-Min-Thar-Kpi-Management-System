@@ -11,6 +11,10 @@ from app.database.connection import get_db
 from app.modules.departments.models import UserDepartment
 from app.modules.users.models import OAuthAccount, Position, User
 
+LOGIN_REDIRECT_URL = "/auth/login"
+ROLE_SUPER_ADMIN = "Super Admin"
+DASHBOARD_URL = "/dashboard"
+
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
 
@@ -79,10 +83,10 @@ async def render_superadmin_dashboard_view(
     current_user: User = Depends(get_current_user)
 ):
     if not current_user or not current_user.role:
-        return RedirectResponse(url="/auth/login")
+        return RedirectResponse(url=LOGIN_REDIRECT_URL)
 
-    if not verify_role(current_user, ['Super Admin']):
-        return RedirectResponse(url="/dashboard")
+    if not verify_role(current_user, [ROLE_SUPER_ADMIN]):
+        return RedirectResponse(url=DASHBOARD_URL)
 
     return templates.TemplateResponse(
         request=request,
@@ -105,10 +109,10 @@ async def render_admin_dashboard_view(
     current_user: User = Depends(get_current_user)
 ):
     if not current_user or not current_user.role:
-        return RedirectResponse(url="/auth/login")
+        return RedirectResponse(url=LOGIN_REDIRECT_URL)
 
     if not verify_role(current_user, ['Admin', 'System Admin']):
-        return RedirectResponse(url="/dashboard")
+        return RedirectResponse(url=DASHBOARD_URL)
 
     employee_context = await get_employee_context(db, current_user)
     return templates.TemplateResponse(
@@ -126,20 +130,20 @@ async def render_admin_dashboard_view(
 # ==============================================================
 # General Dashboard Route (Dynamic Routing for L0, L1, L2)
 # ==============================================================
-@router.get("/dashboard", include_in_schema=False)
+@router.get(DASHBOARD_URL, include_in_schema=False)
 async def render_normal_dashboard_view(
     request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     if not current_user or not current_user.role:
-        return RedirectResponse(url="/auth/login")
+        return RedirectResponse(url=LOGIN_REDIRECT_URL)
 
     role_name = current_user.role.name
     employee_context = await get_employee_context(db, current_user)
     user_level = employee_context["user_level"]
 
-    if role_name in ['Super Admin']:
+    if role_name in [ROLE_SUPER_ADMIN]:
         return RedirectResponse(url="/superadmin/dashboard")
 
     if role_name in ['Admin', 'System Admin']:
@@ -176,7 +180,7 @@ async def render_employee_profile(
     current_user: User = Depends(get_current_user),
 ):
     if not current_user or not current_user.role:
-        return RedirectResponse(url="/auth/login")
+        return RedirectResponse(url=LOGIN_REDIRECT_URL)
     context = await get_employee_context(db, current_user)
     identity_rows = (await db.execute(
         select(OAuthAccount).where(
@@ -217,11 +221,11 @@ async def render_superadmin_users_view(
     current_user: User = Depends(get_current_user)
 ): 
     if not current_user or not current_user.role:
-        return RedirectResponse(url="/auth/login")
+        return RedirectResponse(url=LOGIN_REDIRECT_URL)
         
     # 🌟 SECURITY FIX: Prevent normal users from accessing user management
-    if not verify_role(current_user, ['Super Admin','Admin']):
-        return RedirectResponse(url="/dashboard")
+    if not verify_role(current_user, [ROLE_SUPER_ADMIN,'Admin']):
+        return RedirectResponse(url=DASHBOARD_URL)
         
     return templates.TemplateResponse(
         request=request, 
@@ -242,9 +246,9 @@ async def render_super_admin_management_view(
     current_user: User = Depends(get_current_user)
 ):
     if not current_user or not current_user.role:
-        return RedirectResponse(url="/auth/login")
-    if not verify_role(current_user, ['Super Admin']):
-        return RedirectResponse(url="/dashboard")
+        return RedirectResponse(url=LOGIN_REDIRECT_URL)
+    if not verify_role(current_user, [ROLE_SUPER_ADMIN]):
+        return RedirectResponse(url=DASHBOARD_URL)
 
     return templates.TemplateResponse(
         request=request,
@@ -263,9 +267,9 @@ async def render_departments_view(
     current_user: User = Depends(get_current_user)
 ):
     if not current_user or not current_user.role:
-        return RedirectResponse(url="/auth/login")
-    if not verify_role(current_user, ['Super Admin','Admin']):
-        return RedirectResponse(url="/dashboard")
+        return RedirectResponse(url=LOGIN_REDIRECT_URL)
+    if not verify_role(current_user, [ROLE_SUPER_ADMIN,'Admin']):
+        return RedirectResponse(url=DASHBOARD_URL)
         
     return templates.TemplateResponse(
         request=request, 
@@ -283,9 +287,9 @@ async def render_permissions_view(
     current_user: User = Depends(get_current_user)
 ):
     if not current_user or not current_user.role:
-        return RedirectResponse(url="/auth/login")
-    if not verify_role(current_user, ['Super Admin', 'Admin']):
-        return RedirectResponse(url="/dashboard")
+        return RedirectResponse(url=LOGIN_REDIRECT_URL)
+    if not verify_role(current_user, [ROLE_SUPER_ADMIN, 'Admin']):
+        return RedirectResponse(url=DASHBOARD_URL)
     return templates.TemplateResponse(
         request=request,
         name="dashboard/permissions.njk",
@@ -306,9 +310,9 @@ async def render_user_profile_view(
     current_user: User = Depends(get_current_user)
 ):
     if not current_user or not current_user.role:
-        return RedirectResponse(url="/auth/login")
-    if not verify_role(current_user, ['Super Admin','Admin']):
-        return RedirectResponse(url="/dashboard")
+        return RedirectResponse(url=LOGIN_REDIRECT_URL)
+    if not verify_role(current_user, [ROLE_SUPER_ADMIN,'Admin']):
+        return RedirectResponse(url=DASHBOARD_URL)
         
     return templates.TemplateResponse(
         request=request, 
@@ -330,9 +334,9 @@ async def render_kpi_dashboard_view(
     current_user: User = Depends(get_current_user)
 ):
     if not current_user or not current_user.role:
-        return RedirectResponse(url="/auth/login")
-    if not verify_role(current_user, ['Super Admin', 'Admin']):
-        return RedirectResponse(url="/dashboard")
+        return RedirectResponse(url=LOGIN_REDIRECT_URL)
+    if not verify_role(current_user, [ROLE_SUPER_ADMIN, 'Admin']):
+        return RedirectResponse(url=DASHBOARD_URL)
         
     return templates.TemplateResponse(
         request=request, 
@@ -353,9 +357,9 @@ async def render_kpi_upload_view(
     current_user: User = Depends(get_current_user)
 ):
     if not current_user or not current_user.role:
-        return RedirectResponse(url="/auth/login")
-    if not verify_role(current_user, ['Super Admin','Admin', 'HR']):
-        return RedirectResponse(url="/dashboard")
+        return RedirectResponse(url=LOGIN_REDIRECT_URL)
+    if not verify_role(current_user, [ROLE_SUPER_ADMIN,'Admin', 'HR']):
+        return RedirectResponse(url=DASHBOARD_URL)
         
     return templates.TemplateResponse(
         request=request, 
@@ -376,9 +380,9 @@ async def render_targets_view(
     current_user: User = Depends(get_current_user)
 ):
     if not current_user or not current_user.role:
-        return RedirectResponse(url="/auth/login")
-    if not verify_role(current_user, ['Super Admin','Admin']):
-        return RedirectResponse(url="/dashboard")
+        return RedirectResponse(url=LOGIN_REDIRECT_URL)
+    if not verify_role(current_user, [ROLE_SUPER_ADMIN,'Admin']):
+        return RedirectResponse(url=DASHBOARD_URL)
         
     return templates.TemplateResponse(
         request=request, 
@@ -399,9 +403,9 @@ async def render_kpi_reports_view(
     current_user: User = Depends(get_current_user)
 ):
     if not current_user or not current_user.role:
-        return RedirectResponse(url="/auth/login")
-    if not verify_role(current_user, ['Super Admin','Admin']):
-        return RedirectResponse(url="/dashboard")
+        return RedirectResponse(url=LOGIN_REDIRECT_URL)
+    if not verify_role(current_user, [ROLE_SUPER_ADMIN,'Admin']):
+        return RedirectResponse(url=DASHBOARD_URL)
         
     return templates.TemplateResponse(
         request=request, 
@@ -422,10 +426,10 @@ async def positions_page(
     current_user: User = Depends(get_current_user)
 ):
     if not current_user or not current_user.role:
-        return RedirectResponse(url="/auth/login")
+        return RedirectResponse(url=LOGIN_REDIRECT_URL)
         
-    if not verify_role(current_user, ['Super Admin','Admin']):
-        return RedirectResponse(url="/dashboard")
+    if not verify_role(current_user, [ROLE_SUPER_ADMIN,'Admin']):
+        return RedirectResponse(url=DASHBOARD_URL)
         
     return templates.TemplateResponse(
         request=request, 
@@ -446,10 +450,10 @@ async def kpi_periods_page(
     current_user: User = Depends(get_current_user)
 ):
     if not current_user or not current_user.role:
-        return RedirectResponse(url="/auth/login")
+        return RedirectResponse(url=LOGIN_REDIRECT_URL)
         
-    if not verify_role(current_user, ['Super Admin','Admin']):
-        return RedirectResponse(url="/dashboard")
+    if not verify_role(current_user, [ROLE_SUPER_ADMIN,'Admin']):
+        return RedirectResponse(url=DASHBOARD_URL)
         
     return templates.TemplateResponse(
         request=request, 
@@ -470,7 +474,7 @@ async def action_plans_page(
     current_user: User = Depends(get_current_user)
 ):
     if not current_user or not current_user.role:
-        return RedirectResponse(url="/auth/login")
+        return RedirectResponse(url=LOGIN_REDIRECT_URL)
         
     return templates.TemplateResponse(
         request=request, 
@@ -491,10 +495,10 @@ async def system_settings_page(
     current_user: User = Depends(get_current_user)
 ):
     if not current_user or not current_user.role:
-        return RedirectResponse(url="/auth/login")
+        return RedirectResponse(url=LOGIN_REDIRECT_URL)
         
-    if not verify_role(current_user, ['Super Admin']):
-        return RedirectResponse(url="/dashboard")
+    if not verify_role(current_user, [ROLE_SUPER_ADMIN]):
+        return RedirectResponse(url=DASHBOARD_URL)
         
     return templates.TemplateResponse(
         request=request, 
@@ -515,10 +519,10 @@ async def render_audit_logs_view(
     current_user: User = Depends(get_current_user)
 ):
     if not current_user or not current_user.role:
-        return RedirectResponse(url="/auth/login")
+        return RedirectResponse(url=LOGIN_REDIRECT_URL)
         
-    if not verify_role(current_user, ['Super Admin']):
-        return RedirectResponse(url="/dashboard")
+    if not verify_role(current_user, [ROLE_SUPER_ADMIN]):
+        return RedirectResponse(url=DASHBOARD_URL)
         
     return templates.TemplateResponse(
         request=request, 
@@ -538,9 +542,9 @@ async def render_system_logs_view(
     current_user: User = Depends(get_current_user)
 ):
     if not current_user or not current_user.role:
-        return RedirectResponse(url="/auth/login")
-    if not verify_role(current_user, ['Super Admin']):
-        return RedirectResponse(url="/dashboard")
+        return RedirectResponse(url=LOGIN_REDIRECT_URL)
+    if not verify_role(current_user, [ROLE_SUPER_ADMIN]):
+        return RedirectResponse(url=DASHBOARD_URL)
 
     return templates.TemplateResponse(
         request=request,
@@ -563,7 +567,7 @@ async def render_tasks_management_view(
     current_user: User = Depends(get_current_user)
 ):
     if not current_user or not current_user.role:
-        return RedirectResponse(url="/auth/login")
+        return RedirectResponse(url=LOGIN_REDIRECT_URL)
         
     employee_context = await get_employee_context(db, current_user)
         
@@ -584,10 +588,10 @@ async def render_process_tracking_view(
     current_user: User = Depends(get_current_user)
 ):
     if not current_user or not current_user.role:
-        return RedirectResponse(url="/auth/login")
+        return RedirectResponse(url=LOGIN_REDIRECT_URL)
         
-    if not verify_role(current_user, ['Super Admin']):
-        return RedirectResponse(url="/dashboard")
+    if not verify_role(current_user, [ROLE_SUPER_ADMIN]):
+        return RedirectResponse(url=DASHBOARD_URL)
         
     return templates.TemplateResponse(
         request=request, 

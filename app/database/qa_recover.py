@@ -165,12 +165,11 @@ async def recover_qa_password(
 
     try:
         session_context = session_factory()
-        async with session_context as db:
-            async with db.begin():
-                target = await _load_recovery_target(db, email, expected_role)
-                await _validate_recovery_password(db, target, new_password)
-                _confirm_recovery(confirm, confirmation)
-                await _persist_recovery(db, target, new_password)
+        async with session_context as db, db.begin():
+            target = await _load_recovery_target(db, email, expected_role)
+            await _validate_recovery_password(db, target, new_password)
+            _confirm_recovery(confirm, confirmation)
+            await _persist_recovery(db, target, new_password)
     except RecoveryFailure:
         raise
     except SQLAlchemyError as exc:

@@ -193,7 +193,6 @@ async def _get_executive_scope(
 
 @unified_router.get(
     "/executive/overview",
-    response_model=ExecutiveOverview,
     tags=["Executive KPI Intelligence"],
     responses={404: {"description": "Not Found"}},
 )
@@ -220,7 +219,6 @@ async def fetch_executive_overview(
 
 @unified_router.get(
     "/executive/employees/{user_id}",
-    response_model=ExecutiveEmployeeDetail,
     tags=["Executive KPI Intelligence"],
     responses={404: {"description": "Not Found"}},
 )
@@ -246,7 +244,6 @@ async def fetch_executive_employee_detail(
 
 @unified_router.get(
     "/executive/employees",
-    response_model=ExecutiveEmployeePage,
     tags=["Executive KPI Intelligence"],
 )
 async def fetch_executive_employee_results(

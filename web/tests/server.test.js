@@ -153,6 +153,26 @@ describe("Express pages and CSP middleware", () => {
     expect(response.body).toEqual({ detail: "Token expired or invalid." });
   });
 
+  it("HTML-escapes strings in JSON error responses", async () => {
+    const { BackendResponseError } = await import("../src/lib/backendClient.js");
+    const backend = {
+      get: vi.fn(async () => {
+        throw new BackendResponseError(400, "application/json", {
+          detail: '<script>alert("xss")</script>',
+          nested: ["<img src=x onerror='attack'>"],
+        });
+      }),
+    };
+
+    const response = await request(createApp({ backend })).get("/dashboard");
+
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual({
+      detail: "&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;",
+      nested: ["&lt;img src=x onerror=&#39;attack&#39;&gt;"],
+    });
+  });
+
   it("serves backend string errors as plain text instead of executable HTML", async () => {
     const { BackendResponseError } = await import("../src/lib/backendClient.js");
     const backend = {

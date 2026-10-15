@@ -66,6 +66,151 @@ async def _assert_can_manage_target(
         )
 
 
+def _role_permission_codes(current_user: User) -> set[str]:
+    codes = {
+        permission.code
+        for permission in (current_user.role.permissions or [])
+    } if current_user.role else set()
+    codes.update(
+        override.permission.code
+        for override in (current_user.permission_overrides or [])
+        if override.allowed and getattr(override, "permission", None)
+    )
+    return codes
+
+
+def _validate_role_permission_update(
+    role: Role, current_user: User, requested_codes: list[str]
+) -> None:
+    if not current_user.role or current_user.role.name == SUPER_ADMIN_ROLE:
+        return
+    if role.name in {SUPER_ADMIN_ROLE, "Admin"}:
+        raise HTTPException(
+            status_code=403,
+            detail="Only Super Admins can manage administrative role permissions.",
+        )
+    disallowed = set(requested_codes) - _role_permission_codes(current_user)
+    if disallowed:
+        raise HTTPException(
+            status_code=403,
+            detail=f"You cannot grant permissions you don't have: {', '.join(sorted(disallowed))}",
+        )
+
+
+async def _scope_permission_users(db: AsyncSession, current_user: User, stmt):
+    if not current_user.role or current_user.role.name == SUPER_ADMIN_ROLE:
+        return stmt
+    admin_depts = (await db.execute(
+        select(UserDepartment.department_id).where(
+            UserDepartment.user_id == current_user.id,
+            UserDepartment.is_deleted == False,
+        )
+    )).scalars().all()
+    if not admin_depts:
+        return stmt
+    dept_user_ids = (await db.execute(
+        select(UserDepartment.user_id).where(
+            UserDepartment.department_id.in_(admin_depts),
+            UserDepartment.is_deleted == False,
+        )
+    )).scalars().all()
+    return stmt.where(User.id.in_(dept_user_ids))
+
+
+def _permission_user_item(user: User) -> dict:
+    departments = [
+        department_link
+        for department_link in (user.user_departments or [])
+        if department_link.department
+    ]
+    department_ids = [link.department_id for link in departments]
+    return {
+        "id": str(user.id),
+        "name": f"{user.first_name} {user.last_name}",
+        "email": user.email,
+        "role_id": str(user.role_id),
+        "role_name": user.role.name if user.role else None,
+        "department_name": ", ".join(link.department.name for link in departments) or None,
+        "department_id": str(department_ids[0]) if department_ids else None,
+    }
+
+
+async def _validate_user_override(
+    db: AsyncSession, current_user: User, target: User, payload: UserPermissionOverrideRequest
+) -> None:
+    if (
+        current_user.role
+        and current_user.role.name != SUPER_ADMIN_ROLE
+        and getattr(target.role, "name", "") in {SUPER_ADMIN_ROLE, "Admin"}
+    ):
+        raise HTTPException(status_code=403, detail="Only Super Admins can manage administrative accounts.")
+    _validate_override_scope(payload)
+    await _validate_override_department(db, payload)
+    _validate_override_grant(current_user, payload)
+
+
+def _validate_override_scope(payload: UserPermissionOverrideRequest) -> None:
+    if payload.scope not in {"OWN", "DEPARTMENT", "ALL"}:
+        raise HTTPException(status_code=422, detail="Scope must be OWN, DEPARTMENT, or ALL.")
+    if payload.scope == "DEPARTMENT" and not payload.department_id:
+        raise HTTPException(status_code=422, detail="Department is required for department scope.")
+    if payload.scope != "DEPARTMENT" and payload.department_id:
+        raise HTTPException(status_code=422, detail="Department is only valid with DEPARTMENT scope.")
+
+
+async def _validate_override_department(
+    db: AsyncSession, payload: UserPermissionOverrideRequest
+) -> None:
+    if payload.department_id:
+        department = await db.get(Department, payload.department_id)
+        if not department or department.is_deleted:
+            raise HTTPException(status_code=404, detail="Department not found.")
+
+
+def _validate_override_grant(
+    current_user: User, payload: UserPermissionOverrideRequest
+) -> None:
+    if current_user.role and current_user.role.name != SUPER_ADMIN_ROLE:
+        from app.core.dependencies import has_effective_permission
+        if payload.allowed and not has_effective_permission(current_user, payload.permission_code):
+            raise PermissionDeniedException(
+                detail="Access Denied. You do not have permission to perform this action."
+            )
+
+
+async def _permission_audit_name_maps(db: AsyncSession, logs: list[AuditLog]):
+    actor_ids = {log.user_id for log in logs if log.user_id}
+    actor_rows = []
+    if actor_ids:
+        actor_rows = (await db.execute(
+            select(User.id, User.first_name, User.last_name, User.email)
+            .where(User.id.in_(actor_ids))
+        )).all()
+    actor_map = {
+        str(user_id): f"{first_name} {last_name} ({email})"
+        for user_id, first_name, last_name, email in actor_rows
+    }
+
+    target_ids = {log.record_id for log in logs if log.record_id}
+    target_map = {}
+    if target_ids:
+        user_rows = (await db.execute(
+            select(User.id, User.first_name, User.last_name, User.email)
+            .where(User.id.in_(target_ids))
+        )).all()
+        target_map.update({
+            str(user_id): f"{first_name} {last_name} ({email})"
+            for user_id, first_name, last_name, email in user_rows
+        })
+        remaining = target_ids - set(target_map)
+        if remaining:
+            role_rows = (await db.execute(
+                select(Role.id, Role.name).where(Role.id.in_(remaining))
+            )).all()
+            target_map.update({str(role_id): f"Role: {name}" for role_id, name in role_rows})
+    return actor_map, target_map
+
+
 # =====================================================================
 # 1. List all permission codes
 # =====================================================================
@@ -100,29 +245,7 @@ async def update_role_permissions(
     role = (await db.execute(select(Role).where(Role.id == role_id))).scalar_one_or_none()
     if not role:
         raise HTTPException(status_code=404, detail="Role not found.")
-    if current_user.role and current_user.role.name != SUPER_ADMIN_ROLE:
-        if role.name in {SUPER_ADMIN_ROLE, "Admin"}:
-            raise HTTPException(
-                status_code=403,
-                detail="Only Super Admins can manage administrative role permissions.",
-            )
-
-    # Security: Non-Super-Admin cannot grant permissions they don't have
-    if current_user.role and current_user.role.name != SUPER_ADMIN_ROLE:
-        admin_codes = set()
-        if current_user.role:
-            for p in (current_user.role.permissions or []):
-                admin_codes.add(p.code)
-        for ov in (current_user.permission_overrides or []):
-            perm = getattr(ov, "permission", None)
-            if perm and ov.allowed:
-                admin_codes.add(perm.code)
-        disallowed = set(payload.permission_codes) - admin_codes
-        if disallowed:
-            raise HTTPException(
-                status_code=403,
-                detail=f"You cannot grant permissions you don't have: {', '.join(sorted(disallowed))}",
-            )
+    _validate_role_permission_update(role, current_user, payload.permission_codes)
 
     before = [p.code for p in role.permissions]
     try:
@@ -153,44 +276,12 @@ async def list_permission_users(
         .order_by(User.first_name, User.last_name)
     )
 
-    # Non-Super-Admin: filter to own departments
-    if current_user.role and current_user.role.name != SUPER_ADMIN_ROLE:
-        admin_depts = (await db.execute(
-            select(UserDepartment.department_id).where(
-                UserDepartment.user_id == current_user.id,
-                UserDepartment.is_deleted == False,
-            )
-        )).scalars().all()
-        if admin_depts:
-            dept_user_ids = (await db.execute(
-                select(UserDepartment.user_id).where(
-                    UserDepartment.department_id.in_(admin_depts),
-                    UserDepartment.is_deleted == False,
-                )
-            )).scalars().all()
-            stmt = stmt.where(User.id.in_(dept_user_ids))
+    stmt = await _scope_permission_users(db, current_user, stmt)
 
     result = await db.execute(stmt)
     users = result.scalars().unique().all()
 
-    items = []
-    for u in users:
-        dept_names = []
-        dept_id = None
-        for ud in (u.user_departments or []):
-            if ud.department:
-                dept_names.append(ud.department.name)
-                dept_id = dept_id or ud.department_id
-        items.append({
-            "id": str(u.id),
-            "name": f"{u.first_name} {u.last_name}",
-            "email": u.email,
-            "role_id": str(u.role_id),
-            "role_name": u.role.name if u.role else None,
-            "department_name": ", ".join(dept_names) if dept_names else None,
-            "department_id": str(dept_id) if dept_id else None,
-        })
-    return items
+    return [_permission_user_item(user) for user in users]
 
 
 # =====================================================================
@@ -228,25 +319,7 @@ async def set_user_override(
     permission = (await db.execute(select(Permission).where(Permission.code == payload.permission_code))).scalar_one_or_none()
     if not target or not permission:
         raise HTTPException(status_code=404, detail="User or permission not found.")
-    if current_user.role and current_user.role.name != SUPER_ADMIN_ROLE:
-        if getattr(target.role, "name", "") in {SUPER_ADMIN_ROLE, "Admin"}:
-            raise HTTPException(status_code=403, detail="Only Super Admins can manage administrative accounts.")
-    if payload.scope not in {"OWN", "DEPARTMENT", "ALL"}:
-        raise HTTPException(status_code=422, detail="Scope must be OWN, DEPARTMENT, or ALL.")
-    if payload.scope == "DEPARTMENT" and not payload.department_id:
-        raise HTTPException(status_code=422, detail="Department is required for department scope.")
-    if payload.scope != "DEPARTMENT" and payload.department_id:
-        raise HTTPException(status_code=422, detail="Department is only valid with DEPARTMENT scope.")
-    if payload.department_id:
-        department = await db.get(Department, payload.department_id)
-        if not department or department.is_deleted:
-            raise HTTPException(status_code=404, detail="Department not found.")
-    if current_user.role and current_user.role.name != SUPER_ADMIN_ROLE:
-        from app.core.dependencies import has_effective_permission
-        if payload.allowed and not has_effective_permission(current_user, payload.permission_code):
-            raise PermissionDeniedException(
-                detail="Access Denied. You do not have permission to perform this action."
-            )
+    await _validate_user_override(db, current_user, target, payload)
     existing = (await db.execute(select(UserPermissionOverride).where(
         UserPermissionOverride.user_id == user_id,
         UserPermissionOverride.permission_id == permission.id,
@@ -444,44 +517,7 @@ async def permission_audit_history(
     result = await db.execute(stmt)
     logs = result.scalars().all()
 
-    # Resolve actor and target names in bulk
-    actor_ids = {log.user_id for log in logs if log.user_id}
-    target_ids = set()
-    for log in logs:
-        if log.record_id:
-            try:
-                target_ids.add(log.record_id)
-            except Exception:  # noqa: S110 - defensive audit-record normalization
-                pass
-
-    # Fetch actor names
-    actor_map = {}
-    if actor_ids:
-        actors = (await db.execute(
-            select(User.id, User.first_name, User.last_name, User.email)
-            .where(User.id.in_(actor_ids))
-        )).all()
-        for uid, fn, ln, email in actors:
-            actor_map[str(uid)] = f"{fn} {ln} ({email})"
-
-    # Fetch target names (users or roles)
-    target_map = {}
-    if target_ids:
-        # Try users first
-        users = (await db.execute(
-            select(User.id, User.first_name, User.last_name, User.email)
-            .where(User.id.in_(target_ids))
-        )).all()
-        for uid, fn, ln, email in users:
-            target_map[str(uid)] = f"{fn} {ln} ({email})"
-        # Try roles
-        remaining = target_ids - set(target_map.keys())
-        if remaining:
-            roles = (await db.execute(
-                select(Role.id, Role.name).where(Role.id.in_(remaining))
-            )).all()
-            for rid, name in roles:
-                target_map[str(rid)] = f"Role: {name}"
+    actor_map, target_map = await _permission_audit_name_maps(db, logs)
 
     items = []
     for log in logs:

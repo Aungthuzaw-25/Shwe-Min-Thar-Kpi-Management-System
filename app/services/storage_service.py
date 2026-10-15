@@ -78,7 +78,7 @@ class StorageService:
                 logger.info(f"Storage bucket '{self.bucket_name}' is ready.")
                 return True
 
-            except (EndpointConnectionError, ConnectionError, OSError):
+            except (EndpointConnectionError, OSError):
                 if attempt < max_retries - 1:
                     logger.warning(f"Storage backend not ready yet. Retrying in {retry_delay} second(s)... (Attempt {attempt + 1}/{max_retries})")
                     time.sleep(retry_delay)

@@ -10,6 +10,13 @@ from typing import Sequence
 from alembic import op
 import sqlalchemy as sa
 
+ONDELETE_SET_NULL = "SET NULL"
+FK_USERS_ID = "users.id"
+FK_DEPARTMENTS_ID = "departments.id"
+FK_POSITIONS_ID = "positions.id"
+FK_KPI_FORMULAS_ID = "kpi_formulas.id"
+FK_TASKS_ID = "tasks.id"
+
 
 # revision identifiers, used by Alembic.
 revision: str = '51f24dd3e99c'
@@ -29,7 +36,7 @@ def upgrade() -> None:
     sa.Column('is_deleted', sa.Boolean(), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=True),
     sa.Column('updated_at', sa.DateTime(), nullable=True),
-    sa.ForeignKeyConstraint(['head_id'], ['users.id'], name='fk_dept_head_id', ondelete='SET NULL', use_alter=True),
+    sa.ForeignKeyConstraint(['head_id'], [FK_USERS_ID], name='fk_dept_head_id', ondelete=ONDELETE_SET_NULL, use_alter=True),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('name')
     )
@@ -116,7 +123,7 @@ def upgrade() -> None:
     sa.Column('is_deleted', sa.Boolean(), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=True),
     sa.Column('updated_at', sa.DateTime(), nullable=True),
-    sa.ForeignKeyConstraint(['department_id'], ['departments.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['department_id'], [FK_DEPARTMENTS_ID], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index('idx_level_setting_lookup', 'kpi_level_settings', ['department_id', 'level_name'], unique=False)
@@ -130,8 +137,8 @@ def upgrade() -> None:
     sa.Column('is_deleted', sa.Boolean(), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=True),
     sa.Column('updated_at', sa.DateTime(), nullable=True),
-    sa.ForeignKeyConstraint(['department_id'], ['departments.id'], ),
-    sa.ForeignKeyConstraint(['parent_position_id'], ['positions.id'], ),
+    sa.ForeignKeyConstraint(['department_id'], [FK_DEPARTMENTS_ID], ),
+    sa.ForeignKeyConstraint(['parent_position_id'], [FK_POSITIONS_ID], ),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('name')
     )
@@ -158,8 +165,8 @@ def upgrade() -> None:
     sa.Column('is_deleted', sa.Boolean(), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=True),
     sa.Column('updated_at', sa.DateTime(), nullable=True),
-    sa.ForeignKeyConstraint(['department_id'], ['departments.id'], ondelete='CASCADE'),
-    sa.ForeignKeyConstraint(['position_id'], ['positions.id'], ondelete='SET NULL'),
+    sa.ForeignKeyConstraint(['department_id'], [FK_DEPARTMENTS_ID], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['position_id'], [FK_POSITIONS_ID], ondelete=ONDELETE_SET_NULL),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index('idx_kpi_rule_lookup', 'kpi_rules', ['department_id', 'position_id', 'level', 'is_active'], unique=False)
@@ -188,8 +195,8 @@ def upgrade() -> None:
     sa.Column('is_deleted', sa.Boolean(), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=True),
     sa.Column('updated_at', sa.DateTime(), nullable=True),
-    sa.ForeignKeyConstraint(['delegated_to_id'], ['users.id'], ),
-    sa.ForeignKeyConstraint(['position_id'], ['positions.id'], ),
+    sa.ForeignKeyConstraint(['delegated_to_id'], [FK_USERS_ID], ),
+    sa.ForeignKeyConstraint(['position_id'], [FK_POSITIONS_ID], ),
     sa.ForeignKeyConstraint(['role_id'], ['roles.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
@@ -206,7 +213,7 @@ def upgrade() -> None:
     sa.Column('is_deleted', sa.Boolean(), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=True),
     sa.Column('updated_at', sa.DateTime(), nullable=True),
-    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
+    sa.ForeignKeyConstraint(['user_id'], [FK_USERS_ID], ),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_activity_timelines_user_id'), 'activity_timelines', ['user_id'], unique=False)
@@ -220,7 +227,7 @@ def upgrade() -> None:
     sa.Column('new_value', sa.JSON(), nullable=True),
     sa.Column('ip_address', sa.String(length=50), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=True),
-    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
+    sa.ForeignKeyConstraint(['user_id'], [FK_USERS_ID], ),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_audit_logs_user_id'), 'audit_logs', ['user_id'], unique=False)
@@ -245,10 +252,10 @@ def upgrade() -> None:
     sa.Column('is_deleted', sa.Boolean(), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=True),
     sa.Column('updated_at', sa.DateTime(), nullable=True),
-    sa.ForeignKeyConstraint(['created_by_id'], ['users.id'], ondelete='SET NULL'),
-    sa.ForeignKeyConstraint(['department_id'], ['departments.id'], ondelete='CASCADE'),
-    sa.ForeignKeyConstraint(['parent_formula_id'], ['kpi_formulas.id'], ondelete='SET NULL'),
-    sa.ForeignKeyConstraint(['position_id'], ['positions.id'], ondelete='SET NULL'),
+    sa.ForeignKeyConstraint(['created_by_id'], [FK_USERS_ID], ondelete=ONDELETE_SET_NULL),
+    sa.ForeignKeyConstraint(['department_id'], [FK_DEPARTMENTS_ID], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['parent_formula_id'], [FK_KPI_FORMULAS_ID], ondelete=ONDELETE_SET_NULL),
+    sa.ForeignKeyConstraint(['position_id'], [FK_POSITIONS_ID], ondelete=ONDELETE_SET_NULL),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index('idx_formula_targeting', 'kpi_formulas', ['department_id', 'user_level', 'status', 'is_active'], unique=False)
@@ -266,7 +273,7 @@ def upgrade() -> None:
     sa.Column('user_agent', sa.String(length=255), nullable=True),
     sa.Column('is_success', sa.Boolean(), nullable=True),
     sa.Column('attempted_at', sa.DateTime(), nullable=True),
-    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['user_id'], [FK_USERS_ID], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_login_history_attempted_at'), 'login_history', ['attempted_at'], unique=False)
@@ -283,7 +290,7 @@ def upgrade() -> None:
     sa.Column('is_deleted', sa.Boolean(), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=True),
     sa.Column('updated_at', sa.DateTime(), nullable=True),
-    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['user_id'], [FK_USERS_ID], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_notifications_group_key'), 'notifications', ['group_key'], unique=False)
@@ -294,7 +301,7 @@ def upgrade() -> None:
     sa.Column('user_id', sa.UUID(), nullable=False),
     sa.Column('hashed_password', sa.String(length=255), nullable=False),
     sa.Column('created_at', sa.DateTime(), nullable=True),
-    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['user_id'], [FK_USERS_ID], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_password_history_user_id'), 'password_history', ['user_id'], unique=False)
@@ -306,7 +313,7 @@ def upgrade() -> None:
     sa.Column('is_deleted', sa.Boolean(), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=True),
     sa.Column('updated_at', sa.DateTime(), nullable=True),
-    sa.ForeignKeyConstraint(['submitter_id'], ['users.id'], ),
+    sa.ForeignKeyConstraint(['submitter_id'], [FK_USERS_ID], ),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_submission_batches_submitter_id'), 'submission_batches', ['submitter_id'], unique=False)
@@ -322,8 +329,8 @@ def upgrade() -> None:
     sa.Column('is_deleted', sa.Boolean(), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=True),
     sa.Column('updated_at', sa.DateTime(), nullable=True),
-    sa.ForeignKeyConstraint(['created_by_id'], ['users.id'], ),
-    sa.ForeignKeyConstraint(['department_id'], ['departments.id'], ),
+    sa.ForeignKeyConstraint(['created_by_id'], [FK_USERS_ID], ),
+    sa.ForeignKeyConstraint(['department_id'], [FK_DEPARTMENTS_ID], ),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_table('user_departments',
@@ -334,8 +341,8 @@ def upgrade() -> None:
     sa.Column('is_deleted', sa.Boolean(), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=True),
     sa.Column('updated_at', sa.DateTime(), nullable=True),
-    sa.ForeignKeyConstraint(['department_id'], ['departments.id'], ondelete='CASCADE'),
-    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['department_id'], [FK_DEPARTMENTS_ID], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['user_id'], [FK_USERS_ID], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('user_id', 'department_id', 'id')
     )
     op.create_table('user_permission_overrides',
@@ -348,9 +355,9 @@ def upgrade() -> None:
     sa.Column('is_deleted', sa.Boolean(), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=True),
     sa.Column('updated_at', sa.DateTime(), nullable=True),
-    sa.ForeignKeyConstraint(['department_id'], ['departments.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['department_id'], [FK_DEPARTMENTS_ID], ondelete='CASCADE'),
     sa.ForeignKeyConstraint(['permission_id'], ['permissions.id'], ondelete='CASCADE'),
-    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['user_id'], [FK_USERS_ID], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('user_id', 'permission_id', 'department_id', name='uq_user_permission_scope')
     )
@@ -369,7 +376,7 @@ def upgrade() -> None:
     sa.Column('created_at', sa.DateTime(), nullable=True),
     sa.Column('updated_at', sa.DateTime(), nullable=True),
     sa.ForeignKeyConstraint(['batch_id'], ['submission_batches.id'], ),
-    sa.ForeignKeyConstraint(['reviewer_id'], ['users.id'], ),
+    sa.ForeignKeyConstraint(['reviewer_id'], [FK_USERS_ID], ),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_approval_queues_batch_id'), 'approval_queues', ['batch_id'], unique=False)
@@ -383,8 +390,8 @@ def upgrade() -> None:
     sa.Column('is_deleted', sa.Boolean(), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=True),
     sa.Column('updated_at', sa.DateTime(), nullable=True),
-    sa.ForeignKeyConstraint(['action_by_id'], ['users.id'], ondelete='SET NULL'),
-    sa.ForeignKeyConstraint(['formula_id'], ['kpi_formulas.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['action_by_id'], [FK_USERS_ID], ondelete=ONDELETE_SET_NULL),
+    sa.ForeignKeyConstraint(['formula_id'], [FK_KPI_FORMULAS_ID], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_formula_audit_logs_formula_id'), 'formula_audit_logs', ['formula_id'], unique=False)
@@ -400,12 +407,12 @@ def upgrade() -> None:
     sa.Column('is_deleted', sa.Boolean(), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=True),
     sa.Column('updated_at', sa.DateTime(), nullable=True),
-    sa.ForeignKeyConstraint(['assigned_by_id'], ['users.id'], ondelete='SET NULL'),
-    sa.ForeignKeyConstraint(['department_id'], ['departments.id'], ondelete='CASCADE'),
-    sa.ForeignKeyConstraint(['kpi_formula_id'], ['kpi_formulas.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['assigned_by_id'], [FK_USERS_ID], ondelete=ONDELETE_SET_NULL),
+    sa.ForeignKeyConstraint(['department_id'], [FK_DEPARTMENTS_ID], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['kpi_formula_id'], [FK_KPI_FORMULAS_ID], ondelete='CASCADE'),
     sa.ForeignKeyConstraint(['kpi_period_id'], ['kpi_periods.id'], ondelete='CASCADE'),
-    sa.ForeignKeyConstraint(['position_id'], ['positions.id'], ondelete='CASCADE'),
-    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['position_id'], [FK_POSITIONS_ID], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['user_id'], [FK_USERS_ID], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('user_id', 'kpi_formula_id', 'kpi_period_id', name='uq_kpi_user_formula_period')
     )
@@ -432,10 +439,10 @@ def upgrade() -> None:
     sa.Column('is_deleted', sa.Boolean(), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=True),
     sa.Column('updated_at', sa.DateTime(), nullable=True),
-    sa.ForeignKeyConstraint(['department_id'], ['departments.id'], ondelete='SET NULL'),
-    sa.ForeignKeyConstraint(['formula_id'], ['kpi_formulas.id'], ondelete='SET NULL'),
-    sa.ForeignKeyConstraint(['kpi_period_id'], ['kpi_periods.id'], ondelete='SET NULL'),
-    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['department_id'], [FK_DEPARTMENTS_ID], ondelete=ONDELETE_SET_NULL),
+    sa.ForeignKeyConstraint(['formula_id'], [FK_KPI_FORMULAS_ID], ondelete=ONDELETE_SET_NULL),
+    sa.ForeignKeyConstraint(['kpi_period_id'], ['kpi_periods.id'], ondelete=ONDELETE_SET_NULL),
+    sa.ForeignKeyConstraint(['user_id'], [FK_USERS_ID], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index('idx_kpi_dept_summary', 'kpi_records', ['department_id', 'period_type', 'period_start'], unique=False)
@@ -460,7 +467,7 @@ def upgrade() -> None:
     sa.Column('is_deleted', sa.Boolean(), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=True),
     sa.Column('updated_at', sa.DateTime(), nullable=True),
-    sa.ForeignKeyConstraint(['formula_id'], ['kpi_formulas.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['formula_id'], [FK_KPI_FORMULAS_ID], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_kpi_scoring_rule_items_formula_id'), 'kpi_scoring_rule_items', ['formula_id'], unique=False)
@@ -489,11 +496,11 @@ def upgrade() -> None:
     sa.Column('is_deleted', sa.Boolean(), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=True),
     sa.Column('updated_at', sa.DateTime(), nullable=True),
-    sa.ForeignKeyConstraint(['assigner_id'], ['users.id'], ondelete='SET NULL'),
-    sa.ForeignKeyConstraint(['batch_id'], ['submission_batches.id'], ondelete='SET NULL'),
-    sa.ForeignKeyConstraint(['category_id'], ['kpi_categories.id'], ondelete='SET NULL'),
-    sa.ForeignKeyConstraint(['owner_id'], ['users.id'], ondelete='CASCADE'),
-    sa.ForeignKeyConstraint(['parent_task_id'], ['tasks.id'], ondelete='SET NULL'),
+    sa.ForeignKeyConstraint(['assigner_id'], [FK_USERS_ID], ondelete=ONDELETE_SET_NULL),
+    sa.ForeignKeyConstraint(['batch_id'], ['submission_batches.id'], ondelete=ONDELETE_SET_NULL),
+    sa.ForeignKeyConstraint(['category_id'], ['kpi_categories.id'], ondelete=ONDELETE_SET_NULL),
+    sa.ForeignKeyConstraint(['owner_id'], [FK_USERS_ID], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['parent_task_id'], [FK_TASKS_ID], ondelete=ONDELETE_SET_NULL),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index('idx_tasks_batch_lookup', 'tasks', ['batch_id', 'status'], unique=False)
@@ -526,8 +533,8 @@ def upgrade() -> None:
     sa.Column('created_at', sa.DateTime(), nullable=True),
     sa.Column('updated_at', sa.DateTime(), nullable=True),
     sa.ForeignKeyConstraint(['kpi_record_id'], ['kpi_records.id'], ondelete='CASCADE'),
-    sa.ForeignKeyConstraint(['reviewed_by_id'], ['users.id'], ondelete='SET NULL'),
-    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['reviewed_by_id'], [FK_USERS_ID], ondelete=ONDELETE_SET_NULL),
+    sa.ForeignKeyConstraint(['user_id'], [FK_USERS_ID], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_kpi_action_plans_kpi_record_id'), 'kpi_action_plans', ['kpi_record_id'], unique=True)
@@ -545,7 +552,7 @@ def upgrade() -> None:
     sa.Column('is_deleted', sa.Boolean(), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=True),
     sa.Column('updated_at', sa.DateTime(), nullable=True),
-    sa.ForeignKeyConstraint(['changed_by_id'], ['users.id'], ondelete='SET NULL'),
+    sa.ForeignKeyConstraint(['changed_by_id'], [FK_USERS_ID], ondelete=ONDELETE_SET_NULL),
     sa.ForeignKeyConstraint(['kpi_record_id'], ['kpi_records.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )
@@ -560,8 +567,8 @@ def upgrade() -> None:
     sa.Column('is_deleted', sa.Boolean(), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=True),
     sa.Column('updated_at', sa.DateTime(), nullable=True),
-    sa.ForeignKeyConstraint(['task_id'], ['tasks.id'], ),
-    sa.ForeignKeyConstraint(['uploaded_by'], ['users.id'], ),
+    sa.ForeignKeyConstraint(['task_id'], [FK_TASKS_ID], ),
+    sa.ForeignKeyConstraint(['uploaded_by'], [FK_USERS_ID], ),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_table('task_histories',
@@ -575,8 +582,8 @@ def upgrade() -> None:
     sa.Column('is_deleted', sa.Boolean(), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=True),
     sa.Column('updated_at', sa.DateTime(), nullable=True),
-    sa.ForeignKeyConstraint(['changed_by'], ['users.id'], ),
-    sa.ForeignKeyConstraint(['task_id'], ['tasks.id'], ),
+    sa.ForeignKeyConstraint(['changed_by'], [FK_USERS_ID], ),
+    sa.ForeignKeyConstraint(['task_id'], [FK_TASKS_ID], ),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_table('task_reviews',
@@ -591,8 +598,8 @@ def upgrade() -> None:
     sa.Column('is_deleted', sa.Boolean(), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=True),
     sa.Column('updated_at', sa.DateTime(), nullable=True),
-    sa.ForeignKeyConstraint(['reviewer_id'], ['users.id'], ),
-    sa.ForeignKeyConstraint(['task_id'], ['tasks.id'], ),
+    sa.ForeignKeyConstraint(['reviewer_id'], [FK_USERS_ID], ),
+    sa.ForeignKeyConstraint(['task_id'], [FK_TASKS_ID], ),
     sa.PrimaryKeyConstraint('id')
     )
     # ### end Alembic commands ###

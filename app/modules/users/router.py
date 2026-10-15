@@ -53,6 +53,11 @@ SUPER_ADMIN_ROLE_NAME = "Super Admin"
 SUPER_ADMIN_ROLE_NAMES = {SUPER_ADMIN_ROLE_NAME}
 admin_checker = RoleChecker([SUPER_ADMIN_ROLE_NAME, 'Admin'])
 VALID_USER_LEVELS = {'L0', 'L1', 'L2'}
+PERM_USERS_VIEW = "users.view"
+ERR_SUPER_ADMIN_NOT_FOUND = "Super Admin not found."
+ERR_EMAIL_ALREADY_EXISTS = "An account with this email already exists."
+ERR_NOT_SUPER_ADMIN = "This user is not a Super Admin account."
+ERR_USER_NOT_FOUND = "User not found."
 
 
 async def _get_process_trend(db: AsyncSession, owner_ids):
@@ -177,7 +182,57 @@ def serialize_user_obj(u: User) -> UserResponse:
         last_login=getattr(u, 'last_login', None)
     )
 
-@router.post('/', response_model=UserResponse) 
+
+def _provided_user_password(payload: UserCreate) -> str | None:
+    values = payload.model_dump()
+    return (
+        getattr(payload, "password", None)
+        or getattr(payload, "temporary_password", None)
+        or getattr(payload, "temp_password", None)
+        or values.get("password")
+        or values.get("temporary_password")
+    )
+
+
+async def _ensure_user_email_available(db: AsyncSession, email: str) -> None:
+    existing = (await db.execute(select(User).where(User.email == email))).scalars().first()
+    if not existing:
+        return
+    if getattr(existing, "is_deleted", False):
+        raise HTTPException(
+            status_code=400,
+            detail=f"အကောင့်ဖန်တီး၍မရပါ။ '{email}' သည် ဖျက်သိမ်းထားသော အကောင့်ဟောင်းတစ်ခုဖြစ်သည်။ ကျေးဇူးပြု၍ အသစ်မဖန်တီးဘဲ အကောင့်ဟောင်းကိုသာ Trash (Deleted List) မှတဆင့် Restore (ပြန်လည်အသက်သွင်း) ပေးပါ။",
+        )
+    raise HTTPException(status_code=400, detail="Email address is already registered and currently active.")
+
+
+async def _assign_new_user_department(
+    db: AsyncSession, user: User, department_id, user_level: str
+) -> None:
+    if not department_id:
+        return
+    result = await db.execute(
+        select(Department).where(
+            Department.id == department_id,
+            Department.is_deleted == False,
+        )
+    )
+    department = result.scalar_one_or_none()
+    if not department:
+        raise HTTPException(status_code=404, detail="Department not found.")
+    db.add(
+        UserDepartment(
+            user_id=user.id,
+            department_id=department_id,
+            user_level=user_level,
+        )
+    )
+    if user_level == "L0":
+        department.head_id = user.id
+        db.add(department)
+
+
+@router.post('/', response_model=UserResponse, responses={400: {"description": "Bad Request"}, 403: {"description": "Forbidden"}, 404: {"description": "Not Found"}, 422: {"description": "Unprocessable Entity"}, 500: {"description": "Internal Server Error"}})
 async def create_new_user(payload: UserCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
     enforce_permission(current_user, "users.create")
     role_req = await db.execute(select(Role).where(Role.id == payload.role_id))
@@ -187,29 +242,9 @@ async def create_new_user(payload: UserCreate, db: AsyncSession = Depends(get_db
     if current_user.role.name != SUPER_ADMIN_ROLE_NAME and target_role.name in {SUPER_ADMIN_ROLE_NAME, 'Admin'}:
         raise HTTPException(status_code=403, detail='Only Super Admins can manage administrative accounts.')
 
-    # 🌟 FIX 1: Smart Soft-Delete Recovery (Ghost Account Prevention)
-    stmt_check = select(User).where(User.email == payload.email)
-    existing_any = (await db.execute(stmt_check)).scalars().first()
-    
-    if existing_any:
-        if getattr(existing_any, 'is_deleted', False):
-            raise HTTPException(
-                status_code=400, 
-                detail=f"အကောင့်ဖန်တီး၍မရပါ။ '{payload.email}' သည် ဖျက်သိမ်းထားသော အကောင့်ဟောင်းတစ်ခုဖြစ်သည်။ ကျေးဇူးပြု၍ အသစ်မဖန်တီးဘဲ အကောင့်ဟောင်းကိုသာ Trash (Deleted List) မှတဆင့် Restore (ပြန်လည်အသက်သွင်း) ပေးပါ။"
-            )
-        else:
-            raise HTTPException(status_code=400, detail='Email address is already registered and currently active.')
-            
+    await _ensure_user_email_available(db, payload.email)
     user_data = payload.model_dump(exclude={"department_id", "user_level", "password", "temporary_password", "temp_password"}, exclude_unset=True)
-    
-    provided_password = (
-        getattr(payload, 'password', None) or 
-        getattr(payload, 'temporary_password', None) or 
-        getattr(payload, 'temp_password', None) or
-        (payload.model_dump().get('password')) or
-        (payload.model_dump().get('temporary_password'))
-    )
-    
+    provided_password = _provided_user_password(payload)
     if not provided_password:
         raise HTTPException(status_code=400, detail='Password (Temporary Password) is required.')
         
@@ -233,23 +268,7 @@ async def create_new_user(payload: UserCreate, db: AsyncSession = Depends(get_db
             db, new_user.id, new_user.hashed_password, commit=False
         )
         
-        if dept_id:
-            dept_check = await db.execute(select(Department).where(Department.id == dept_id, Department.is_deleted == False))
-            target_dept = dept_check.scalar_one_or_none()
-            
-            if not target_dept:
-                raise HTTPException(status_code=404, detail='Department not found.')
-
-            new_ud = UserDepartment(
-                user_id=new_user.id,
-                department_id=dept_id,
-                user_level=user_level
-            )
-            db.add(new_ud)
-
-            if user_level == "L0":
-                target_dept.head_id = new_user.id
-                db.add(target_dept)
+        await _assign_new_user_department(db, new_user, dept_id, user_level)
         record_activity(
             db,
             actor_id=current_user.id,
@@ -281,14 +300,14 @@ async def create_new_user(payload: UserCreate, db: AsyncSession = Depends(get_db
     return resp_data
 
 
-@router.get('/super-admins', response_model=list[UserResponse])
+@router.get('/super-admins', response_model=list[UserResponse], responses={403: {"description": "Forbidden"}})
 async def list_super_admins(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, gt=0, le=500),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    enforce_permission(current_user, "users.view")
+    enforce_permission(current_user, PERM_USERS_VIEW)
     require_super_admin(current_user)
     stmt = (
         select(User)
@@ -307,7 +326,7 @@ async def list_super_admins(
     return [serialize_user_obj(user) for user in result.scalars().all()]
 
 
-@router.get('/super-admins/{user_id}', response_model=UserResponse)
+@router.get('/super-admins/{user_id}', response_model=UserResponse, responses={403: {"description": "Forbidden"}, 404: {"description": "Not Found"}})
 async def get_super_admin(
     user_id: UUID,
     db: AsyncSession = Depends(get_db),
@@ -327,11 +346,11 @@ async def get_super_admin(
     result = await db.execute(stmt)
     user = result.scalars().first()
     if not user:
-        raise HTTPException(status_code=404, detail='Super Admin not found.')
+        raise HTTPException(status_code=404, detail=ERR_SUPER_ADMIN_NOT_FOUND)
     return serialize_user_obj(user)
 
 
-@router.post('/super-admins', response_model=UserResponse)
+@router.post('/super-admins', response_model=UserResponse, responses={400: {"description": "Bad Request"}, 403: {"description": "Forbidden"}, 409: {"description": "Conflict"}, 500: {"description": "Internal Server Error"}})
 async def create_super_admin(
     payload: SuperAdminCreate,
     db: AsyncSession = Depends(get_db),
@@ -348,7 +367,7 @@ async def create_super_admin(
     stmt_check = select(User).where(User.email == normalized_email)
     existing_user = (await db.execute(stmt_check)).scalars().first()
     if existing_user:
-        raise HTTPException(status_code=409, detail='An account with this email already exists.')
+        raise HTTPException(status_code=409, detail=ERR_EMAIL_ALREADY_EXISTS)
 
     try:
         validate_password_strength(payload.password, **(await get_password_policy(db)))
@@ -402,7 +421,7 @@ async def create_super_admin(
         await db.rollback()
         raise HTTPException(
             status_code=409,
-            detail='An account with this email already exists.',
+            detail=ERR_EMAIL_ALREADY_EXISTS,
         ) from exc
     except Exception as exc:
         await db.rollback()
@@ -411,7 +430,7 @@ async def create_super_admin(
     return serialize_user_obj(await user_repo.get_user_by_id(db, created_user.id))
 
 
-@router.put('/super-admins/{user_id}', response_model=UserResponse)
+@router.put('/super-admins/{user_id}', response_model=UserResponse, responses={400: {"description": "Bad Request"}, 403: {"description": "Forbidden"}, 404: {"description": "Not Found"}})
 async def update_super_admin(
     user_id: UUID,
     payload: SuperAdminUpdate,
@@ -423,7 +442,7 @@ async def update_super_admin(
     result = await db.execute(stmt)
     user = result.scalars().first()
     if not user:
-        raise HTTPException(status_code=404, detail='Super Admin not found.')
+        raise HTTPException(status_code=404, detail=ERR_SUPER_ADMIN_NOT_FOUND)
     if user.role and user.role.name not in SUPER_ADMIN_ROLE_NAMES:
         raise HTTPException(status_code=403, detail='Only Super Admin accounts can be updated here.')
     if current_user.id == user.id:
@@ -432,7 +451,7 @@ async def update_super_admin(
     if payload.email and payload.email.lower() != user.email.lower():
         email_check = select(User).where(User.email == payload.email.lower(), User.id != user.id)
         if (await db.execute(email_check)).scalars().first():
-            raise HTTPException(status_code=400, detail='An account with this email already exists.')
+            raise HTTPException(status_code=400, detail=ERR_EMAIL_ALREADY_EXISTS)
 
     old_snapshot = {
         'first_name': user.first_name,
@@ -470,7 +489,7 @@ async def update_super_admin(
     return serialize_user_obj(await user_repo.get_user_by_id(db, user.id))
 
 
-@router.patch('/super-admins/{user_id}/activate')
+@router.patch('/super-admins/{user_id}/activate', responses={403: {"description": "Forbidden"}, 404: {"description": "Not Found"}})
 async def activate_super_admin(
     user_id: UUID,
     db: AsyncSession = Depends(get_db),
@@ -481,9 +500,9 @@ async def activate_super_admin(
     result = await db.execute(stmt)
     user = result.scalars().first()
     if not user:
-        raise HTTPException(status_code=404, detail='Super Admin not found.')
+        raise HTTPException(status_code=404, detail=ERR_SUPER_ADMIN_NOT_FOUND)
     if user.role and user.role.name not in SUPER_ADMIN_ROLE_NAMES:
-        raise HTTPException(status_code=403, detail='This user is not a Super Admin account.')
+        raise HTTPException(status_code=403, detail=ERR_NOT_SUPER_ADMIN)
     if current_user.id == user.id:
         raise HTTPException(status_code=403, detail='You cannot activate your own Super Admin account.')
 
@@ -510,7 +529,7 @@ async def activate_super_admin(
     return {'message': 'Super Admin activated successfully.'}
 
 
-@router.patch('/super-admins/{user_id}/deactivate')
+@router.patch('/super-admins/{user_id}/deactivate', responses={400: {"description": "Bad Request"}, 403: {"description": "Forbidden"}, 404: {"description": "Not Found"}})
 async def deactivate_super_admin(
     user_id: UUID,
     db: AsyncSession = Depends(get_db),
@@ -521,9 +540,9 @@ async def deactivate_super_admin(
     result = await db.execute(stmt)
     user = result.scalars().first()
     if not user:
-        raise HTTPException(status_code=404, detail='Super Admin not found.')
+        raise HTTPException(status_code=404, detail=ERR_SUPER_ADMIN_NOT_FOUND)
     if user.role and user.role.name not in SUPER_ADMIN_ROLE_NAMES:
-        raise HTTPException(status_code=403, detail='This user is not a Super Admin account.')
+        raise HTTPException(status_code=403, detail=ERR_NOT_SUPER_ADMIN)
     if current_user.id == user.id:
         raise HTTPException(status_code=403, detail='You cannot deactivate your own Super Admin account.')
     if user.is_active and (await count_active_super_admins(db, exclude_user_id=None) <= 1):
@@ -553,7 +572,7 @@ async def deactivate_super_admin(
     return {'message': 'Super Admin deactivated successfully.'}
 
 
-@router.delete('/super-admins/{user_id}')
+@router.delete('/super-admins/{user_id}', responses={400: {"description": "Bad Request"}, 403: {"description": "Forbidden"}, 404: {"description": "Not Found"}})
 async def delete_super_admin(
     user_id: UUID,
     db: AsyncSession = Depends(get_db),
@@ -564,9 +583,9 @@ async def delete_super_admin(
     result = await db.execute(stmt)
     user = result.scalars().first()
     if not user:
-        raise HTTPException(status_code=404, detail='Super Admin not found.')
+        raise HTTPException(status_code=404, detail=ERR_SUPER_ADMIN_NOT_FOUND)
     if user.role and user.role.name not in SUPER_ADMIN_ROLE_NAMES:
-        raise HTTPException(status_code=403, detail='This user is not a Super Admin account.')
+        raise HTTPException(status_code=403, detail=ERR_NOT_SUPER_ADMIN)
     if current_user.id == user.id:
         raise HTTPException(status_code=403, detail='You cannot delete your own Super Admin account.')
     if user.is_active and (await count_active_super_admins(db) <= 1):
@@ -599,9 +618,9 @@ async def delete_super_admin(
     return {'message': 'Super Admin deleted successfully.'}
 
 
-@router.get('/roles/list')
+@router.get('/roles/list', responses={403: {"description": "Forbidden"}})
 async def get_roles_list(db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
-    enforce_permission(current_user, "users.view")
+    enforce_permission(current_user, PERM_USERS_VIEW)
     stmt = select(Role)
     result = await db.execute(stmt)
     roles = result.scalars().all()
@@ -612,7 +631,7 @@ async def get_roles_list(db: AsyncSession = Depends(get_db), current_user: User 
     return [{"id": r.id, "name": r.name} for r in roles]
 
 # 🌟 PERFORMANCE FIX: Added skip and limit for pagination to avoid memory overload
-@router.get('/deleted/list', response_model=list[UserResponse])
+@router.get('/deleted/list', response_model=list[UserResponse], responses={500: {"description": "Internal Server Error"}})
 async def get_deleted_users(
     skip: int = Query(0, ge=0), 
     limit: int = Query(100, gt=0, le=500),
@@ -638,7 +657,7 @@ async def get_deleted_users(
         raise HTTPException(status_code=500, detail=str(e))
 
 # 🌟 PERFORMANCE FIX: Added skip and limit for pagination to avoid memory overload
-@router.get('/', response_model=list[UserResponse])
+@router.get('/', response_model=list[UserResponse], responses={403: {"description": "Forbidden"}})
 async def get_users(
     is_active: bool | None = Query(True),
     skip: int = Query(0, ge=0), 
@@ -646,7 +665,7 @@ async def get_users(
     db: AsyncSession = Depends(get_db), 
     current_user: User = Depends(admin_checker)
 ):
-    enforce_permission(current_user, "users.view")
+    enforce_permission(current_user, PERM_USERS_VIEW)
     stmt = user_repo.get_user_base_query() if hasattr(user_repo, "get_user_base_query") else select(User).options(
         selectinload(User.role),
         selectinload(User.user_departments).selectinload(UserDepartment.department)
@@ -675,60 +694,125 @@ async def get_users(
         users = [u for u in users if getattr(u.role, 'name', '') != SUPER_ADMIN_ROLE_NAME]
     return [serialize_user_obj(u) for u in users]
 
-@router.get('/{user_id}', response_model=UserResponse)
+@router.get('/{user_id}', response_model=UserResponse, responses={403: {"description": "Forbidden"}, 404: {"description": "Not Found"}})
 async def get_user_profile(user_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    enforce_permission(current_user, "users.view")
+    enforce_permission(current_user, PERM_USERS_VIEW)
     await enforce_user_scope(db, current_user, user_id)
     user = await user_repo.get_user_by_id(db, user_id)
-    if not user: raise HTTPException(status_code=404, detail='User not found.')
+    if not user: raise HTTPException(status_code=404, detail=ERR_USER_NOT_FOUND)
     
     return serialize_user_obj(user)
 
-@router.put('/{user_id}', response_model=UserResponse)
+
+async def _validate_user_update_target(
+    db: AsyncSession, user: User | None, payload: UserUpdate, current_user: User
+) -> User:
+    if not user:
+        raise HTTPException(status_code=404, detail=ERR_USER_NOT_FOUND)
+    if getattr(user, "is_deleted", False):
+        raise HTTPException(status_code=400, detail="Cannot edit a deleted account. Please restore the account first.")
+    if (
+        current_user.role.name != SUPER_ADMIN_ROLE_NAME
+        and getattr(user.role, "name", "") == SUPER_ADMIN_ROLE_NAME
+    ):
+        raise HTTPException(status_code=403, detail="You do not have permission to modify a Super Admin account.")
+    await _validate_user_update_role(db, payload, current_user)
+    await _validate_user_update_email(db, payload, user)
+    await _validate_user_update_department(db, payload, current_user)
+    return user
+
+
+async def _validate_user_update_role(
+    db: AsyncSession, payload: UserUpdate, current_user: User
+) -> None:
+    if not payload.role_id:
+        return
+    role_result = await db.execute(select(Role).where(Role.id == payload.role_id))
+    target_role = role_result.scalar_one_or_none()
+    if target_role and target_role.name == SUPER_ADMIN_ROLE_NAME:
+        raise HTTPException(status_code=403, detail="You do not have permission to promote a user to Super Admin.")
+    if target_role and target_role.name == "Admin":
+        raise HTTPException(status_code=403, detail="Only Super Admins can manage administrative accounts.")
+
+
+async def _validate_user_update_email(
+    db: AsyncSession, payload: UserUpdate, user: User
+) -> None:
+    if not payload.email or payload.email == user.email:
+        return
+    existing = (await db.execute(select(User).where(User.email == payload.email))).scalars().first()
+    if existing:
+        raise HTTPException(status_code=400, detail="This email address is already registered to another account (active or deleted).")
+
+
+async def _validate_user_update_department(
+    db: AsyncSession, payload: UserUpdate, current_user: User
+) -> None:
+    if payload.department_id is None:
+        return
+    target = await db.execute(
+        select(Department).where(
+            Department.id == payload.department_id,
+            Department.is_deleted.is_(False),
+        )
+    )
+    if target.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="Department not found.")
+    await enforce_department_scope(db, current_user, payload.department_id)
+
+
+async def _update_user_department_membership(
+    db: AsyncSession,
+    user_id: UUID,
+    payload: UserUpdate,
+    requested_level: str | None,
+    existing_ud: UserDepartment | None,
+) -> None:
+    if not (payload.department_id or requested_level):
+        return
+    if existing_ud:
+        await _update_existing_user_membership(
+            db, user_id, payload.department_id, requested_level, existing_ud
+        )
+        return
+    if not payload.department_id:
+        raise HTTPException(status_code=400, detail="A department is required before setting user_level.")
+    db.add(
+        UserDepartment(
+            user_id=user_id,
+            department_id=payload.department_id,
+            user_level=requested_level or "L2",
+        )
+    )
+
+
+async def _update_existing_user_membership(
+    db: AsyncSession,
+    user_id: UUID,
+    department_id,
+    requested_level: str | None,
+    membership: UserDepartment,
+) -> None:
+    if department_id and str(membership.department_id) != str(department_id):
+        old_dept = await db.get(Department, membership.department_id)
+        if old_dept and str(old_dept.head_id) == str(user_id):
+            old_dept.head_id = None
+            db.add(old_dept)
+        membership.department_id = department_id
+    if requested_level:
+        membership.user_level = requested_level
+    db.add(membership)
+
+
+@router.put('/{user_id}', response_model=UserResponse, responses={400: {"description": "Bad Request"}, 403: {"description": "Forbidden"}, 404: {"description": "Not Found"}, 422: {"description": "Unprocessable Entity"}, 500: {"description": "Internal Server Error"}})
 async def update_existing_user(user_id: UUID, payload: UserUpdate, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
     enforce_permission(current_user, "users.edit")
     await enforce_user_scope(db, current_user, user_id)
     stmt = select(User).options(selectinload(User.role)).where(User.id == user_id)
     result = await db.execute(stmt)
-    user = result.scalars().first()
-    
-    if not user:
-        raise HTTPException(status_code=404, detail='User not found.')
-        
-    if getattr(user, 'is_deleted', False):
-        raise HTTPException(status_code=400, detail='Cannot edit a deleted account. Please restore the account first.')
-        
-    if current_user.role.name != SUPER_ADMIN_ROLE_NAME:
-        if getattr(user.role, 'name', '') == SUPER_ADMIN_ROLE_NAME:
-            raise HTTPException(status_code=403, detail='You do not have permission to modify a Super Admin account.')
-            
-    if payload.role_id:
-        role_req = await db.execute(select(Role).where(Role.id == payload.role_id))
-        target_role = role_req.scalar_one_or_none()
-        if target_role and target_role.name == SUPER_ADMIN_ROLE_NAME:
-            raise HTTPException(status_code=403, detail='You do not have permission to promote a user to Super Admin.')
-        if target_role and target_role.name == 'Admin':
-            raise HTTPException(status_code=403, detail='Only Super Admins can manage administrative accounts.')
-
-    # 🌟 FIX 2: Email Update Conflict Prevention
-    if payload.email and payload.email != user.email:
-        stmt_email_check = select(User).where(User.email == payload.email)
-        existing_email_user = (await db.execute(stmt_email_check)).scalars().first()
-        if existing_email_user:
-            raise HTTPException(status_code=400, detail="This email address is already registered to another account (active or deleted).")
-
-    # The existing user may be in the caller's scope while the requested
-    # destination is not. Validate it before any membership mutation.
-    if payload.department_id is not None:
-        target_dept_req = await db.execute(
-            select(Department).where(
-                Department.id == payload.department_id,
-                Department.is_deleted.is_(False),
-            )
-        )
-        if target_dept_req.scalar_one_or_none() is None:
-            raise HTTPException(status_code=404, detail="Department not found.")
-        await enforce_department_scope(db, current_user, payload.department_id)
+    user = await _validate_user_update_target(
+        db, result.scalars().first(), payload, current_user
+    )
 
     try:
         requested_level = normalize_user_level(payload.user_level)
@@ -759,30 +843,9 @@ async def update_existing_user(user_id: UUID, payload: UserUpdate, db: AsyncSess
         if role_changed or level_changed:
             await permission_repo.purge_user_overrides(db, user_id)
 
-        if payload.department_id or requested_level:
-            ud_record = existing_ud
-            
-            if ud_record:
-                if payload.department_id and str(ud_record.department_id) != str(payload.department_id):
-                    old_dept_req = await db.execute(select(Department).where(Department.id == ud_record.department_id))
-                    old_dept = old_dept_req.scalar_one_or_none()
-                    if old_dept and str(old_dept.head_id) == str(user_id):
-                        old_dept.head_id = None
-                        db.add(old_dept)
-                        
-                    ud_record.department_id = payload.department_id
-                if requested_level:
-                    ud_record.user_level = requested_level
-                db.add(ud_record)
-            else:
-                if not payload.department_id:
-                    raise HTTPException(status_code=400, detail='A department is required before setting user_level.')
-                new_ud = UserDepartment(
-                    user_id=user_id,
-                    department_id=payload.department_id,
-                    user_level=requested_level or "L2",
-                )
-                db.add(new_ud)
+        await _update_user_department_membership(
+            db, user_id, payload, requested_level, existing_ud
+        )
         record_activity(
             db,
             actor_id=current_user.id,
@@ -804,7 +867,7 @@ async def update_existing_user(user_id: UUID, payload: UserUpdate, db: AsyncSess
     refreshed_user = await user_repo.get_user_by_id(db, updated_user.id)
     return serialize_user_obj(refreshed_user)
 
-@router.delete('/{user_id}')
+@router.delete('/{user_id}', responses={403: {"description": "Forbidden"}, 404: {"description": "Not Found"}, 400: {"description": "Bad Request"}})
 async def delete_existing_user(user_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
     enforce_permission(current_user, "users.delete")
     await enforce_user_scope(db, current_user, user_id)
@@ -838,7 +901,7 @@ async def delete_existing_user(user_id: UUID, db: AsyncSession = Depends(get_db)
     await db.commit()
     return {'message': 'User disabled and removed from department successfully (Soft Delete).'}
 
-@router.delete('/{user_id}/permanent')
+@router.delete('/{user_id}/permanent', responses={403: {"description": "Forbidden"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}, 400: {"description": "Bad Request"}})
 async def permanent_delete_user(user_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     enforce_permission(current_user, "users.delete")
     if current_user.role.name not in [SUPER_ADMIN_ROLE_NAME]:
@@ -848,7 +911,7 @@ async def permanent_delete_user(user_id: UUID, db: AsyncSession = Depends(get_db
     user = result.scalars().first()
     
     if not user:
-        raise HTTPException(status_code=404, detail='User not found.')
+        raise HTTPException(status_code=404, detail=ERR_USER_NOT_FOUND)
     ensure_user_deletion_allowed(user, current_user)
         
     try:
@@ -893,7 +956,7 @@ async def permanent_delete_user(user_id: UUID, db: AsyncSession = Depends(get_db
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Database Error: {str(e)}")
 
-@router.put('/{user_id}/reset-password')
+@router.put('/{user_id}/reset-password', responses={400: {"description": "Bad Request"}, 403: {"description": "Forbidden"}, 404: {"description": "Not Found"}})
 async def reset_user_password(user_id: UUID, payload: PasswordResetAdmin, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
     enforce_permission(current_user, "users.password_reset")
     stmt = select(User).options(selectinload(User.role)).where(User.id == user_id)
@@ -902,7 +965,7 @@ async def reset_user_password(user_id: UUID, payload: PasswordResetAdmin, db: As
     user = result.scalars().first()
     
     if not user:
-        raise HTTPException(status_code=404, detail='User not found.')
+        raise HTTPException(status_code=404, detail=ERR_USER_NOT_FOUND)
         
     if getattr(user, 'is_deleted', False):
         raise HTTPException(status_code=400, detail='Cannot reset password for a deleted account. Please restore the account first.')
@@ -935,7 +998,7 @@ async def reset_user_password(user_id: UUID, payload: PasswordResetAdmin, db: As
     
     return {'message': 'Password has been reset successfully.'}
 
-@router.post('/{user_id}/restore', response_model=UserResponse)
+@router.post('/{user_id}/restore', response_model=UserResponse, responses={400: {"description": "Bad Request"}, 403: {"description": "Forbidden"}, 404: {"description": "Not Found"}})
 async def restore_user(user_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     enforce_permission(current_user, "users.edit")
     if current_user.role.name not in [SUPER_ADMIN_ROLE_NAME]:
@@ -945,7 +1008,7 @@ async def restore_user(user_id: UUID, db: AsyncSession = Depends(get_db), curren
     result = await db.execute(stmt)
     user = result.scalars().first()
     
-    if not user: raise HTTPException(status_code=404, detail='User not found.')
+    if not user: raise HTTPException(status_code=404, detail=ERR_USER_NOT_FOUND)
     if not getattr(user, 'is_deleted', False): raise HTTPException(status_code=400, detail='This user account is not deleted.')
         
     # 🌟 SECURITY FIX: ပြန်လည်အသက်သွင်းပါက မူလ Email ကို ပြန်ထားပေးမည်၊ အခြားသူ ယူထားပြီးပါက တားဆီးမည်
@@ -966,14 +1029,14 @@ async def restore_user(user_id: UUID, db: AsyncSession = Depends(get_db), curren
     restored_user = await user_repo.get_user_by_id(db, user_id)
     return serialize_user_obj(restored_user)
 
-@router.post('/{user_id}/set-leave')
+@router.post('/{user_id}/set-leave', responses={400: {"description": "Bad Request"}, 403: {"description": "Forbidden"}, 404: {"description": "Not Found"}})
 async def set_user_leave(user_id: UUID, payload: UserLeaveRequest, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     if current_user.id != user_id and current_user.role.name not in [SUPER_ADMIN_ROLE_NAME, 'Admin']:
         raise HTTPException(status_code=403, detail='You do not have permission to set leave for this user.')
         
     stmt = select(User).where(User.id == user_id)
     user = (await db.execute(stmt)).scalars().first()
-    if not user: raise HTTPException(status_code=404, detail='User not found.')
+    if not user: raise HTTPException(status_code=404, detail=ERR_USER_NOT_FOUND)
     
     user.is_on_leave = payload.is_on_leave
     if user.is_on_leave:
@@ -994,7 +1057,7 @@ async def set_user_leave(user_id: UUID, payload: UserLeaveRequest, db: AsyncSess
 # ==============================================================================
 # SUPER ADMIN: Individual User Process Tracking API
 # ==============================================================================
-@router.get("/{user_id}/process-tracking", tags=["Super Admin Tracking"])
+@router.get("/{user_id}/process-tracking", tags=["Super Admin Tracking"], responses={404: {"description": "Not Found"}})
 async def get_user_process_tracking(
     user_id: UUID, 
     db: AsyncSession = Depends(get_db), 
@@ -1002,7 +1065,7 @@ async def get_user_process_tracking(
 ):
     user_check = await db.get(User, user_id)
     if not user_check:
-        raise HTTPException(status_code=404, detail="User not found.")
+        raise HTTPException(status_code=404, detail=ERR_USER_NOT_FOUND)
 
     metrics_stmt = (
         select(Task.status, func.count(Task.id))
