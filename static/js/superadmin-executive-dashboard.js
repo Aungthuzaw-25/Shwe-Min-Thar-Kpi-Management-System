@@ -308,14 +308,15 @@
 
   function showDashboardError(error) {
     errorPanel.hidden = false;
-    document.getElementById('dashboardErrorTitle').textContent =
-      error.status === 401
-        ? 'Your session has expired.'
-        : error.status === 403
-          ? 'Dashboard access is not authorized.'
-          : error.status >= 500
-            ? 'The dashboard service is unavailable.'
-            : 'Dashboard data could not be loaded.';
+    let title = 'Dashboard data could not be loaded.';
+    if (error.status === 401) {
+      title = 'Your session has expired.';
+    } else if (error.status === 403) {
+      title = 'Dashboard access is not authorized.';
+    } else if (error.status >= 500) {
+      title = 'The dashboard service is unavailable.';
+    }
+    document.getElementById('dashboardErrorTitle').textContent = title;
     document.getElementById('dashboardErrorMessage').textContent = error instanceof Error
       ? error.message
       : 'The dashboard service could not be reached. Check your connection and retry.';

@@ -119,6 +119,27 @@ async def test_id_token_signature_and_expected_claims_are_validated(monkeypatch)
 
 
 @pytest.mark.asyncio
+async def test_id_token_verification_tries_trusted_jwks_keys(monkeypatch):
+    provider, private_key = _oidc_test_provider(monkeypatch)
+    other_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    other_jwk = json.loads(jwt.algorithms.RSAAlgorithm.to_jwk(other_key.public_key()))
+    other_jwk.update({"kid": "other-key", "use": "sig", "alg": "RS256"})
+    signing_jwk = json.loads(jwt.algorithms.RSAAlgorithm.to_jwk(private_key.public_key()))
+    signing_jwk.update({"kid": "test-key", "use": "sig", "alg": "RS256"})
+
+    async def jwks(_url):
+        return {"keys": [other_jwk, signing_jwk]}
+
+    monkeypatch.setattr(provider, "_jwks", jwks)
+    identity = await provider.validate_identity(
+        {"id_token": _signed_id_token(private_key)},
+        "expected-nonce",
+    )
+
+    assert identity.subject == "subject-1"
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "claims,nonce",
     [

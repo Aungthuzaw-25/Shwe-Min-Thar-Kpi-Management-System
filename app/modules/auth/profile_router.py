@@ -361,7 +361,7 @@ account_router.include_router(router)
     responses={
         401: {"description": "Unauthorized"},
         403: {"description": "Forbidden"},
-        404: {"description": "Account not found."},
+        404: {"description": "Not found"},
     },
 )
 async def get_account(

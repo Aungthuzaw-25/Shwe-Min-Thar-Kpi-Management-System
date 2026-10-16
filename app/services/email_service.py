@@ -3,7 +3,7 @@ import html
 import logging
 import smtplib
 import ssl
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from email.message import EmailMessage as MIMEEmailMessage
 from email.utils import formataddr
 from typing import Protocol
@@ -203,17 +203,21 @@ def _support_footer(message: EmailMessage, configuration: EmailConfiguration) ->
         f"{html.escape(configuration.support_email)}</a>"
         "</p>"
     )
-    updated_message: EmailMessage = replace(
-        message,
+    updated_message: EmailMessage = EmailMessage(
+        to=message.to,
+        subject=message.subject,
         text_body=(message.text_body or "") + footer_text,
         html_body=(
             (message.html_body or "") + footer_html
             if message.html_body is not None
             else None
         ),
+        cc=message.cc,
+        bcc=message.bcc,
         reply_to=message.reply_to or configuration.support_email,
         from_email=message.from_email or configuration.from_email,
         from_name=message.from_name or configuration.from_name,
+        attachments=message.attachments,
     )
     return updated_message
 

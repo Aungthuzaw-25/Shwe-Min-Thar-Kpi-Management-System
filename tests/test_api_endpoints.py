@@ -54,7 +54,7 @@ class FakeDB:
 def test_account_profile_openapi_documents_not_found_response():
     operation = app.openapi()["paths"]["/api/v1/account/me"]["get"]
 
-    assert operation["responses"]["404"]["description"] == "Account not found."
+    assert operation["responses"]["404"]["description"] == "Not found"
 
 
 def test_login_route_returns_tokens(monkeypatch):
