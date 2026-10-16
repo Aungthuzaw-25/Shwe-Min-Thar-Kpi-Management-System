@@ -111,3 +111,20 @@ def test_dashboard_error_panel_respects_its_hidden_state():
     ).read_text(encoding="utf-8")
 
     assert ".executive-error[hidden] { display: none; }" in source
+
+
+def test_superadmin_dashboard_handles_auth_and_server_failures_explicitly():
+    source = (
+        Path(__file__).parents[1]
+        / "static"
+        / "js"
+        / "superadmin-executive-dashboard.js"
+    ).read_text(encoding="utf-8")
+
+    assert "if (!response.ok)" in source
+    assert "requestFailureMessage(response.status, failureMessage)" in source
+    assert "Your session has expired." in source
+    assert "Dashboard access is not authorized." in source
+    assert "The dashboard service is unavailable." in source
+    assert "Monthly data unavailable" in source
+    assert "summaryError?.status === 401 || summaryError?.status === 403" in source

@@ -71,7 +71,11 @@
     }, dashboardRequestTimeoutMs);
     try {
       const response = await fetch(url, { ...options, signal: controller.signal });
-      if (!response.ok) throw new Error(failureMessage);
+      if (!response.ok) {
+        const error = new Error(requestFailureMessage(response.status, failureMessage));
+        error.status = response.status;
+        throw error;
+      }
       return await response.json();
     } catch (error) {
       if (timedOut) {
@@ -82,6 +86,13 @@
       window.clearTimeout(timeout);
       if (parentSignal) parentSignal.removeEventListener('abort', abortFromParent);
     }
+  }
+
+  function requestFailureMessage(status, fallback) {
+    if (status === 401) return 'Your session has expired. Sign in again, then reload the dashboard.';
+    if (status === 403) return 'Your account does not have permission to view this dashboard data.';
+    if (status >= 500) return 'The dashboard service is temporarily unavailable. Try again shortly.';
+    return fallback;
   }
 
   function formatTime(value) {
@@ -298,7 +309,13 @@
   function showDashboardError(error) {
     errorPanel.hidden = false;
     document.getElementById('dashboardErrorTitle').textContent =
-      'Dashboard data could not be loaded.';
+      error.status === 401
+        ? 'Your session has expired.'
+        : error.status === 403
+          ? 'Dashboard access is not authorized.'
+          : error.status >= 500
+            ? 'The dashboard service is unavailable.'
+            : 'Dashboard data could not be loaded.';
     document.getElementById('dashboardErrorMessage').textContent = error instanceof Error
       ? error.message
       : 'The dashboard service could not be reached. Check your connection and retry.';
@@ -607,7 +624,7 @@
   function renderMonthlyAveragesFailure(error, sequence) {
     if (error.name === 'AbortError' || sequence !== monthlyAverageRequestSequence) return;
     clearMonthlyTrend(
-      'Monthly KPI averages could not be loaded. Use Refresh to try again.',
+      error.message || 'Monthly KPI averages could not be loaded. Use Refresh to try again.',
       'Monthly data unavailable'
     );
   }
@@ -857,7 +874,7 @@
     return activities.map(item => `
       <div class="exec-list-item">
         <div class="exec-list-copy"><strong>${escapeHTML(item.action || 'Activity')}</strong>
-          <span>${item.actor_name && item.actor_name !== 'System' ? window.kpiAvatarMarkup({ ...item, display_name: item.actor_name }, 32) : ''}${escapeHTML(item.actor_name || 'System')}</span></div>
+          <span>${item.actor_name?.length > 0 && item.actor_name !== 'System' ? window.kpiAvatarMarkup({ ...item, display_name: item.actor_name }, 32) : ''}${escapeHTML(item.actor_name || 'System')}</span></div>
         <time class="exec-list-time">${escapeHTML(formatTime(item.created_at) || '—')}</time>
       </div>`).join('');
   }
@@ -1082,11 +1099,15 @@
         period_start: dateRange.start,
         period_end: dateRange.end
       });
+      let summaryError = null;
       const summaryPromise = fetchJsonWithTimeout(
         `/api/v1/dashboard/summary?${summaryParams}`,
         { signal: controller.signal, credentials: 'same-origin' },
         'Dashboard operational data could not be loaded.'
-      ).catch(() => null);
+      ).catch(error => {
+        summaryError = error;
+        return null;
+      });
       const executivePromise = fetchJsonWithTimeout(
         executiveUrl,
         { signal: controller.signal, credentials: 'same-origin' },
@@ -1108,6 +1129,9 @@
         employeeResultsPromise
       ]);
       if (sequence !== requestSequence) return;
+      if (summaryError?.status === 401 || summaryError?.status === 403) {
+        throw summaryError;
+      }
       const payload = summaryPayload || {};
       updateHeader(payload);
       renderScorecards({
@@ -1138,7 +1162,8 @@
         document.getElementById('dashboardErrorTitle').textContent =
           'Some dashboard data is unavailable.';
         document.getElementById('dashboardErrorMessage').textContent =
-          'KPI insights loaded, but operational metrics are temporarily unavailable. Check your connection and retry.';
+          summaryError?.message
+          || 'KPI insights loaded, but operational metrics are temporarily unavailable. Check your connection and retry.';
       }
     } catch (error) {
       if (error.name === 'AbortError') return;

@@ -97,9 +97,10 @@ def test_submit_task_moves_task_to_l1_review():
 def test_submit_task_does_not_reopen_task_under_review():
     task = SimpleNamespace(id="task-1", owner_id="user-1", status=TaskStatus.PENDING_L1)
     db = FakeDB(task)
+    submission = submit_task(db, "task-1", "user-1")
 
     with pytest.raises(HTTPException) as exc_info:
-        asyncio.run(submit_task(db, "task-1", "user-1"))
+        asyncio.run(submission)
 
     assert exc_info.value.status_code == 409
     assert db.committed == 0
@@ -177,16 +178,10 @@ def test_l1_recalculation_failure_rolls_back_review(monkeypatch):
         failed_recalculation,
     )
     payload = TaskReviewInput(action="APPROVED", comments="Good work")
+    review = review_task_l1(db, "task-1", payload, "reviewer-1")
 
     with pytest.raises(RuntimeError, match="recalculation failed"):
-        asyncio.run(
-            review_task_l1(
-                db,
-                "task-1",
-                payload,
-                "reviewer-1",
-            )
-        )
+        asyncio.run(review)
 
     assert db.committed == 0
     assert db.rolled_back == 1
@@ -227,6 +222,7 @@ def test_reject_requires_comment():
     task = SimpleNamespace(id="task-1", status=TaskStatus.PENDING_L1)
     db = FakeDB(task)
     payload = TaskReviewInput(action="REJECTED", comments="")
+    review = review_task_l1(db, "task-1", payload, "reviewer-1")
 
     with pytest.raises(HTTPException):
-        asyncio.run(review_task_l1(db, "task-1", payload, "reviewer-1"))
+        asyncio.run(review)

@@ -1,4 +1,5 @@
 import os
+import re
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -88,7 +89,19 @@ def test_fastapi_dashboard_templates_render_with_user_context(path, role_name):
     app.dependency_overrides[dashboard_web.get_db] = _TemplateDB
 
     try:
-        response = TestClient(app).get(path)
+        with TestClient(app) as client:
+            response = client.get(path)
+            assert client.get("/static/css/executive-dashboard.css").status_code == 200
+            design_system = client.get("/static/css/design-system.css?v=20261015-1")
+            assert design_system.status_code == 200
+            assert ".app-topbar__identity" in design_system.text
+            assert "text-decoration: none;" in design_system.text
+            assert (
+                client.get(
+                    "/static/js/superadmin-executive-dashboard.js?v=20261015-1"
+                ).status_code
+                == 200
+            )
     finally:
         app.dependency_overrides.pop(dashboard_web.get_current_user, None)
         app.dependency_overrides.pop(dashboard_web.get_db, None)
@@ -96,6 +109,30 @@ def test_fastapi_dashboard_templates_render_with_user_context(path, role_name):
     assert response.status_code == 200
     assert "Test User" in response.text
     assert "kpi-avatar" in response.text
+    assert (
+        "https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+        in response.text
+    )
+    csp = response.headers["content-security-policy"]
+    assert "style-src 'self'" in csp
+    assert "https://fonts.googleapis.com" in csp
+    assert "font-src 'self' https://fonts.gstatic.com" in csp
+    assert "system-ui" in response.text
+    assert len(response.headers.get_list("content-security-policy")) == 1
+    nonce = re.search(r"script-src 'self' 'nonce-([^']+)'", csp).group(1)
+    inline_scripts = re.findall(
+        r"<script\b(?![^>]*\bsrc=)([^>]*)>", response.text, re.IGNORECASE
+    )
+    inline_styles = re.findall(r"<style\b([^>]*)>", response.text, re.IGNORECASE)
+    assert inline_scripts
+    assert all(f'nonce="{nonce}"' in attributes for attributes in inline_scripts)
+    assert all(f'nonce="{nonce}"' in attributes for attributes in inline_styles)
+    assert not re.search(r"\sstyle\s*=", response.text, re.IGNORECASE)
+    assert not re.search(
+        r"\son(?:click|submit|change|keydown)\s*=",
+        response.text,
+        re.IGNORECASE,
+    )
 
 
 def test_avatar_macro_accepts_missing_user():

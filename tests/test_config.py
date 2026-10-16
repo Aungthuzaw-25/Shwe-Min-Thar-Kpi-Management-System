@@ -51,9 +51,10 @@ def test_legacy_jwt_environment_names_remain_supported(monkeypatch):
 def test_jwt_configuration_rejects_unsupported_algorithm(monkeypatch):
     monkeypatch.setenv("JWT_SECRET_KEY", "test-secret")
     monkeypatch.setenv("JWT_ALGORITHM", "HS384")
+    settings_kwargs = _isolated_settings_kwargs()
 
     with pytest.raises(ValueError, match="JWT_ALGORITHM"):
-        Settings(_env_file=None, **_isolated_settings_kwargs())
+        Settings(_env_file=None, **settings_kwargs)
 
 
 def test_missing_production_jwt_secret_fails_closed():

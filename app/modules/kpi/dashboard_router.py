@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import false, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.dependencies import get_current_user
+from app.core.dependencies import enforce_permission, get_current_user
 from app.core.timezone import APPLICATION_TIMEZONE  # 🌟 Added for Timezone Conversion
 from app.database.connection import get_db
 from app.modules.departments.models import Department, UserDepartment
@@ -256,6 +256,7 @@ async def fetch_executive_monthly_averages(
     current_user: User = Depends(get_current_user),
 ) -> ExecutiveMonthlyAverageResponse:
     """Return authorized department choices and monthly KPI averages."""
+    enforce_permission(current_user, "kpi.view")
     scope_user_ids, department_ids, _ = await _get_executive_scope(db, current_user)
     visible_departments_query = select(Department.id, Department.name).where(
         Department.is_deleted.is_(False)

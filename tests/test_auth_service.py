@@ -76,9 +76,12 @@ def test_authenticate_user_returns_tokens_for_valid_credentials(monkeypatch):
 
 def test_authenticate_user_rejects_unknown_email():
     db = FakeDB(None)
+    authentication = AuthService.authenticate_user(
+        db, "missing@example.com", "password123"
+    )
 
     with pytest.raises(HTTPException) as exc_info:
-        asyncio.run(AuthService.authenticate_user(db, "missing@example.com", "password123"))
+        asyncio.run(authentication)
 
     assert exc_info.value.status_code == 401
 

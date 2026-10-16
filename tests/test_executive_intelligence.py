@@ -12,11 +12,12 @@ from app.core.dependencies import get_current_user
 from app.database.connection import Base, get_db
 from app.models.audit_log import AuditLog
 from app.modules.departments.models import Department, UserDepartment
+from app.modules.kpi import dashboard_router as dashboard_router_module
 from app.modules.kpi.dashboard_router import unified_router
 from app.modules.kpi.executive_intelligence_service import (
-    build_monthly_average_series,
     _trend_change,
     build_executive_overview,
+    build_monthly_average_series,
     get_executive_employee_detail,
     list_executive_employee_results,
 )
@@ -30,11 +31,13 @@ from app.modules.kpi.models import (
     PeriodType,
 )
 from app.modules.kpi.period_router import router as kpi_period_router
-from app.modules.users.models import Position, Role, User
+from app.modules.users.models import Permission, Position, Role, RolePermission, User
 
 TABLES = [
     Department.__table__,
     Role.__table__,
+    Permission.__table__,
+    RolePermission.__table__,
     Position.__table__,
     User.__table__,
     UserDepartment.__table__,
@@ -70,8 +73,20 @@ def _run_isolated_test(tmp_path, test_case):
     )
 
 
-async def _create_fixture(db, *, with_history=False):
-    role = Role(name=f"Executive test role {uuid4()}")
+async def _create_fixture(
+    db,
+    *,
+    with_history=False,
+    role_name=None,
+    with_kpi_view_permission=True,
+):
+    permissions = (
+        [Permission(code="kpi.view")] if with_kpi_view_permission else []
+    )
+    role = Role(
+        name=role_name or f"Executive test role {uuid4()}",
+        permissions=permissions,
+    )
     department_a = Department(name=f"Executive department A {uuid4()}")
     department_b = Department(name=f"Executive department B {uuid4()}")
     db.add_all([role, department_a, department_b])
@@ -88,6 +103,7 @@ async def _create_fixture(db, *, with_history=False):
             last_name="Test",
             role_id=role.id,
             role=role,
+            permission_overrides=[],
             is_active=True,
             is_deleted=False,
         )
@@ -110,6 +126,7 @@ async def _create_fixture(db, *, with_history=False):
         last_name="Employee",
         role_id=role.id,
         role=role,
+        permission_overrides=[],
         is_active=True,
         is_deleted=True,
     )
@@ -499,6 +516,141 @@ async def _test_api_enforces_l2_scope_for_employee_drilldown(db):
 
 def test_executive_api_enforces_l2_scope_and_invalid_period(tmp_path):
     _run_isolated_test(tmp_path, _test_api_enforces_l2_scope_for_employee_drilldown)
+
+
+async def _test_monthly_averages_denies_missing_kpi_permission(db):
+    users, *_ = await _create_fixture(db, with_kpi_view_permission=False)
+    app = FastAPI()
+    app.include_router(unified_router, prefix="/api/v1/dashboard")
+
+    async def override_db():
+        yield db
+
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[get_current_user] = lambda: users[0]
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.get(
+            "/api/v1/dashboard/executive/monthly-averages",
+            params={"year": 2026},
+        )
+
+    assert response.status_code == 403
+
+
+def test_monthly_averages_denies_users_without_kpi_view_permission(tmp_path):
+    _run_isolated_test(tmp_path, _test_monthly_averages_denies_missing_kpi_permission)
+
+
+async def _test_super_admin_monthly_averages_returns_expected_payload(db):
+    users, department_a, department_b, *_ = await _create_fixture(
+        db, role_name="Super Admin", with_kpi_view_permission=False
+    )
+    app = FastAPI()
+    app.include_router(unified_router, prefix="/api/v1/dashboard")
+
+    async def override_db():
+        yield db
+
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[get_current_user] = lambda: users[0]
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.get(
+            "/api/v1/dashboard/executive/monthly-averages",
+            params={"year": 2026},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert {item["id"] for item in payload["departments"]} == {
+        str(department_a.id),
+        str(department_b.id),
+    }
+    assert len(payload["monthly_averages"]) == 12
+    assert payload["monthly_averages"][5] == {
+        "month": 6,
+        "average_percentage": 66.67,
+        "evaluated_employee_count": 3,
+    }
+
+
+def test_super_admin_monthly_averages_returns_expected_payload(tmp_path):
+    _run_isolated_test(
+        tmp_path, _test_super_admin_monthly_averages_returns_expected_payload
+    )
+
+
+async def _test_monthly_averages_rejects_missing_and_invalid_auth():
+    app = FastAPI()
+    app.include_router(unified_router, prefix="/api/v1/dashboard")
+
+    async def override_db():
+        yield None
+
+    app.dependency_overrides[get_db] = override_db
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        missing = await client.get(
+            "/api/v1/dashboard/executive/monthly-averages",
+            params={"year": 2026},
+        )
+        invalid = await client.get(
+            "/api/v1/dashboard/executive/monthly-averages",
+            params={"year": 2026},
+            headers={"Authorization": "Bearer invalid.token.value"},
+        )
+
+    assert missing.status_code == 401
+    assert invalid.status_code == 401
+
+
+def test_monthly_averages_requires_valid_authentication():
+    asyncio.run(_test_monthly_averages_rejects_missing_and_invalid_auth())
+
+
+async def _test_monthly_averages_database_error_is_not_exposed(db, monkeypatch):
+    users, *_ = await _create_fixture(db, role_name="Super Admin")
+    app = FastAPI(debug=False)
+    app.include_router(unified_router, prefix="/api/v1/dashboard")
+
+    async def override_db():
+        yield db
+
+    async def fail_monthly_query(*_args, **_kwargs):
+        raise RuntimeError("private-database-secret")
+
+    monkeypatch.setattr(
+        dashboard_router_module,
+        "build_monthly_average_series",
+        fail_monthly_query,
+    )
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[get_current_user] = lambda: users[0]
+    async with AsyncClient(
+        transport=ASGITransport(app=app, raise_app_exceptions=False),
+        base_url="http://test",
+    ) as client:
+        response = await client.get(
+            "/api/v1/dashboard/executive/monthly-averages",
+            params={"year": 2026},
+        )
+
+    assert response.status_code == 500
+    assert "private-database-secret" not in response.text
+    assert "Traceback" not in response.text
+
+
+def test_monthly_averages_does_not_expose_database_errors(tmp_path, monkeypatch):
+    _run_isolated_test(
+        tmp_path,
+        lambda db: _test_monthly_averages_database_error_is_not_exposed(
+            db, monkeypatch
+        ),
+    )
 
 
 async def _test_finalized_period_without_records_is_not_a_fake_zero(db):

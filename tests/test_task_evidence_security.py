@@ -105,9 +105,10 @@ def test_non_owner_cannot_delete_evidence_after_task_submission(monkeypatch):
         storage_called = True
 
     monkeypatch.setattr(tasks_router.storage_service, "delete_file", delete_file)
+    deletion = tasks_router.delete_task_evidence(evidence.id, db, reviewer)
 
     with pytest.raises(HTTPException) as exc_info:
-        asyncio.run(tasks_router.delete_task_evidence(evidence.id, db, reviewer))
+        asyncio.run(deletion)
 
     assert exc_info.value.status_code == 403
     assert not storage_called
@@ -122,9 +123,10 @@ def test_storage_cleanup_failure_is_reported_after_database_audit(monkeypatch):
         raise RuntimeError("object store unavailable")
 
     monkeypatch.setattr(tasks_router.storage_service, "delete_file", fail_delete)
+    deletion = tasks_router.delete_task_evidence(evidence.id, db, user)
 
     with pytest.raises(HTTPException) as exc_info:
-        asyncio.run(tasks_router.delete_task_evidence(evidence.id, db, user))
+        asyncio.run(deletion)
 
     assert exc_info.value.status_code == 500
     assert db.events == ["database-delete", "commit"]
