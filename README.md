@@ -161,7 +161,11 @@ separately managed PostgreSQL database; it does not start PostgreSQL. The
 single browser origin is `http://127.0.0.1:8000`, with the API reachable only
 through the proxy. Redis and MinIO are bound to loopback. Follow
 [Production deployment](#production-deployment) before using this stack beyond
-a local machine.
+a local machine. MinIO is built locally from the pinned upstream release source
+because the published image for that release is unavailable; the first
+`docker compose up --build -d` therefore takes longer and requires internet
+access to GitHub, the Go module proxy, Docker Hub, and Alpine package
+repositories.
 
 If Nginx returns `502` or `504`, first verify service health and inspect recent
 logs before changing proxy timeouts or database pool sizes:
