@@ -72,6 +72,7 @@
 .acct-page .acct-helper { color: var(--acct-muted); font-size: 12px; margin: 8px 0 0; }
 .acct-page .acct-form { display: grid; gap: 14px; margin-top: 20px; min-width: 0; }
 .acct-page .acct-field { display: grid; gap: 6px; min-width: 0; }
+.acct-page [hidden] { display: none !important; }
 .acct-page .acct-label { font-size: 13px; font-weight: 600; }
 .acct-page .acct-input {
   background: #fff;
@@ -166,6 +167,7 @@
 .acct-page .acct-password-meter[data-strength="4"] span:nth-child(-n+4) { background: #1F8A5B; }
 .acct-page .acct-password-strength { color: var(--acct-muted); font-size: 12px; margin: 4px 0 0; }
 .acct-page .acct-checklist { color: var(--acct-muted); display: grid; font-size: 12px; gap: 4px; list-style: none; margin: 8px 0 0; padding: 0; }
+.acct-page .acct-checklist [data-met="false"] { color: #b91c1c; }
 .acct-page .acct-checklist [data-met="true"] { color: var(--acct-ok); }
 .acct-page .acct-linked-list { display: grid; gap: 12px; }
 .acct-page .acct-provider-row { border: 1px solid var(--acct-border); border-radius: 12px; min-width: 0; padding: 14px; }

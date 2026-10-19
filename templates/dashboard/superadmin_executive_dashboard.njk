@@ -2,232 +2,240 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Myanmar:wght@400;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/css/avatar.css">
+<link rel="stylesheet" href="/static/css/kd-superadmin-dashboard.css?v=20261019-2">
 <script src="/static/js/avatar-renderer.js"></script>
 <script src="/static/js/avatar.js"></script>
 
-<div id="executiveDashboard" class="exec-dashboard">
-  <div class="exec-layout">
-  <header class="exec-header">
-    <div class="exec-title-row">
-      <div>
-        <p class="exec-eyebrow">Company-wide KPI operations</p>
-        <h1 id="dashboardTitle" class="exec-page-title">Executive KPI Overview</h1>
-        <p id="dashboardContext" class="exec-subtitle">Company-wide view</p>
+<div id="executiveDashboard" class="kd-page exec-dashboard" aria-busy="false" data-run="0">
+  <div class="kd-progress" aria-hidden="true"></div>
+  <div class="kd-container">
+    <header class="kd-hero exec-header">
+      <div class="kd-hero-copy">
+        <p class="kd-eyebrow">Company-wide KPI operations</p>
+        <h1 id="dashboardTitle" class="kd-title">Executive KPI Overview</h1>
+        <p id="dashboardContext" class="kd-subtitle">Company-wide view</p>
       </div>
-    </div>
-    <div class="exec-header-actions">
-      <div class="exec-date-filters" role="group" aria-label="Dashboard date filters">
-        <div class="exec-filter-field">
+      <div class="kd-hero-actions exec-header-actions">
+        <button id="dashboardRefresh" class="kd-button kd-button-secondary exec-button exec-refresh" type="button">
+          <span class="kd-refresh-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 0 0-14.8-3L3 11m0-5v5h5M4 13a8 8 0 0 0 14.8 3L21 13m0 5v-5h-5"/></svg>
+          </span>
+          <span>Refresh</span>
+        </button>
+        <span id="dashboardUpdated" class="kd-updated exec-updated" aria-live="polite">Not loaded</span>
+        <span id="dataQualityBadge" class="kd-pill kd-pill-warning exec-badge" aria-live="polite">KPI data: loading</span>
+      </div>
+    </header>
+
+    <section class="kd-card kd-filter-card" aria-label="Dashboard filters">
+      <div class="kd-filter-grid exec-date-filters" role="group" aria-label="Dashboard date filters">
+        <div class="kd-field exec-filter-field">
           <label for="dashboardFilterMode">View</label>
-          <select id="dashboardFilterMode" class="exec-control">
+          <select id="dashboardFilterMode" class="kd-control exec-control">
             <option value="month">Month</option>
             <option value="range">Month range</option>
             <option value="year">Full year</option>
           </select>
         </div>
-        <div class="exec-filter-field">
+        <div class="kd-field exec-filter-field">
           <label for="dashboardFilterYear">Year</label>
-          <select id="dashboardFilterYear" class="exec-control"></select>
+          <select id="dashboardFilterYear" class="kd-control exec-control"></select>
         </div>
-        <div id="dashboardSingleMonthField" class="exec-filter-month">
-          <div class="exec-filter-field">
-            <label for="dashboardFilterMonth">Month</label>
-            <select id="dashboardFilterMonth" class="exec-control"></select>
-          </div>
+        <div id="dashboardSingleMonthField" class="kd-field exec-filter-month">
+          <label for="dashboardFilterMonth">Month</label>
+          <select id="dashboardFilterMonth" class="kd-control exec-control"></select>
         </div>
-        <div id="dashboardMonthRangeFields" class="exec-filter-range" hidden>
-          <div class="exec-filter-field">
+        <div id="dashboardMonthRangeFields" class="kd-range-fields exec-filter-range" hidden>
+          <div class="kd-field exec-filter-field">
             <label for="dashboardFilterStartMonth">From</label>
-            <select id="dashboardFilterStartMonth" class="exec-control"></select>
+            <select id="dashboardFilterStartMonth" class="kd-control exec-control"></select>
           </div>
-          <div class="exec-filter-field">
+          <div class="kd-field exec-filter-field">
             <label for="dashboardFilterEndMonth">To</label>
-            <select id="dashboardFilterEndMonth" class="exec-control"></select>
+            <select id="dashboardFilterEndMonth" class="kd-control exec-control"></select>
           </div>
         </div>
-        <div class="exec-filter-field exec-filter-scope">
+        <div class="kd-field exec-filter-field exec-filter-scope">
           <label for="dashboardTrendScope">KPI average</label>
-          <select id="dashboardTrendScope" class="exec-control" aria-label="Monthly average KPI scope">
+          <select id="dashboardTrendScope" class="kd-control exec-control" aria-label="Monthly average KPI scope">
             <option value="company">Company Average</option>
             <option value="department">Individual Department</option>
           </select>
         </div>
-        <div id="dashboardTrendDepartmentField" class="exec-filter-field exec-filter-department" hidden>
+        <div id="dashboardTrendDepartmentField" class="kd-field exec-filter-field exec-filter-department" hidden>
           <label for="dashboardTrendDepartment">Department</label>
-          <select id="dashboardTrendDepartment" class="exec-control" aria-label="Department for monthly average KPI" disabled></select>
+          <select id="dashboardTrendDepartment" class="kd-control exec-control" aria-label="Department for monthly average KPI" disabled></select>
         </div>
-        <button id="dashboardApplyFilters" class="exec-button" type="button">Apply</button>
-        <span class="exec-filter-note">KPI analytics and employee scores use this range. Workflow, alerts, and activity show current status.</span>
+        <button id="dashboardApplyFilters" class="kd-button kd-button-primary exec-button" type="button">Apply</button>
+        <span class="kd-filter-note exec-filter-note">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5m0-8h.01"/></svg>
+          KPI analytics and employee scores use this range. Workflow, alerts, and activity show current status.
+        </span>
       </div>
-      <button id="dashboardRefresh" class="exec-button exec-refresh" type="button">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.8-3L3 11m0-5v5h5M4 13a8 8 0 0 0 14.8 3L21 13m0 5v-5h-5"/></svg>
-        <span>Refresh</span>
-      </button>
-      <span id="dashboardUpdated" class="exec-updated" aria-live="polite">Not loaded</span>
-      <span id="dataQualityBadge" class="exec-badge" aria-live="polite">KPI data: loading</span>
-    </div>
-  </header>
-  <p id="dashboardFilterError" class="exec-filter-error" role="alert" hidden></p>
-
-  {# ── Data quality banner ── #}
-  <div id="dataQualityDetails" class="exec-quality-note" role="status" hidden>
-    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5m0-8h.01"/></svg>
-    <span></span>
-  </div>
-
-  {# ── Error banner ── #}
-  <div id="dashboardError" class="exec-error" role="alert" hidden>
-    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2.8 20h18.4L12 3zm0 6v5m0 3h.01"/></svg>
-    <div><strong id="dashboardErrorTitle">Dashboard data could not be loaded.</strong><span id="dashboardErrorMessage">Try refreshing the authorized summary.</span></div>
-    <button id="dashboardRetry" class="exec-button exec-button-danger" type="button">Retry</button>
-  </div>
-
-  {# ── Primary stat cards (4) ── #}
-  <section class="exec-section" aria-label="Key performance indicators">
-    <div id="primaryCards" class="exec-primary-cards" aria-live="polite">
-      {% for label in ["Average KPI", "Evaluated employees", "Pending approvals", "Overdue tasks"] %}
-      <section class="exec-primary-card" aria-labelledby="loadingPrimary{{ loop.index }}">
-        <span class="exec-skeleton exec-skeleton-label" aria-hidden="true"></span>
-        <span class="exec-skeleton exec-skeleton-value" aria-hidden="true"></span>
-        <h2 id="loadingPrimary{{ loop.index }}" class="exec-eyebrow">{{ label }}</h2>
-      </section>
-      {% endfor %}
-    </div>
-  </section>
-
-  {# ── Secondary stat chips (5) ── #}
-  <section class="exec-section" aria-label="Secondary metrics">
-    <div id="secondaryChips" class="exec-secondary-chips" aria-live="polite">
-      {% for label in ["Active employees", "Departments", "Task completion", "Unread notifications", "Activity volume"] %}
-      <section class="exec-chip" aria-labelledby="loadingSecondary{{ loop.index }}">
-        <span class="exec-skeleton exec-skeleton-label" aria-hidden="true"></span>
-        <span class="exec-skeleton exec-skeleton-chip-value" aria-hidden="true"></span>
-        <h2 id="loadingSecondary{{ loop.index }}" class="exec-eyebrow">{{ label }}</h2>
-      </section>
-      {% endfor %}
-    </div>
-  </section>
-
-  {# ── Trend + Status row ── #}
-  <section id="trendStatusSection" class="exec-grid exec-grid-trend" aria-label="Monthly KPI averages and performance status">
-    <section class="exec-card exec-panel" aria-labelledby="trendHeading">
-      <div class="exec-section-heading">
-        <div><p class="exec-eyebrow">Monthly average</p><h2 id="trendHeading">Average KPI by month</h2></div>
-      </div>
-      <p id="kpiTrendMeta" class="exec-panel-meta">Average KPI score by calendar month</p>
-      <div class="exec-chart-frame">
-        <canvas id="kpiTrendChart" width="600" height="220" role="img" aria-label="Monthly average KPI scores by month"></canvas>
-        <p id="kpiTrendEmpty" class="exec-empty" hidden></p>
-      </div>
-      <div id="kpiTrendAccessibleTable" class="exec-sr-only"></div>
     </section>
-    <section id="statusPanel" class="exec-card exec-panel" aria-labelledby="statusHeading">
-      <div class="exec-section-heading">
-        <div><p class="exec-eyebrow">Evaluated employees only</p><h2 id="statusHeading">Performance status</h2></div>
-      </div>
-      <div id="kpiStatusDistribution" aria-live="polite"></div>
-    </section>
-  </section>
 
-  {# ── Department + Signals/Attention row ── #}
-  <section id="departmentAttentionSection" class="exec-grid exec-grid-halves" aria-label="Department comparison and executive insights">
-    <section id="departmentPanel" class="exec-card exec-panel" aria-labelledby="departmentHeading">
-      <div class="exec-section-heading">
-        <div><p class="exec-eyebrow">Authorized only</p><h2 id="departmentHeading">Department comparison</h2></div>
+    <p id="dashboardFilterError" class="kd-filter-error exec-filter-error" role="alert" hidden></p>
+    <div id="dataQualityDetails" class="kd-limitations exec-quality-note" role="status" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2.8 20h18.4L12 3zm0 6v5m0 3h.01"/></svg>
+      <span></span>
+    </div>
+    <div id="dashboardError" class="kd-error exec-error" role="alert" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2.8 20h18.4L12 3zm0 6v5m0 3h.01"/></svg>
+      <div><strong id="dashboardErrorTitle">Dashboard data could not be loaded.</strong><span id="dashboardErrorMessage">Try refreshing the authorized summary.</span></div>
+      <button id="dashboardRetry" class="kd-button kd-button-danger exec-button exec-button-danger" type="button">Retry</button>
+    </div>
+
+    <section class="kd-section" aria-label="Key performance indicators">
+      <div id="primaryCards" class="kd-grid kd-primary-grid" aria-live="polite">
+        {% for label in ["Average KPI", "Evaluated employees", "Pending approvals", "Overdue tasks"] %}
+        <section class="kd-card kd-primary-card exec-primary-card" aria-labelledby="loadingPrimary{{ loop.index }}">
+          <span class="kd-icon-tile" aria-hidden="true">
+            {% if loop.index == 1 %}<svg viewBox="0 0 24 24"><path d="M4 19h16M6 16l4-5 3 3 5-8"/><path d="M15 6h3v3"/></svg>
+            {% elif loop.index == 2 %}<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 20v-1a6 6 0 0 1 12 0v1m2-9 2 2 4-4"/></svg>
+            {% elif loop.index == 3 %}<svg viewBox="0 0 24 24"><path d="M12 3v18m7-14H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H5"/></svg>
+            {% else %}<svg viewBox="0 0 24 24"><path d="M12 3 2.8 20h18.4L12 3zm0 6v5m0 3h.01"/></svg>{% endif %}
+          </span>
+          <h2 id="loadingPrimary{{ loop.index }}" class="kd-eyebrow">{{ label }}</h2>
+          <span class="kd-skeleton" aria-hidden="true"></span>
+          <span class="kd-skeleton kd-skeleton-short" aria-hidden="true"></span>
+        </section>
+        {% endfor %}
       </div>
-      <div id="departmentComparison"></div>
     </section>
-    <section id="executiveInsightPanel" class="exec-card exec-panel" aria-label="Executive signals and attention areas">
-      <section class="exec-insight-group" aria-labelledby="signalsHeading">
-        <div class="exec-section-heading">
-          <div><p class="exec-eyebrow">Signals</p><h2 id="signalsHeading">Executive signals</h2></div>
+
+    <section class="kd-section" aria-label="Secondary metrics">
+      <div id="secondaryChips" class="kd-grid kd-stat-grid" aria-live="polite">
+        {% for label in ["Active employees", "Departments", "Task completion", "Unread notifications", "Activity volume"] %}
+        <section class="kd-card kd-stat-card exec-chip" aria-labelledby="loadingSecondary{{ loop.index }}">
+          <h2 id="loadingSecondary{{ loop.index }}" class="kd-eyebrow">{{ label }}</h2>
+          <span class="kd-skeleton kd-skeleton-short" aria-hidden="true"></span>
+        </section>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section id="trendStatusSection" class="kd-grid kd-chart-row" aria-label="Monthly KPI averages and performance status">
+      <section class="kd-card kd-chart-card kd-monthly-chart exec-card exec-panel" aria-labelledby="trendHeading">
+        <div class="kd-card-heading exec-section-heading">
+          <div><p class="kd-eyebrow">Monthly average</p><h2 id="trendHeading" class="kd-card-title">Average KPI by month</h2></div>
         </div>
-        <div id="executiveSignals" class="exec-list" aria-live="polite"></div>
-      </section>
-      <section class="exec-insight-group" aria-labelledby="attentionHeading">
-        <div class="exec-section-heading">
-          <div><p class="exec-eyebrow">Requires review</p><h2 id="attentionHeading">Attention areas</h2></div>
+        <p id="kpiTrendMeta" class="kd-caption exec-panel-meta">Average KPI score by calendar month</p>
+        <div class="kd-chart-frame exec-chart-frame">
+          <canvas id="kpiTrendChart" width="600" height="220" role="img" aria-label="Monthly average KPI scores by month"></canvas>
+          <p id="kpiTrendEmpty" class="kd-empty exec-empty" hidden></p>
         </div>
-        <div id="executiveAttentionAreas" class="exec-list" aria-live="polite"></div>
+        <div id="kpiTrendAccessibleTable" class="kd-sr-only exec-sr-only"></div>
+      </section>
+      <section id="statusPanel" class="kd-card kd-chart-card kd-donut-card exec-card exec-panel" aria-labelledby="statusHeading">
+        <div class="kd-card-heading exec-section-heading">
+          <div><p class="kd-eyebrow">Evaluated employees only</p><h2 id="statusHeading" class="kd-card-title">Performance status</h2></div>
+        </div>
+        <div class="kd-donut-layout">
+          <div class="kd-donut-wrap">
+            <canvas id="performanceStatusChart" role="img" aria-label="Performance status donut chart"></canvas>
+            <div id="performanceStatusCenter" class="kd-donut-center" aria-hidden="true"><strong>—</strong><span>Evaluated</span></div>
+          </div>
+          <div id="performanceStatusLegend" class="kd-legend"></div>
+        </div>
+        <p id="kpiStatusDistribution" class="kd-sr-only exec-sr-only" aria-live="polite"></p>
+        <p id="performanceStatusEmpty" class="kd-empty" hidden>No performance status data available for this period.</p>
       </section>
     </section>
-  </section>
 
-  {# ── Task lifecycle (full width) ── #}
-  <section class="exec-card exec-panel exec-workflow" aria-labelledby="workflowHeading">
-    <div class="exec-section-heading">
-      <div><p class="exec-eyebrow">Workflow</p><h2 id="workflowHeading">Task lifecycle</h2></div>
-    </div>
-    <div id="taskLifecycle" class="exec-lifecycle-grid"></div>
-    <div class="exec-subsection">
-      <p class="exec-eyebrow">Operational risk</p>
-      <div id="taskRisk" class="exec-risk-grid"></div>
-    </div>
-  </section>
-
-  {# ── Approval bottlenecks (full width) ── #}
-  <section class="exec-card exec-panel" aria-labelledby="approvalsHeading">
-    <div class="exec-section-heading">
-      <div><p class="exec-eyebrow">Approvals</p><h2 id="approvalsHeading">Approval bottlenecks</h2></div>
-    </div>
-    <div id="approvalDiagnostics" class="exec-diagnostic-grid"></div>
-  </section>
-
-  {# ── Employee results + Recent activity row ── #}
-  <section id="employeeActivitySection" class="exec-grid exec-grid-employee" aria-label="Employee KPI results and recent activity">
-    <section id="employeeResultsPanel" class="exec-card exec-panel" aria-labelledby="employeeResultsHeading">
-      <div class="exec-section-heading">
-        <div>
-          <p class="exec-eyebrow">Authorized employee scope</p>
-          <h2 id="employeeResultsHeading">Employee KPI results</h2>
-          <p class="exec-panel-meta">Scores are averaged across the selected range; details show the latest result.</p>
-          <span id="employeePageMeta" class="exec-panel-meta"></span>
+    <section class="kd-grid kd-workflow-grid" aria-label="Task workflow and operational risk">
+      <section class="kd-card kd-chart-card kd-donut-card" aria-labelledby="workflowHeading">
+        <div class="kd-card-heading"><div><p class="kd-eyebrow">Workflow</p><h2 id="workflowHeading" class="kd-card-title">Task lifecycle</h2></div></div>
+        <div class="kd-donut-layout">
+          <div class="kd-donut-wrap">
+            <canvas id="taskLifecycleChart" role="img" aria-label="Task lifecycle donut chart"></canvas>
+            <div id="taskLifecycleCenter" class="kd-donut-center" aria-hidden="true"><strong>0</strong><span>Total tasks</span></div>
+          </div>
+          <div id="taskLifecycleLegend" class="kd-legend"></div>
         </div>
-        <div class="exec-pagination">
-          <button id="employeePrevious" class="exec-button" type="button" disabled>Previous</button>
-          <button id="employeeNext" class="exec-button" type="button" disabled>Next</button>
+        <div id="taskLifecycle" class="kd-source exec-lifecycle-grid"></div>
+      </section>
+      <section class="kd-card kd-approval-card" aria-labelledby="approvalsHeading">
+        <div class="kd-card-heading"><div><p class="kd-eyebrow">Approvals</p><h2 id="approvalsHeading" class="kd-card-title">Approval bottlenecks</h2></div></div>
+        <div class="kd-approval-total"><span>Total pending</span><strong id="approvalTotal">—</strong></div>
+        <div id="approvalBottlenecksRows"></div>
+        <div id="approvalDiagnostics" class="kd-source exec-diagnostic-grid"></div>
+      </section>
+      <section class="kd-card kd-risk-card" aria-labelledby="riskHeading">
+        <div class="kd-card-heading"><div><p class="kd-eyebrow">Operational risk</p><h2 id="riskHeading" class="kd-card-title">Task health</h2></div></div>
+        <div id="taskRiskDisplay"></div>
+        <div id="taskRisk" class="kd-source exec-risk-grid"></div>
+      </section>
+    </section>
+
+    <section class="kd-grid kd-analysis-grid" aria-label="Analysis tables">
+      <section class="kd-card kd-analysis-card" aria-labelledby="monthlyAnalysisHeading">
+        <div class="kd-card-heading"><div><p class="kd-eyebrow">Month-by-month</p><h2 id="monthlyAnalysisHeading" class="kd-card-title">Monthly KPI analysis</h2></div><span id="monthlyAnalysisCaption" class="kd-caption"></span></div>
+        <div id="monthlyAnalysisTable" class="kd-table-wrap"></div>
+      </section>
+      <section class="kd-card kd-analysis-card" aria-labelledby="taskAnalysisHeading">
+        <div class="kd-card-heading"><div><p class="kd-eyebrow">Workflow distribution</p><h2 id="taskAnalysisHeading" class="kd-card-title">Task &amp; approval analysis</h2></div></div>
+        <div id="taskApprovalAnalysisTable" class="kd-table-wrap"></div>
+      </section>
+    </section>
+
+    <section id="employeeActivitySection" class="kd-grid kd-activity-grid" aria-label="Recent activity, alerts, and notifications">
+      <section class="kd-card kd-activity-card exec-card exec-panel" aria-labelledby="activityHeading">
+        <div class="kd-card-heading exec-section-heading"><div><p class="kd-eyebrow">Latest changes</p><h2 id="activityHeading" class="kd-card-title">Recent activity</h2></div><span id="activitySummary" class="kd-caption exec-panel-meta"></span></div>
+        <div id="dashboardActivity" class="kd-list exec-list" aria-live="polite"></div>
+      </section>
+      <section id="operationsSection" class="kd-operations-stack" aria-label="Alerts and notifications">
+        <section class="kd-card kd-operation-card exec-card exec-panel" aria-labelledby="alertsHeading">
+          <div class="kd-card-heading exec-section-heading"><div><p class="kd-eyebrow">Needs attention</p><h2 id="alertsHeading" class="kd-card-title">Alerts</h2></div></div>
+          <div id="dashboardAlerts" class="kd-list exec-list" aria-live="polite"></div>
+        </section>
+        <section class="kd-card kd-operation-card exec-card exec-panel" aria-labelledby="notificationsHeading">
+          <div class="kd-card-heading exec-section-heading"><div><p class="kd-eyebrow">Updates</p><h2 id="notificationsHeading" class="kd-card-title">Notifications</h2></div><a class="kd-link exec-link" href="/notifications">View all</a></div>
+          <div id="dashboardNotifications" class="kd-list exec-list" aria-live="polite"></div>
+        </section>
+      </section>
+    </section>
+
+    <section class="kd-card kd-availability-card exec-card exec-panel" aria-labelledby="availabilityHeading">
+      <div class="kd-card-heading exec-section-heading"><div><p class="kd-eyebrow">Data availability</p><h2 id="availabilityHeading" class="kd-card-title">Unavailable analytics</h2></div></div>
+      <div class="kd-availability-grid exec-availability-grid">
+        <div class="kd-availability-item exec-availability-item"><strong>Target vs Actual</strong><span id="targetAvailabilityReason">Not available: Authoritative target-versus-actual results are not independently persisted.</span><span class="kd-pill kd-pill-neutral">Not available</span></div>
+        <div class="kd-availability-item exec-availability-item"><strong>Attendance</strong><span>Not available: no authoritative attendance-result source is integrated.</span><span class="kd-pill kd-pill-neutral">Not available</span></div>
+        <div class="kd-availability-item exec-availability-item"><strong>Custom Metrics</strong><span>Not available: no governed custom-metric registry exists.</span><span class="kd-pill kd-pill-neutral">Not available</span></div>
+      </div>
+    </section>
+
+    <section id="departmentAttentionSection" class="kd-grid kd-extra-grid" aria-label="Department comparison and executive insights">
+      <section id="departmentPanel" class="kd-card exec-card exec-panel" aria-labelledby="departmentHeading">
+        <div class="kd-card-heading exec-section-heading"><div><p class="kd-eyebrow">Authorized only</p><h2 id="departmentHeading" class="kd-card-title">Department comparison</h2></div></div>
+        <div id="departmentComparison"></div>
+      </section>
+      <section id="executiveInsightPanel" class="kd-card exec-card exec-panel" aria-label="Executive signals and attention areas">
+        <section class="kd-insight-group exec-insight-group" aria-labelledby="signalsHeading">
+          <div class="kd-card-heading exec-section-heading"><div><p class="kd-eyebrow">Signals</p><h2 id="signalsHeading" class="kd-card-title">Executive signals</h2></div></div>
+          <div id="executiveSignals" class="exec-list" aria-live="polite"></div>
+        </section>
+        <section class="kd-insight-group exec-insight-group" aria-labelledby="attentionHeading">
+          <div class="kd-card-heading exec-section-heading"><div><p class="kd-eyebrow">Requires review</p><h2 id="attentionHeading" class="kd-card-title">Attention areas</h2></div></div>
+          <div id="executiveAttentionAreas" class="exec-list" aria-live="polite"></div>
+        </section>
+      </section>
+    </section>
+
+    <section id="employeeResultsSection" class="kd-grid kd-employee-grid" aria-label="Employee KPI results">
+      <section id="employeeResultsPanel" class="kd-card kd-analysis-card exec-card exec-panel" aria-labelledby="employeeResultsHeading">
+        <div class="kd-card-heading exec-section-heading">
+          <div><p class="kd-eyebrow">Authorized employee scope</p><h2 id="employeeResultsHeading" class="kd-card-title">Employee KPI results</h2>
+            <p class="kd-caption">Scores are averaged across the selected range; details show the latest result.</p>
+            <span id="employeePageMeta" class="kd-caption"></span></div>
+          <div class="kd-pagination exec-pagination">
+            <button id="employeePrevious" class="kd-button exec-button" type="button" disabled>Previous</button>
+            <button id="employeeNext" class="kd-button exec-button" type="button" disabled>Next</button>
+          </div>
         </div>
-      </div>
-      <div id="employeeResults" class="exec-table-wrap" aria-live="polite"></div>
-      <div id="employeeDetail" class="exec-employee-detail" role="region" aria-live="polite" hidden></div>
+        <div id="employeeResults" class="kd-table-wrap exec-table-wrap" aria-live="polite"></div>
+        <div id="employeeDetail" class="kd-employee-detail exec-employee-detail" role="region" aria-live="polite" hidden></div>
+      </section>
     </section>
-    <section class="exec-card exec-panel" aria-labelledby="activityHeading">
-      <div class="exec-section-heading">
-        <div><p class="exec-eyebrow">Latest changes</p><h2 id="activityHeading">Recent activity</h2></div>
-        <span id="activitySummary" class="exec-panel-meta"></span>
-      </div>
-      <div id="dashboardActivity" class="exec-list" aria-live="polite"></div>
-    </section>
-  </section>
-
-  {# ── Alerts + Notifications row ── #}
-  <section id="operationsSection" class="exec-grid exec-grid-operations" aria-label="Alerts and notifications">
-    <section class="exec-card exec-panel" aria-labelledby="alertsHeading">
-      <div class="exec-section-heading">
-        <div><p class="exec-eyebrow">Needs attention</p><h2 id="alertsHeading">Alerts</h2></div>
-      </div>
-      <div id="dashboardAlerts" class="exec-list" aria-live="polite"></div>
-    </section>
-    <section class="exec-card exec-panel" aria-labelledby="notificationsHeading">
-      <div class="exec-section-heading">
-        <div><p class="exec-eyebrow">Updates</p><h2 id="notificationsHeading">Notifications</h2></div>
-        <a class="exec-link" href="/notifications">View all</a>
-      </div>
-      <div id="dashboardNotifications" class="exec-list" aria-live="polite"></div>
-    </section>
-  </section>
-
-  {# ── Data availability (full width, last) ── #}
-  <section class="exec-card exec-panel exec-availability" aria-labelledby="availabilityHeading">
-    <div class="exec-section-heading">
-      <div><p class="exec-eyebrow">Data availability</p><h2 id="availabilityHeading">Unavailable analytics</h2></div>
-    </div>
-    <div class="exec-availability-grid">
-      <div class="exec-availability-item"><strong>Target vs Actual</strong><span id="targetAvailabilityReason">Not available: no authoritative dashboard aggregation contract.</span></div>
-      <div class="exec-availability-item"><strong>Attendance</strong><span>Not available: no authoritative attendance-result source is integrated.</span></div>
-      <div class="exec-availability-item"><strong>Custom Metrics</strong><span>Not available: no governed custom-metric registry exists.</span></div>
-    </div>
-  </section>
   </div>
 </div>
 
@@ -237,4 +245,5 @@
     level: {{ user_level | default("") | tojson }},
   };
 </script>
+<script src="/static/js/kd-superadmin-dashboard.js?v=20261019-2" defer></script>
 <script src="/static/js/superadmin-executive-dashboard.js?v=20261015-1" defer></script>

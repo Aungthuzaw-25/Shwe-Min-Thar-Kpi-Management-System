@@ -1,166 +1,230 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Noto+Sans+Myanmar:wght@400;600&display=swap">
 <link rel="stylesheet" href="/static/css/avatar.css">
-<link rel="stylesheet" href="/static/css/account.css">
+<link rel="stylesheet" href="/static/css/account.css?v=20261019-ui2">
+<link rel="stylesheet" href="/static/css/kp-profile.css?v=20261019-ui3">
 {% from "components/avatar.njk" import avatar %}
 
-<div class="acct-page" id="accountProfilePage" data-local-password-enabled="{{ 'true' if account_profile.local_password_enabled else 'false' }}">
-  <header class="acct-page-header">
-    <p class="acct-eyebrow">Account settings</p>
-    <h1 class="acct-page-title">My Profile</h1>
-  </header>
-  <div class="acct-layout">
-    <aside class="acct-card acct-summary">
-      <div class="acct-summary-avatar">{{ avatar(account_profile, 128) }}</div>
-      <div class="acct-summary-name" data-profile-summary-name>{{ account_profile.display_name }}</div>
-      <span class="acct-role-pill">{{ account_profile.role }}</span>
-      <div class="acct-summary-meta">{{ account_profile.department or 'Not assigned' }}</div>
-      <div class="acct-summary-meta">{{ account_profile.position or 'Not assigned' }}</div>
-      <div class="acct-summary-meta">{{ account_profile.email }}</div>
-    </aside>
+<div class="kp-page acct-page" id="accountProfilePage" data-local-password-enabled="{{ 'true' if account_profile.local_password_enabled else 'false' }}">
+  <div class="kp-container">
+    <header class="kp-header">
+      <p class="kp-eyebrow">ACCOUNT SETTINGS</p>
+      <h1 class="kp-page-title">My Profile</h1>
+      <p class="kp-subtitle">Manage your personal information, password and sign-in methods.</p>
+    </header>
 
-    <div class="acct-content">
-      <section class="acct-card" aria-labelledby="acct-profile-title">
-        <div class="acct-card-heading">
-          <p class="acct-eyebrow">My account</p>
-          <h2 id="acct-profile-title">Profile photo and details</h2>
-        </div>
-        <p class="acct-banner" data-acct-banner="profile" role="status" aria-live="polite" hidden></p>
-        <div class="acct-photo-row">
-          <div data-avatar-preview>{{ avatar(account_profile, 96) }}</div>
-          <div class="acct-photo-actions">
-            <label class="acct-button acct-button--secondary" for="acct-avatar-file">Upload photo</label>
-            <input class="acct-input" id="acct-avatar-file" type="file" accept="image/jpeg,image/png,image/webp" hidden>
-            {% if account_profile.avatar_url %}
-            <button class="acct-button acct-button--text" data-avatar-remove type="button">Remove photo</button>
-            {% else %}
-            <button class="acct-button acct-button--text" data-avatar-remove type="button" hidden>Remove photo</button>
-            {% endif %}
-            <p class="acct-helper">JPG, PNG or WebP, up to 2 MB</p>
-            <p class="acct-helper" data-avatar-progress role="status" aria-live="polite"></p>
-          </div>
-        </div>
-
-        <form class="acct-form" data-account-profile-form novalidate>
-          <div class="acct-field">
-            <label class="acct-label" for="acct-display-name">Display name</label>
-            <input class="acct-input" id="acct-display-name" name="display_name" maxlength="80" autocomplete="name" required value="{{ account_profile.display_name }}" aria-describedby="acct-display-name-error">
-            <span class="acct-field-error" id="acct-display-name-error" data-field-error="display_name"></span>
-          </div>
-          <div class="acct-field">
-            <label class="acct-label" for="acct-phone">Phone</label>
-            <input class="acct-input" id="acct-phone" name="phone" maxlength="20" autocomplete="tel" value="{{ account_profile.phone or '' }}" aria-describedby="acct-phone-error">
-            <span class="acct-field-error" id="acct-phone-error" data-field-error="phone"></span>
-          </div>
-          <div class="acct-field">
-            <label class="acct-label" for="acct-email">Email</label>
-            <input class="acct-input" id="acct-email" type="email" value="{{ account_profile.email }}" readonly>
-            <p class="acct-readonly-note"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><rect x="4" y="11" width="16" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg> Contact your administrator to change email</p>
-          </div>
-          <div class="acct-form-actions">
-            <button class="acct-button acct-button--primary" type="submit" data-profile-save disabled>Save changes</button>
-            <button class="acct-button acct-button--secondary" type="button" data-profile-cancel>Cancel</button>
-          </div>
-        </form>
-      </section>
-
-      <section class="acct-card" aria-labelledby="acct-security-title">
-        <div class="acct-card-heading">
-          <p class="acct-eyebrow">Account protection</p>
-          <h2 id="acct-security-title">{{ 'Change password' if account_profile.local_password_enabled else 'Set a password' }}</h2>
-        </div>
-        <p class="acct-banner" data-acct-banner="password" role="status" aria-live="polite" hidden></p>
-        <p class="acct-helper" data-password-changed-at="{{ account_profile.password_changed_at or '' }}">Password last changed {% if account_profile.password_changed_at %}{{ account_profile.password_changed_at|strftime('%d %b %Y') }}{% else %}Never changed{% endif %}</p>
-        {% if not account_profile.local_password_enabled %}
-        <p class="acct-helper">Verify your identity with a linked provider before setting a password.</p>
-        <div class="acct-form-actions">
-          {% for provider, label in [['google', 'Google'], ['microsoft', 'Microsoft']] %}
-          {% if account_profile.linked_providers[provider] and account_profile.configured_providers[provider] %}
-          <a class="acct-button acct-button--secondary" href="/api/v1/auth/{{ provider }}/reauth/start">Verify with {{ label }}</a>
-          {% endif %}
-          {% endfor %}
-        </div>
-        {% endif %}
-        <form class="acct-form" data-account-password-form novalidate>
-          {% if account_profile.local_password_enabled %}
-          <div class="acct-field">
-            <label class="acct-label" for="acct-current-password">Current password</label>
-            <div class="acct-input-wrap">
-              <input class="acct-input" id="acct-current-password" name="current_password" type="password" autocomplete="current-password" required aria-describedby="acct-current-password-error">
-              <button class="acct-password-toggle" type="button" data-password-toggle="acct-current-password" aria-label="Show current password" aria-pressed="false">Show</button>
-            </div>
-            <span class="acct-field-error" id="acct-current-password-error" data-field-error="current_password"></span>
-          </div>
-          {% endif %}
-          <div class="acct-field">
-            <label class="acct-label" for="acct-new-password">New password</label>
-            <div class="acct-input-wrap">
-              <input class="acct-input" id="acct-new-password" name="new_password" type="password" autocomplete="new-password" minlength="10" maxlength="128" required aria-describedby="acct-password-strength acct-new-password-error">
-              <button class="acct-password-toggle" type="button" data-password-toggle="acct-new-password" aria-label="Show new password" aria-pressed="false">Show</button>
-            </div>
-            <div class="acct-password-meter" data-password-meter data-strength="0" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
-            <p class="acct-password-strength" id="acct-password-strength" data-password-strength>Too weak</p>
-            <ul class="acct-checklist" data-password-checklist>
-              <li data-password-rule="length">10+ characters</li>
-              <li data-password-rule="common">Not a common password</li>
-              <li data-password-rule="different">Differs from current password</li>
-              <li data-password-rule="identity">Does not contain your name or email</li>
-            </ul>
-            <span class="acct-field-error" id="acct-new-password-error" data-field-error="new_password"></span>
-          </div>
-          <div class="acct-field">
-            <label class="acct-label" for="acct-confirm-password">Confirm new password</label>
-            <div class="acct-input-wrap">
-              <input class="acct-input" id="acct-confirm-password" name="confirm_password" type="password" autocomplete="new-password" required aria-describedby="acct-confirm-password-error">
-              <button class="acct-password-toggle" type="button" data-password-toggle="acct-confirm-password" aria-label="Show password confirmation" aria-pressed="false">Show</button>
-            </div>
-            <span class="acct-field-error" id="acct-confirm-password-error" data-field-error="confirm_password"></span>
-          </div>
-          <div class="acct-form-actions">
-            <button class="acct-button acct-button--primary" type="submit" data-password-submit>{{ 'Change password' if account_profile.local_password_enabled else 'Set password' }}</button>
-          </div>
-        </form>
-      </section>
-
+    <nav class="kp-tabs" aria-label="Account settings sections">
+      <a class="kp-tab kp-tab--active" href="#profile" data-profile-tab="profile" aria-current="location">Profile</a>
+      <a class="kp-tab" href="#security" data-profile-tab="security">Security</a>
       {% if account_profile.show_connected_accounts %}
-      <section class="acct-card" aria-labelledby="acct-connected-title">
-        <div class="acct-card-heading">
-          <p class="acct-eyebrow">Sign-in methods</p>
-          <h2 id="acct-connected-title">Connected accounts</h2>
+      <a class="kp-tab" href="#connected" data-profile-tab="connected">Connected accounts</a>
+      {% endif %}
+    </nav>
+
+    <div class="kp-flash-stack">
+      <p class="acct-banner kp-flash" data-acct-banner="profile" role="status" aria-live="polite" hidden></p>
+      <p class="acct-banner kp-flash" data-acct-banner="password" role="status" aria-live="polite" hidden></p>
+      {% if account_profile.show_connected_accounts %}
+      <p class="acct-banner kp-flash" data-acct-banner="connected" role="status" aria-live="polite" hidden></p>
+      {% endif %}
+    </div>
+
+    <div class="kp-layout">
+      <aside class="kp-card acct-card kp-summary-card acct-summary" aria-label="Account summary">
+        <div class="kp-summary-banner" aria-hidden="true"></div>
+        <div class="kp-summary-identity">
+          <div class="kp-summary-avatar acct-summary-avatar">{{ avatar(account_profile, 128) }}</div>
+          <button class="kp-camera-button" type="button" data-photo-trigger aria-label="Upload photo" title="Upload photo">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h-4L8.5 6H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-3.5L14 4Z"></path><circle cx="12" cy="13" r="3"></circle></svg>
+          </button>
+          <div class="kp-summary-name acct-summary-name" data-profile-summary-name>{{ account_profile.display_name }}</div>
+          <span class="kp-role-pill acct-role-pill">{{ account_profile.role }}</span>
         </div>
-        <p class="acct-banner" data-acct-banner="connected" role="status" aria-live="polite" hidden></p>
-        <div class="acct-linked-list">
-          {% for provider, label in [['google', 'Google'], ['microsoft', 'Microsoft']] %}
-          {% set linked = account_profile.linked_providers[provider] %}
-          {% set configured = account_profile.configured_providers[provider] %}
-          <div class="acct-provider-row" data-provider-row="{{ provider }}">
-            <div>
-              <div class="acct-provider-title">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.72"></path><path d="M14 11a5 5 0 0 0-7.07 0l-3 3A5 5 0 0 0 12 21.07l1.72-1.72"></path></svg>
-                {{ label }}
+        <dl class="kp-summary-details">
+          <div class="kp-summary-row">
+            <dt><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"></path><path d="M9 9v.01M9 12v.01M9 15v.01M9 18v.01M15 13v.01M15 16v.01M15 19v.01"></path></svg><span>DEPARTMENT</span></dt>
+            <dd class="{% if not account_profile.department %}kp-summary-muted{% endif %}">{{ account_profile.department or 'Not assigned' }}</dd>
+          </div>
+          <div class="kp-summary-row">
+            <dt><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="14" rx="2"></rect><path d="M8 7V4h8v3M3 12h18M10 12v2h4v-2"></path></svg><span>POSITION</span></dt>
+            <dd class="{% if not account_profile.position %}kp-summary-muted{% endif %}">{{ account_profile.position or 'Not assigned' }}</dd>
+          </div>
+          <div class="kp-summary-row">
+            <dt><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="m3 7 9 6 9-6"></path></svg><span>EMAIL</span></dt>
+            <dd data-profile-summary-email>{{ account_profile.email or '—' }}</dd>
+          </div>
+        </dl>
+      </aside>
+
+      <main class="kp-main-column">
+        <section class="kp-card acct-card kp-section-card" id="profile" aria-labelledby="acct-profile-title" data-profile-section="profile">
+          <div class="kp-card-heading acct-card-heading">
+            <p class="kp-eyebrow acct-eyebrow">MY ACCOUNT</p>
+            <h2 class="kp-card-title" id="acct-profile-title">Profile photo and details</h2>
+          </div>
+          <div class="kp-photo-row acct-photo-row">
+            <div class="kp-photo-avatar" data-avatar-preview>{{ avatar(account_profile, 96) }}</div>
+            <div class="kp-photo-content">
+              <div class="kp-photo-actions acct-photo-actions">
+                <label class="kp-button acct-button acct-button--secondary" for="acct-avatar-file">
+                  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4m-4 4 4-4 4 4"></path><path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"></path></svg>
+                  Upload photo
+                </label>
+                <input class="acct-input" id="acct-avatar-file" type="file" accept="image/jpeg,image/png,image/webp" hidden>
+                {% if account_profile.avatar_url %}
+                <button class="kp-button acct-button acct-button--text" data-avatar-remove type="button">Remove photo</button>
+                {% else %}
+                <button class="kp-button acct-button acct-button--text" data-avatar-remove type="button" hidden>Remove photo</button>
+                {% endif %}
               </div>
-              {% if linked %}
-              <p class="acct-provider-status"><span class="acct-status-pill">Connected as {{ linked.email }}</span>{% if linked.linked_at %} · linked {{ linked.linked_at|strftime('%d %b %Y') }}{% endif %}</p>
-              {% else %}
-              <p class="acct-provider-status">Not connected</p>
-              {% endif %}
-              {% if not configured %}<p class="acct-provider-warning">Not configured by the administrator</p>{% endif %}
-            </div>
-            <div class="acct-provider-actions">
-              {% if linked %}
-              <button class="acct-button acct-button--danger" type="button" data-provider-unlink="{{ provider }}">Disconnect</button>
-              {% elif configured %}
-              <button class="acct-button acct-button--secondary" type="button" data-provider-link="{{ provider }}">Connect</button>
-              {% else %}
-              <button class="acct-button acct-button--secondary" type="button" disabled>Connect</button>
-              {% endif %}
+              <p class="kp-helper acct-helper">JPG, PNG or WebP, up to 2 MB</p>
+              <p class="kp-helper acct-helper" data-avatar-progress role="status" aria-live="polite"></p>
             </div>
           </div>
-          {% endfor %}
-        </div>
-      </section>
-      {% endif %}
+
+          <form class="kp-form acct-form" data-account-profile-form novalidate>
+            <div class="kp-form-grid">
+              <div class="kp-field acct-field">
+                <label class="kp-label acct-label" for="acct-display-name">Display name</label>
+                <input class="kp-input acct-input" id="acct-display-name" name="display_name" maxlength="80" autocomplete="name" required value="{{ account_profile.display_name }}" aria-describedby="acct-display-name-error">
+                <span class="kp-field-error acct-field-error" id="acct-display-name-error" data-field-error="display_name"></span>
+              </div>
+              <div class="kp-field acct-field">
+                <label class="kp-label acct-label" for="acct-phone">Phone</label>
+                <input class="kp-input acct-input" id="acct-phone" name="phone" maxlength="20" autocomplete="tel" placeholder="e.g. 09 123 456 789" value="{{ account_profile.phone or '' }}" aria-describedby="acct-phone-error">
+                <span class="kp-field-error acct-field-error" id="acct-phone-error" data-field-error="phone"></span>
+              </div>
+              <div class="kp-field acct-field kp-field--full">
+                <label class="kp-label acct-label" for="acct-email">Email</label>
+                <div class="kp-email-wrap">
+                  <svg class="kp-email-lock" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="11" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg>
+                  <input class="kp-input acct-input" id="acct-email" type="email" autocomplete="email" value="{{ account_profile.email or '' }}" readonly aria-describedby="acct-email-readonly-hint">
+                </div>
+                <p class="kp-helper acct-readonly-note" id="acct-email-readonly-hint"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><rect x="4" y="11" width="16" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg> Contact your administrator to change email</p>
+              </div>
+            </div>
+            <div class="kp-form-actions acct-form-actions">
+              <button class="kp-button acct-button acct-button--secondary" type="button" data-profile-cancel>Cancel</button>
+              <button class="kp-button acct-button acct-button--primary" type="submit" data-profile-save disabled>Save changes</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="kp-card acct-card kp-section-card" id="security" aria-labelledby="acct-security-title" data-profile-section="security">
+          <div class="kp-card-heading acct-card-heading">
+            <p class="kp-eyebrow acct-eyebrow">ACCOUNT PROTECTION</p>
+            <h2 class="kp-card-title" id="acct-security-title">{{ 'Change password' if account_profile.local_password_enabled else 'Set a password' }}</h2>
+          </div>
+          <p class="kp-password-meta acct-helper" data-password-changed-at="{{ account_profile.password_changed_at or '' }}">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
+            Password last changed:
+            {% if account_profile.password_changed_at %}<time data-profile-date="{{ account_profile.password_changed_at }}">—</time>{% else %}<span>Never changed</span>{% endif %}
+          </p>
+          {% if not account_profile.local_password_enabled %}
+          <p class="kp-helper acct-helper">Verify your identity with a linked provider before setting a password.</p>
+          <div class="kp-provider-verify acct-form-actions">
+            {% for provider, label in [['google', 'Google'], ['microsoft', 'Microsoft']] %}
+            {% if account_profile.linked_providers[provider] and account_profile.configured_providers[provider] %}
+            <a class="kp-button acct-button acct-button--secondary" href="/api/v1/auth/{{ provider }}/reauth/start">Verify with {{ label }}</a>
+            {% endif %}
+            {% endfor %}
+          </div>
+          {% endif %}
+          <form class="kp-form acct-form kp-password-form" data-account-password-form novalidate>
+            <div class="kp-form-grid">
+            {% if account_profile.local_password_enabled %}
+            <div class="kp-field acct-field kp-field--full">
+              <label class="kp-label acct-label" for="acct-current-password">Current password</label>
+              <div class="kp-input-wrap acct-input-wrap">
+                <input class="kp-input acct-input" id="acct-current-password" name="current_password" type="password" autocomplete="current-password" required aria-describedby="acct-current-password-error">
+                <button class="kp-password-toggle acct-password-toggle" type="button" data-password-toggle="acct-current-password" aria-label="Show current password" aria-pressed="false">
+                  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"></path><circle cx="12" cy="12" r="3"></circle></svg><span class="kp-sr-only">Show current password</span>
+                </button>
+              </div>
+              <span class="kp-field-error acct-field-error" id="acct-current-password-error" data-field-error="current_password"></span>
+            </div>
+            {% endif %}
+            <div class="kp-field acct-field">
+              <label class="kp-label acct-label" for="acct-new-password">New password</label>
+              <div class="kp-input-wrap acct-input-wrap">
+                <input class="kp-input acct-input" id="acct-new-password" name="new_password" type="password" autocomplete="new-password" minlength="10" maxlength="128" required aria-describedby="acct-password-strength acct-new-password-error">
+                <button class="kp-password-toggle acct-password-toggle" type="button" data-password-toggle="acct-new-password" aria-label="Show new password" aria-pressed="false">
+                  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"></path><circle cx="12" cy="12" r="3"></circle></svg><span class="kp-sr-only">Show new password</span>
+                </button>
+              </div>
+              <div class="kp-strength-header">
+                <span>Password strength</span>
+                <p class="kp-password-strength acct-password-strength" id="acct-password-strength" data-password-strength aria-live="polite">Too weak</p>
+              </div>
+              <div class="kp-strength-meter acct-password-meter" data-password-meter data-strength="0" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+              <div class="kp-requirements-panel">
+                <p class="kp-requirements-title">Password requirements</p>
+                <ul class="kp-requirement-list acct-checklist password-requirements" data-password-checklist>
+                  <li data-password-rule="length" data-met="false"><span data-rule-icon aria-hidden="true">×</span><span>10+ characters</span></li>
+                  <li data-password-rule="common" data-met="false"><span data-rule-icon aria-hidden="true">×</span><span>Not a common password</span></li>
+                  <li data-password-rule="different" data-met="false"><span data-rule-icon aria-hidden="true">×</span><span>Differs from current password</span></li>
+                  <li data-password-rule="identity" data-met="false"><span data-rule-icon aria-hidden="true">×</span><span>Does not contain your name or email</span></li>
+                </ul>
+              </div>
+              <span class="kp-field-error acct-field-error" id="acct-new-password-error" data-field-error="new_password"></span>
+            </div>
+            <div class="kp-field acct-field">
+              <label class="kp-label acct-label" for="acct-confirm-password">Confirm new password</label>
+              <div class="kp-input-wrap acct-input-wrap">
+                <input class="kp-input acct-input" id="acct-confirm-password" name="confirm_password" type="password" autocomplete="new-password" required aria-describedby="acct-confirm-password-error">
+                <button class="kp-password-toggle acct-password-toggle" type="button" data-password-toggle="acct-confirm-password" aria-label="Show password confirmation" aria-pressed="false">
+                  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"></path><circle cx="12" cy="12" r="3"></circle></svg><span class="kp-sr-only">Show password confirmation</span>
+                </button>
+              </div>
+              <span class="kp-field-error acct-field-error" id="acct-confirm-password-error" data-field-error="confirm_password"></span>
+            </div>
+            </div>
+            <div class="kp-form-actions acct-form-actions kp-field--full">
+              <button class="kp-button acct-button acct-button--primary" type="submit" data-password-submit disabled>{{ 'Change password' if account_profile.local_password_enabled else 'Set password' }}</button>
+            </div>
+          </form>
+        </section>
+
+        {% if account_profile.show_connected_accounts %}
+        <section class="kp-card acct-card kp-section-card" id="connected" aria-labelledby="acct-connected-title" data-profile-section="connected">
+          <div class="kp-card-heading acct-card-heading">
+            <p class="kp-eyebrow acct-eyebrow">SIGN-IN METHODS</p>
+            <h2 class="kp-card-title" id="acct-connected-title">Connected accounts</h2>
+          </div>
+          <div class="kp-provider-list acct-linked-list">
+            {% for provider, label in [['google', 'Google'], ['microsoft', 'Microsoft']] %}
+            {% set linked = account_profile.linked_providers[provider] %}
+            {% set configured = account_profile.configured_providers[provider] %}
+            <div class="kp-provider-row acct-provider-row" data-provider-row="{{ provider }}">
+              <div class="kp-provider-details">
+                <span class="kp-provider-icon" aria-hidden="true">{{ 'G' if provider == 'google' else 'M' }}</span>
+                <div class="kp-provider-copy">
+                  <div class="kp-provider-title acct-provider-title">{{ label }}</div>
+                  {% if linked %}
+                  <p class="kp-provider-status acct-provider-status"><span class="kp-status-pill kp-status-pill--success acct-status-pill">Connected</span> {{ linked.email }}{% if linked.linked_at %}<span class="kp-provider-date">Linked <time data-profile-date="{{ linked.linked_at }}">—</time></span>{% endif %}</p>
+                  {% else %}
+                  <p class="kp-provider-status acct-provider-status"><span class="kp-status-pill acct-status-pill">Not connected</span></p>
+                  {% endif %}
+                  {% if not configured %}<p class="kp-provider-warning acct-provider-warning">Not configured by the administrator</p>{% endif %}
+                </div>
+              </div>
+              <div class="kp-provider-actions acct-provider-actions">
+                {% if linked %}
+                <button class="kp-button acct-button acct-button--danger" type="button" data-provider-unlink="{{ provider }}">Disconnect</button>
+                {% elif configured %}
+                <button class="kp-button acct-button acct-button--secondary" type="button" data-provider-link="{{ provider }}">Connect</button>
+                {% else %}
+                <button class="kp-button acct-button acct-button--secondary" type="button" disabled aria-disabled="true" title="Not configured by the administrator">Connect</button>
+                {% endif %}
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </section>
+        {% endif %}
+      </main>
     </div>
   </div>
 </div>
 <script src="/static/js/avatar.js" defer></script>
-<script src="/static/js/account-profile.js" defer></script>
+<script src="/static/js/account-profile.js?v=20261019-ui2" defer></script>
+<script src="/static/js/kp-profile.js?v=20261019-ui2" defer></script>

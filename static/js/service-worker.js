@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kpi-portal-v2';
+const CACHE_NAME = 'kpi-portal-v3';
 const CACHE_PREFIX = 'kpi-portal-';
 const ASSETS_TO_CACHE = [
   '/static/css/dashboard.css',
@@ -20,6 +20,7 @@ self.addEventListener('install', (event) => {
             console.warn(`Service worker could not cache ${ASSETS_TO_CACHE[index]}.`);
           }
         });
+        await self.skipWaiting();
       })
   );
 });
@@ -35,7 +36,7 @@ self.addEventListener('activate', (event) => {
           }
         })
       );
-    })
+    }).then(() => self.clients?.claim?.())
   );
 });
 
@@ -52,11 +53,18 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  event.respondWith(
-    caches.match(request)
-      .then((response) => {
-        // Cache တွင်ရှိပါက ၎င်းကိုပြန်ပေးမည်၊ မရှိပါက Network မှတဆင့် ဆက်လက်ခေါ်ယူမည်
-        return response || fetch(request);
-      })
-  );
+  event.respondWith((async () => {
+    try {
+      const response = await fetch(request, { cache: 'no-cache' });
+      if (response.ok) {
+        const cache = await caches.open(CACHE_NAME);
+        await cache.put(request, response.clone());
+      }
+      return response;
+    } catch (error) {
+      const cached = await caches.match(request);
+      if (cached) return cached;
+      throw error;
+    }
+  })());
 });
