@@ -518,6 +518,76 @@ def test_executive_api_enforces_l2_scope_and_invalid_period(tmp_path):
     _run_isolated_test(tmp_path, _test_api_enforces_l2_scope_for_employee_drilldown)
 
 
+async def _test_super_admin_department_filter_scopes_overview_and_employees(db):
+    users, department_a, department_b, _, current_period, _ = await _create_fixture(
+        db, role_name="Super Admin"
+    )
+    app = FastAPI()
+    app.include_router(unified_router, prefix="/api/v1/dashboard")
+
+    async def override_db():
+        yield db
+
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[get_current_user] = lambda: users[0]
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        params = {
+            "period_id": str(current_period.id),
+            "department_id": str(department_a.id),
+        }
+        overview_response = await client.get(
+            "/api/v1/dashboard/executive/overview", params=params
+        )
+        assert overview_response.status_code == 200
+        overview = overview_response.json()
+        assert overview["summary"]["average_percentage"] == 60
+        assert overview["summary"]["evaluated_employee_count"] == 2
+        assert overview["summary"]["active_employee_count"] == 2
+        assert [item["department_id"] for item in overview["departments"]] == [
+            str(department_a.id)
+        ]
+
+        employee_response = await client.get(
+            "/api/v1/dashboard/executive/employees",
+            params={
+                "period_start": "2026-06-01T00:00:00+00:00",
+                "period_end": "2026-07-01T00:00:00+00:00",
+                "department_id": str(department_a.id),
+            },
+        )
+        assert employee_response.status_code == 200
+        assert employee_response.json()["total"] == 2
+        assert {
+            item["department_name"] for item in employee_response.json()["items"]
+        } == {department_a.name}
+
+        invalid_department_response = await client.get(
+            "/api/v1/dashboard/executive/overview",
+            params={
+                "period_id": str(current_period.id),
+                "department_id": str(uuid4()),
+            },
+        )
+        assert invalid_department_response.status_code == 404
+
+        cross_department_detail = await client.get(
+            f"/api/v1/dashboard/executive/employees/{users[2].id}",
+            params={
+                "period_id": str(current_period.id),
+                "department_id": str(department_a.id),
+            },
+        )
+        assert cross_department_detail.status_code == 404
+
+
+def test_super_admin_department_filter_scopes_all_executive_kpi_data(tmp_path):
+    _run_isolated_test(
+        tmp_path, _test_super_admin_department_filter_scopes_overview_and_employees
+    )
+
+
 async def _test_monthly_averages_denies_missing_kpi_permission(db):
     users, *_ = await _create_fixture(db, with_kpi_view_permission=False)
     app = FastAPI()

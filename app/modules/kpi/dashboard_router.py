@@ -63,6 +63,7 @@ async def fetch_unified_dashboard_summary(
     period_type: PeriodType = Query(PeriodType.MONTHLY),
     period_start: datetime | None = Query(None),
     period_end: datetime | None = Query(None),
+    department_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -108,6 +109,11 @@ async def fetch_unified_dashboard_summary(
     else:
         department_ids = membership_department_ids
 
+    if department_id is not None:
+        scope_user_ids, department_ids = await _apply_department_filter(
+            db, department_id, scope_user_ids, department_ids
+        )
+
     try:
         return await build_dashboard_summary(
             db,
@@ -117,6 +123,7 @@ async def fetch_unified_dashboard_summary(
             period_type=period_type,
             period_start=period_start,
             period_end=period_end,
+            department_filtered=department_id is not None,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -194,6 +201,44 @@ async def _get_executive_scope(
     )
 
 
+async def _apply_department_filter(
+    db: AsyncSession,
+    department_id: UUID,
+    scope_user_ids: list[UUID] | None,
+    visible_department_ids: list[UUID] | None,
+) -> tuple[list[UUID], list[UUID]]:
+    """Narrow an existing authorized scope to one active department."""
+    if (
+        visible_department_ids is not None
+        and department_id not in visible_department_ids
+    ):
+        raise HTTPException(status_code=404, detail="Department not found.")
+
+    active_department_id = await db.scalar(
+        select(Department.id).where(
+            Department.id == department_id,
+            Department.is_deleted.is_(False),
+        )
+    )
+    if active_department_id is None:
+        raise HTTPException(status_code=404, detail="Department not found.")
+
+    member_query = (
+        select(UserDepartment.user_id)
+        .join(User, User.id == UserDepartment.user_id)
+        .where(
+            UserDepartment.department_id == department_id,
+            UserDepartment.is_deleted.is_(False),
+            User.is_deleted.is_(False),
+            User.is_active.is_(True),
+        )
+    )
+    if scope_user_ids is not None:
+        member_query = member_query.where(User.id.in_(scope_user_ids))
+    member_ids = list(dict.fromkeys((await db.execute(member_query)).scalars().all()))
+    return member_ids, [department_id]
+
+
 @unified_router.get(
     "/executive/overview",
     tags=["Executive KPI Intelligence"],
@@ -206,6 +251,7 @@ async def fetch_executive_overview(
     period_id: UUID | None = Query(None),
     period_start: datetime | None = Query(None),
     period_end: datetime | None = Query(None),
+    department_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> ExecutiveOverview:
@@ -223,6 +269,10 @@ async def fetch_executive_overview(
     scope_user_ids, department_ids, show_departments = await _get_executive_scope(
         db, current_user
     )
+    if department_id is not None:
+        scope_user_ids, department_ids = await _apply_department_filter(
+            db, department_id, scope_user_ids, department_ids
+        )
     try:
         date_range = (
             normalize_calendar_range(period_start, period_end)
@@ -296,11 +346,16 @@ async def fetch_executive_monthly_averages(
 async def fetch_executive_employee_detail(
     user_id: UUID,
     period_id: UUID = Query(...),
+    department_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> ExecutiveEmployeeDetail:
     """Return persisted KPI details only for a user in the viewer's dashboard scope."""
     scope_user_ids, department_ids, _ = await _get_executive_scope(db, current_user)
+    if department_id is not None:
+        scope_user_ids, department_ids = await _apply_department_filter(
+            db, department_id, scope_user_ids, department_ids
+        )
     detail = await get_executive_employee_detail(
         db,
         user_id=user_id,
@@ -322,6 +377,7 @@ async def fetch_executive_employee_results(
     period_id: UUID | None = Query(None),
     period_start: datetime | None = Query(None),
     period_end: datetime | None = Query(None),
+    department_id: UUID | None = Query(None),
     offset: int = Query(0, ge=0),
     limit: int = Query(25, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
@@ -339,6 +395,10 @@ async def fetch_executive_employee_results(
             detail="period_start and period_end must be provided together.",
         )
     scope_user_ids, department_ids, _ = await _get_executive_scope(db, current_user)
+    if department_id is not None:
+        scope_user_ids, department_ids = await _apply_department_filter(
+            db, department_id, scope_user_ids, department_ids
+        )
     try:
         date_range = (
             normalize_calendar_range(period_start, period_end)

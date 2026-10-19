@@ -178,6 +178,13 @@
     };
   }
 
+  function appendDepartmentFilter(params) {
+    if (trendScopeFilter.value === 'department' && trendDepartmentFilter.value) {
+      params.set('department_id', trendDepartmentFilter.value);
+    }
+    return params;
+  }
+
   function setupDateFilters() {
     fillMonthOptions(filterMonth);
     fillMonthOptions(filterStartMonth);
@@ -205,11 +212,12 @@
     trendScopeFilter.addEventListener('change', () => {
       const departmentMode = trendScopeFilter.value === 'department';
       trendDepartmentField.hidden = !departmentMode;
-      trendDepartmentFilter.disabled = !departmentMode || !trendDepartmentFilter.options.length;
-      void loadMonthlyAverages(Number(filterYear.value));
+      trendDepartmentFilter.disabled =
+        !departmentMode || !trendDepartmentFilter.options.length;
+      void loadMonthlyAverages(Number(filterYear.value)).then(runDashboardLoad);
     });
     trendDepartmentFilter.addEventListener('change', () => {
-      void loadMonthlyAverages(Number(filterYear.value));
+      runDashboardLoad();
     });
   }
 
@@ -934,7 +942,10 @@
   function updateHeader(data) {
     const scope = data.scope || {};
     let scopeLabel = 'Authorized scope';
-    if (isSuperAdmin) {
+    if (trendScopeFilter.value === 'department' && trendDepartmentFilter.value) {
+      scopeLabel = trendDepartmentFilter.selectedOptions[0]?.textContent
+        || 'Selected department';
+    } else if (isSuperAdmin) {
       scopeLabel = 'Company-wide view';
     } else if (scope.department_ids?.length) {
       scopeLabel = `${scope.department_ids.length} authorized department(s)`;
@@ -978,12 +989,12 @@
     activeEmployeeRequest = controller;
     const abortWithDashboard = () => controller.abort();
     if (signal) signal.addEventListener('abort', abortWithDashboard, { once: true });
-    const params = new URLSearchParams({
+    const params = appendDepartmentFilter(new URLSearchParams({
       period_start: dateRange.start,
       period_end: dateRange.end,
       offset: String(employeeOffset),
       limit: String(employeePageSize)
-    });
+    }));
     try {
       const page = await fetchJsonWithTimeout(
         `/api/v1/dashboard/executive/employees?${params}`,
@@ -1041,7 +1052,7 @@
     target.hidden = false;
     target.innerHTML = listEmpty('Loading employee KPI details…');
     try {
-      const params = new URLSearchParams({ period_id: periodId });
+      const params = appendDepartmentFilter(new URLSearchParams({ period_id: periodId }));
       const detail = await fetchJsonWithTimeout(
         `/api/v1/dashboard/executive/employees/${encodeURIComponent(userId)}?${params}`,
         { credentials: 'same-origin', signal: controller.signal },
@@ -1090,16 +1101,16 @@
     setLoading();
     try {
       const dateRange = currentDateRange;
-      const rangeParams = new URLSearchParams({
+      const rangeParams = appendDepartmentFilter(new URLSearchParams({
         period_start: dateRange.start,
         period_end: dateRange.end
-      });
+      }));
       const executiveUrl = `/api/v1/dashboard/executive/overview?${rangeParams}`;
-      const summaryParams = new URLSearchParams({
+      const summaryParams = appendDepartmentFilter(new URLSearchParams({
         period_type: 'MONTHLY',
         period_start: dateRange.start,
         period_end: dateRange.end
-      });
+      }));
       let summaryError = null;
       const summaryPromise = fetchJsonWithTimeout(
         `/api/v1/dashboard/summary?${summaryParams}`,

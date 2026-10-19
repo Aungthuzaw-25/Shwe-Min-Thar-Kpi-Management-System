@@ -32,6 +32,7 @@ from app.modules.kpi.models import (
     PeriodType,
 )
 from app.modules.kpi.period_ranges import normalize_calendar_range
+from app.modules.notifications.models import Notification
 from app.modules.notifications.repo import (
     count_unread_notifications,
     get_notifications_by_user,
@@ -312,12 +313,17 @@ async def _build_kpi_status_distribution(
 
 
 async def _build_activity_data(
-    db: AsyncSession, current_user: User
+    db: AsyncSession,
+    current_user: User,
+    department_user_ids: list[UUID] | None = None,
 ) -> tuple[list[dict], ActivitySummary]:
-    actor_ids = await get_activity_scope_user_ids(db, current_user)
     filters = [ActivityTimeline.is_deleted.is_(False)]
-    if actor_ids is not None:
-        filters.append(ActivityTimeline.user_id.in_(actor_ids))
+    if department_user_ids is not None:
+        filters.append(ActivityTimeline.user_id.in_(department_user_ids))
+    else:
+        actor_ids = await get_activity_scope_user_ids(db, current_user)
+        if actor_ids is not None:
+            filters.append(ActivityTimeline.user_id.in_(actor_ids))
 
     recent_statement = (
         select(ActivityTimeline)
@@ -554,6 +560,7 @@ async def build_dashboard_summary(
     period_type: PeriodType,
     period_start: datetime | None,
     period_end: datetime | None,
+    department_filtered: bool = False,
 ) -> DashboardSummaryResponse:
     period_range = normalize_calendar_range(period_start, period_end)
     period_start = period_range.start_inclusive
@@ -606,10 +613,36 @@ async def build_dashboard_summary(
         pending_approvals=approval_diagnostics.total_pending_approval,
     )
 
-    activity, activity_summary = await _build_activity_data(db, current_user)
+    activity, activity_summary = await _build_activity_data(
+        db,
+        current_user,
+        scope_user_ids if department_filtered else None,
+    )
 
-    notifications = await get_notifications_by_user(db, current_user.id, limit=5)
-    unread_count = await count_unread_notifications(db, current_user.id)
+    if department_filtered:
+        notification_filters = [
+            Notification.is_deleted.is_(False),
+            Notification.user_id.in_(scope_user_ids),
+        ]
+        notifications = await get_notifications_by_user(
+            db, current_user.id, limit=5
+        )
+        unread_count = int(
+            (
+                await db.execute(
+                    select(func.count(Notification.id)).where(
+                        *notification_filters,
+                        Notification.is_read.is_(False),
+                    )
+                )
+            ).scalar_one()
+            or 0
+        )
+    else:
+        notifications = await get_notifications_by_user(
+            db, current_user.id, limit=5
+        )
+        unread_count = await count_unread_notifications(db, current_user.id)
     alerts = _dashboard_alerts(
         task_diagnostics, approval_diagnostics, period_type
     )

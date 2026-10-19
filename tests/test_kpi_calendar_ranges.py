@@ -181,6 +181,7 @@ async def test_dashboard_summary_api_forwards_explicit_calendar_boundaries(monke
 
     captured = {}
     expected_response = object()
+    selected_department_id = uuid4()
 
     async def get_scope_user_ids(_db, _user):
         return [user.id]
@@ -189,8 +190,15 @@ async def test_dashboard_summary_api_forwards_explicit_calendar_boundaries(monke
         captured.update(kwargs)
         return expected_response
 
+    async def apply_department_filter(_db, department_id, user_ids, _department_ids):
+        assert department_id == selected_department_id
+        return user_ids, [department_id]
+
     monkeypatch.setattr(dashboard_router, "_get_scope_user_ids", get_scope_user_ids)
     monkeypatch.setattr(dashboard_router, "build_dashboard_summary", build_summary)
+    monkeypatch.setattr(
+        dashboard_router, "_apply_department_filter", apply_department_filter
+    )
 
     start = app_time(2026, 6, 1)
     end = app_time(2026, 7, 1)
@@ -198,6 +206,7 @@ async def test_dashboard_summary_api_forwards_explicit_calendar_boundaries(monke
         period_type=PeriodType.MONTHLY,
         period_start=start,
         period_end=end,
+        department_id=selected_department_id,
         db=ReadOnlyDatabase(),
         current_user=user,
     )
@@ -206,6 +215,8 @@ async def test_dashboard_summary_api_forwards_explicit_calendar_boundaries(monke
     assert captured["period_type"] == PeriodType.MONTHLY
     assert captured["period_start"] == start
     assert captured["period_end"] == end
+    assert captured["department_ids"] == [selected_department_id]
+    assert captured["department_filtered"] is True
 
 
 def test_executive_period_picker_uses_existing_periods_and_creation_uses_exclusive_end():

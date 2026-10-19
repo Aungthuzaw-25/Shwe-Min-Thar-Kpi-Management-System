@@ -78,9 +78,9 @@
   position: relative;
   display: flex;
   min-width: 0;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 20px;
   overflow: hidden;
   border: 1px solid var(--kd-border);
   border-radius: 16px;
@@ -150,9 +150,12 @@
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
-  gap: 10px;
+  gap: 12px;
+  flex: 0 1 auto;
+  padding: 0;
 }
 .kd-page .kd-updated { color: #E6EBFF; font-size: 12px; }
+.kd-page .exec-header-actions .kd-pill { border-radius: 999px; }
 
 .kd-page .kd-card,
 .kd-page #primaryCards > section,
@@ -211,8 +214,7 @@
 @keyframes kd-rise-1 { 0%, 45% { opacity: 0; transform: translateY(10px); } 100% { opacity: 1; transform: none; } }
 
 .kd-page .kd-filter-card {
-  z-index: 2;
-  margin-top: -58px;
+  min-width: 0;
   padding: 16px 20px;
   box-shadow: 0 1px 2px rgba(15,23,42,.04);
 }
@@ -223,14 +225,14 @@
   gap: 10px;
 }
 .kd-page .kd-field { display: grid; min-width: 0; gap: 5px; }
-.kd-page .kd-field > label { color: var(--kd-secondary); font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
-.kd-page #dashboardFilterMode,
-.kd-page #dashboardFilterYear,
-.kd-page #dashboardSingleMonthField,
-.kd-page #dashboardMonthRangeFields,
-.kd-page #dashboardTrendScope,
-.kd-page #dashboardTrendDepartmentField { grid-column: span 2; }
-.kd-page #dashboardApplyFilters { grid-column: span 2; }
+.kd-page .kd-field > label { color: var(--kd-secondary); font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
+.kd-page .exec-filter-field,
+.kd-page #dashboardSingleMonthField { grid-column: span 2; }
+.kd-page #dashboardMonthRangeFields { grid-column: span 4; }
+.kd-page .exec-filter-scope { grid-column: span 3; }
+.kd-page .exec-filter-department { grid-column: span 2; }
+.kd-page #dashboardTrendScope { min-width: 160px; }
+.kd-page #dashboardApplyFilters { grid-column: span 1; }
 .kd-page .kd-range-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .kd-page .kd-range-fields[hidden],
 .kd-page #dashboardSingleMonthField[hidden],
@@ -496,15 +498,15 @@
 @media (min-width: 640px) and (max-width: 1023.98px) {
   .kd-page { --kd-gap: 16px; }
   .kd-page .kd-container { padding: 24px; }
-  .kd-page .kd-hero { align-items: flex-start; flex-direction: column; padding: 26px 24px 80px; }
-  .kd-page .kd-hero-actions { justify-content: flex-start; }
+  .kd-page .kd-hero { align-items: flex-start; flex-direction: column; gap: 16px; padding: 24px; }
+  .kd-page .kd-hero-actions { flex: 0 1 auto; justify-content: flex-start; }
   .kd-page .kd-title { font-size: 28px; }
   .kd-page .kd-filter-grid { grid-template-columns: repeat(6,minmax(0,1fr)); }
-  .kd-page #dashboardFilterMode,
-  .kd-page #dashboardFilterYear,
+  .kd-page .exec-filter-field,
   .kd-page #dashboardSingleMonthField,
-  .kd-page #dashboardTrendScope,
-  .kd-page #dashboardTrendDepartmentField { grid-column: span 3; }
+  .kd-page .exec-filter-department { grid-column: span 3; }
+  .kd-page #dashboardMonthRangeFields { grid-column: 1 / -1; }
+  .kd-page .exec-filter-scope { grid-column: span 3; }
   .kd-page #dashboardMonthRangeFields,
   .kd-page #dashboardApplyFilters { grid-column: 1 / -1; }
   .kd-page .kd-primary-grid > section,
@@ -526,18 +528,19 @@
 
 @media (max-width: 639.98px) {
   .kd-page .kd-container { gap: 12px; padding: 16px 16px 28px; }
-  .kd-page .kd-hero { align-items: flex-start; flex-direction: column; border-radius: 18px; padding: 20px 18px 70px; }
+  .kd-page .kd-hero { align-items: flex-start; flex-direction: column; gap: 16px; border-radius: 18px; padding: 20px 18px; }
   .kd-page .kd-title { font-size: 22px; }
-  .kd-page .kd-hero-actions { justify-content: flex-start; }
-  .kd-page .kd-filter-card { margin-top: -46px; padding: 16px; }
+  .kd-page .kd-hero-actions { justify-content: flex-start; width: 100%; }
+  .kd-page .kd-updated { overflow-wrap: anywhere; }
+  .kd-page .kd-filter-card { padding: 16px; }
   .kd-page .kd-filter-grid { grid-template-columns: minmax(0,1fr); }
-  .kd-page #dashboardFilterMode,
-  .kd-page #dashboardFilterYear,
+  .kd-page .exec-filter-field,
   .kd-page #dashboardSingleMonthField,
   .kd-page #dashboardMonthRangeFields,
-  .kd-page #dashboardTrendScope,
-  .kd-page #dashboardTrendDepartmentField,
+  .kd-page .exec-filter-scope,
+  .kd-page .exec-filter-department,
   .kd-page #dashboardApplyFilters { grid-column: 1 / -1; }
+  .kd-page #dashboardTrendScope { min-width: 0; }
   .kd-page .kd-range-fields { grid-template-columns: minmax(0,1fr); }
   .kd-page .kd-control,
   .kd-page .kd-button { min-height: 44px; }
