@@ -61,10 +61,30 @@ docker-compose.override.yml
 Microsoft/Windows/PowerShell/ModuleAnalysisCache
 static/css/output.css
 
+# Local credentials, cloud authentication material, and private keys
+**/.aws/credentials
+**/.ssh/
+**/.secrets/
+**/secrets/
+**/service-account*.json
+**/firebase-adminsdk-*.json
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+
 # Local databases and generated exports
 *.db
 *.sqlite
 *.sqlite3
+*.sql.gz
+*.dump
+*.backup
+*.tfstate
+*.tfstate.*
+.terraform/
 
 # Local agent instructions/artifacts
 agent.md
