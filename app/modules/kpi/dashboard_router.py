@@ -34,6 +34,8 @@ from app.modules.users.models import Position, User
 # 🌟 လုံခြုံရေးအတွက် Role Checker ကို Import လုပ်ခြင်း
 from app.modules.users.router import admin_checker
 
+DEPARTMENT_NOT_FOUND_DETAIL = "Department not found."
+
 router = APIRouter()
 superadmin_router = APIRouter()
 admin_router = APIRouter()
@@ -58,7 +60,7 @@ def _completion_percentage(completed_tasks: int, total_tasks: int) -> float:
     "/summary",
     response_model=DashboardSummaryResponse,
     tags=["Unified Dashboard"],
-    responses={400: {"description": "Bad Request"}},
+    responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}},
 )
 async def fetch_unified_dashboard_summary(
     period_type: PeriodType = Query(PeriodType.MONTHLY),
@@ -213,7 +215,7 @@ async def _apply_department_filter(
         visible_department_ids is not None
         and department_id not in visible_department_ids
     ):
-        raise HTTPException(status_code=404, detail="Department not found.")
+        raise HTTPException(status_code=404, detail=DEPARTMENT_NOT_FOUND_DETAIL)
 
     active_department_id = await db.scalar(
         select(Department.id).where(
@@ -222,7 +224,7 @@ async def _apply_department_filter(
         )
     )
     if active_department_id is None:
-        raise HTTPException(status_code=404, detail="Department not found.")
+        raise HTTPException(status_code=404, detail=DEPARTMENT_NOT_FOUND_DETAIL)
 
     member_query = (
         select(UserDepartment.user_id)
@@ -323,7 +325,7 @@ async def fetch_executive_monthly_averages(
     ).all()
     visible_department_ids = {row.id for row in visible_departments}
     if department_id is not None and department_id not in visible_department_ids:
-        raise HTTPException(status_code=404, detail="Department not found.")
+        raise HTTPException(status_code=404, detail=DEPARTMENT_NOT_FOUND_DETAIL)
 
     averages = await build_monthly_average_series(
         db,
@@ -372,7 +374,10 @@ async def fetch_executive_employee_detail(
 @unified_router.get(
     "/executive/employees",
     tags=["Executive KPI Intelligence"],
-    responses={422: {"description": "Unprocessable Entity"}},
+    responses={
+        404: {"description": "Not Found"},
+        422: {"description": "Unprocessable Entity"},
+    },
 )
 async def fetch_executive_employee_results(
     period_id: UUID | None = Query(None),

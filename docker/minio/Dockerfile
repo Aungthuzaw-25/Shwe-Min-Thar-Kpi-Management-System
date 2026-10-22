@@ -18,10 +18,16 @@ RUN mkdir -p /out && \
 
 FROM alpine:3.22
 
-RUN apk add --no-cache ca-certificates curl
+RUN apk add --no-cache ca-certificates curl && \
+    addgroup -g 1000 -S minio && \
+    adduser -u 1000 -S -G minio minio && \
+    mkdir -p /data && \
+    chown -R minio:minio /data
 
 COPY --from=build /out/minio /usr/bin/minio
 COPY --from=build /src/dockerscripts/docker-entrypoint.sh /usr/bin/docker-entrypoint.sh
+
+USER minio
 
 EXPOSE 9000
 VOLUME ["/data"]

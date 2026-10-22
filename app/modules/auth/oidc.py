@@ -12,6 +12,8 @@ from jwt import PyJWTError as JWTError
 
 SUPPORTED_ID_TOKEN_ALGORITHMS = ("RS256", "RS384", "RS512", "ES256", "ES384", "ES512")
 
+PROVIDER_IDENTITY_VALIDATION_FAILED = "Provider identity validation failed."
+
 
 class OIDCValidationError(ValueError):
     pass
@@ -127,19 +129,7 @@ class OIDCProvider:
 
     async def _decode_identity_claims(self, id_token: str, metadata: dict) -> dict:
         try:
-            issuer = metadata["issuer"]
-            if not isinstance(issuer, str) or not issuer:
-                raise OIDCValidationError("Provider identity validation failed.")
-            supported_algorithms = metadata.get("id_token_signing_alg_values_supported")
-            if not isinstance(supported_algorithms, list):
-                raise OIDCValidationError("Unsupported ID token algorithm.")
-            algorithms = [
-                algorithm
-                for algorithm in SUPPORTED_ID_TOKEN_ALGORITHMS
-                if algorithm in supported_algorithms
-            ]
-            if not algorithms:
-                raise OIDCValidationError("Unsupported ID token algorithm.")
+            issuer, algorithms = self._validated_issuer_and_algorithms(metadata)
 
             jwks = await self._jwks(metadata["jwks_uri"])
             keys = jwks.get("keys") if isinstance(jwks, dict) else None
@@ -147,34 +137,63 @@ class OIDCProvider:
                 raise OIDCValidationError("Signing key not found.")
 
             for algorithm in algorithms:
-                expected_key_type = "RSA" if algorithm.startswith("RS") else "EC"
-                for key in keys:
-                    if (
-                        not isinstance(key, dict)
-                        or key.get("kty") != expected_key_type
-                        or key.get("use", "sig") != "sig"
-                        or ("key_ops" in key and "verify" not in key["key_ops"])
-                        or ("alg" in key and key["alg"] != algorithm)
-                    ):
-                        continue
-                    try:
-                        return jwt.decode(
-                            id_token,
-                            jwt.PyJWK.from_dict(key, algorithm=algorithm),
-                            algorithms=[algorithm],
-                            audience=self.client_id,
-                            issuer=issuer,
-                            options={
-                                "verify_signature": True,
-                                "verify_at_hash": False,
-                                "require": ["iss", "sub", "aud", "exp", "iat", "nonce"],
-                            },
-                        )
-                    except (JWTError, KeyError, TypeError):
-                        continue
-            raise OIDCValidationError("Provider identity validation failed.")
+                claims = self._decode_with_any_key(id_token, keys, algorithm, issuer)
+                if claims is not None:
+                    return claims
+            raise OIDCValidationError(PROVIDER_IDENTITY_VALIDATION_FAILED)
         except (JWTError, KeyError, TypeError) as exc:
-            raise OIDCValidationError("Provider identity validation failed.") from exc
+            raise OIDCValidationError(PROVIDER_IDENTITY_VALIDATION_FAILED) from exc
+
+    @staticmethod
+    def _validated_issuer_and_algorithms(metadata: dict) -> tuple[str, list[str]]:
+        issuer = metadata["issuer"]
+        if not isinstance(issuer, str) or not issuer:
+            raise OIDCValidationError(PROVIDER_IDENTITY_VALIDATION_FAILED)
+        supported_algorithms = metadata.get("id_token_signing_alg_values_supported")
+        if not isinstance(supported_algorithms, list):
+            raise OIDCValidationError("Unsupported ID token algorithm.")
+        algorithms = [
+            algorithm
+            for algorithm in SUPPORTED_ID_TOKEN_ALGORITHMS
+            if algorithm in supported_algorithms
+        ]
+        if not algorithms:
+            raise OIDCValidationError("Unsupported ID token algorithm.")
+        return issuer, algorithms
+
+    def _decode_with_any_key(
+        self, id_token: str, keys: list, algorithm: str, issuer: str
+    ) -> dict | None:
+        for key in keys:
+            if not self._key_matches_algorithm(key, algorithm):
+                continue
+            try:
+                return jwt.decode(
+                    id_token,
+                    jwt.PyJWK.from_dict(key, algorithm=algorithm),
+                    algorithms=[algorithm],
+                    audience=self.client_id,
+                    issuer=issuer,
+                    options={
+                        "verify_signature": True,
+                        "verify_at_hash": False,
+                        "require": ["iss", "sub", "aud", "exp", "iat", "nonce"],
+                    },
+                )
+            except (JWTError, KeyError, TypeError):
+                continue
+        return None
+
+    @staticmethod
+    def _key_matches_algorithm(key: Any, algorithm: str) -> bool:
+        expected_key_type = "RSA" if algorithm.startswith("RS") else "EC"
+        return (
+            isinstance(key, dict)
+            and key.get("kty") == expected_key_type
+            and key.get("use", "sig") == "sig"
+            and ("key_ops" not in key or "verify" in key["key_ops"])
+            and ("alg" not in key or key["alg"] == algorithm)
+        )
 
     def _identity_from_claims(
         self, claims: dict, nonce: str, issuer: str | None = None
