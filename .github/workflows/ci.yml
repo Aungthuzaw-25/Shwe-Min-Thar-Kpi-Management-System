@@ -1,4 +1,4 @@
-;name: KPI System CI Pipeline
+name: KPI System CI Pipeline
 
 "on":
   push:
