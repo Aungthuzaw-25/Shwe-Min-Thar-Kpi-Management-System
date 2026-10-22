@@ -51,7 +51,7 @@
 .kp-page .kp-flash,
 .kp-page .acct-banner { border-radius: 12px; margin: 0 0 12px; padding: 14px 16px; }
 .kp-page .kp-flash[hidden],
-.kp-page .acct-banner[hidden] { display: none !important; }
+.kp-page .acct-banner[hidden] { display: none; }
 .kp-page .kp-flash--success,
 .kp-page .acct-banner--success { background: var(--kp-success-soft); border: 1px solid #A6E9C8; color: var(--kp-success-text); }
 .kp-page .kp-flash--error,
@@ -127,7 +127,7 @@
 .kp-page .kp-button--secondary { background: #FFF; border-color: #D0D7E5; color: var(--kp-text); }
 .kp-page .kp-button--danger { background: transparent; border-color: transparent; color: var(--kp-danger-text); }
 .kp-page .kp-button:disabled,
-.kp-page .acct-button:disabled { background: #E5E9F5; border-color: #E5E9F5; box-shadow: none; color: #68758B; cursor: not-allowed; opacity: 1; }
+.kp-page .acct-button:disabled { background: #E5E9F5; border-color: #E5E9F5; box-shadow: none; color: #5A687F; cursor: not-allowed; opacity: 1; }
 .kp-page .kp-button[disabled] { pointer-events: none; }
 .kp-page .kp-password-meta { align-items: center; display: flex; gap: 7px; margin: 0; }
 .kp-page .kp-password-meta svg { color: var(--kp-muted); height: 16px; width: 16px; }
@@ -173,7 +173,9 @@
 .kp-page .kp-provider-warning { color: var(--kp-muted); font-size: 12px; margin: 5px 0 0; }
 .kp-page .kp-provider-actions { flex: 0 0 auto; }
 .kp-page .kp-provider-actions .kp-button { width: auto; }
-.kp-page [hidden] { display: none !important; }
+/* [hidden] must beat every component display rule in this file;
+   the repeated attribute raises specificity, so no important flag is needed. */
+.kp-page [hidden][hidden] { display: none; }
 .kp-page .acct-spinner { animation: kp-spinner 700ms linear infinite; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; display: inline-block; height: 16px; width: 16px; }
 
 @media (hover: hover) {
@@ -194,7 +196,7 @@
   .kp-page .kp-summary-banner { display: none; }
   .kp-page .kp-summary-identity { align-items: start; display: grid; grid-column: 1 / -1; grid-template-columns: 88px minmax(0, 1fr); }
   .kp-page .kp-summary-avatar { grid-row: 1 / span 2; margin: 0; }
-  .kp-page .kp-summary-avatar .kpi-avatar { font-size: 38.4px; height: 96px !important; width: 96px !important; }
+  .kp-page .kp-summary-avatar .kpi-avatar { font-size: 38.4px; height: 96px; width: 96px; }
   .kp-page .kp-camera-button { bottom: -2px; height: 32px; right: -2px; width: 32px; }
   .kp-page .kp-summary-name { align-self: end; margin: 12px 0 0; }
   .kp-page .kp-role-pill { justify-self: start; margin: 7px 0 12px; }
@@ -225,7 +227,7 @@
   .kp-page .kp-summary-banner { height: 72px; margin: 0 -16px; }
   .kp-page .kp-summary-identity { display: block; }
   .kp-page .kp-summary-avatar { margin: -48px auto 8px; }
-  .kp-page .kp-summary-avatar .kpi-avatar { font-size: 38.4px; height: 96px !important; width: 96px !important; }
+  .kp-page .kp-summary-avatar .kpi-avatar { font-size: 38.4px; height: 96px; width: 96px; }
   .kp-page .kp-camera-button { bottom: 0; height: 44px; right: 0; width: 44px; }
   .kp-page .kp-summary-name { font-size: 19px; }
   .kp-page .kp-role-pill { margin: 7px 0 12px; }
@@ -248,11 +250,13 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .kp-page .kp-card,
+  /* The card selector mirrors the [data-kp-ready] animation rule so it
+     wins on specificity, not on an important flag. */
+  .kp-page[data-kp-ready="true"] .kp-card,
   .kp-page .kp-tab,
   .kp-page .kp-button,
   .kp-page .kp-requirement-list [data-rule-icon],
-  .kp-page .kp-strength-meter span { animation: none !important; transition: none !important; }
+  .kp-page .kp-strength-meter span { animation: none; transition: none; }
 }
 
 @keyframes kp-spinner { to { transform: rotate(360deg); } }
