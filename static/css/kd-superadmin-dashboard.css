@@ -361,7 +361,7 @@
 .kd-page #secondaryChips { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; }
 .kd-page #secondaryChips > section { display: flex; min-height: 112px; flex-direction: column; justify-content: space-between; gap: 10px; border-radius: 12px; padding: 16px; }
 .kd-page .exec-chip-value { color: var(--kd-primary); font-size: 22px; font-weight: 700; }
-.kd-page .kd-skeleton { display: block; width: 54%; height: 26px; border-radius: 7px; background: var(--kd-track); }
+.kd-page .kd-skeleton { display: block; position: relative; overflow: hidden; width: 54%; height: 26px; border-radius: 7px; background: #E8EFF4; }
 .kd-page .kd-skeleton-short { width: 34%; height: 15px; }
 
 .kd-page .kd-chart-card { grid-column: span 4; }

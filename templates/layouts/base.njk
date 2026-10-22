@@ -75,6 +75,15 @@
     </style>
 </head>
 <body class="app-shell app-shell--admin flex h-screen overflow-hidden text-gray-800 relative">
+    <!-- Global loading overlay: frosted glass + ring (design-system.css .app-loader) -->
+    <div class="app-loader" aria-hidden="true">
+        <div class="app-loader__card">
+            <span class="app-loader__ring"></span>
+            <span class="app-loader__label">Loading</span>
+        </div>
+    </div>
+    <script src="/static/js/app-loader.js"></script>
+
 
     {% if user_role in ['Super Admin', 'Admin'] %}
     
