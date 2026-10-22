@@ -1,4 +1,4 @@
-import { loadBaseContext, loadEmployeeContext } from "../lib/pageContext.js";
+import { loadBaseContext, loadPageContext } from "../lib/pageContext.js";
 import { sendBackendError } from "../lib/backendClient.js";
 
 const roles = {
@@ -25,17 +25,18 @@ function wrapPage(handler) {
 
 function registerPage(app, path, template, { allowedRoles, employee = false, extras } = {}) {
   app.get(path, wrapPage(async (request, response) => {
-    const base = await loadBaseContext(request, request.app.locals.backend);
+    const { base, context: pageContext } = await loadPageContext(
+      request,
+      request.app.locals.backend,
+      { employee },
+    );
     const { user_role: userRole } = base.context;
     if (!userRole) return redirect(response, "/auth/login");
     if (allowedRoles && !allowedRoles.includes(userRole)) {
       return redirect(response, "/dashboard");
     }
 
-    let context = base.context;
-    if (employee) {
-      context = await loadEmployeeContext(request, request.app.locals.backend, base);
-    }
+    let context = pageContext;
     if (extras) context = { ...context, ...extras(base, request) };
     response.render(template, context);
   }));
@@ -51,9 +52,12 @@ export function registerDashboardRoutes(app) {
   });
 
   app.get("/dashboard", wrapPage(async (request, response) => {
-    const base = await loadBaseContext(request, request.app.locals.backend);
+    const { base, context } = await loadPageContext(
+      request,
+      request.app.locals.backend,
+      { employee: true },
+    );
     if (!base.context.user_role) return redirect(response, "/auth/login");
-    const context = await loadEmployeeContext(request, request.app.locals.backend, base);
     if (roles.superAdmin.includes(context.user_role)) {
       return redirect(response, "/superadmin/dashboard");
     }
@@ -73,9 +77,12 @@ export function registerDashboardRoutes(app) {
   }));
 
   app.get("/profile", wrapPage(async (request, response) => {
-    const base = await loadBaseContext(request, request.app.locals.backend);
+    const { base, context } = await loadPageContext(
+      request,
+      request.app.locals.backend,
+      { employee: true },
+    );
     if (!base.context.user_role) return redirect(response, "/auth/login");
-    const context = await loadEmployeeContext(request, request.app.locals.backend, base);
     context.active_page = "profile";
     context.account_status = base.user.is_active === false ? "Inactive" : "Active";
     context.created_at = base.accountData.created_at || null;

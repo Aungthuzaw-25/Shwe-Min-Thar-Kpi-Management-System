@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import false, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.cache import cached_json
 from app.core.dependencies import enforce_permission, get_current_user
 from app.core.timezone import APPLICATION_TIMEZONE  # 🌟 Added for Timezone Conversion
 from app.database.connection import get_db
@@ -850,6 +851,25 @@ async def fetch_admin_dashboard_summary(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(admin_checker),
 ) -> dict[str, Any]:
+    """Admin dashboard summary, cached in Redis for 60s per admin (Batch 2).
+
+    The payload is a department-scoped aggregate; a 60-second freshness
+    bound is the trade for not recomputing it on every page load. When
+    Redis is not configured the cache helper fails open and the summary
+    is computed fresh, exactly as before.
+    """
+    return await cached_json(
+        "dashboard",
+        f"admin-summary:{current_user.id}",
+        60,
+        lambda: _compute_admin_dashboard_summary(db, current_user),
+    )
+
+
+async def _compute_admin_dashboard_summary(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(admin_checker),
+) -> dict[str, Any]:
     """Return an admin-scoped summary with actual task, user, KPI, and department data."""
     role_name = _normalize_role_name(getattr(getattr(current_user, "role", None), "name", None))
     if "ADMIN" not in role_name and "SYSTEM ADMIN" not in role_name:
@@ -915,6 +935,24 @@ async def fetch_admin_dashboard_summary(
 async def fetch_superadmin_dashboard_data(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(admin_checker) # 🌟 ဤနေရာတွင် Token နှင့် Role ကို စစ်ဆေးမည်
+) -> dict[str, Any]:
+    """Super admin dashboard payload, cached in Redis for 60s (Batch 2).
+
+    The payload is global (it does not vary per super admin), so one
+    shared cache entry serves every super admin. Fails open to a fresh
+    computation when Redis is unavailable.
+    """
+    return await cached_json(
+        "dashboard",
+        "superadmin-summary",
+        60,
+        lambda: _compute_superadmin_dashboard_data(db, current_user),
+    )
+
+
+async def _compute_superadmin_dashboard_data(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(admin_checker)
 ) -> dict[str, Any]:
     metrics_stmt = select(
         select(func.count(User.id))

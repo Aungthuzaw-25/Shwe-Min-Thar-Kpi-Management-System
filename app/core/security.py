@@ -91,11 +91,12 @@ def _create_token(data: dict, token_type: str, expires_delta: timedelta) -> str:
     )
 
 
-def create_access_token(data: dict) -> str:
+def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
     return _create_token(
         data,
         "access",
-        timedelta(minutes=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES),
+        expires_delta
+        or timedelta(minutes=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES),
     )
 
 

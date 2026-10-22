@@ -20,7 +20,11 @@ from sqlalchemy.orm import selectinload
 from app.core import security
 from app.core.config import settings
 from app.core.dependencies import get_current_user, get_permission_map
-from app.core.password_policy import get_password_policy, validate_password_strength
+from app.core.password_policy import (
+    get_password_policy,
+    get_session_timeout_minutes,
+    validate_password_strength,
+)
 from app.core.timezone import utc_now_naive
 from app.database.connection import get_db
 from app.models.audit_log import AuditLog
@@ -197,8 +201,9 @@ def _dashboard_path(user: User) -> str:
 
 def _set_auth_cookies(response: Response, request: Request, auth_result: dict[str, object], remember_me: bool) -> None:
     secure_cookie = cookie_secure_for_request(request)
+    access_minutes = int(auth_result.get("access_token_expires_minutes") or settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
     response.set_cookie(key=ACCESS_TOKEN_KEY, value=str(auth_result[ACCESS_TOKEN_KEY]), httponly=True,
-                        max_age=(settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60 if remember_me else None),
+                        max_age=(access_minutes * 60 if remember_me else None),
                         samesite=AUTH_COOKIE_SAMESITE, secure=secure_cookie)
     response.set_cookie(key=REFRESH_TOKEN_KEY, value=str(auth_result[REFRESH_TOKEN_KEY]), httponly=True,
                         max_age=(settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60 if remember_me else None),
@@ -383,7 +388,7 @@ async def login(request: Request, response: Response, payload: LoginRequest, db:
     secure_cookie = cookie_secure_for_request(request)
     response.set_cookie(
         key=ACCESS_TOKEN_KEY, value=auth_result[ACCESS_TOKEN_KEY], httponly=True,
-        max_age=(settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60 if payload.remember_me else None),
+        max_age=((int(auth_result.get("access_token_expires_minutes") or settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES)) * 60 if payload.remember_me else None),
         samesite=AUTH_COOKIE_SAMESITE, secure=secure_cookie,
     )
     response.set_cookie(
@@ -1317,7 +1322,11 @@ async def refresh_token(
         user_level = user.user_departments[0].user_level
 
     token_data = {'sub': user.email, 'user_id': str(user.id), 'sid': str(auth_session.id), 'role': role_value, 'level': user_level}
-    new_access_token = security.create_access_token(data=token_data)
+    session_timeout_minutes = await get_session_timeout_minutes(db)
+    if session_timeout_minutes != settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES:
+        new_access_token = security.create_access_token(data=token_data, expires_delta=timedelta(minutes=session_timeout_minutes))
+    else:
+        new_access_token = security.create_access_token(data=token_data)
     new_refresh_token = security.create_refresh_token(
         data=token_data, remember_me=bool(auth_session.remember_me)
     )
@@ -1329,7 +1338,7 @@ async def refresh_token(
     # keeping the cookies HttpOnly and Secure in production.
     secure_cookie = cookie_secure_for_request(request)
     persistent = bool(auth_session.remember_me)
-    response.set_cookie(key=ACCESS_TOKEN_KEY, value=new_access_token, httponly=True, max_age=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60 if persistent else None, samesite=AUTH_COOKIE_SAMESITE, secure=secure_cookie)
+    response.set_cookie(key=ACCESS_TOKEN_KEY, value=new_access_token, httponly=True, max_age=session_timeout_minutes * 60 if persistent else None, samesite=AUTH_COOKIE_SAMESITE, secure=secure_cookie)
     response.set_cookie(key=REFRESH_TOKEN_KEY, value=new_refresh_token, httponly=True, max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60 if persistent else None, samesite=AUTH_COOKIE_SAMESITE, secure=secure_cookie)
 
     return {'access_token': new_access_token, 'refresh_token': new_refresh_token, 'token_type': 'bearer'}
