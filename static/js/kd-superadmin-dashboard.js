@@ -50,10 +50,14 @@
   }
 
   function percentage(metric) {
-    if (!metric || metric.status !== "available") {
+    if (metric?.status !== "available") {
       return null;
     }
     return finiteNumber(metric.value);
+  }
+
+  function percentText(value) {
+    return value === null ? "—" : `${value.toFixed(1)}%`;
   }
 
   function percentageText(metric) {
@@ -268,7 +272,7 @@
     ).join("");
     const metricRows = metrics.map((item) => {
       const width = item.value === null ? 0 : Math.min(100, Math.max(0, item.value));
-      return `<div class="kd-risk-row"><span>${item.label}</span><strong>${item.value === null ? "—" : `${item.value.toFixed(1)}%`}</strong><div class="kd-risk-track"><span class="kd-risk-fill kd-risk-fill-${item.tone}" style="width:${width}%"></span></div></div>`;
+      return `<div class="kd-risk-row"><span>${item.label}</span><strong>${percentText(item.value)}</strong><div class="kd-risk-track"><span class="kd-risk-fill kd-risk-fill-${item.tone}" style="width:${width}%"></span></div></div>`;
     }).join("");
     document.getElementById("taskRiskDisplay").innerHTML =
       `<div class="kd-risk-list">${countRows}${metricRows}</div>`;
@@ -328,7 +332,7 @@
       const value = finiteNumber(tasks[item.key]);
       const share = complete && total && value !== null ? value / total * 100 : null;
       const width = share === null ? 0 : Math.min(100, Math.max(0, share));
-      return `<tr><th scope="row"><span class="kd-legend-dot" style="display:inline-block;vertical-align:middle;margin-right:8px;background:${item.color}" aria-hidden="true"></span>${item.label}</th><td class="kd-number-cell">${count(value)}</td><td class="kd-share-cell"><span class="kd-share-wrap"><span class="kd-share-track"><span class="kd-share-fill" style="width:${width}%;background:${item.color}"></span></span><span class="kd-share-label">${share === null ? "—" : `${share.toFixed(1)}%`}</span></span></td></tr>`;
+      return `<tr><th scope="row"><span class="kd-legend-dot" style="display:inline-block;vertical-align:middle;margin-right:8px;background:${item.color}" aria-hidden="true"></span>${item.label}</th><td class="kd-number-cell">${count(value)}</td><td class="kd-share-cell"><span class="kd-share-wrap"><span class="kd-share-track"><span class="kd-share-fill" style="width:${width}%;background:${item.color}"></span></span><span class="kd-share-label">${percentText(share)}</span></span></td></tr>`;
     }).join("");
     document.getElementById("taskApprovalAnalysisTable").innerHTML =
       `<table class="kd-analysis-table"><thead><tr><th scope="col">Status</th><th scope="col" class="kd-number-cell">Count</th><th scope="col">Share of total</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><th scope="row">Total</th><td class="kd-number-cell">${count(tasks.total)}</td><td class="kd-number-cell">${complete && total ? "100.0%" : "—"}</td></tr></tfoot></table><div class="kd-table-subrows"><div class="kd-table-subrow"><strong>Operational measure</strong><strong>Count</strong><strong>Rate</strong></div><div class="kd-table-subrow"><span>Overdue</span><span>${count(tasks.overdue)}</span><span>${percentageText(tasks.overdue_rate)}</span></div><div class="kd-table-subrow"><span>Late</span><span>${count(tasks.late)}</span><span>${percentageText(tasks.late_rate)}</span></div></div>`;

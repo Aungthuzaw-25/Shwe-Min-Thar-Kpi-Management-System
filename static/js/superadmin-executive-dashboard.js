@@ -713,7 +713,7 @@
   function renderDepartments(rows) {
     const panel = document.getElementById('departmentPanel');
     const target = document.getElementById('departmentComparison');
-    if (!rows || !rows.length || isPersonal) {
+    if (!rows?.length || isPersonal) {
       panel.hidden = isPersonal;
       if (!isPersonal) target.innerHTML = '<p class="exec-empty">No department comparison data available.</p>';
       return;
