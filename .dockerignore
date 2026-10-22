@@ -79,7 +79,6 @@ README.md
 *.md
 AGENTS.md
 agent.md
-sonar-project.properties
 alembic.ini.bak
 *.bak
 *.tmp

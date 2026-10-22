@@ -324,7 +324,7 @@ class AuthService:
             expires_at=now
             + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS if remember_me else 1),
             last_used_at=now,
-            refresh_token_hash="pending",  # NOSONAR
+            refresh_token_hash="pending",
         )
         db.add(session)
         await db.flush()
