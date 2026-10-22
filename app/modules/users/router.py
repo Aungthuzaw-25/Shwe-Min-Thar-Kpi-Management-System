@@ -30,6 +30,7 @@ from app.modules.tasks.models.task import Task
 from app.modules.tasks.models.task_history import TaskHistory
 from app.modules.users import password_repo, permission_repo
 from app.modules.users import repo as user_repo
+from app.modules.users.presence import presence_for_users
 
 # 🌟 BUG FIX: Role Model ကို models.py မှ တိုက်ရိုက်ယူပါမည် (roles.py အဟောင်းကို မသုံးပါ)
 from app.modules.users.models import Role, User
@@ -151,9 +152,10 @@ async def count_active_super_admins(db: AsyncSession, exclude_user_id: UUID | No
     return int(result.scalar_one() or 0)
 
 
-def serialize_user_obj(u: User) -> UserResponse:
+def serialize_user_obj(u: User, presence: dict | None = None) -> UserResponse:
     role_data = RoleResponse(id=u.role.id, name=u.role.name) if u.role else None
-    
+    presence = presence or {}
+
     pos_data = None
     if getattr(u, 'position', None):
         pos_data = {"id": u.position.id, "name": u.position.name}
@@ -179,7 +181,10 @@ def serialize_user_obj(u: User) -> UserResponse:
         role=role_data,
         departments=departments_data,
         created_at=getattr(u, 'created_at', None),
-        last_login=getattr(u, 'last_login', None)
+        last_login=presence.get('last_login_at') or getattr(u, 'last_login', None),
+        presence_status=presence.get('presence_status'),
+        last_active_at=presence.get('last_active_at'),
+        last_offline_at=presence.get('last_offline_at')
     )
 
 
@@ -689,10 +694,11 @@ async def get_users(
     
     result = await db.execute(stmt)
     users = result.scalars().all()
-    
+
     if current_user.role.name != SUPER_ADMIN_ROLE_NAME:
         users = [u for u in users if getattr(u.role, 'name', '') != SUPER_ADMIN_ROLE_NAME]
-    return [serialize_user_obj(u) for u in users]
+    presence_map = await presence_for_users(db, [u.id for u in users])
+    return [serialize_user_obj(u, presence_map.get(u.id)) for u in users]
 
 @router.get('/{user_id}', response_model=UserResponse, responses={403: {"description": "Forbidden"}, 404: {"description": "Not Found"}})
 async def get_user_profile(user_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
@@ -700,8 +706,9 @@ async def get_user_profile(user_id: UUID, db: AsyncSession = Depends(get_db), cu
     await enforce_user_scope(db, current_user, user_id)
     user = await user_repo.get_user_by_id(db, user_id)
     if not user: raise HTTPException(status_code=404, detail=ERR_USER_NOT_FOUND)
-    
-    return serialize_user_obj(user)
+
+    presence_map = await presence_for_users(db, [user.id])
+    return serialize_user_obj(user, presence_map.get(user.id))
 
 
 async def _validate_user_update_target(

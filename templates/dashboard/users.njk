@@ -71,20 +71,23 @@
 <div class="flex-1 p-4 sm:p-6 md:p-8 min-h-0 flex flex-col relative bg-slate-50 animate-fade-in-up">
     <div class="workspace-table flex-1 flex flex-col min-h-0 overflow-hidden">
         <div class="overflow-y-auto overflow-x-auto custom-scrollbar flex-1 min-h-0 w-full">
-            <table class="w-full text-xs sm:text-sm text-left min-w-[700px]">
+            <table class="w-full text-xs sm:text-sm text-left min-w-[1150px]">
                 <thead class="text-[10px] sm:text-xs text-slate-500 uppercase tracking-wider bg-slate-50 border-b border-gray-100 sticky top-0 z-10 shadow-sm">
                     <tr>
                         <th class="px-4 sm:px-6 py-3 sm:py-4 font-bold">User Profile</th>
                         <th class="px-4 sm:px-6 py-3 sm:py-4 font-bold">Email</th>
                         <th class="px-4 sm:px-6 py-3 sm:py-4 font-bold">System Role</th>
                         <th class="px-4 sm:px-6 py-3 sm:py-4 font-bold w-1/4">Assigned Departments</th>
+                        <th class="px-4 sm:px-6 py-3 sm:py-4 font-bold text-center">Online Status</th>
+                        <th class="px-4 sm:px-6 py-3 sm:py-4 font-bold">Active Time</th>
+                        <th class="px-4 sm:px-6 py-3 sm:py-4 font-bold">Offline Time</th>
                         <th class="px-4 sm:px-6 py-3 sm:py-4 font-bold text-center">Status</th>
                         <th class="px-4 sm:px-6 py-3 sm:py-4 font-bold text-right">Actions</th>
                     </tr>
                 </thead>
                 <tbody id="usersTableBody" class="divide-y divide-gray-50 bg-white">
                     <tr>
-                        <td colspan="6" class="px-6 py-16 text-center text-slate-500 flex flex-col items-center justify-center bg-white">
+                        <td colspan="9" class="px-6 py-16 text-center text-slate-500 flex flex-col items-center justify-center bg-white">
                             <svg class="animate-spin h-8 w-8 text-blue-900 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
@@ -437,11 +440,11 @@
                 renderUsersTable(allUsers);
             } else {
                 const detail = await res.text();
-                document.getElementById('usersTableBody').innerHTML = `<tr><td colspan="6" class="px-6 py-12 text-center text-red-500 font-bold bg-white text-xs sm:text-sm">Failed to load active users (HTTP ${res.status}).</td></tr>`;
+                document.getElementById('usersTableBody').innerHTML = `<tr><td colspan="9" class="px-6 py-12 text-center text-red-500 font-bold bg-white text-xs sm:text-sm">Failed to load active users (HTTP ${res.status}).</td></tr>`;
                 console.error('Failed to load active users', { status: res.status, api: '/api/v1/users/?is_active=true', detail });
             }
         } catch (error) {
-            document.getElementById('usersTableBody').innerHTML = `<tr><td colspan="6" class="px-6 py-12 text-center text-red-500 font-bold bg-white text-xs sm:text-sm">Network Error. Please check your connection.</td></tr>`;
+            document.getElementById('usersTableBody').innerHTML = `<tr><td colspan="9" class="px-6 py-12 text-center text-red-500 font-bold bg-white text-xs sm:text-sm">Network Error. Please check your connection.</td></tr>`;
         }
     }
 
@@ -454,10 +457,10 @@
                 allUsers = await res.json();
                 renderUsersTable(allUsers);
             } else {
-                document.getElementById('usersTableBody').innerHTML = `<tr><td colspan="6" class="px-6 py-12 text-center text-red-500 font-bold bg-white text-xs sm:text-sm">Failed to load deleted users.</td></tr>`;
+                document.getElementById('usersTableBody').innerHTML = `<tr><td colspan="9" class="px-6 py-12 text-center text-red-500 font-bold bg-white text-xs sm:text-sm">Failed to load deleted users.</td></tr>`;
             }
         } catch (error) {
-            document.getElementById('usersTableBody').innerHTML = `<tr><td colspan="6" class="px-6 py-12 text-center text-red-500 font-bold bg-white text-xs sm:text-sm">Network Error.</td></tr>`;
+            document.getElementById('usersTableBody').innerHTML = `<tr><td colspan="9" class="px-6 py-12 text-center text-red-500 font-bold bg-white text-xs sm:text-sm">Network Error.</td></tr>`;
         }
     }
 
@@ -485,12 +488,21 @@
         }
     }
 
+    // Presence times arrive as UTC ISO strings; show them in the viewer's
+    // local time in the same readable style as the other admin pages.
+    function formatPresenceTime(value) {
+        if (!value) return '—';
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return '—';
+        return date.toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    }
+
     function renderUsersTable(users) {
         const tbody = document.getElementById('usersTableBody');
         
         if (!users || users.length === 0) {
             const emptyText = currentTab === 'active' ? 'No active users found.' : 'No deleted users in trash.';
-            tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-16 text-center text-slate-500 font-medium bg-white text-xs sm:text-sm">${emptyText}</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="9" class="px-6 py-16 text-center text-slate-500 font-medium bg-white text-xs sm:text-sm">${emptyText}</td></tr>`;
             return;
         }
 
@@ -510,6 +522,13 @@
                 statusBadge = `<span class="px-2.5 sm:px-3 py-1 inline-flex text-[10px] sm:text-xs leading-5 font-bold rounded-md bg-emerald-100 text-emerald-800 border border-emerald-200">Active</span>`;
             } else {
                 statusBadge = `<span class="px-2.5 sm:px-3 py-1 inline-flex text-[10px] sm:text-xs leading-5 font-bold rounded-md bg-slate-200 text-slate-600 border border-slate-300">Inactive</span>`;
+            }
+
+            let presenceBadge = '<span class="text-slate-400 font-semibold">—</span>';
+            if (user.presence_status === 'online') {
+                presenceBadge = `<span class="px-2.5 sm:px-3 py-1 inline-flex items-center gap-1.5 text-[10px] sm:text-xs leading-5 font-bold rounded-md bg-emerald-100 text-emerald-800 border border-emerald-200"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>Online</span>`;
+            } else if (user.presence_status === 'offline') {
+                presenceBadge = `<span class="px-2.5 sm:px-3 py-1 inline-flex items-center gap-1.5 text-[10px] sm:text-xs leading-5 font-bold rounded-md bg-slate-100 text-slate-500 border border-slate-200"><span class="w-1.5 h-1.5 rounded-full bg-slate-400 shrink-0"></span>Offline</span>`;
             }
 
             // 🌟 URL-Safe JSON Serialization
@@ -567,6 +586,9 @@
                     <td class="px-4 sm:px-6 py-4 sm:py-5 text-slate-600 text-xs sm:text-sm min-w-[150px]">
                         ${formatUserDepartments(user)}
                     </td>
+                    <td class="px-4 sm:px-6 py-4 sm:py-5 whitespace-nowrap text-center">${presenceBadge}</td>
+                    <td class="px-4 sm:px-6 py-4 sm:py-5 whitespace-nowrap text-slate-600 font-medium text-xs sm:text-sm">${formatPresenceTime(user.last_active_at)}</td>
+                    <td class="px-4 sm:px-6 py-4 sm:py-5 whitespace-nowrap text-slate-600 font-medium text-xs sm:text-sm">${formatPresenceTime(user.last_offline_at)}</td>
                     <td class="px-4 sm:px-6 py-4 sm:py-5 whitespace-nowrap text-center">${statusBadge}</td>
                     <td class="px-4 sm:px-6 py-4 sm:py-5 text-right w-24">
                         ${actionButtons}

@@ -32,6 +32,11 @@ class UserResponse(BaseModel):
     departments: list[UserDeptResponse] = []
     created_at: datetime | None = None
     last_login: datetime | None = None
+    # Presence (see app.modules.users.presence). Filled on the user list
+    # and user detail endpoints; None on endpoints that do not compute it.
+    presence_status: str | None = None
+    last_active_at: datetime | None = None
+    last_offline_at: datetime | None = None
     avatar_path: str | None = Field(default=None, exclude=True)
     avatar_updated_at: datetime | None = Field(default=None, exclude=True)
 
