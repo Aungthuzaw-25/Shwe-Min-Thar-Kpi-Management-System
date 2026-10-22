@@ -43,7 +43,6 @@ pytest_focus.txt
 compile.log
 diffcheck.log
 ruff.log
-sonar-debug.log
 *.response
 query
 
