@@ -85,11 +85,11 @@
     <aside id="mainSidebar" class="w-64 bg-kpi-red text-white flex-col h-full shadow-xl z-30 shrink-0 absolute md:relative inset-y-0 left-0 transform -translate-x-full md:translate-x-0 transition-transform duration-300 flex">
         <!-- Logo Area -->
         <div class="p-6 flex items-center justify-between space-x-3 shrink-0">
-            <div class="flex items-center space-x-3">
-                <img src="/static/image/smt-logo.jpg" alt="Shwe Min Thar logo" class="w-11 h-11 rounded-xl object-cover shrink-0 shadow-sm">
-                <div>
-                    <h1 class="text-lg font-bold tracking-wide leading-tight">Shwe Min Thar</h1>
-                    <p class="text-[10px] text-slate-400 uppercase tracking-widest">Performance Matters</p>
+            <div class="flex items-center space-x-3 min-w-0">
+                <img src="{{ brand.logo_url or "/static/image/smt-logo.jpg" }}" alt="{{ brand.company_name or "Shwe Min Thar" }} logo" class="w-11 h-11 rounded-xl object-cover shrink-0 shadow-sm">
+                <div class="min-w-0">
+                    <h1 class="text-lg font-bold tracking-wide leading-tight line-clamp-2 break-words">{{ brand.company_name or "Shwe Min Thar" }}</h1>
+                    {% if brand.company_tagline %}<p class="text-[10px] text-slate-400 uppercase tracking-widest line-clamp-2 break-words">{{ brand.company_tagline }}</p>{% endif %}
                 </div>
             </div>
             <!-- Mobile Close Button inside Sidebar -->
@@ -221,7 +221,7 @@
         <!-- 📱 MOBILE RESPONSIVE FIX: Functional Mobile Menu Toggle -->
         {% if user_role in ['Super Admin', 'Admin'] %}
         <div class="exec-mobile-sidebar-toggle flex items-center justify-between bg-kpi-red text-white p-4 shrink-0 shadow-md z-10">
-            <h1 class="text-lg font-bold tracking-wide">Shwe Min Thar</h1>
+            <h1 class="text-lg font-bold tracking-wide truncate min-w-0 pr-3">{{ brand.company_name or "Shwe Min Thar" }}</h1>
             <button type="button" class="exec-mobile-sidebar-button text-white hover:text-red-200 focus:outline-none" onclick="toggleMobileSidebar()" aria-label="Open navigation menu" aria-controls="mainSidebar" aria-expanded="false">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
             </button>

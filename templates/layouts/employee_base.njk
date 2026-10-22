@@ -71,10 +71,13 @@
     <aside id="mainSidebar" class="w-[260px] bg-slate-900 text-white flex-col shrink-0 transition-transform duration-300 absolute md:relative inset-y-0 left-0 z-30 shadow-2xl transform -translate-x-full md:translate-x-0 flex">
         <!-- Logo -->
         <div class="h-24 flex items-center justify-between px-6 sm:px-8 border-b border-slate-800 bg-slate-900/90 backdrop-blur-md shrink-0">
-            <h1 class="text-lg sm:text-xl font-black tracking-tight flex items-center">
-                <img src="/static/image/smt-logo.jpg" alt="Shwe Min Thar logo" class="w-10 h-10 rounded-xl mr-3 shadow-sm object-cover">
-                Shwe Min Thar
-            </h1>
+            <div class="flex items-center min-w-0">
+                <img src="{{ brand.logo_url or "/static/image/smt-logo.jpg" }}" alt="{{ brand.company_name or "Shwe Min Thar" }} logo" class="w-10 h-10 rounded-xl mr-3 shadow-sm object-cover shrink-0">
+                <div class="min-w-0">
+                    <h1 class="text-lg sm:text-xl font-black tracking-tight leading-tight line-clamp-2 break-words">{{ brand.company_name or "Shwe Min Thar" }}</h1>
+                    {% if brand.company_tagline %}<p class="text-[10px] text-slate-400 uppercase tracking-widest line-clamp-2 break-words">{{ brand.company_tagline }}</p>{% endif %}
+                </div>
+            </div>
             <button type="button" class="md:hidden text-slate-400 hover:text-white focus:outline-none" onclick="toggleMobileSidebar()" aria-label="Close navigation menu">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
             </button>
@@ -161,9 +164,9 @@
     <main class="flex-1 flex flex-col min-w-0 overflow-hidden relative z-10 bg-slate-50/50">
         <!-- Mobile Header with Menu Toggle -->
         <div class="md:hidden flex items-center justify-between bg-slate-900 text-white p-4 sm:p-5 shrink-0 shadow-sm z-10">
-            <h1 class="text-lg sm:text-xl font-black tracking-tight flex items-center">
-                <img src="/static/image/smt-logo.jpg" alt="Shwe Min Thar logo" class="w-8 h-8 rounded-lg mr-2 shadow-sm object-cover">
-                Shwe Min Thar
+            <h1 class="text-lg sm:text-xl font-black tracking-tight flex items-center min-w-0">
+                <img src="{{ brand.logo_url or "/static/image/smt-logo.jpg" }}" alt="{{ brand.company_name or "Shwe Min Thar" }} logo" class="w-8 h-8 rounded-lg mr-2 shadow-sm object-cover shrink-0">
+                <span class="truncate">{{ brand.company_name or "Shwe Min Thar" }}</span>
             </h1>
             <button type="button" class="text-slate-400 hover:text-white focus:outline-none" onclick="toggleMobileSidebar()" aria-label="Open navigation menu" aria-controls="mainSidebar" aria-expanded="false">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>

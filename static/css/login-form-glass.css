@@ -93,3 +93,10 @@ main .login-card.login-card {
     transition: none;
   }
 }
+
+/* Stage 2: the `hidden` attribute must always win on the login page.
+   Tailwind display utilities (flex/grid on the OAuth area) otherwise
+   override it and hidden elements stay visible. */
+[hidden] {
+  display: none !important;
+}

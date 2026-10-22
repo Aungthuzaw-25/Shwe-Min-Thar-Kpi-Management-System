@@ -26,6 +26,127 @@ class SystemSettingUpdate(BaseModel):
     description: str | None = None
 
 
+# ---------------------------------------------------------------------------
+# Company trademark (branding): the company name lives in the existing
+# ``general`` settings value; the logo reference lives in a ``branding``
+# settings value that only the branding endpoints may write.
+# ---------------------------------------------------------------------------
+
+COMPANY_NAME_MAX_LENGTH = 60
+COMPANY_TAGLINE_MAX_LENGTH = 90
+
+# Fields that describe the stored logo. They are managed exclusively by the
+# logo upload/reset endpoints, so generic settings saves must never be able
+# to forge them (e.g. point the public logo at an arbitrary object).
+LOGO_REFERENCE_FIELDS = {
+    "logo",
+    "logo_url",
+    "logo_object",
+    "logo_storage",
+    "logo_updated_at",
+}
+
+
+def validate_company_name(value) -> str:
+    """Return the trimmed company name or raise ``ValueError``.
+
+    Plain text only: no markup, no line breaks, no control characters
+    (the same rule the email ``from_name`` field already follows).
+    """
+    if not isinstance(value, str):
+        raise ValueError("Company name must be plain text.")
+    name = value.strip()
+    if not name:
+        raise ValueError("Company name is required.")
+    if len(name) > COMPANY_NAME_MAX_LENGTH:
+        raise ValueError(
+            f"Company name must be at most {COMPANY_NAME_MAX_LENGTH} characters."
+        )
+    if any(
+        character in name for character in "<>\r\n"
+    ) or any(ord(character) < 32 or ord(character) == 127 for character in name):
+        raise ValueError("Company name must be plain text.")
+    return name
+
+
+def validate_company_tagline(value) -> str:
+    """Return the trimmed tagline or raise ``ValueError``.
+
+    Same plain-text rules as the company name, with its own length
+    limit. An empty tagline is allowed — it means "show no subtitle".
+    """
+    if not isinstance(value, str):
+        raise ValueError("Company tagline must be plain text.")
+    tagline = value.strip()
+    if len(tagline) > COMPANY_TAGLINE_MAX_LENGTH:
+        raise ValueError(
+            f"Company tagline must be at most {COMPANY_TAGLINE_MAX_LENGTH} characters."
+        )
+    if any(
+        character in tagline for character in "<>\r\n"
+    ) or any(ord(character) < 32 or ord(character) == 127 for character in tagline):
+        raise ValueError("Company tagline must be plain text.")
+    return tagline
+
+
+def normalize_general_settings(value: dict) -> dict:
+    """Validate the ``general`` settings value for saving.
+
+    ``company_name`` / ``company_tagline`` are checked with the
+    trademark rules when present. Logo reference fields are dropped:
+    the logo can only change through the logo upload/reset endpoints.
+    Other fields (timezone, date_format) pass through unchanged,
+    exactly as before.
+    """
+    sanitized = {
+        key: item
+        for key, item in dict(value).items()
+        if key not in LOGO_REFERENCE_FIELDS
+    }
+    if sanitized.get("company_name") is not None:
+        sanitized["company_name"] = validate_company_name(
+            sanitized["company_name"]
+        )
+    if sanitized.get("company_tagline") is not None:
+        sanitized["company_tagline"] = validate_company_tagline(
+            sanitized["company_tagline"]
+        )
+    return sanitized
+
+
+class CompanyTrademarkUpdate(BaseModel):
+    company_name: str
+    # Optional: omitting it leaves the saved tagline untouched; sending
+    # an empty string clears the tagline (no subtitle shown).
+    company_tagline: str | None = None
+
+    @field_validator("company_name", mode="before")
+    @classmethod
+    def normalize_company_name(cls, value):
+        return validate_company_name(value)
+
+    @field_validator("company_tagline", mode="before")
+    @classmethod
+    def normalize_company_tagline(cls, value):
+        if value is None:
+            return None
+        return validate_company_tagline(value)
+
+
+class BrandResponse(BaseModel):
+    company_name: str
+    company_tagline: str
+    logo_url: str
+    has_custom_logo: bool
+    logo_updated_at: int | None = None
+
+
+class PublicBrandResponse(BrandResponse):
+    # Login-provider truth for the unauthenticated login page: a provider
+    # flag is True only when that provider is fully configured.
+    oauth_providers: dict[str, bool]
+
+
 class PasswordPolicyValue(BaseModel):
     minimum_password_length: StrictInt = Field(ge=8, le=128)
     require_complexity: StrictBool
