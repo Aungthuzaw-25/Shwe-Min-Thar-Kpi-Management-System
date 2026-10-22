@@ -45,6 +45,18 @@
                     <span class="text-xs sm:text-sm font-bold text-slate-600">Account Status</span>
                     <span id="infoStatus" class="text-[10px] sm:text-xs font-extrabold px-2 sm:px-3 py-1 rounded-md shadow-sm">-</span>
                 </div>
+                <div class="flex justify-between items-center bg-slate-50 p-2.5 sm:p-3 rounded-xl border border-gray-100">
+                    <span class="text-xs sm:text-sm font-bold text-slate-600">Online Status</span>
+                    <span id="infoPresence" class="text-[10px] sm:text-xs font-extrabold px-2 sm:px-3 py-1 rounded-md shadow-sm">-</span>
+                </div>
+                <div class="flex justify-between items-center bg-slate-50 p-2.5 sm:p-3 rounded-xl border border-gray-100">
+                    <span class="text-xs sm:text-sm font-bold text-slate-600">Active Time</span>
+                    <span id="infoActiveTime" class="text-xs sm:text-sm font-semibold text-slate-700">-</span>
+                </div>
+                <div class="flex justify-between items-center bg-slate-50 p-2.5 sm:p-3 rounded-xl border border-gray-100">
+                    <span class="text-xs sm:text-sm font-bold text-slate-600">Offline Time</span>
+                    <span id="infoOfflineTime" class="text-xs sm:text-sm font-semibold text-slate-700">-</span>
+                </div>
             </div>
         </div>
 
@@ -104,6 +116,15 @@
 <script src="/static/js/avatar-renderer.js"></script>
 <script src="/static/js/avatar.js"></script>
 <script>
+    // Presence times arrive as UTC ISO strings; show them in the viewer's
+    // local time in the same readable style as the other admin pages.
+    function formatPresenceTime(value) {
+        if (!value) return "—";
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return "—";
+        return date.toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    }
+
     // 🌟 SECURITY FIX: Global HTML Escape Function to prevent XSS
     function escapeHTML(str) {
         if (str === null || str === undefined) return "";
@@ -146,6 +167,21 @@
                 'No Region Assigned';
                 
             document.getElementById("infoRole").innerText = user.role?.name || 'User';
+
+            const presenceEl = document.getElementById("infoPresence");
+            if (user.presence_status === 'online') {
+                presenceEl.innerText = "Online";
+                presenceEl.className = "text-[10px] sm:text-xs font-extrabold text-emerald-800 bg-emerald-100 border border-emerald-200 px-2 sm:px-3 py-1 rounded-md shadow-sm";
+            } else if (user.presence_status === 'offline') {
+                presenceEl.innerText = "Offline";
+                presenceEl.className = "text-[10px] sm:text-xs font-extrabold text-slate-600 bg-slate-200 border border-slate-300 px-2 sm:px-3 py-1 rounded-md shadow-sm";
+            } else {
+                presenceEl.innerText = "—";
+                presenceEl.className = "text-[10px] sm:text-xs font-extrabold text-slate-400 px-2 sm:px-3 py-1";
+            }
+
+            document.getElementById("infoActiveTime").innerText = formatPresenceTime(user.last_active_at);
+            document.getElementById("infoOfflineTime").innerText = formatPresenceTime(user.last_offline_at);
             
             document.getElementById("profileAvatar").innerHTML = window.kpiAvatarMarkup(user, 128);
 
