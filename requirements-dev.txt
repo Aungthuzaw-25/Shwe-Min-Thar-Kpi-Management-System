@@ -1,6 +1,6 @@
 -r requirements.txt
 pytest
-pytest-asyncio==0.23.5
+pytest-asyncio==1.4.0
 pytest-cov
 playwright
 httpx
