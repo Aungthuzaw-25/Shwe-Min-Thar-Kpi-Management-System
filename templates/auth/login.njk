@@ -435,6 +435,7 @@
         if (loginQuery.get('session_expired') === 'true') {
             document.getElementById('sessionExpiredNotice').classList.remove('hidden');
         }
+        const allowedPostLoginPaths = new Set(['/dashboard', '/admin/dashboard', '/superadmin/dashboard']);
         function normalizePostLoginPath(path) {
             if (!path || !path.startsWith('/') || path.startsWith('//')
                 || path.includes('\\') || /[?#\u0000-\u001f]/.test(path)
@@ -448,7 +449,10 @@
                 return null;
             }
         }
-        const safePostLoginPath = normalizePostLoginPath(loginQuery.get('next'));
+        const requestedPostLoginPath = normalizePostLoginPath(loginQuery.get('next'));
+        const safePostLoginPath = allowedPostLoginPaths.has(requestedPostLoginPath)
+            ? requestedPostLoginPath
+            : null;
         const dashboardPathFor = (user) => {
             const roleName = user?.role?.name || '';
             if (roleName === 'Super Admin') return '/superadmin/dashboard';

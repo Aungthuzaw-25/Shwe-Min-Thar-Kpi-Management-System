@@ -37,6 +37,9 @@ def test_jwt_configuration_uses_canonical_environment_names(monkeypatch):
 
 
 def test_legacy_jwt_environment_names_remain_supported(monkeypatch):
+    monkeypatch.delenv("JWT_SECRET_KEY", raising=False)
+    monkeypatch.delenv("JWT_ALGORITHM", raising=False)
+    monkeypatch.delenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", raising=False)
     monkeypatch.setenv("SECRET_KEY", "legacy-test-secret")
     monkeypatch.setenv("ALGORITHM", "HS256")
     monkeypatch.setenv("ACCESS_TOKEN_EXPIRE_MINUTES", "90")
