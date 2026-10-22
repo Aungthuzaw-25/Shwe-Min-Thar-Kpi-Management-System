@@ -5,8 +5,8 @@
   if (!root) return;
 
   if (typeof window.Chart === 'function') {
-    window.Chart.defaults.color = '#FFF9F2';
-    window.Chart.defaults.borderColor = 'rgba(255, 249, 242, .16)';
+    window.Chart.defaults.color = '#4E657D';
+    window.Chart.defaults.borderColor = 'rgba(28, 43, 58, .07)';
   }
 
   const context = window.KPI_EXECUTIVE_CONTEXT || {};
@@ -540,7 +540,7 @@
           label: 'Average KPI score',
           data: trend.values,
           borderColor: accent,
-          backgroundColor: 'rgba(47, 91, 255, .08)',
+          backgroundColor: 'rgba(107, 155, 210, .12)',
           pointBackgroundColor: accent,
           pointBorderColor: '#FFFFFF',
           pointRadius: context => context.dataIndex === lastDataIndex ? 6 : 0,

@@ -1,101 +1,171 @@
+/*
+ * Liquid glass theme layer for authenticated layouts — photo-1 style.
+ *
+ * Direction set by Zenn (2026-10-22, reference photo 1): a soft pale icy
+ * blue-grey world, frosted translucent white cards with large radii and
+ * very soft diffused shadows, dark navy ink (#1C2B3A) with muted blue-grey
+ * secondary text, and a light frosted sidebar rail whose selected item is
+ * a dark navy pill. This file is the final cascade layer in both layouts
+ * (file name and versioned link unchanged) and re-points every scoped page
+ * system (kd, kg, ep, et, executive) at the same glass tokens.
+ *
+ * Readability guard: glass surfaces are 62–72% white over a pale
+ * background, so navy body text keeps strong contrast everywhere.
+ */
+
 .app-shell {
-  --color-bg: #fff9f2;
-  --color-surface: rgba(255, 255, 255, .72);
-  --color-surface-subtle: #fffdf9;
-  --color-surface-muted: #f2ece5;
-  --color-border: rgba(121, 13, 22, .12);
-  --color-border-strong: rgba(121, 13, 22, .24);
-  --color-text: #171717;
-  --color-text-muted: #6f6a66;
-  --color-primary: #790d16;
-  --color-primary-strong: #5f0911;
-  --focus-ring: 0 0 0 3px rgba(121, 13, 22, .2);
-  --shadow-sm: 0 2px 8px rgba(56, 36, 29, .06);
-  --shadow-md: 0 12px 32px rgba(56, 36, 29, .1);
+  --color-bg: #edf3f7;
+  --color-surface: rgba(255, 255, 255, .78);
+  --color-surface-solid: #ffffff;
+  --color-surface-subtle: rgba(255, 255, 255, .55);
+  --color-surface-muted: rgba(203, 222, 236, .5);
+  --color-border: rgba(255, 255, 255, .85);
+  --color-border-strong: rgba(110, 143, 170, .32);
+  --color-text: #1c2b3a;
+  --color-text-muted: #4E657D;
+  --color-primary: #3d5a80;
+  --color-primary-strong: #2e4562;
+  --focus-ring: 0 0 0 3px rgba(61, 90, 128, .25);
+  --shadow-sm: inset 0 1px 0 rgba(255, 255, 255, .9), 0 18px 44px rgba(28, 43, 58, .055);
+  --shadow-md: inset 0 1px 0 rgba(255, 255, 255, .9), 0 30px 64px rgba(28, 43, 58, .085);
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 24px;
+  --glass-blur: blur(18px) saturate(1.3);
   color: var(--color-text);
   background: var(--color-bg);
 }
 
 body.app-shell {
   overflow-x: hidden;
-  background: var(--color-bg) !important;
   color: var(--color-text);
+  background:
+    radial-gradient(900px 620px at 8% -6%, rgba(255, 255, 255, .98), rgba(255, 255, 255, 0) 62%),
+    radial-gradient(820px 560px at 88% -10%, rgba(198, 221, 238, .38), rgba(198, 221, 238, 0) 60%),
+    radial-gradient(1000px 760px at 104% 108%, rgba(183, 208, 229, .32), rgba(183, 208, 229, 0) 62%),
+    radial-gradient(700px 520px at -6% 96%, rgba(255, 255, 255, .8), rgba(255, 255, 255, 0) 60%),
+    linear-gradient(155deg, #e9f1f6 0%, #f8fbfc 48%, #eaf2f7 100%);
+  background-attachment: fixed;
 }
 
 .app-shell main.flex-1 {
   min-width: 0;
-  background: var(--color-bg) !important;
+  margin: 14px 14px 14px 12px;
+  background: rgba(246, 250, 252, .6);
+  border: 1px solid rgba(255, 255, 255, .75);
+  border-radius: 24px;
+  box-shadow: 0 30px 64px rgba(28, 43, 58, .07), inset 0 1px 0 rgba(255, 255, 255, .8);
 }
 
 .app-shell main.flex-1 > .flex-1.overflow-y-auto {
   min-width: 0;
-  background: var(--color-bg) !important;
+  padding: 6px 10px 12px;
+  background: transparent;
   overscroll-behavior: contain;
 }
 
-.app-shell #mainSidebar,
-.app-shell #mainSidebar > div:first-child,
-.app-shell #mainSidebar > div:last-child {
-  background: #790d16 !important;
-  border-color: rgba(255, 249, 242, .18) !important;
+/* Sidebar: light frosted rail, navy text (photo 1). The markup still
+   carries dark-rail utility classes; the ID-scoped rules here win. */
+.app-shell #mainSidebar {
+  width: var(--sidebar-width);
+  margin: 14px 0 14px 14px;
+  background: rgba(251, 253, 254, .8);
+  border: 1px solid rgba(255, 255, 255, .7);
+  border-radius: 24px;
+  box-shadow: 0 24px 52px rgba(28, 43, 58, .06), inset 0 1px 0 rgba(255, 255, 255, .85);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
 }
 
-.app-shell #mainSidebar {
-  width: 250px !important;
-  box-shadow: 8px 0 28px rgba(55, 7, 12, .12);
+.app-shell #mainSidebar > div:first-child,
+.app-shell #mainSidebar > div:last-child {
+  background: transparent;
+  border-color: rgba(110, 143, 170, .25);
+  color: var(--color-text);
+}
+
+.app-shell #mainSidebar > div:first-child svg {
+  fill: var(--color-primary);
+}
+
+.app-shell #mainSidebar > div:first-child button {
+  color: var(--color-text-muted);
 }
 
 .app-shell #mainSidebar nav a {
-  min-height: 42px;
-  color: rgba(255, 249, 242, .82);
-  border-radius: 12px;
-  transition: background-color .18s ease, color .18s ease, box-shadow .18s ease;
+  min-height: 40px;
+  color: #40536a;
+  border-radius: var(--radius-md);
+  transition: background-color .15s ease, color .15s ease, box-shadow .15s ease;
 }
 
 .app-shell #mainSidebar nav a:hover,
 .app-shell #mainSidebar nav a:focus-visible {
-  color: #fff9f2;
-  background: rgba(255, 255, 255, .1);
+  color: var(--color-text);
+  background: rgba(255, 255, 255, .8);
 }
 
 .app-shell #mainSidebar nav a.active,
 .app-shell #mainSidebar nav a.sidebar-item-active,
 .app-shell .sidebar-link.active {
-  color: #fff9f2 !important;
-  background: rgba(255, 255, 255, .16) !important;
-  box-shadow: inset 3px 0 0 #fff9f2, 0 4px 14px rgba(55, 7, 12, .16) !important;
+  color: #ffffff;
+  background: #1c2b3a;
+  box-shadow: 0 10px 20px rgba(21, 27, 49, .18);
 }
 
 .app-shell #mainSidebar nav > div,
 .app-shell #mainSidebar nav .nav-group-label {
-  color: rgba(255, 249, 242, .68);
+  color: #4E657D;
 }
 
 .app-shell #mainSidebar > div:last-child,
 .app-shell #mainSidebar > div:last-child > * {
-  color: #fff9f2;
+  color: var(--color-text);
+}
+
+.app-shell #mainSidebar > div:last-child > div {
+  background: rgba(255, 255, 255, .55);
+  border: 1px solid rgba(255, 255, 255, .6);
+}
+
+.app-shell #mainSidebar > div:last-child p {
+  color: var(--color-text-muted);
+}
+
+.app-shell #mainSidebar > div:last-child .text-sm {
+  color: var(--color-text);
 }
 
 .app-shell #mainSidebar > div:last-child button {
-  border-color: rgba(255, 249, 242, .24);
+  background: rgba(255, 255, 255, .4);
+  border: 1px solid rgba(110, 143, 170, .4);
+  color: #40536a;
+  border-radius: var(--radius-md);
+}
+
+.app-shell #mainSidebar > div:last-child button:hover {
+  background: #ffffff;
+  color: var(--color-text);
 }
 
 .app-shell .sidebar-link:not(.active) {
-  color: rgba(255, 249, 242, .82);
+  color: #40536a;
 }
 
 .app-shell .sidebar-link:hover:not(.active) {
-  color: #fff9f2;
-  background: rgba(255, 255, 255, .1);
+  color: var(--color-text);
+  background: rgba(255, 255, 255, .8);
 }
 
+/* Topbar: frosted white strip over the icy background. */
 .app-shell .app-topbar {
   position: relative;
-  background: rgba(255, 255, 255, .82);
-  border-bottom: 1px solid var(--color-border);
-  box-shadow: 0 5px 18px rgba(56, 36, 29, .04);
-  -webkit-backdrop-filter: blur(14px);
-  backdrop-filter: blur(14px);
+  border-radius: 24px 24px 0 0;
+  background: rgba(251, 253, 254, .78);
+  border-bottom: 1px solid rgba(255, 255, 255, .65);
+  box-shadow: none;
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
 }
 
 .app-shell .app-topbar__eyebrow,
@@ -109,18 +179,18 @@ body.app-shell {
 }
 
 .app-shell .app-topbar__icon {
-  color: var(--color-primary);
-  border-radius: 11px;
+  color: var(--color-text-muted);
+  border-radius: var(--radius-md);
 }
 
 .app-shell .app-topbar__icon:hover {
   color: var(--color-primary);
-  background: var(--color-surface-muted);
-  border-color: var(--color-border);
+  background: rgba(255, 255, 255, .8);
+  border-color: rgba(255, 255, 255, .65);
 }
 
 .app-shell .app-topbar__identity {
-  border-color: var(--color-border);
+  border-color: rgba(110, 143, 170, .3);
 }
 
 .app-shell .app-topbar__avatar,
@@ -130,36 +200,38 @@ body.app-shell {
 
 .app-shell .exec-mobile-sidebar-toggle,
 .app-shell main > .md\:hidden {
-  color: #fff9f2;
-  background: var(--color-primary) !important;
+  color: #ffffff;
+  background: #1c2b3a;
+  border-radius: 24px 24px 0 0;
 }
 
 .app-shell .exec-mobile-sidebar-toggle button,
 .app-shell main > .md\:hidden button {
-  color: #fff9f2;
+  color: #ffffff;
 }
 
+/* Surfaces: frosted white glass, large radius, soft diffused shadow. */
 .app-shell .app-surface,
 .app-shell main .app-surface,
 .app-shell main .bg-white.rounded-xl,
 .app-shell main .bg-white.rounded-2xl,
 .app-shell main .bg-white.rounded-3xl,
 .app-shell main .bg-white[class*="shadow"] {
-  background-color: var(--color-surface) !important;
-  border-color: var(--color-border) !important;
-  box-shadow: 0 8px 24px rgba(56, 36, 29, .06), inset 0 1px 0 rgba(255, 255, 255, .8);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
+  background-color: var(--color-surface);
+  border-color: var(--color-border);
+  box-shadow: var(--shadow-sm);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
 }
 
 .app-shell main .rounded-2xl,
 .app-shell main .rounded-3xl {
-  border-radius: 18px;
+  border-radius: var(--radius-lg);
 }
 
 .app-shell .workspace-page {
   color: var(--color-text);
-  background: var(--color-bg);
+  background: transparent;
 }
 
 .app-shell .workspace-page > .workspace-header h1,
@@ -179,23 +251,22 @@ body.app-shell {
 }
 
 .app-shell .workspace-toolbar,
-.app-shell .workspace-table,
-.app-shell .workspace-tabs {
-  border-color: var(--color-border);
-  box-shadow: 0 8px 24px rgba(56, 36, 29, .06);
-}
-
-.app-shell .workspace-toolbar,
 .app-shell .workspace-table {
   background: var(--color-surface);
+  border-color: var(--color-border);
+  box-shadow: var(--shadow-sm);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+
+.app-shell .workspace-tabs {
+  background: rgba(255, 255, 255, .4);
+  border-color: var(--color-border);
+  box-shadow: none;
 }
 
 .app-shell .workspace-table > .table-caption {
-  border-color: var(--color-border);
-}
-
-.app-shell .workspace-tabs {
-  background: rgba(242, 236, 229, .76);
+  border-color: rgba(110, 143, 170, .25);
 }
 
 .app-shell .workspace-tabs button[aria-selected="true"],
@@ -204,6 +275,7 @@ body.app-shell {
   color: var(--color-primary);
 }
 
+/* Primary actions: one blue, soft shadow, everywhere. */
 .app-shell .app-button--primary,
 .app-shell main button.bg-blue-600,
 .app-shell main button.bg-blue-700,
@@ -211,10 +283,10 @@ body.app-shell {
 .app-shell main a.bg-blue-600,
 .app-shell main a.bg-blue-700,
 .app-shell main a.bg-indigo-600 {
-  color: #fff9f2 !important;
-  background: var(--color-primary) !important;
-  border-color: var(--color-primary) !important;
-  box-shadow: 0 6px 16px rgba(121, 13, 22, .2);
+  color: #ffffff;
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  box-shadow: 0 12px 24px rgba(61, 90, 128, .18);
 }
 
 .app-shell .app-button--primary:hover,
@@ -224,19 +296,20 @@ body.app-shell {
 .app-shell main a.bg-blue-600:hover,
 .app-shell main a.bg-blue-700:hover,
 .app-shell main a.bg-indigo-600:hover {
-  background: var(--color-primary-strong) !important;
+  background: var(--color-primary-strong);
 }
 
+/* Forms: near-white glass fields, blue focus ring. */
 .app-shell main :is(input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]), select, textarea) {
   color: var(--color-text);
-  background-color: rgba(255, 255, 255, .88);
+  background-color: rgba(255, 255, 255, .78);
   border-color: var(--color-border-strong);
   border-radius: 10px;
-  box-shadow: inset 2px 2px 5px rgba(56, 36, 29, .045), inset -2px -2px 5px rgba(255, 255, 255, .82);
+  box-shadow: none;
 }
 
 .app-shell main :is(input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]), select, textarea)::placeholder {
-  color: #817972;
+  color: #4E657D;
 }
 
 .app-shell main :is(input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]), select, textarea):focus {
@@ -245,12 +318,12 @@ body.app-shell {
 }
 
 .app-shell main :is(table, .table) {
-  border-color: var(--color-border);
+  border-color: rgba(110, 143, 170, .25);
 }
 
 .app-shell main :is(thead th, .table thead th) {
-  color: #5f5752;
-  background: var(--color-surface-muted);
+  color: var(--color-text-muted);
+  background: rgba(255, 255, 255, .4);
 }
 
 .app-shell main :is(tbody td, .table tbody td) {
@@ -258,19 +331,19 @@ body.app-shell {
 }
 
 .app-shell main :is(tbody tr:hover, .table tbody tr:hover) {
-  background: rgba(242, 236, 229, .72);
+  background: rgba(255, 255, 255, .5);
 }
 
 .app-shell main .bg-slate-50,
 .app-shell main .bg-gray-50 {
-  background-color: var(--color-surface-muted) !important;
+  background-color: rgba(255, 255, 255, .4);
 }
 
 .app-shell main .border-gray-100,
 .app-shell main .border-gray-200,
 .app-shell main .border-slate-100,
 .app-shell main .border-slate-200 {
-  border-color: var(--color-border) !important;
+  border-color: rgba(110, 143, 170, .3);
 }
 
 .app-shell main .text-gray-900,
@@ -289,51 +362,50 @@ body.app-shell {
 
 .app-shell main .text-blue-950,
 .app-shell main .text-blue-900 {
-  color: var(--color-primary);
+  color: var(--color-primary-strong);
 }
 
 .app-shell main button.bg-blue-950,
 .app-shell main button.hover\:bg-blue-900:hover,
 .app-shell main button.bg-blue-900 {
-  color: #fff9f2 !important;
-  background: var(--color-primary) !important;
-  border-color: var(--color-primary) !important;
+  color: #ffffff;
+  background: var(--color-primary);
+  border-color: var(--color-primary);
 }
 
+/* Employee profile page on glass. */
 .app-shell .ep-page {
-  --ep-bg: #fff9f2;
+  --ep-bg: transparent;
   --ep-card: rgba(255, 255, 255, .78);
-  --ep-border: rgba(121, 13, 22, .14);
-  --ep-line: rgba(121, 13, 22, .1);
-  --ep-text: #171717;
-  --ep-body: #514b47;
-  --ep-muted: #6f6a66;
-  --ep-accent: #790d16;
-  --ep-accent-soft: rgba(121, 13, 22, .08);
-  --ep-accent-text: #5f0911;
-  --ep-neutral-soft: #f2ece5;
-  --ep-shadow: 0 8px 24px rgba(56, 36, 29, .06), inset 0 1px 0 rgba(255, 255, 255, .86);
-  background: linear-gradient(180deg, #f2ece5 0, #fff9f2 380px), #fff9f2;
+  --ep-border: rgba(255, 255, 255, .65);
+  --ep-line: rgba(110, 143, 170, .25);
+  --ep-text: #1c2b3a;
+  --ep-body: #40536a;
+  --ep-muted: #4E657D;
+  --ep-accent: #3d5a80;
+  --ep-accent-soft: rgba(255, 255, 255, .55);
+  --ep-accent-text: #2e4562;
+  --ep-neutral-soft: rgba(255, 255, 255, .45);
+  --ep-shadow: 0 10px 30px rgba(28, 43, 58, .07);
+  background: transparent;
 }
 
 .app-shell .ep-page .ep-card,
 .app-shell .ep-page .ep-connected-section {
+  border-radius: 20px;
   border-color: var(--color-border);
   background: var(--color-surface);
-  box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255, 255, 255, .86);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
+  box-shadow: var(--shadow-sm);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
 }
 
 .app-shell .ep-page .ep-hero-banner {
-  background:
-    radial-gradient(circle at 86% 12%, rgba(255, 255, 255, .2), transparent 22%),
-    radial-gradient(ellipse at 50% 125%, rgba(255, 249, 242, .18), transparent 46%),
-    linear-gradient(120deg, #5f0911 0%, #790d16 55%, #9b2630 100%);
+  background: linear-gradient(120deg, #1c2b3a 0%, #274b73 55%, #3b82f6 100%);
 }
 
 .app-shell .ep-page .ep-avatar {
-  background: linear-gradient(135deg, #790d16, #9b2630);
+  background: var(--color-primary);
 }
 
 .app-shell .ep-page .ep-permission-search:focus-within,
@@ -345,29 +417,30 @@ body.app-shell {
   outline-color: var(--color-primary);
 }
 
+/* Tasks page on glass. */
 .app-shell .et-page {
-  --et-bg: #fff9f2;
+  --et-bg: transparent;
   --et-card: rgba(255, 255, 255, .78);
-  --et-border: rgba(121, 13, 22, .14);
-  --et-line: rgba(121, 13, 22, .1);
-  --et-track: #f2ece5;
-  --et-text: #171717;
-  --et-body: #514b47;
-  --et-muted: #6f6a66;
-  --et-accent: #790d16;
-  --et-accent-soft: rgba(121, 13, 22, .08);
-  --et-accent-text: #5f0911;
-  --et-neutral-soft: #f2ece5;
-  background: linear-gradient(180deg, #f2ece5 0, #fff9f2 380px), #fff9f2;
+  --et-border: rgba(255, 255, 255, .65);
+  --et-line: rgba(110, 143, 170, .25);
+  --et-track: rgba(255, 255, 255, .45);
+  --et-text: #1c2b3a;
+  --et-body: #40536a;
+  --et-muted: #4E657D;
+  --et-accent: #3d5a80;
+  --et-accent-soft: rgba(255, 255, 255, .55);
+  --et-accent-text: #2e4562;
+  --et-neutral-soft: rgba(255, 255, 255, .45);
+  background: transparent;
 }
 
 .app-shell .et-page .workspace-header .et-button--primary {
-  background: var(--color-primary) !important;
-  color: #fff9f2 !important;
+  background: var(--color-primary);
+  color: #ffffff;
 }
 
 .app-shell .et-page .workspace-header .et-button--primary:hover {
-  background: var(--color-primary-strong) !important;
+  background: var(--color-primary-strong);
 }
 
 .app-shell .et-page .et-search:focus-within {
@@ -376,28 +449,28 @@ body.app-shell {
 }
 
 .app-shell .system-settings-page .active-tab {
-  color: #fff9f2 !important;
-  background: var(--color-primary) !important;
+  color: #ffffff;
+  background: var(--color-primary);
 }
 
 .app-shell .system-settings-page .text-blue-700,
 .app-shell .system-settings-page .text-blue-800 {
-  color: var(--color-primary) !important;
+  color: var(--color-primary);
 }
 
 .app-shell .system-settings-page .border-blue-100,
 .app-shell .system-settings-page .border-blue-200 {
-  border-color: var(--color-border-strong) !important;
+  border-color: var(--color-border-strong);
 }
 
 .app-shell .system-settings-page .hover\:bg-blue-50:hover,
 .app-shell .system-settings-page .hover\:bg-blue-100:hover {
-  background: var(--color-surface-muted) !important;
+  background: rgba(255, 255, 255, .55);
 }
 
 .app-shell .system-settings-page .bg-blue-50,
 .app-shell .system-settings-page .bg-blue-50\/50 {
-  background: rgba(121, 13, 22, .05) !important;
+  background: rgba(255, 255, 255, .45);
 }
 
 .app-shell .et-page .et-panel,
@@ -405,21 +478,23 @@ body.app-shell {
 .app-shell .et-page .et-search-empty,
 .app-shell .et-page #queueCardsContainer > div {
   border-color: var(--color-border);
-  box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255, 255, 255, .86);
+  box-shadow: var(--shadow-sm);
 }
 
 .app-shell .et-page .et-panel,
 .app-shell .et-page .et-card {
+  border-radius: 20px;
   background: var(--color-surface);
-  -webkit-backdrop-filter: blur(8px);
-  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
 }
 
+/* Executive dashboards on glass. */
 .app-shell .executive-dashboard {
-  --legacy-bg: var(--color-bg);
+  --legacy-bg: transparent;
   --legacy-surface: rgba(255, 255, 255, .78);
-  --legacy-surface-raised: #f2ece5;
-  --legacy-border: var(--color-border);
+  --legacy-surface-raised: rgba(255, 255, 255, .45);
+  --legacy-border: rgba(255, 255, 255, .65);
   --legacy-text: var(--color-text);
   --legacy-muted: var(--color-text-muted);
   --legacy-blue: var(--color-primary);
@@ -445,26 +520,23 @@ body.app-shell {
 .app-shell .executive-card,
 .app-shell .executive-panel {
   border-color: var(--color-border);
-  border-radius: 18px;
-  box-shadow: 0 9px 26px rgba(56, 36, 29, .07), inset 0 1px 0 rgba(255, 255, 255, .86);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
 }
 
 .app-shell .executive-scorecard,
 .app-shell .executive-panel {
   background: var(--color-surface);
-}
-
-.app-shell .executive-panel {
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
 }
 
 .app-shell .executive-control,
 .app-shell .executive-button {
   color: var(--color-text);
-  background: rgba(255, 255, 255, .82);
-  border-color: var(--color-border);
-  border-radius: 11px;
+  background: rgba(255, 255, 255, .6);
+  border-color: rgba(110, 143, 170, .35);
+  border-radius: var(--radius-md);
 }
 
 .app-shell .executive-control:focus,
@@ -474,83 +546,86 @@ body.app-shell {
 }
 
 .app-shell .executive-button:hover {
-  color: #fff9f2;
+  color: #ffffff;
   background: var(--color-primary);
   border-color: var(--color-primary);
 }
 
 .app-shell .executive-badge {
-  color: var(--color-primary);
-  background: rgba(121, 13, 22, .07);
-  border-color: rgba(121, 13, 22, .2);
+  color: var(--color-primary-strong);
+  background: rgba(255, 255, 255, .55);
+  border-color: rgba(110, 143, 170, .35);
 }
 
 .app-shell .executive-error {
-  color: #7f1d1d;
-  background: #fff1ef;
-  border-color: rgba(192, 53, 43, .24);
+  color: #962626;
+  background: rgba(253, 236, 236, .8);
+  border-color: rgba(197, 52, 52, .24);
 }
 
 .app-shell .executive-error span {
-  color: #8f3b35;
+  color: #962626;
 }
 
 .app-shell .executive-quality-note {
   border-color: rgba(168, 100, 0, .24);
-  background: #fff8eb;
+  background: rgba(255, 248, 235, .8);
 }
 
 .app-shell .executive-diagnostic,
 .app-shell .executive-availability-item,
 .app-shell .executive-list-item,
 .app-shell .executive-detail-grid div {
-  border-color: var(--color-border);
-  border-radius: 12px;
-  background: rgba(242, 236, 229, .7);
+  border-color: rgba(110, 143, 170, .25);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, .45);
 }
 
 .app-shell .executive-table th,
 .app-shell .executive-table td {
-  border-color: var(--color-border);
+  border-color: rgba(110, 143, 170, .25);
 }
 
+/* Chart frames are transparent on the glass cards (photo 2); chart
+   text/grid colours in the dashboard scripts are muted blue-grey. */
 .app-shell .executive-chart-frame {
   overflow: hidden;
   padding: 14px;
-  background: #171717;
-  border: 1px solid rgba(255, 249, 242, .12);
-  border-radius: 14px;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-lg);
 }
 
 .app-shell .executive-chart-frame .executive-empty,
 .app-shell .executive-chart-frame .executive-empty strong {
-  color: #fff9f2;
+  color: var(--color-text);
 }
 
+/* Superadmin (kd) dashboard on glass. */
 .app-shell .kd-page {
-  --kd-bg: #fff9f2;
+  --kd-bg: transparent;
   --kd-surface: rgba(255, 255, 255, .78);
-  --kd-border: rgba(121, 13, 22, .12);
-  --kd-primary: #171717;
-  --kd-secondary: #6f6a66;
-  --kd-muted: #6f6a66;
-  --kd-accent: #790d16;
-  --kd-accent-soft: #f2ece5;
-  --kd-chart-text: #fff9f2;
-  --kd-chart-grid: rgba(255, 249, 242, .18);
-  --kd-track: #f2ece5;
-  background: var(--color-bg);
+  --kd-border: rgba(255, 255, 255, .65);
+  --kd-primary: #1c2b3a;
+  --kd-secondary: #4E657D;
+  --kd-muted: #4E657D;
+  --kd-accent: #6b9bd2;
+  --kd-accent-soft: rgba(255, 255, 255, .55);
+  --kd-chart-text: #4E657D;
+  --kd-chart-grid: rgba(28, 43, 58, .07);
+  --kd-track: rgba(255, 255, 255, .55);
+  background: transparent;
   color: var(--color-text);
 }
 
 .app-shell .kd-page .kd-hero {
   color: var(--color-text);
-  background: rgba(255, 255, 255, .78);
+  background: var(--color-surface);
   border-color: var(--color-border);
-  border-radius: 20px;
-  box-shadow: 0 10px 28px rgba(56, 36, 29, .07), inset 0 1px 0 rgba(255, 255, 255, .9);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
 }
 
 .app-shell .kd-page .kd-hero .kd-eyebrow,
@@ -569,15 +644,15 @@ body.app-shell {
 .app-shell .kd-page #primaryCards > section,
 .app-shell .kd-page #secondaryChips > section {
   border-color: var(--color-border);
-  border-radius: 18px;
+  border-radius: var(--radius-lg);
   background: var(--color-surface);
-  box-shadow: 0 8px 24px rgba(56, 36, 29, .06), inset 0 1px 0 rgba(255, 255, 255, .86);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
+  box-shadow: var(--shadow-sm);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
 }
 
 .app-shell .kd-page .kd-button-primary {
-  color: #fff9f2;
+  color: #ffffff;
   background: var(--color-primary);
   border-color: var(--color-primary);
 }
@@ -589,37 +664,56 @@ body.app-shell {
 
 .app-shell .kd-page .kd-button-secondary {
   color: var(--color-text);
-  background: #fffdf9;
-  border-color: var(--color-border-strong);
+  background: rgba(255, 255, 255, .6);
+  border-color: rgba(110, 143, 170, .4);
 }
 
 .app-shell .kd-page .kd-button:focus-visible,
 .app-shell .kd-page .kd-control:focus-visible,
 .app-shell :focus-visible {
-  outline: 3px solid rgba(121, 13, 22, .42);
+  outline: 3px solid rgba(61, 90, 128, .35);
   outline-offset: 2px;
 }
 
 .app-shell .kd-page .kd-chart-frame {
-  background: #171717;
-  border: 1px solid rgba(255, 249, 242, .12);
-  border-radius: 14px;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-lg);
 }
 
 @media (min-width: 768px) and (max-width: 1023px) {
   .app-shell #mainSidebar {
-    width: 220px !important;
+    width: 220px;
+  }
+}
+
+@media (max-width: 1023px) {
+  .app-shell #mainSidebar {
+    margin: 10px;
+  }
+
+  .app-shell main.flex-1 {
+    margin: 10px;
   }
 }
 
 @media (max-width: 767px) {
   .app-shell #mainSidebar {
-    width: min(290px, 86vw) !important;
+    width: min(290px, 86vw);
   }
 
   .app-shell .app-topbar {
     min-height: 56px;
     padding: 0 14px;
+    border-radius: 20px 20px 0 0;
+  }
+
+  .app-shell main.flex-1 {
+    border-radius: 20px;
+  }
+
+  .app-shell #mainSidebar {
+    border-radius: 20px;
   }
 
   .app-shell .app-topbar__context {
@@ -690,9 +784,9 @@ body.app-shell {
   .app-shell *,
   .app-shell *::before,
   .app-shell *::after {
-    scroll-behavior: auto !important;
-    transition-duration: .01ms !important;
-    animation-duration: .01ms !important;
-    animation-iteration-count: 1 !important;
+    scroll-behavior: auto;
+    transition-duration: .01ms;
+    animation-duration: .01ms;
+    animation-iteration-count: 1;
   }
 }

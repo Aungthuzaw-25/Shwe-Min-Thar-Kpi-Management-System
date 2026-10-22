@@ -4,11 +4,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}KPI Dashboard{% endblock %}</title>
+    <title>{% block title %}Shwe Min Thar Dashboard{% endblock %}</title>
 
     <!-- PWA Settings -->
     <link rel="manifest" href="/static/manifest.json">
-    <meta name="theme-color" content="#1d4ed8">
+    <meta name="theme-color" content="#3d5a80">
 
     <script>
     // Service Worker ကို Register လုပ်ခြင်း
@@ -42,12 +42,12 @@
     <script src="/static/js/csrf.js"></script>
     
     <style>
-        body { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background-color: #FAF9F6; }
-        .bg-kpi-red { background-color: #9b1c1c; }
-        .text-kpi-red { color: #9b1c1c; }
+        body { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background-color: #f5f7fa; }
+        .bg-kpi-red { background-color: #17212b; }
+        .text-kpi-red { color: #3d5a80; }
         
         /* Sidebar Item Styles */
-        .sidebar-item-active { background-color: #fdf2e9; color: #9b1c1c; font-weight: 600; }
+        .sidebar-item-active { background-color: #1c2b3a; color: #ffffff; font-weight: 600; }
         .sidebar-item:hover:not(.sidebar-item-active) { background-color: rgba(255,255,255,0.1); }
         
         /* Custom Scrollbar */
@@ -86,14 +86,14 @@
         <!-- Logo Area -->
         <div class="p-6 flex items-center justify-between space-x-3 shrink-0">
             <div class="flex items-center space-x-3">
-                <svg class="w-8 h-8" fill="white" viewBox="0 0 24 24"><path d="M5 19h-4v-4h4v4zm6 0h-4v-8h4v8zm6 0h-4v-12h4v12zm6 0h-4v-16h4v16zM3 13.5l3-3 3 3 5-5 3 3 4-4v-2l-4 4-3-3-5 5-3-3-3 3v2z"/></svg>
+                <img src="/static/image/smt-logo.jpg" alt="Shwe Min Thar logo" class="w-11 h-11 rounded-xl object-cover shrink-0 shadow-sm">
                 <div>
-                    <h1 class="text-2xl font-bold tracking-wide leading-none">KPI</h1>
-                    <p class="text-[10px] text-red-200 uppercase tracking-widest">Performance Matters</p>
+                    <h1 class="text-lg font-bold tracking-wide leading-tight">Shwe Min Thar</h1>
+                    <p class="text-[10px] text-slate-400 uppercase tracking-widest">Performance Matters</p>
                 </div>
             </div>
             <!-- Mobile Close Button inside Sidebar -->
-            <button type="button" class="md:hidden text-red-200 hover:text-white focus:outline-none" onclick="toggleMobileSidebar()" aria-label="Close navigation menu">
+            <button type="button" class="md:hidden text-slate-400 hover:text-white focus:outline-none" onclick="toggleMobileSidebar()" aria-label="Close navigation menu">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
             </button>
         </div>
@@ -101,111 +101,111 @@
         <!-- Navigation Links -->
         <nav class="flex-1 px-4 space-y-1 mt-2 overflow-y-auto custom-scrollbar">
             <!-- Dashboard -->
-            <a href="/superadmin/dashboard" class="{% if active_page == 'dashboard' %}sidebar-item-active{% else %}sidebar-item text-red-100{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
+            <a href="/superadmin/dashboard" class="{% if active_page == 'dashboard' %}sidebar-item-active{% else %}sidebar-item text-slate-300{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
                 <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg> Dashboard
             </a>
             
             <div class="nav-group-label">Organization</div>
             <!-- Users -->
-            <a href="/superadmin/users" class="{% if active_page == 'users' %}sidebar-item-active{% else %}sidebar-item text-red-100{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
+            <a href="/superadmin/users" class="{% if active_page == 'users' %}sidebar-item-active{% else %}sidebar-item text-slate-300{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
                 <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg> Users
             </a>
 
             <!-- Departments -->
-            <a href="/superadmin/departments" class="{% if active_page == 'departments' %}sidebar-item-active{% else %}sidebar-item text-red-100{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
+            <a href="/superadmin/departments" class="{% if active_page == 'departments' %}sidebar-item-active{% else %}sidebar-item text-slate-300{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
                 <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg> Departments
             </a>
-            <a href="/superadmin/permissions" class="{% if active_page == 'permissions' %}sidebar-item-active{% else %}sidebar-item text-red-100{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
+            <a href="/superadmin/permissions" class="{% if active_page == 'permissions' %}sidebar-item-active{% else %}sidebar-item text-slate-300{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
                 <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a3 3 0 11-6 0 3 3 0 016 0zm3 14H6v-2a6 6 0 0112 0v2zm-3-9h6m-3-3v6"></path></svg> Permissions
             </a>
 
             {% if user_role in ['Super Admin'] %}
-            <a href="/superadmin/super-admins" class="{% if active_page == 'super_admin_management' %}sidebar-item-active{% else %}sidebar-item text-red-100{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
+            <a href="/superadmin/super-admins" class="{% if active_page == 'super_admin_management' %}sidebar-item-active{% else %}sidebar-item text-slate-300{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
                 <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0A5.002 5.002 0 0112 16a5.002 5.002 0 014.644 3.143M12 7a3 3 0 110 6 3 3 0 010-6z"></path></svg> Super Admin Management
             </a>
             {% endif %}
 
             <!-- Positions -->
-            <a href="/positions" class="{% if active_page == 'positions' %}sidebar-item-active{% else %}sidebar-item text-red-100{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
+            <a href="/positions" class="{% if active_page == 'positions' %}sidebar-item-active{% else %}sidebar-item text-slate-300{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
                 <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg> Positions
             </a>
 
             <div class="nav-group-label">Performance</div>
             <!-- KPIs -->
-            <a href="/superadmin/kpi" class="{% if active_page == 'kpis' %}sidebar-item-active{% else %}sidebar-item text-red-100{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors"{% if active_page == 'kpis' %} aria-current="page"{% endif %}>
+            <a href="/superadmin/kpi" class="{% if active_page == 'kpis' %}sidebar-item-active{% else %}sidebar-item text-slate-300{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors"{% if active_page == 'kpis' %} aria-current="page"{% endif %}>
                 <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg> KPIs
             </a>
 
             <!-- KPI Upload -->
-            <a href="/superadmin/kpi-upload" class="{% if active_page == 'kpi_upload' %}sidebar-item-active{% else %}sidebar-item text-red-100{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
+            <a href="/superadmin/kpi-upload" class="{% if active_page == 'kpi_upload' %}sidebar-item-active{% else %}sidebar-item text-slate-300{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
                 <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg> KPI Import
             </a>
 
             <!-- KPI Periods -->
-            <a href="/kpi-periods" class="{% if active_page == 'kpi_periods' %}sidebar-item-active{% else %}sidebar-item text-red-100{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
+            <a href="/kpi-periods" class="{% if active_page == 'kpi_periods' %}sidebar-item-active{% else %}sidebar-item text-slate-300{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
                 <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg> KPI Periods
             </a>
 
             <!-- Targets -->
-            <a href="/superadmin/targets" class="{% if active_page == 'targets' %}sidebar-item-active{% else %}sidebar-item text-red-100{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
+            <a href="/superadmin/targets" class="{% if active_page == 'targets' %}sidebar-item-active{% else %}sidebar-item text-slate-300{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
                 <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg> Targets
             </a>
 
             <!-- Reports -->
-            <a href="/superadmin/reports" class="{% if active_page == 'reports' %}sidebar-item-active{% else %}sidebar-item text-red-100{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
+            <a href="/superadmin/reports" class="{% if active_page == 'reports' %}sidebar-item-active{% else %}sidebar-item text-slate-300{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
                 <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg> Reports
             </a>
 
             <div class="nav-group-label">Operations</div>
             <!-- Action Plans -->
-            <a href="/action-plans" class="{% if active_page == 'action_plans' %}sidebar-item-active{% else %}sidebar-item text-red-100{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
+            <a href="/action-plans" class="{% if active_page == 'action_plans' %}sidebar-item-active{% else %}sidebar-item text-slate-300{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
                 <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg> Action Plans
             </a>
 
            <div class="nav-group-label">Governance</div>
            <!-- Super Admin Process Tracking Sidebar Link -->
-            <a href="/superadmin/process-tracking" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all {% if active_page == 'process_tracking' %}bg-blue-600 text-white shadow-md{% else %}text-red-100 hover:bg-[rgba(255,255,255,0.1)]{% endif %}">
+            <a href="/superadmin/process-tracking" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all {% if active_page == 'process_tracking' %}bg-blue-600 text-white shadow-md{% else %}text-slate-300 hover:bg-[rgba(255,255,255,0.1)]{% endif %}">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
                 Process Tracking
             </a>
 
             <!-- System Settings -->
-            <a href="/system-settings" class="{% if active_page == 'system_settings' %}sidebar-item-active{% else %}sidebar-item text-red-100{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
+            <a href="/system-settings" class="{% if active_page == 'system_settings' %}sidebar-item-active{% else %}sidebar-item text-slate-300{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
                 <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg> System Settings
             </a>
 
-            <a href="/notifications" class="{% if active_page == 'notifications' %}sidebar-item-active{% else %}sidebar-item text-red-100{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
+            <a href="/notifications" class="{% if active_page == 'notifications' %}sidebar-item-active{% else %}sidebar-item text-slate-300{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
                 <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke="currentColor" stroke-width="1.5" d="M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 00-12 0v3.2c0 .5-.2 1-.6 1.4L4 17h5m6 0v1a3 3 0 01-6 0v-1"/></svg> Notifications
             </a>
 
             <!-- Audit Logs -->
-            <a href="/superadmin/audit-logs" class="{% if active_page == 'audit_logs' %}sidebar-item-active{% else %}sidebar-item text-red-100{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
+            <a href="/superadmin/audit-logs" class="{% if active_page == 'audit_logs' %}sidebar-item-active{% else %}sidebar-item text-slate-300{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
                 <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg> Audit Logs
             </a>
-            <a href="/superadmin/system-logs" class="{% if active_page == 'system_logs' %}sidebar-item-active{% else %}sidebar-item text-red-100{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
+            <a href="/superadmin/system-logs" class="{% if active_page == 'system_logs' %}sidebar-item-active{% else %}sidebar-item text-slate-300{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
                 <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke="currentColor" stroke-width="1.5" d="M4 5h16M4 12h16M4 19h16"/><circle cx="7" cy="5" r="1"/><circle cx="7" cy="12" r="1"/><circle cx="7" cy="19" r="1"/></svg> System Logs
             </a>
         </nav>
 
         <!-- User Profile Area & Logout Button -->
-        <div class="p-4 border-t border-red-800 shrink-0 space-y-3 relative">
+        <div class="p-4 border-t border-slate-800 shrink-0 space-y-3 relative">
             
-            <div class="flex items-center justify-between p-2 bg-red-900/50 rounded-xl">
+            <div class="flex items-center justify-between p-2 bg-slate-800/80 rounded-xl">
                 <!-- User Info -->
                 <div class="flex items-center min-w-0 flex-1">
-                    <div class="w-10 h-10 rounded-full bg-orange-200 flex items-center justify-center text-orange-800 font-bold text-lg shrink-0">
+                    <div class="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-lg shrink-0">
                         {{ user_name[0] if user_name else 'SA' }}
                     </div>
                     <div class="ml-3 min-w-0">
                         <p class="text-sm font-semibold truncate">{{ user_name }}</p>
-                        <p class="text-[10px] sm:text-xs text-red-300 truncate">{{ user_email }}</p>
+                        <p class="text-[10px] sm:text-xs text-slate-400 truncate">{{ user_email }}</p>
                     </div>
                 </div>
 
             </div>
 
             <!-- Logout Button -->
-            <button type="button" onclick="handleLogout()" class="w-full flex items-center justify-center space-x-2 bg-red-950/60 hover:bg-red-900 text-red-200 hover:text-white py-2 px-3 rounded-xl text-xs font-semibold transition">
+            <button type="button" onclick="handleLogout()" class="w-full flex items-center justify-center space-x-2 bg-slate-800/50 hover:bg-slate-700 text-slate-300 hover:text-white py-2 px-3 rounded-xl text-xs font-semibold transition">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
                 <span>လော့ဂ်အောက်ထွက်ရန် (Logout)</span>
             </button>
@@ -221,7 +221,7 @@
         <!-- 📱 MOBILE RESPONSIVE FIX: Functional Mobile Menu Toggle -->
         {% if user_role in ['Super Admin', 'Admin'] %}
         <div class="exec-mobile-sidebar-toggle flex items-center justify-between bg-kpi-red text-white p-4 shrink-0 shadow-md z-10">
-            <h1 class="text-lg font-bold tracking-wide">KPI Platform</h1>
+            <h1 class="text-lg font-bold tracking-wide">Shwe Min Thar</h1>
             <button type="button" class="exec-mobile-sidebar-button text-white hover:text-red-200 focus:outline-none" onclick="toggleMobileSidebar()" aria-label="Open navigation menu" aria-controls="mainSidebar" aria-expanded="false">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
             </button>

@@ -1,25 +1,26 @@
 /* ============================================================
-   Enterprise KPI Management System — Design System (Dark Theme)
+   Enterprise KPI Management System — legacy Bootstrap layout helpers.
+   Colours are aliases of the canonical design-system tokens in design-system.css.
    Bootstrap 5 + Chart.js + Toast Notifications
    ============================================================ */
 
 /* ---- CSS Variables ---- */
 :root {
-  --kpi-bg: #121212;
-  --kpi-surface: #1e1e1e;
-  --kpi-surface-hover: #2a2a2a;
-  --kpi-border: #333;
-  --kpi-text: #e0e0e0;
-  --kpi-text-muted: #888;
-  --kpi-primary: #0d6efd;
-  --kpi-success: #198754;
-  --kpi-danger: #dc3545;
-  --kpi-warning: #ffc107;
-  --kpi-info: #0dcaf0;
-  --kpi-amber: #f59e0b;
-  --kpi-blue: #3b82f6;
-  --kpi-slate: #64748b;
-  --kpi-gray: #6b7280;
+  --kpi-bg: #f5f7fa;
+  --kpi-surface: #ffffff;
+  --kpi-surface-hover: #f8fafc;
+  --kpi-border: #dbe2ea;
+  --kpi-text: #17212b;
+  --kpi-text-muted: #5f6b78;
+  --kpi-primary: #3d5a80;
+  --kpi-success: #16794a;
+  --kpi-danger: #c53434;
+  --kpi-warning: #a86400;
+  --kpi-info: #1967a3;
+  --kpi-amber: #a86400;
+  --kpi-blue: #3d5a80;
+  --kpi-slate: #5f6b78;
+  --kpi-gray: #5f6b78;
   --sidebar-width: 250px;
   --topbar-height: 56px;
   --transition-speed: 0.25s;
@@ -30,14 +31,14 @@ body {
   background-color: var(--kpi-bg);
   color: var(--kpi-text);
   overflow-x: hidden;
-  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
 }
 
 /* ---- Scrollbar ---- */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: var(--kpi-bg); }
 ::-webkit-scrollbar-thumb { background: var(--kpi-border); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #555; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
 /* ---- Wrapper Layout ---- */
 #wrapper {
@@ -68,9 +69,9 @@ body {
   font-weight: 700;
   font-size: 1.1rem;
   letter-spacing: 0.5px;
-  color: #fff;
+  color: var(--kpi-text);
   border-bottom: 1px solid var(--kpi-border);
-  background: rgba(13, 110, 253, 0.15);
+  background: rgba(36, 87, 214, 0.08);
 }
 
 .sidebar-heading i {
@@ -81,7 +82,7 @@ body {
 
 #sidebar-wrapper .list-group-item {
   background: transparent;
-  color: #ccc;
+  color: var(--kpi-text-muted);
   border: none;
   padding: 0.7rem 1.2rem;
   font-size: 0.9rem;
@@ -91,12 +92,12 @@ body {
 
 #sidebar-wrapper .list-group-item:hover {
   background: var(--kpi-surface-hover);
-  color: #fff;
+  color: var(--kpi-text);
 }
 
 #sidebar-wrapper .list-group-item.active {
-  background: rgba(13, 110, 253, 0.15);
-  color: #fff;
+  background: rgba(36, 87, 214, 0.1);
+  color: var(--kpi-primary);
   border-left-color: var(--kpi-primary);
   font-weight: 600;
 }

@@ -1,25 +1,25 @@
 .kp-page {
-  --kp-accent: #2F5BFF;
-  --kp-accent-dark: #1E3FB8;
-  --kp-accent-soft: #E6ECFF;
-  --kp-success: #1F8A5B;
-  --kp-success-soft: #DDF3E8;
-  --kp-success-text: #0B5C3B;
-  --kp-warning: #D98A0B;
-  --kp-warning-soft: #FDEFD3;
-  --kp-warning-text: #8A4B00;
-  --kp-danger: #C0352B;
-  --kp-danger-soft: #FBE0DC;
-  --kp-danger-text: #9A261B;
+  --kp-accent: #3D5A80;
+  --kp-accent-dark: #173EA5;
+  --kp-accent-soft: #E8EFFE;
+  --kp-success: #16794A;
+  --kp-success-soft: #E6F4EC;
+  --kp-success-text: #0F5C39;
+  --kp-warning: #A86400;
+  --kp-warning-soft: #FBF0DA;
+  --kp-warning-text: #7C4A03;
+  --kp-danger: #C53434;
+  --kp-danger-soft: #FDECEC;
+  --kp-danger-text: #962626;
   --kp-neutral: #98A2B3;
   --kp-neutral-soft: #F1F5F9;
-  --kp-text: #0F172A;
-  --kp-body: #566074;
-  --kp-muted: #566074;
-  --kp-border: #E1E6EF;
-  --kp-line: #EEF1F6;
-  --kp-font: 'Plus Jakarta Sans', 'Noto Sans Myanmar', 'Padauk', system-ui, sans-serif;
-  background: #F3F5F9;
+  --kp-text: #17212B;
+  --kp-body: #5F6B78;
+  --kp-muted: #5F6B78;
+  --kp-border: #DBE2EA;
+  --kp-line: #E9EEF4;
+  --kp-font: Inter, 'Noto Sans Myanmar', 'Padauk', system-ui, sans-serif;
+  background: #F5F7FA;
   color: var(--kp-text);
   font-family: var(--kp-font);
   font-size: 14px;
@@ -101,7 +101,7 @@
 .kp-page .kp-field--full { grid-column: 1 / -1; }
 .kp-page .kp-label { color: var(--kp-text); font-size: 13px; font-weight: 600; }
 .kp-page .kp-input { background: #FFF; border: 1px solid #D5DBE8; border-radius: 10px; color: var(--kp-text); font: inherit; font-size: 14px; height: 40px; min-width: 0; padding: 0 14px; width: 100%; }
-.kp-page .kp-input::placeholder { color: #94A3B8; opacity: 1; }
+.kp-page .kp-input::placeholder { color: #4E657D; opacity: 1; }
 .kp-page .kp-input:focus-visible { border-color: var(--kp-accent); outline: 2px solid var(--kp-accent); outline-offset: 2px; }
 .kp-page .kp-input[readonly] { background: #F8FAFC; color: var(--kp-body); cursor: not-allowed; }
 .kp-page .kp-input-wrap { min-width: 0; position: relative; }
