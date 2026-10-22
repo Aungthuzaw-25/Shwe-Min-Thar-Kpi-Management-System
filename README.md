@@ -17,6 +17,12 @@ A highly scalable, secure, and asynchronous Key Performance Indicator (KPI) Mana
 *   **✅ Multi-Stage Approval Workflow:** Task submissions with evidence upload. Requires sequential verification (L2 → L1 → L0) with features like Resubmit (V2), Delay, and Penalties.
 *   **📂 Secure Evidence Management:** Integrated with **MinIO/AWS S3** for secure file storage. Built-in Anti-Malware protection (strict MIME type checking via `python-magic`) and max file size limits.
 *   **📈 Real-Time Dashboards:** Interactive UI with Chart.js, department rankings, and real-time process tracking.
+*   **🎨 Professional UI:** A soft frosted-glass interface with the Shwe Min Thar brand (logo and company name) across the dashboards and login page, designed to stay readable on phones and computers.
+*   **🏷️ Company Trademark Settings:** Super Admins can change the company name, tagline, and logo from System Settings; the new branding applies across the dashboards and the login page.
+*   **⏳ Professional Loading:** A frosted-glass loading overlay, glass skeleton placeholders while dashboard cards load, and consistent busy states on buttons. Animations are reduced automatically for users who prefer reduced motion.
+*   **🟢 User Presence:** User Management shows each user's online status, last active time, and last offline time, so Admins can see who is around at a glance.
+*   **🔀 Smooth Page Transitions:** Page content fades and rises softly as it opens, the loading overlay appears while moving between internal pages, and the sidebar animates in with a smooth active-item highlight. Animations are reduced automatically for users who prefer reduced motion.
+*   **⚡ Performance Caching:** Gzip and a proxy cache for static files, a Redis-backed cache for dashboard summaries, and a short-lived per-session cache for page context in the web tier, so repeated page loads call the API less and render faster. The session timeout from System Settings is honoured at login and token refresh.
 *   **📥 Data Import Engine:** Background processing for heavy Excel/CSV data imports using Pandas and FastAPI `BackgroundTasks`.
 *   **🔔 Notification System:** Centralized in-app alerts and background email notifications.
 *   **🛡️ Enterprise Security:** XSS Prevention (Global HTML Escaping), SQL Injection protection, Rate Limiting (`slowapi`), JWT Authentication, and Universal Auth Guards.
@@ -89,10 +95,8 @@ create accounts or automatically link users by email.
 Apply migrations with `python -m alembic upgrade head` before using the account
 features. OAuth also requires `OAUTH_ENABLED=true`, the provider's
 `*_OIDC_ENABLED` flag and client credentials, `APP_BASE_URL`, and a reachable
-Redis instance configured through `REDIS_URL`. Follow
-[docs/oauth-setup.md](./security-docs/oauth-setup.md) for provider registration and
-callback URLs. Store real credentials only in local environment files or a
-deployment secret manager.
+Redis instance configured through `REDIS_URL`. Store real credentials only in
+local environment files or a deployment secret manager.
 
 Profile avatars are currently stored on the API filesystem in
 `uploads/profile_avatars/`, which is ignored by Git. Before running multiple
@@ -284,32 +288,64 @@ different network exposure.
 kpi-platform/
 ├── .github/workflows/       # CI workflow
 ├── app/
+│   ├── api/                 # Versioned API route assembly (v1)
 │   ├── background_jobs/     # Schedulers and background email tasks
-│   ├── core/                # Config, dependencies, security, auth guards
-│   ├── database/            # Database connection and base models
+│   ├── core/                # Config, dependencies, security, auth guards, cache
+│   ├── database/            # Database connection, bootstrap, and seed
+│   ├── middleware/          # Request logging middleware
 │   ├── models/              # Cross-module shared models
 │   ├── modules/             # DDD Modules (Business Logic)
 │   │   ├── auth/
 │   │   ├── departments/
 │   │   ├── kpi/             # KPI Engine, Uploads, Periods, Reports
 │   │   ├── notifications/
-│   │   ├── system/
+│   │   ├── system/          # System settings, branding, audit logs
 │   │   ├── targets/
 │   │   ├── tasks/           # Task Schedulers, Reviews, Evidence
 │   │   └── users/
-│   ├── services/            # Global services (StorageService, DocumentService)
+│   ├── services/            # Global services (StorageService, DocumentService, EmailService)
+│   ├── utils/               # Shared utilities (audit, file handling)
+│   ├── web/                 # HTML page routes served by the API app
 │   └── main.py              # FastAPI application entry point
-├── web/
-│   └── src/                 # Express server, Nunjucks routes, and middleware
+├── web/                     # Express/Nunjucks web tier (server, routes, tests)
 ├── migrations/              # Alembic migrations
 ├── static/                  # CSS, JS, Images, PWA Manifest
 ├── templates/               # Nunjucks HTML templates (Layouts, Dashboard, etc.)
-├── tests/                   # Automated tests
-├── proxy/                   # Nginx proxy configuration
-├── docker-compose.yml       # Docker orchestration
-├── Dockerfile               # Backend container build instructions
-├── requirements.txt         # Runtime Python dependencies
-├── requirements-dev.txt     # Test and development dependencies
-├── requirements.lock        # Hash-verified Python 3.11/Linux runtime lock
-├── requirements-dev.lock    # Hash-verified Python 3.11/Linux development lock
-└── docs/                    # Development and QA documentation
+├── tests/                   # Automated tests (Python)
+├── scripts/                 # Manually run QA and admin helper scripts
+├── tools/                   # Standalone tools (template conversion, performance seeding)
+├── proxy/                   # Nginx proxy configuration (default and QA)
+├── docker/                  # Extra container build files (MinIO)
+└── docs/                    # Documentation (see the map below)
+```
+
+### Files that stay at the root
+
+Some files must live at the repository root because the tools that read them
+look for them there:
+
+- `Dockerfile`, `docker-compose.yml`, `docker-compose.qa.yml`, and
+  `entrypoint.sh` — container builds and startup.
+- `.env.example` and `.env.qa.example` — **these must stay at the root.**
+  `docker-compose.yml` loads `.env` and `docker-compose.qa.yml` loads
+  `.env.qa` through `env_file` next to the Compose files, the setup steps
+  above copy the examples at the root (`cp .env.example .env`), the QA guide
+  uses `docker compose --env-file .env.qa`, and `.gitignore` un-ignores the
+  examples only at the root (`!/.env.example`, `!/.env.qa.example`).
+- `alembic.ini`, `pyproject.toml`, `pytest.ini`, and `tailwind.config.js` —
+  tool configuration that Alembic, pytest, and Tailwind look for at the root.
+- `requirements.txt`, `requirements-dev.txt`, `requirements.lock`, and
+  `requirements-dev.lock` — Python dependencies and their hash-verified
+  locks, installed from the root by CI and Docker.
+- `README.md` — this file; GitHub shows the root README as the repository
+  home page.
+
+### Documentation map
+
+- `docs/` — current guides: `email-configuration.md`,
+  `kpi-calculation-contract.md`, `kpi-executive-intelligence.md`,
+  `qa-environment.md`, and `qa-kpi-fixture-contract.md`.
+- `docs/decisions/` — architecture and policy decision records.
+- `docs/perf/` — performance baselines, measurements, and screenshots.
+- `docs/reports/` — one-off project reports: migration, route parity,
+  template audit, template conversion, and chart verification.

@@ -333,7 +333,9 @@ def _write_report(
         "",
         *[f"- `{path.relative_to(ROOT).with_suffix('.njk').as_posix()}`" for path in files],
     ]
-    (ROOT / "TEMPLATE_CONVERSION_REPORT.md").write_text(
+    report_path = ROOT / "docs" / "reports" / "TEMPLATE_CONVERSION_REPORT.md"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(
         "\n".join(report) + "\n", encoding="utf-8", newline=""
     )
 
@@ -368,7 +370,7 @@ def main() -> int:
 
     _apply_conversion(results, references, args.remove_init)
     _write_report(files, references, reviews, all_errors)
-    print("Applied conversion and wrote TEMPLATE_CONVERSION_REPORT.md.")
+    print("Applied conversion and wrote docs/reports/TEMPLATE_CONVERSION_REPORT.md.")
     return 0
 
 
