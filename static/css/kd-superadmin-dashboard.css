@@ -371,14 +371,14 @@
 .kd-page .kd-card-heading > div { min-width: 0; }
 .kd-page .kd-card-title { margin: 3px 0 0; color: var(--kd-primary); font-size: 17px; font-weight: 700; letter-spacing: -.01em; line-height: 1.35; }
 .kd-page .kd-chart-frame { position: relative; height: 320px; }
-.kd-page .kd-monthly-chart .kd-chart-frame canvas { width: 100% !important; height: 100% !important; }
+.kd-page .kd-monthly-chart .kd-chart-frame canvas { width: 100%; height: 100%; }
 .kd-page[data-animating="true"][data-run="0"] .kd-monthly-chart .kd-chart-frame canvas { animation: kd-chart-reveal-0 1.7s ease-in-out both; animation-delay: var(--d, 0s); }
 .kd-page[data-animating="true"][data-run="1"] .kd-monthly-chart .kd-chart-frame canvas { animation: kd-chart-reveal-1 1.7s ease-in-out both; animation-delay: var(--d, 0s); }
 @keyframes kd-chart-reveal-0 { 0%,40% { clip-path: inset(0 100% 0 0); } 100% { clip-path: inset(0); } }
 @keyframes kd-chart-reveal-1 { 0%,40% { clip-path: inset(0 100% 0 0); } 100% { clip-path: inset(0); } }
 .kd-page .kd-donut-layout { display: flex; min-width: 0; align-items: center; gap: 18px; }
 .kd-page .kd-donut-wrap { position: relative; display: grid; width: min(100%, 220px); min-width: 160px; height: 220px; flex: 0 1 220px; place-items: center; }
-.kd-page .kd-donut-wrap canvas { width: 100% !important; height: 100% !important; }
+.kd-page .kd-donut-wrap canvas { width: 100%; height: 100%; }
 .kd-page .kd-donut-center { position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; }
 .kd-page .kd-donut-center strong { color: var(--kd-primary); font-size: 28px; font-weight: 700; line-height: 1.1; }
 .kd-page .kd-donut-center span { color: var(--kd-muted); font-size: 12px; }
@@ -392,8 +392,12 @@
 .kd-page .kd-activity-card .kd-empty { min-height: 130px; }
 .kd-page .kd-operation-card .kd-empty { min-height: 84px; }
 .kd-page .kd-source,
-.kd-page .kd-sr-only { position: absolute !important; width: 1px !important; height: 1px !important; overflow: hidden !important; clip: rect(0,0,0,0) !important; white-space: nowrap !important; clip-path: inset(50%) !important; }
-.kd-page [hidden] { display: none !important; }
+.kd-page .kd-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; clip-path: inset(50%); }
+/* [hidden] must beat every component display rule in this file;
+   the repeated attribute raises specificity, so no important flag is needed. */
+.kd-page [hidden][hidden] { display: none; }
+.kd-page #primaryCards > section[hidden],
+.kd-page #secondaryChips > section[hidden] { display: none; }
 
 .kd-page .kd-workflow-grid > .kd-card { grid-column: span 4; }
 .kd-page .kd-approval-total { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 10px 0 18px; color: var(--kd-secondary); font-size: 13px; }
@@ -590,18 +594,20 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .kd-page *,
-  .kd-page *::before,
-  .kd-page *::after {
-    animation: none !important;
-    scroll-behavior: auto !important;
-    transition: none !important;
+  /* The repeated .kd-page class raises specificity above the animated
+     component rules, so no important flag is needed here. */
+  .kd-page.kd-page *,
+  .kd-page.kd-page *::before,
+  .kd-page.kd-page *::after {
+    animation: none;
+    scroll-behavior: auto;
+    transition: none;
   }
   .kd-page .kd-card::after,
   .kd-page #primaryCards > section::after,
-  .kd-page #secondaryChips > section::after { visibility: hidden !important; opacity: 0 !important; }
+  .kd-page #secondaryChips > section::after { visibility: hidden; opacity: 0; }
   .kd-page .exec-progress > span,
   .kd-page .kd-bar-fill,
   .kd-page .kd-risk-fill,
-  .kd-page .kd-share-fill { transform: none !important; }
+  .kd-page .kd-share-fill { transform: none; }
 }

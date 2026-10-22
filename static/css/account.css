@@ -72,7 +72,9 @@
 .acct-page .acct-helper { color: var(--acct-muted); font-size: 12px; margin: 8px 0 0; }
 .acct-page .acct-form { display: grid; gap: 14px; margin-top: 20px; min-width: 0; }
 .acct-page .acct-field { display: grid; gap: 6px; min-width: 0; }
-.acct-page [hidden] { display: none !important; }
+/* [hidden] must beat every component display rule in this file;
+   the repeated attribute raises specificity, so no important flag is needed. */
+.acct-page [hidden][hidden] { display: none; }
 .acct-page .acct-label { font-size: 13px; font-weight: 600; }
 .acct-page .acct-input {
   background: #fff;
