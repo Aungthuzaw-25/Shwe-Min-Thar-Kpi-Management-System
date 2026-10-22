@@ -1,6 +1,6 @@
 import requests, os
 repo = r'C:\Users\Aung Thu Zaw\Desktop\Project\Kpi_management_system'
-login = {'email':'admin.a@example.com','password':'TempSeedPass!2026'}
+login = {'email':'admin.a@example.com','password':""}
 r = requests.post('http://127.0.0.1:8001/api/v1/auth/login', json=login)
 print(r.status_code)
 print(r.text)

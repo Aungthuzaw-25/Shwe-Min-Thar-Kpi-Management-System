@@ -1,6 +1,6 @@
 import requests, os, time
 
-QA_FIXTURE_PASSWORD = "TempPass!2026"
+QA_FIXTURE_PASSWORD = ""
 repo = r'C:\Users\Aung Thu Zaw\Desktop\Project\Kpi_management_system'
 sa_token = open(os.path.join(repo,'.tmp_sa_token')).read().strip()
 headers = {'Authorization':f'Bearer {sa_token}'}
