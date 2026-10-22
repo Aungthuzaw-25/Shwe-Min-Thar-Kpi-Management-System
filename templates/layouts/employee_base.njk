@@ -66,6 +66,15 @@
     </style>
 </head>
 <body class="app-shell app-shell--employee flex h-screen overflow-hidden text-slate-800 relative">
+    <!-- Global loading overlay: frosted glass + ring (design-system.css .app-loader) -->
+    <div class="app-loader" aria-hidden="true">
+        <div class="app-loader__card">
+            <span class="app-loader__ring"></span>
+            <span class="app-loader__label">Loading</span>
+        </div>
+    </div>
+    <script src="/static/js/app-loader.js"></script>
+
 
     <!-- SIDEBAR NAVIGATION -->
     <aside id="mainSidebar" class="w-[260px] bg-slate-900 text-white flex-col shrink-0 transition-transform duration-300 absolute md:relative inset-y-0 left-0 z-30 shadow-2xl transform -translate-x-full md:translate-x-0 flex">
