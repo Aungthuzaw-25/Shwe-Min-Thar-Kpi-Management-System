@@ -11,6 +11,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
 from PIL import Image, ImageOps
 from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -466,6 +467,14 @@ async def patch_account(
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
+    role_name = user.role.name.strip().casefold() if user.role and user.role.name else ""
+    is_super_admin = role_name in {"super admin", "super_admin"}
+    if "email" in payload.model_fields_set and not is_super_admin:
+        raise HTTPException(
+            status_code=403,
+            detail="Only Super Admin accounts can change their email address.",
+        )
+
     display_name = payload.display_name.strip()
     pieces = display_name.split()
     first_name = pieces[0]
@@ -480,6 +489,21 @@ async def patch_account(
     if user.phone_number != payload.phone:
         user.phone_number = payload.phone
         changed_fields.append("phone_number")
+    if "email" in payload.model_fields_set:
+        if payload.email is None:
+            raise HTTPException(status_code=422, detail="Email address cannot be empty.")
+        normalized_email = str(payload.email).strip().lower()
+        if normalized_email != user.email.casefold():
+            existing_user = (await db.execute(
+                select(User.id).where(
+                    func.lower(User.email) == normalized_email,
+                    User.id != user.id,
+                )
+            )).scalars().first()
+            if existing_user:
+                raise HTTPException(status_code=409, detail="Email address is already in use.")
+            user.email = normalized_email
+            changed_fields.append("email")
     if changed_fields:
         db.add(AuditLog(
             user_id=user.id,
@@ -489,7 +513,16 @@ async def patch_account(
             new_value={"fields": sorted(changed_fields)},
             ip_address=request.client.host if request.client else None,
         ))
-        await db.commit()
+        try:
+            await db.commit()
+        except IntegrityError as exc:
+            await db.rollback()
+            if "email" in changed_fields:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Email address is already in use.",
+                ) from exc
+            raise
     return await get_account(db, user)
 
 

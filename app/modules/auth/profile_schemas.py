@@ -52,6 +52,7 @@ class AccountProfilePatch(BaseModel):
 
     display_name: str = Field(min_length=1, max_length=80, strict=True)
     phone: str | None = Field(default=None, max_length=20, strict=True)
+    email: EmailStr | None = None
 
     @field_validator("display_name", mode="before")
     @classmethod

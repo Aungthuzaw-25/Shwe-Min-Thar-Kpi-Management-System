@@ -7,9 +7,19 @@
   const passwordForm = root.querySelector("[data-account-password-form]");
   const nameInput = root.querySelector("#acct-display-name");
   const phoneInput = root.querySelector("#acct-phone");
+  const emailInput = root.querySelector("#acct-email");
+  const isSuperAdmin = root.dataset.superAdmin === "true";
   const saveButton = root.querySelector("[data-profile-save]");
-  const initialProfile = { display_name: nameInput.value, phone: phoneInput.value };
+  const initialProfile = {
+    display_name: nameInput.value,
+    phone: phoneInput.value,
+    email: emailInput.value,
+  };
   let currentAvatarUrl = root.querySelector("[data-avatar-preview] .kpi-avatar__image")?.src || "";
+  let initialAvatarUrl = currentAvatarUrl;
+  let pendingAvatarFile = null;
+  let avatarRemovalPending = false;
+  let previewObjectUrl = "";
 
   function banner(kind, message, state = "error") {
     const element = root.querySelector(`[data-acct-banner="${kind}"]`);
@@ -44,31 +54,77 @@
   }
 
   function updateSaveState() {
-    saveButton.disabled = nameInput.value === initialProfile.display_name
-      && phoneInput.value === initialProfile.phone;
+    const profileChanged = nameInput.value !== initialProfile.display_name
+      || phoneInput.value !== initialProfile.phone
+      || (isSuperAdmin && emailInput.value !== initialProfile.email);
+    saveButton.disabled = !profileChanged && !pendingAvatarFile && !avatarRemovalPending;
   }
   nameInput.addEventListener("input", updateSaveState);
   phoneInput.addEventListener("input", updateSaveState);
+  if (isSuperAdmin) {
+    emailInput.addEventListener("input", () => {
+      root.querySelector('[data-field-error="email"]').textContent = "";
+      updateSaveState();
+    });
+  }
 
   profileForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     clearErrors(profileForm);
     banner("profile", "");
+    if (isSuperAdmin && !emailInput.checkValidity()) {
+      root.querySelector('[data-field-error="email"]').textContent = "Enter a valid email address.";
+      emailInput.focus();
+      return;
+    }
     saveButton.disabled = true;
     saveButton.innerHTML = '<span class="acct-spinner" aria-hidden="true"></span> Saving…';
     try {
-      const result = await request(api, {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ display_name: nameInput.value, phone: phoneInput.value }),
-      });
-      initialProfile.display_name = nameInput.value;
-      initialProfile.phone = phoneInput.value;
-      root.querySelector("[data-profile-summary-name]").textContent = result.display_name || nameInput.value;
+      const profileChanged = nameInput.value !== initialProfile.display_name
+        || phoneInput.value !== initialProfile.phone
+        || (isSuperAdmin && emailInput.value !== initialProfile.email);
+      if (profileChanged) {
+        const payload = { display_name: nameInput.value, phone: phoneInput.value };
+        if (isSuperAdmin && emailInput.value !== initialProfile.email) payload.email = emailInput.value;
+        const result = await request(api, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        initialProfile.display_name = nameInput.value;
+        initialProfile.phone = phoneInput.value;
+        initialProfile.email = result.email || emailInput.value;
+        emailInput.value = initialProfile.email;
+        root.querySelector("[data-profile-summary-name]").textContent = result.display_name || nameInput.value;
+        root.querySelector("[data-profile-summary-email]").textContent = initialProfile.email;
+      }
+
+      if (pendingAvatarFile) {
+        const form = new FormData();
+        form.append("file", pendingAvatarFile);
+        const result = await request(`${api}/avatar`, { method: "POST", body: form });
+        currentAvatarUrl = result.avatar_url;
+        initialAvatarUrl = currentAvatarUrl;
+        pendingAvatarFile = null;
+        avatarInput.value = "";
+        if (previewObjectUrl) URL.revokeObjectURL(previewObjectUrl);
+        previewObjectUrl = "";
+        renderAvatar(currentAvatarUrl);
+        removeAvatar.hidden = false;
+        avatarProgress.textContent = "";
+      } else if (avatarRemovalPending) {
+        await request(`${api}/avatar`, { method: "DELETE" });
+        currentAvatarUrl = "";
+        initialAvatarUrl = "";
+        avatarRemovalPending = false;
+        renderAvatar("");
+        removeAvatar.hidden = true;
+        avatarProgress.textContent = "";
+      }
       banner("profile", "Your profile was updated.", "success");
     } catch (error) {
       const message = showErrors(profileForm, error.result, error.message);
-      banner("profile", message || "Please correct the highlighted fields.", "error");
+      banner("profile", message || "Unable to save profile changes.", "error");
     } finally {
       saveButton.textContent = "Save changes";
       updateSaveState();
@@ -78,13 +134,23 @@
   root.querySelector("[data-profile-cancel]").addEventListener("click", () => {
     nameInput.value = initialProfile.display_name;
     phoneInput.value = initialProfile.phone;
+    emailInput.value = initialProfile.email;
+    pendingAvatarFile = null;
+    avatarRemovalPending = false;
+    avatarInput.value = "";
+    if (previewObjectUrl) URL.revokeObjectURL(previewObjectUrl);
+    previewObjectUrl = "";
+    currentAvatarUrl = initialAvatarUrl;
+    renderAvatar(initialAvatarUrl);
+    removeAvatar.hidden = !initialAvatarUrl;
+    avatarProgress.textContent = "";
     clearErrors(profileForm);
     banner("profile", "");
     updateSaveState();
   });
 
   window.addEventListener("beforeunload", (event) => {
-    if (nameInput.value !== initialProfile.display_name || phoneInput.value !== initialProfile.phone) {
+    if (!saveButton.disabled) {
       event.preventDefault();
     }
   });
@@ -93,7 +159,7 @@
   const avatarProgress = root.querySelector("[data-avatar-progress]");
   const removeAvatar = root.querySelector("[data-avatar-remove]");
   const preview = root.querySelector("[data-avatar-preview]");
-  avatarInput.addEventListener("change", async () => {
+  avatarInput.addEventListener("change", () => {
     const file = avatarInput.files?.[0];
     if (!file) return;
     if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 2 * 1024 * 1024) {
@@ -101,33 +167,15 @@
       avatarInput.value = "";
       return;
     }
-    const previous = currentAvatarUrl;
-    const localUrl = URL.createObjectURL(file);
-    const image = ensureAvatarImage(preview.querySelector(".kpi-avatar"));
-    image.src = localUrl;
-    avatarProgress.textContent = "Uploading photo…";
+    pendingAvatarFile = file;
+    avatarRemovalPending = false;
+    if (previewObjectUrl) URL.revokeObjectURL(previewObjectUrl);
+    previewObjectUrl = URL.createObjectURL(file);
+    renderAvatar(previewObjectUrl);
+    removeAvatar.hidden = false;
+    avatarProgress.textContent = "Photo ready to upload when you save changes.";
     banner("profile", "");
-    const form = new FormData();
-    form.append("file", file);
-    try {
-      const result = await request(`${api}/avatar`, { method: "POST", body: form });
-      currentAvatarUrl = result.avatar_url;
-      root.querySelectorAll(".kpi-avatar").forEach((avatar) => {
-        avatar.classList.add("kpi-avatar--photo");
-        avatar.classList.remove("kpi-avatar--image-failed");
-        ensureAvatarImage(avatar).src = result.avatar_url;
-      });
-      removeAvatar.hidden = false;
-      avatarProgress.textContent = "";
-      banner("profile", "Profile photo updated.", "success");
-    } catch (error) {
-      image.src = previous;
-      avatarProgress.textContent = "";
-      banner("profile", error.message, "error");
-    } finally {
-      URL.revokeObjectURL(localUrl);
-      avatarInput.value = "";
-    }
+    updateSaveState();
   });
 
   function ensureAvatarImage(avatar) {
@@ -147,16 +195,32 @@
     return image;
   }
 
-  removeAvatar.addEventListener("click", async () => {
-    removeAvatar.disabled = true;
-    try {
-      await request(`${api}/avatar`, { method: "DELETE" });
-      window.location.assign("/account/profile?avatar_removed=1");
-    } catch (error) {
-      banner("profile", error.message, "error");
-    } finally {
-      removeAvatar.disabled = false;
-    }
+  function renderAvatar(url) {
+    root.querySelectorAll(".kpi-avatar").forEach((avatar) => {
+      if (url) {
+        avatar.classList.add("kpi-avatar--photo");
+        avatar.classList.remove("kpi-avatar--image-failed");
+        ensureAvatarImage(avatar).src = url;
+      } else {
+        avatar.querySelector(".kpi-avatar__image")?.remove();
+        avatar.classList.remove("kpi-avatar--photo", "kpi-avatar--image-failed");
+        avatar.querySelector(".kpi-avatar__initials")?.classList.remove("kpi-avatar__fallback");
+      }
+    });
+  }
+
+  removeAvatar.addEventListener("click", () => {
+    pendingAvatarFile = null;
+    avatarInput.value = "";
+    avatarRemovalPending = Boolean(currentAvatarUrl);
+    if (previewObjectUrl) URL.revokeObjectURL(previewObjectUrl);
+    previewObjectUrl = "";
+    renderAvatar(avatarRemovalPending ? "" : currentAvatarUrl);
+    removeAvatar.hidden = true;
+    avatarProgress.textContent = avatarRemovalPending
+      ? "Photo will be removed when you save changes."
+      : "";
+    updateSaveState();
   });
 
   root.querySelectorAll("[data-password-toggle]").forEach((button) => {

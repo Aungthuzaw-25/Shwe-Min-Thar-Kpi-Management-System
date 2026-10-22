@@ -6,13 +6,22 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import String, cast, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
 from app.core.config import settings
 from app.core.dependencies import enforce_permission, get_current_user
 from app.database.connection import get_db
 from app.models.audit_log import AuditLog
 from app.models.system import LogLevel
+from app.modules.auth.models import UnlockRequest, UserSecuritySettings
+from app.modules.auth.schemas import (
+    LockedUserResponse,
+    UserSecuritySettingsResponse,
+    UserSecuritySettingsUpdate,
+)
+from app.modules.notifications.models import Notification
 from app.modules.system import repo
 from app.modules.system.audit_log_retention import (
     AUDIT_LOG_RETENTION_KEY,
@@ -29,7 +38,8 @@ from app.modules.system.schemas import (
     SystemSettingUpdate,
     normalize_email_settings,
 )
-from app.modules.users.models import User
+from app.modules.users.models import Role, User
+from app.core.timezone import utc_now_naive
 from app.services.email_service import (
     EmailAuthenticationError,
     EmailConfigurationError,
@@ -140,6 +150,14 @@ def _require_super_admin_audit_retention(user: User) -> None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only a Super Admin can manage audit log retention.",
+        )
+
+
+def _require_super_admin_user_security(user: User) -> None:
+    if not user.role or user.role.name != "Super Admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only a Super Admin can manage user lockout settings.",
         )
 
 
@@ -303,6 +321,193 @@ async def read_all_settings(
             }
         )
     return result
+
+
+@router.get("/user-security-settings", response_model=UserSecuritySettingsResponse)
+async def read_user_security_settings(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_super_admin_user_security(current_user)
+    result = await db.execute(
+        select(UserSecuritySettings).where(
+            UserSecuritySettings.singleton_key.is_(True)
+        )
+    )
+    setting = result.scalar_one_or_none()
+    if setting is None:
+        return UserSecuritySettingsResponse(
+            max_failed_attempts=5,
+            lockout_duration_minutes=29,
+            superadmin_lockout_enabled=True,
+        )
+    return UserSecuritySettingsResponse.model_validate(setting)
+
+
+@router.put("/user-security-settings", response_model=UserSecuritySettingsResponse)
+async def update_user_security_settings(
+    payload: UserSecuritySettingsUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_super_admin_user_security(current_user)
+    result = await db.execute(
+        select(UserSecuritySettings)
+        .where(UserSecuritySettings.singleton_key.is_(True))
+        .with_for_update()
+    )
+    setting = result.scalar_one_or_none()
+    old_value = (
+        {
+            "max_failed_attempts": setting.max_failed_attempts,
+            "lockout_duration_minutes": setting.lockout_duration_minutes,
+            "superadmin_lockout_enabled": setting.superadmin_lockout_enabled,
+        }
+        if setting
+        else {
+            "max_failed_attempts": 5,
+            "lockout_duration_minutes": 29,
+            "superadmin_lockout_enabled": True,
+        }
+    )
+    now = utc_now_naive()
+    if setting is None:
+        setting = UserSecuritySettings(
+            singleton_key=True,
+            updated_by=current_user.id,
+            updated_at=now,
+            **payload.model_dump(),
+        )
+        db.add(setting)
+    else:
+        for field, value in payload.model_dump().items():
+            setattr(setting, field, value)
+        setting.updated_by = current_user.id
+        setting.updated_at = now
+
+    if not payload.superadmin_lockout_enabled:
+        super_admin_ids = select(User.id).join(Role, User.role_id == Role.id).where(
+            Role.name == "Super Admin"
+        )
+        await db.execute(
+            update(User)
+            .where(User.id.in_(super_admin_ids))
+            .values(is_locked=False, failed_login_attempts=0, locked_until=None)
+        )
+        pending_request_ids = select(cast(UnlockRequest.id, String)).where(
+            UnlockRequest.user_id.in_(super_admin_ids),
+            UnlockRequest.status == "PENDING",
+        )
+        await db.execute(
+            update(UnlockRequest)
+            .where(
+                UnlockRequest.user_id.in_(super_admin_ids),
+                UnlockRequest.status == "PENDING",
+            )
+            .values(status="RESOLVED", resolved_at=now, resolved_by=current_user.id)
+        )
+        await db.execute(
+            update(Notification)
+            .where(Notification.group_key.in_(pending_request_ids))
+            .values(is_read=True)
+        )
+
+    db.add(
+        AuditLog(
+            user_id=current_user.id,
+            action="UPDATE",
+            table_name="user_security_settings",
+            old_value=old_value,
+            new_value=payload.model_dump(),
+        )
+    )
+    await db.commit()
+    await db.refresh(setting)
+    return UserSecuritySettingsResponse.model_validate(setting)
+
+
+@router.get("/locked-users", response_model=list[LockedUserResponse])
+async def list_locked_users(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_super_admin_user_security(current_user)
+    users_result = await db.execute(
+        select(User)
+        .options(joinedload(User.role))
+        .where(User.is_locked.is_(True), User.is_deleted.is_(False))
+        .order_by(User.locked_until.asc().nullsfirst(), User.email.asc())
+    )
+    pending_result = await db.execute(
+        select(UnlockRequest.user_id, UnlockRequest.id).where(
+            UnlockRequest.status == "PENDING"
+        )
+    )
+    pending_by_user = {
+        user_id: request_id for user_id, request_id in pending_result.all()
+    }
+    return [
+        LockedUserResponse(
+            user_id=user.id,
+            user_name=f"{user.first_name} {user.last_name}".strip(),
+            email=user.email,
+            role=user.role.name if user.role else "Not available",
+            failed_login_attempts=user.failed_login_attempts or 0,
+            last_failed_at=user.last_failed_at,
+            last_failed_ip=user.last_failed_ip,
+            locked_until=user.locked_until,
+            pending_request_id=pending_by_user.get(user.id),
+        )
+        for user in users_result.scalars().all()
+    ]
+
+
+@router.post("/locked-users/{user_id}/unlock")
+async def unlock_user_account(
+    user_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_super_admin_user_security(current_user)
+    result = await db.execute(
+        select(User).where(User.id == user_id).with_for_update()
+    )
+    user = result.scalar_one_or_none()
+    if user is None or user.is_deleted:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    now = utc_now_naive()
+    user.is_locked = False
+    user.failed_login_attempts = 0
+    user.locked_until = None
+    request_ids = select(cast(UnlockRequest.id, String)).where(
+        UnlockRequest.user_id == user.id,
+        UnlockRequest.status == "PENDING",
+    )
+    await db.execute(
+        update(UnlockRequest)
+        .where(
+            UnlockRequest.user_id == user.id,
+            UnlockRequest.status == "PENDING",
+        )
+        .values(status="RESOLVED", resolved_at=now, resolved_by=current_user.id)
+    )
+    await db.execute(
+        update(Notification)
+        .where(Notification.group_key.in_(request_ids))
+        .values(is_read=True)
+    )
+    db.add(
+        AuditLog(
+            user_id=current_user.id,
+            action="MANUAL_UNLOCK",
+            table_name="users",
+            record_id=str(user.id),
+            new_value={"is_locked": False, "failed_login_attempts": 0},
+        )
+    )
+    await db.commit()
+    return {"message": "User account unlocked successfully."}
 
 @router.post(
     "/settings",

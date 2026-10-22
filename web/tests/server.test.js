@@ -135,7 +135,7 @@ describe("Express pages and CSP middleware", () => {
     expect(response.status).toBe(200);
     expect(response.text).toContain("qa.user@example.com");
     expect(response.text).toContain("qa.user@gmail.com");
-    expect(response.text).toContain("Connected on 2024-05-06");
+    expect(response.text).toContain("Connected on 06 May 2024");
   });
 
   it("does not render the legacy Connected Accounts card for other roles", async () => {
@@ -147,7 +147,7 @@ describe("Express pages and CSP middleware", () => {
     expect(response.text).not.toContain("Connected Accounts");
   });
 
-  it("returns the backend authentication status and body unchanged", async () => {
+  it("redirects expired page sessions to login with a safe return path", async () => {
     const { BackendResponseError } = await import("../src/lib/backendClient.js");
     const backend = {
       get: vi.fn(async () => {
@@ -157,9 +157,47 @@ describe("Express pages and CSP middleware", () => {
       }),
     };
 
+    const response = await request(createApp({ backend }))
+      .get("/dashboard?token=must-not-be-forwarded");
+    expect(response.status).toBe(303);
+    expect(response.headers.location).toBe(
+      "/auth/login?session_expired=true&next=%2Fdashboard",
+    );
+  });
+
+  it("preserves authenticated forbidden responses instead of redirecting", async () => {
+    const { BackendResponseError } = await import("../src/lib/backendClient.js");
+    const backend = {
+      get: vi.fn(async () => {
+        throw new BackendResponseError(403, "application/json", {
+          detail: "Access denied.",
+        });
+      }),
+    };
+
     const response = await request(createApp({ backend })).get("/dashboard");
-    expect(response.status).toBe(401);
-    expect(response.body).toEqual({ detail: "Token expired or invalid." });
+    expect(response.status).toBe(403);
+    expect(response.headers["content-type"]).toMatch(/^text\/html/);
+    expect(response.text).toContain("Access denied");
+    expect(response.text).not.toContain("Access denied.");
+  });
+
+  it("does not accept an external return URL from the page query", async () => {
+    const { BackendResponseError } = await import("../src/lib/backendClient.js");
+    const backend = {
+      get: vi.fn(async () => {
+        throw new BackendResponseError(401, "application/json", {
+          detail: "Not authenticated.",
+        });
+      }),
+    };
+
+    const response = await request(createApp({ backend }))
+      .get("/dashboard?next=https%3A%2F%2Fevil.example%2F");
+    expect(response.status).toBe(303);
+    expect(response.headers.location).toBe(
+      "/auth/login?session_expired=true&next=%2Fdashboard",
+    );
   });
 
   it("HTML-escapes strings in JSON error responses", async () => {

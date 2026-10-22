@@ -3,24 +3,35 @@ Authentication Domain Service (Single Source of Truth)
 """
 import asyncio
 import secrets
+import math
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import HTTPException, status
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import joinedload
 
 from app.core import security
 from app.core.config import settings
 from app.core.password_policy import get_password_expiry_days
 from app.models.audit_log import AuditLog
-from app.modules.auth.models import AuthSession, LoginHistory, PasswordHistory
+from app.modules.auth.models import (
+    AuthSession,
+    LoginHistory,
+    PasswordHistory,
+    UnlockRequest,
+    UserSecuritySettings,
+)
 from app.modules.departments.models import UserDepartment
 from app.modules.users.models import Role, User
 
 INVALID_CREDENTIALS_MESSAGE = "Invalid email or password."
+LOCKED_ACCOUNT_MESSAGE = (
+    "Your account has been locked due to multiple failed login attempts. "
+    "Please notify the Super Admin to request an immediate unlock."
+)
 
 _timing_equalization_hash: str | None = None
 _timing_equalization_lock = asyncio.Lock()
@@ -67,16 +78,42 @@ class AuthService:
     async def _clear_expired_lockout(db: AsyncSession, user: User, now: datetime) -> None:
         if not user.is_locked:
             return
-        if user.lockout_until and user.lockout_until > now:
-            remaining = int((user.lockout_until - now).total_seconds() / 60)
+        locked_until = getattr(user, "locked_until", getattr(user, "lockout_until", None))
+        if locked_until and locked_until > now:
+            remaining_seconds = max(1, math.ceil((locked_until - now).total_seconds()))
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Account locked. Try again in {remaining} minutes.",
+                detail={
+                    "code": "ACCOUNT_LOCKED",
+                    "message": LOCKED_ACCOUNT_MESSAGE,
+                    "remaining_seconds": remaining_seconds,
+                    "locked_until": locked_until.isoformat(),
+                },
             )
         user.is_locked = False
         user.failed_login_attempts = 0
-        user.lockout_until = None
+        user.locked_until = None
+        await db.execute(
+            update(UnlockRequest)
+            .where(UnlockRequest.user_id == user.id, UnlockRequest.status == "PENDING")
+            .values(status="RESOLVED", resolved_at=now, resolved_by=None)
+        )
         await db.commit()
+
+    @staticmethod
+    async def _security_settings(db: AsyncSession) -> tuple[int, int, bool]:
+        result = await db.execute(
+            select(UserSecuritySettings)
+            .where(UserSecuritySettings.singleton_key.is_(True))
+        )
+        settings_row = result.scalar_one_or_none()
+        if settings_row is None:
+            return 5, 29, True
+        return (
+            settings_row.max_failed_attempts,
+            settings_row.lockout_duration_minutes,
+            settings_row.superadmin_lockout_enabled,
+        )
 
     @staticmethod
     async def _record_failed_login(
@@ -86,10 +123,32 @@ class AuthService:
         user_agent: str,
         now: datetime,
     ) -> None:
+        max_failed_attempts, lockout_duration_minutes, superadmin_lockout_enabled = (
+            await AuthService._security_settings(db)
+        )
+        is_super_admin = bool(user.role and user.role.name == "Super Admin")
+        if is_super_admin and not superadmin_lockout_enabled:
+            db.add(
+                LoginHistory(
+                    user_id=user.id,
+                    ip_address=ip_address,
+                    user_agent=user_agent,
+                    is_success=False,
+                    attempted_at=now,
+                )
+            )
+            await db.commit()
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=INVALID_CREDENTIALS_MESSAGE,
+            )
+
         user.failed_login_attempts += 1
-        if user.failed_login_attempts >= 5:
+        user.last_failed_ip = ip_address
+        user.last_failed_at = now
+        if user.failed_login_attempts >= max_failed_attempts:
             user.is_locked = True
-            user.lockout_until = now + timedelta(minutes=30)
+            user.locked_until = now + timedelta(minutes=lockout_duration_minutes)
         db.add(
             LoginHistory(
                 user_id=user.id,
@@ -103,7 +162,12 @@ class AuthService:
         if user.is_locked:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Account locked due to multiple failed login attempts.",
+                detail={
+                    "code": "ACCOUNT_LOCKED",
+                    "message": LOCKED_ACCOUNT_MESSAGE,
+                    "remaining_seconds": lockout_duration_minutes * 60,
+                    "locked_until": user.locked_until.isoformat(),
+                },
             )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -137,6 +201,8 @@ class AuthService:
         remember_me: bool = False,
     ) -> dict[str, Any]:
         now = datetime.now(UTC).replace(tzinfo=None)
+        ip_address = (ip_address or "Unknown")[:50]
+        user_agent = (user_agent or "Unknown")[:255]
         user = await AuthService._find_user_for_authentication(db, email)
         if not user:
             await AuthService._reject_invalid_credentials(password)
@@ -155,7 +221,7 @@ class AuthService:
             )
         user.failed_login_attempts = 0
         user.is_locked = False
-        user.lockout_until = None
+        user.locked_until = None
         await AuthService._mark_expired_password(db, user, now)
         db.add(
             LoginHistory(

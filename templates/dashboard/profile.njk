@@ -1,100 +1,212 @@
 {% extends "layouts/employee_base.njk" %}
-{% from "components/avatar.njk" import avatar %}
 {% block title %}Account Profile{% endblock %}
 {% block content %}
-<link rel="stylesheet" href="/static/css/avatar.css">
-<script src="/static/js/avatar.js"></script>
-<div class="p-4 sm:p-6 lg:p-8 space-y-6 overflow-y-auto">
-  <section class="app-surface p-6 sm:p-8">
-    <div class="flex flex-col sm:flex-row sm:items-center gap-5">
-      {{ avatar(user_avatar|default(current_user|default(none)), 96) }}
-      <div>
-        <h1 class="text-2xl sm:text-3xl font-bold text-slate-900">{{ user_name }}</h1>
-        <p class="text-slate-500 mt-1">{{ user_email }}</p>
-        <div class="flex flex-wrap gap-2 mt-3 text-xs font-bold">
-          <span class="app-status app-status--info">{{ user_display_identity }}</span>
-          <span class="app-status {% if account_status == 'Active' %}app-status--success{% else %}app-status--danger{% endif %}">{{ account_status }}</span>
-        </div>
-      </div>
-    </div>
-  </section>
+<link rel="stylesheet" href="/static/css/ep-profile.css?v=20261019-1">
+{% set profile_user_avatar = user_avatar|default({}, true) %}
+{% set profile_initials = '?' %}
+{% if user_name %}
+  {% set profile_initials = user_name[0]|upper %}
+{% endif %}
+{% set profile_status = account_status|default('—', true) %}
+{% set created_months = {
+  '01': 'Jan', '02': 'Feb', '03': 'Mar', '04': 'Apr',
+  '05': 'May', '06': 'Jun', '07': 'Jul', '08': 'Aug',
+  '09': 'Sep', '10': 'Oct', '11': 'Nov', '12': 'Dec'
+} %}
+<div class="ep-page">
+  <div class="ep-container">
+    <header class="ep-page-header ep-entrance">
+      <p class="ep-eyebrow">SETTINGS</p>
+      <h1 class="ep-page-title">Account Profile</h1>
+      <p class="ep-page-subtitle">Your profile, employment details and permissions.</p>
+    </header>
 
-  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-    <section class="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-      <h2 class="font-black text-slate-900 text-lg mb-4">Personal Information</h2>
-      <dl class="space-y-3 text-sm">
-        <div class="flex justify-between gap-4"><dt class="text-slate-500">Full Name</dt><dd class="font-bold text-right">{{ user_name }}</dd></div>
-        <div class="flex justify-between gap-4"><dt class="text-slate-500">Email</dt><dd class="font-bold text-right break-all">{{ user_email }}</dd></div>
-      </dl>
-    </section>
-    <section class="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-      <h2 class="font-black text-slate-900 text-lg mb-4">Employment Information</h2>
-      <dl class="space-y-3 text-sm">
-        <div class="flex justify-between gap-4"><dt class="text-slate-500">Position</dt><dd class="font-bold text-right">{{ position_name or 'Not assigned' }}</dd></div>
-        <div class="flex justify-between gap-4"><dt class="text-slate-500">Department</dt><dd class="font-bold text-right">{{ department_name or 'Not assigned' }}</dd></div>
-      </dl>
-    </section>
-    <section class="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-      <h2 class="font-black text-slate-900 text-lg mb-4">Account Information</h2>
-      <dl class="space-y-3 text-sm">
-        <div class="flex justify-between gap-4"><dt class="text-slate-500">Status</dt><dd class="font-bold">{{ account_status }}</dd></div>
-        {% if created_at %}
-        <div class="flex justify-between gap-4">
-          <dt class="text-slate-500">Created</dt>
-          <dd class="font-bold">{{ (created_at|strftime('%Y-%m-%d')) }}</dd>
+    <section class="ep-card ep-hero ep-entrance" aria-label="Profile overview">
+      <div class="ep-hero-banner" aria-hidden="true"></div>
+      <div class="ep-hero-body">
+        <div class="ep-identity">
+          <span class="ep-avatar{% if profile_user_avatar.avatar_url %} ep-avatar--photo{% endif %}" role="img" aria-label="{{ user_name|default('User', true) }}">
+            {% if profile_user_avatar.avatar_url %}
+            <img class="ep-avatar-image" src="{{ profile_user_avatar.avatar_url }}" alt="{{ user_name|default('User', true) }}" loading="lazy" width="112" height="112" data-kpi-avatar-image>
+            <span class="ep-avatar-initials ep-avatar-fallback" aria-hidden="true">{{ profile_initials }}</span>
+            {% else %}
+            <span class="ep-avatar-initials" aria-hidden="true">{{ profile_initials }}</span>
+            {% endif %}
+          </span>
+          <div class="ep-identity-copy">
+            <h2 class="ep-profile-name">{{ user_name|default('—', true) }}</h2>
+            <p class="ep-email">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="m3 7 9 6 9-6"></path></svg>
+              <span>{{ user_email|default('—', true) }}</span>
+            </p>
+            <div class="ep-pill-row">
+              <span class="ep-pill ep-pill--accent">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="7" width="18" height="14" rx="2"></rect><path d="M8 7V4h8v3M3 12h18M10 12v2h4v-2"></path></svg>
+                {{ position_name|default(user_display_identity|default('Not assigned', true), true) }}
+              </span>
+              <span class="ep-pill{% if profile_status == 'Active' %} ep-pill--success{% elif profile_status == 'Inactive' %} ep-pill--warning{% else %} ep-pill--neutral{% endif %}">
+                <span class="ep-status-dot" aria-hidden="true"></span>{{ profile_status }}
+              </span>
+            </div>
+          </div>
         </div>
-        {% endif %}
-      </dl>
-    </section>
-    <section class="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-      <h2 class="font-black text-slate-900 text-lg mb-4">Permission Summary</h2>
-      <p class="text-xs text-slate-500 mb-3">Effective permissions for your current role, level, and overrides.</p>
-      <div class="space-y-2 max-h-64 overflow-y-auto">
-        {% for code, allowed in permission_map|items %}
-        <div class="flex items-center justify-between text-sm">
-          <span class="text-slate-600">{{ code }}</span>
-          {% if allowed %}<span class="text-emerald-600 font-bold">Allowed</span>{% else %}<span class="text-slate-400 font-bold">Not available</span>{% endif %}
-        </div>
-        {% else %}
-        <p class="text-sm text-slate-500">No permissions assigned.</p>
-        {% endfor %}
+
+        <dl class="ep-key-facts" aria-label="Employment summary">
+          {% if position_name %}
+          <div class="ep-key-fact">
+            <dt><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="7" width="18" height="14" rx="2"></rect><path d="M8 7V4h8v3M3 12h18M10 12v2h4v-2"></path></svg><span>Position</span></dt>
+            <dd>{{ position_name }}</dd>
+          </div>
+          {% endif %}
+          {% if department_name %}
+          <div class="ep-key-fact">
+            <dt><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"></path><path d="M9 9v.01M9 12v.01M9 15v.01M9 18v.01M15 13v.01M15 16v.01M15 19v.01"></path></svg><span>Department</span></dt>
+            <dd>{{ department_name }}</dd>
+          </div>
+          {% endif %}
+          {% if user_level %}
+          <div class="ep-key-fact">
+            <dt><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3"></circle><path d="M5 21v-2a7 7 0 0 1 14 0v2M8 3.5l1.5 1M16 3.5l-1.5 1"></path></svg><span>Level</span></dt>
+            <dd>{{ user_level }}</dd>
+          </div>
+          {% endif %}
+        </dl>
       </div>
     </section>
+
+    <div class="ep-main-grid">
+      <div class="ep-info-stack">
+        <section class="ep-card ep-info-card ep-entrance" aria-labelledby="ep-personal-title">
+          <div class="ep-card-heading">
+            <span class="ep-icon-tile" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"></circle><path d="M5 21v-2a7 7 0 0 1 14 0v2"></path></svg></span>
+            <h2 class="ep-card-title" id="ep-personal-title">Personal Information</h2>
+          </div>
+          <dl class="ep-details">
+            <div class="ep-detail-row"><dt>Full Name</dt><dd>{{ user_name|default('—', true) }}</dd></div>
+            <div class="ep-detail-row"><dt>Email</dt><dd>{{ user_email|default('—', true) }}</dd></div>
+          </dl>
+        </section>
+
+        <section class="ep-card ep-info-card ep-entrance" aria-labelledby="ep-employment-title">
+          <div class="ep-card-heading">
+            <span class="ep-icon-tile" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"></path><path d="M9 9v.01M9 12v.01M9 15v.01M9 18v.01M15 13v.01M15 16v.01M15 19v.01"></path></svg></span>
+            <h2 class="ep-card-title" id="ep-employment-title">Employment Information</h2>
+          </div>
+          <dl class="ep-details">
+            <div class="ep-detail-row"><dt>Position</dt><dd>{{ position_name|default('Not assigned', true) }}</dd></div>
+            <div class="ep-detail-row"><dt>Department</dt><dd>{{ department_name|default('Not assigned', true) }}</dd></div>
+            {% if user_level %}<div class="ep-detail-row"><dt>Level</dt><dd>{{ user_level }}</dd></div>{% endif %}
+          </dl>
+        </section>
+
+        <section class="ep-card ep-info-card ep-entrance" aria-labelledby="ep-account-title">
+          <div class="ep-card-heading">
+            <span class="ep-icon-tile" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"></rect><path d="M8 8h8M8 12h8M8 16h4"></path></svg></span>
+            <h2 class="ep-card-title" id="ep-account-title">Account Information</h2>
+          </div>
+          <dl class="ep-details">
+            <div class="ep-detail-row"><dt>Status</dt><dd><span class="ep-pill{% if profile_status == 'Active' %} ep-pill--success{% elif profile_status == 'Inactive' %} ep-pill--warning{% else %} ep-pill--neutral{% endif %}"><span class="ep-status-dot" aria-hidden="true"></span>{{ profile_status }}</span></dd></div>
+            <div class="ep-detail-row">
+              <dt>Created</dt>
+              <dd>
+                {% if created_at %}
+                  {{ created_at|strftime('%d') }} {{ created_months[created_at|strftime('%m')] }} {{ created_at|strftime('%Y') }}
+                {% else %}
+                  —
+                {% endif %}
+              </dd>
+            </div>
+          </dl>
+        </section>
+      </div>
+
+      <section class="ep-card ep-permission-card ep-entrance" aria-labelledby="ep-permission-title">
+        <div class="ep-card-heading ep-permission-heading">
+          <span class="ep-icon-tile" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-11V5l-8-3-8 3v6c0 7 8 11 8 11Z"></path><path d="m9 12 2 2 4-4"></path></svg></span>
+          <div class="ep-permission-heading-copy">
+            <h2 class="ep-card-title" id="ep-permission-title">Permission Summary</h2>
+            <p class="ep-card-subtitle">Effective permissions for your current role, level, and overrides.</p>
+          </div>
+        </div>
+
+        <div class="ep-permission-counts" aria-label="Permission totals">
+          <span class="ep-count-pill ep-count-pill--allowed"><strong id="epAllowedCount">—</strong> Allowed</span>
+          <span class="ep-count-pill ep-count-pill--unavailable"><strong id="epUnavailableCount">—</strong> Not available</span>
+        </div>
+
+        <div class="ep-permission-search">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path></svg>
+          <input class="ep-search-input" id="epPermissionSearch" type="search" placeholder="Search permissions" aria-label="Search permissions" aria-controls="epPermissionList">
+          <button class="ep-search-clear" id="epPermissionSearchClear" type="button" aria-label="Clear permission search" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"></path></svg>
+          </button>
+        </div>
+        <p class="ep-search-announcement" id="epPermissionSearchAnnouncement" aria-live="polite"></p>
+
+        <div class="ep-permission-scroll" id="epPermissionScroll">
+          <ul class="ep-permission-list" id="epPermissionList">
+            {% for code, allowed in permission_map|default({})|items %}
+            <li class="ep-permission-item" data-permission-key="{{ code }}" data-permission-allowed="{{ 'true' if allowed else 'false' }}">
+              <span class="ep-permission-copy">
+                <span class="ep-permission-action" data-permission-action>{{ code }}</span>
+                <span class="ep-permission-key">{{ code }}</span>
+              </span>
+              {% if allowed %}
+              <span class="ep-permission-status ep-permission-status--allowed">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"></path></svg>Allowed
+              </span>
+              {% else %}
+              <span class="ep-permission-status ep-permission-status--unavailable">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"></path></svg>Not available
+              </span>
+              {% endif %}
+            </li>
+            {% endfor %}
+          </ul>
+          <p class="ep-empty-permissions" id="epNoPermissions"{% if permission_map|default({})|items|length %} hidden{% endif %}>No permissions to display</p>
+          <div class="ep-no-search-results" id="epNoSearchResults" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4M8 11h6"></path></svg>
+            <p>No permissions match your search</p>
+          </div>
+        </div>
+      </section>
+    </div>
+
     {% if user_role == 'Super Admin' %}
-    <section class="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm lg:col-span-2">
-      <div class="mb-4">
-        <h2 class="font-black text-slate-900 text-lg">Connected Accounts</h2>
-        <p class="text-xs text-slate-500 mt-1">Use only provider accounts explicitly connected to this internal user account.</p>
+    <section class="ep-connected-section" aria-labelledby="ep-connected-title">
+      <div class="ep-connected-heading">
+        <h2 id="ep-connected-title">Connected Accounts</h2>
+        <p>Use only provider accounts explicitly connected to this internal user account.</p>
       </div>
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="ep-connected-grid">
         {% for provider, label in [['google', 'Google'], ['microsoft', 'Microsoft']] %}
         {% set account = connected_accounts[provider] %}
-        <div class="rounded-2xl border border-slate-200 p-4 flex items-center justify-between gap-4">
-          <div class="min-w-0">
-            <h3 class="font-bold text-slate-900">{{ label }}</h3>
+        <div class="ep-connected-card">
+          <div class="ep-connected-copy">
+            <h3>{{ label }}</h3>
             {% if account %}
-            <p class="text-sm text-emerald-600 font-semibold">Connected</p>
-            <p class="text-xs text-slate-500 truncate">{{ account.email or 'Verified provider account' }}</p>
+            <p class="ep-connected-status">Connected</p>
+            <p class="ep-connected-email">{{ account.email or 'Verified provider account' }}</p>
             {% if account.connected_at %}
-            <p class="text-xs text-slate-400 mt-1">Connected on {{ (account.connected_at|strftime('%Y-%m-%d')) }}</p>
+            <p class="ep-connected-date">Connected on {{ account.connected_at|strftime('%d') }} {{ created_months[account.connected_at|strftime('%m')] }} {{ account.connected_at|strftime('%Y') }}</p>
             {% endif %}
             {% else %}
-            <p class="text-sm text-slate-500">Not connected</p>
+            <p>Not connected</p>
             {% endif %}
           </div>
           {% if account %}
           {% if local_password_enabled or connected_accounts|length > 1 %}
-          <button type="button" data-unlink-provider="{{ provider }}" class="shrink-0 rounded-xl border border-red-200 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-50">Unlink</button>
+          <button type="button" data-unlink-provider="{{ provider }}" class="ep-connected-button ep-connected-button--danger">Unlink</button>
           {% else %}
-          <span class="shrink-0 text-xs font-semibold text-slate-400">Required</span>
+          <span class="ep-connected-required">Required</span>
           {% endif %}
           {% else %}
-          <a href="/api/v1/auth/{{ provider }}/link/start" class="shrink-0 rounded-xl bg-blue-900 px-3 py-2 text-xs font-bold text-white hover:bg-blue-800">Connect {{ label }}</a>
+          <a href="/api/v1/auth/{{ provider }}/link/start" class="ep-connected-button">Connect {{ label }}</a>
           {% endif %}
         </div>
         {% endfor %}
       </div>
-      <p id="connectedAccountsMessage" class="hidden mt-4 rounded-xl px-4 py-3 text-sm"></p>
+      <p id="connectedAccountsMessage" class="ep-connected-message" hidden></p>
     </section>
     {% endif %}
   </div>
@@ -102,7 +214,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/js/avatar.js"></script>
+<script src="/static/js/ep-profile.js?v=20261019-1" defer></script>
 <script>
 document.querySelectorAll('[data-unlink-provider]').forEach((button) => {
   button.addEventListener('click', async () => {
@@ -118,7 +230,7 @@ document.querySelectorAll('[data-unlink-provider]').forEach((button) => {
     const data = await response.json().catch(() => ({}));
     const messageText = data.detail || data.status || (response.ok ? 'Account unlinked.' : 'Unable to unlink account.');
     window.showToast(messageText, response.ok ? 'success' : 'error');
-    message.className = 'hidden';
+    message.hidden = false;
     message.textContent = messageText;
     if (response.ok) window.setTimeout(() => window.location.reload(), 500);
   });

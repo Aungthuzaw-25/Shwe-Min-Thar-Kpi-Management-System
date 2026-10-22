@@ -1,4 +1,5 @@
 import asyncio
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -9,7 +10,9 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database.connection import Base
 from app.modules.auth.service import AuthService, _load_authentication_user
+from app.modules.auth.models import UnlockRequest, UserSecuritySettings
 from app.modules.departments.models import Department, UserDepartment
+from app.modules.notifications.models import Notification
 from app.modules.users.models import Permission, Position, Role, RolePermission, User
 
 
@@ -41,6 +44,23 @@ class FakeDB:
 
     def add(self, obj):
         self.added.append(obj)
+
+
+class FakeSettingsResult:
+    def __init__(self, value):
+        self.value = value
+
+    def scalar_one_or_none(self):
+        return self.value
+
+
+class FakeSettingsDB(FakeDB):
+    def __init__(self, settings):
+        super().__init__()
+        self.settings = settings
+
+    async def execute(self, stmt):
+        return FakeSettingsResult(self.settings)
 
 
 def test_authenticate_user_returns_tokens_for_valid_credentials(monkeypatch):
@@ -99,6 +119,9 @@ def test_login_user_lookup_uses_one_query_and_eager_loads_response_data(tmp_path
             UserDepartment.__table__,
             Permission.__table__,
             RolePermission.__table__,
+            Notification.__table__,
+            UserSecuritySettings.__table__,
+            UnlockRequest.__table__,
         ]
         try:
             async with engine.begin() as connection:
@@ -154,7 +177,83 @@ def test_login_user_lookup_uses_one_query_and_eager_loads_response_data(tmp_path
                 assert loaded_user.position.name == position.name
                 assert loaded_user.user_departments[0].department.name == department.name
                 assert query_count == 1
+                assert "locked_until" in User.__table__.columns
+                assert "lockout_until" not in User.__table__.columns
         finally:
             await engine.dispose()
 
     asyncio.run(run())
+
+
+def test_failed_login_uses_configured_attempts_and_duration():
+    now = datetime.now(UTC).replace(tzinfo=None)
+    user = SimpleNamespace(
+        id=uuid4(),
+        is_locked=False,
+        failed_login_attempts=1,
+        last_failed_ip=None,
+        last_failed_at=None,
+        locked_until=None,
+        role=SimpleNamespace(name="Employee"),
+    )
+    db = FakeSettingsDB(SimpleNamespace(
+        max_failed_attempts=2,
+        lockout_duration_minutes=7,
+        superadmin_lockout_enabled=True,
+    ))
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(AuthService._record_failed_login(
+            db, user, "192.0.2.1", "Browser", now
+        ))
+
+    assert exc_info.value.status_code == 403
+    assert user.is_locked is True
+    assert user.failed_login_attempts == 2
+    assert user.last_failed_ip == "192.0.2.1"
+    assert user.last_failed_at == now
+    assert user.locked_until == now + timedelta(minutes=7)
+    assert db.committed == 1
+
+
+def test_super_admin_lockout_exemption_does_not_increment_attempts():
+    user = SimpleNamespace(
+        id=uuid4(),
+        is_locked=False,
+        failed_login_attempts=4,
+        role=SimpleNamespace(name="Super Admin"),
+    )
+    db = FakeSettingsDB(SimpleNamespace(
+        max_failed_attempts=5,
+        lockout_duration_minutes=29,
+        superadmin_lockout_enabled=False,
+    ))
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(AuthService._record_failed_login(
+            db, user, "192.0.2.2", "Browser", datetime.now(UTC).replace(tzinfo=None)
+        ))
+
+    assert exc_info.value.status_code == 401
+    assert user.is_locked is False
+    assert user.failed_login_attempts == 4
+    assert db.committed == 1
+
+
+def test_expired_lockout_is_cleared_before_login_evaluation():
+    user = SimpleNamespace(
+        id=uuid4(),
+        is_locked=True,
+        failed_login_attempts=5,
+        locked_until=datetime.now(UTC).replace(tzinfo=None) - timedelta(seconds=1),
+    )
+    db = FakeDB(user)
+
+    asyncio.run(AuthService._clear_expired_lockout(
+        db, user, datetime.now(UTC).replace(tzinfo=None)
+    ))
+
+    assert user.is_locked is False
+    assert user.failed_login_attempts == 0
+    assert user.locked_until is None
+    assert db.committed == 1

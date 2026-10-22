@@ -17,7 +17,7 @@ export function registerActivityRoutes(app) {
         : "layouts/employee_base.njk";
       response.render("dashboard/notifications.njk", context);
     } catch (error) {
-      if (!sendBackendError(error, response)) next(error);
+      if (!sendBackendError(error, response, request)) next(error);
     }
   });
 }

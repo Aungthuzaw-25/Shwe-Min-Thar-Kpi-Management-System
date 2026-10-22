@@ -9,7 +9,7 @@ function wrapPage(handler) {
       if (error instanceof BackendResponseError && error.status === 401) {
         return response.redirect(307, "/auth/login");
       }
-      if (!sendBackendError(error, response)) next(error);
+      if (!sendBackendError(error, response, request)) next(error);
     }
   };
 }

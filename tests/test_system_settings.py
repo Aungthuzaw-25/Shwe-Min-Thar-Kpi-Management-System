@@ -8,6 +8,7 @@ from pydantic import ValidationError
 
 from app.core.password_policy import get_password_policy, validate_password_strength
 from app.modules.system.router import (
+    _require_super_admin_user_security,
     _require_super_admin_audit_retention,
     _require_super_admin_email_settings,
     _sanitize_setting_value,
@@ -23,6 +24,7 @@ from app.modules.system.schemas import (
     SystemSettingResponse,
     SystemSettingUpdate,
 )
+from app.modules.auth.schemas import UserSecuritySettingsResponse
 
 
 class FakeResult:
@@ -70,6 +72,33 @@ def test_security_setting_is_normalized_for_existing_json_storage():
     assert value["min_length"] == 10
     assert value["force_password_change_days"] == 90
     assert value["password_expiry"] is True
+
+
+def test_user_lockout_settings_require_super_admin():
+    with pytest.raises(HTTPException) as exc_info:
+        _require_super_admin_user_security(
+            SimpleNamespace(role=SimpleNamespace(name="Admin"))
+        )
+
+    assert exc_info.value.status_code == 403
+    _require_super_admin_user_security(
+        SimpleNamespace(role=SimpleNamespace(name="Super Admin"))
+    )
+
+
+def test_user_security_settings_response_serializes_orm_values():
+    response = UserSecuritySettingsResponse.model_validate(
+        SimpleNamespace(
+            max_failed_attempts=5,
+            lockout_duration_minutes=29,
+            superadmin_lockout_enabled=True,
+            updated_by=None,
+            updated_at=None,
+        )
+    )
+
+    assert response.max_failed_attempts == 5
+    assert response.lockout_duration_minutes == 29
 
 
 def test_new_setting_response_allows_null_updated_at():

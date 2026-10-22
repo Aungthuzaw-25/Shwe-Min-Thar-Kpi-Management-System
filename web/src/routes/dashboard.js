@@ -18,7 +18,7 @@ function wrapPage(handler) {
     try {
       await handler(request, response);
     } catch (error) {
-      if (!sendBackendError(error, response)) next(error);
+      if (!sendBackendError(error, response, request)) next(error);
     }
   };
 }

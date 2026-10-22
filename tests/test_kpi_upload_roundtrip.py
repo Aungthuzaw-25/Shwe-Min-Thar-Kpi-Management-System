@@ -1,6 +1,6 @@
 import asyncio
 import io
-from datetime import UTC, date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from types import SimpleNamespace
 from uuid import uuid4
@@ -14,6 +14,7 @@ from sqlalchemy.future import select
 
 from app.core.dependencies import get_current_user
 from app.database.connection import Base, get_db
+from app.database.seed import _ensure_active_period
 from app.modules.departments.models import Department, UserDepartment
 from app.modules.kpi.engine import KPICalculationEngine
 from app.modules.kpi.models import (
@@ -179,6 +180,9 @@ async def _template(client, period_id):
     )
     assert response.status_code == 200, response.text
     assert 'filename="KPI_Master_Template.xlsx"' in response.headers["content-disposition"]
+    assert response.headers["content-type"] == (
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
     return response.content
 
 
@@ -273,6 +277,160 @@ def test_official_template_round_trip_calculates_period_records(tmp_path):
                 assert len(history) == 2
         finally:
             limiter.enabled = True
+            await engine.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_import_period_list_excludes_open_period_with_nonmonthly_boundaries(tmp_path):
+    async def scenario():
+        engine, factory, admin, _employees, valid_period, _formula = await _setup(tmp_path)
+        invalid_period_id = uuid4()
+        try:
+            async with factory() as db:
+                db.add(
+                    KPIPeriod(
+                        id=invalid_period_id,
+                        label="testing",
+                        start_date=datetime(2026, 10, 20, 17, 30),
+                        end_date=datetime(2026, 10, 22, 17, 30),
+                        status=KPIPeriodStatus.OPEN,
+                        is_deleted=False,
+                    )
+                )
+                await db.commit()
+
+            async with await _client(factory, admin) as client:
+                response = await client.get("/api/v1/kpi-uploads/periods")
+                assert response.status_code == 200
+                listed_ids = {item["id"] for item in response.json()}
+                assert str(valid_period.id) in listed_ids
+                assert str(invalid_period_id) not in listed_ids
+
+                export = await client.get(
+                    "/api/v1/kpi-uploads/export-template",
+                    params={"period_id": str(invalid_period_id)},
+                )
+                assert export.status_code == 400
+                assert "complete monthly boundaries" in str(export.json()["detail"])
+        finally:
+            limiter.enabled = True
+            await engine.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_template_endpoint_rejects_missing_malformed_and_unknown_period_ids(tmp_path):
+    async def scenario():
+        engine, factory, admin, _employees, _period, _formula = await _setup(tmp_path)
+        try:
+            async with await _client(factory, admin) as client:
+                missing = await client.get("/api/v1/kpi-uploads/export-template")
+                malformed = await client.get(
+                    "/api/v1/kpi-uploads/export-template",
+                    params={"period_id": "not-a-uuid"},
+                )
+                unknown = await client.get(
+                    "/api/v1/kpi-uploads/export-template",
+                    params={"period_id": str(uuid4())},
+                )
+                assert missing.status_code == 422
+                assert malformed.status_code == 422
+                assert unknown.status_code == 400
+                assert "available evaluation period" in str(unknown.json()["detail"])
+        finally:
+            limiter.enabled = True
+            await engine.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_template_endpoint_reports_period_without_applicable_formula(tmp_path):
+    async def scenario():
+        engine, factory, admin, _employees, period, formula = await _setup(tmp_path)
+        try:
+            async with factory() as db:
+                persisted_formula = await db.get(KPIFormula, formula.id)
+                persisted_formula.is_active = False
+                await db.commit()
+
+            async with await _client(factory, admin) as client:
+                response = await client.get(
+                    "/api/v1/kpi-uploads/export-template",
+                    params={"period_id": str(period.id)},
+                )
+                assert response.status_code == 400
+                assert "No active employees have an applicable KPI formula" in str(
+                    response.json()["detail"]
+                )
+        finally:
+            limiter.enabled = True
+            await engine.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_import_period_endpoints_reject_unauthenticated_and_unauthorized_users(
+    tmp_path,
+):
+    async def scenario():
+        engine, factory, _admin, _employees, _period, _formula = await _setup(tmp_path)
+        from fastapi import FastAPI
+
+        app = FastAPI()
+        app.include_router(router, prefix="/api/v1")
+        app.state.limiter = limiter
+
+        async def override_db():
+            async with factory() as db:
+                yield db
+
+        app.dependency_overrides[get_db] = override_db
+        limiter.enabled = False
+        try:
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                unauthenticated = await client.get(
+                    "/api/v1/kpi-uploads/periods"
+                )
+                assert unauthenticated.status_code == 401
+
+                app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(
+                    role=SimpleNamespace(name="Employee")
+                )
+                unauthorized = await client.get("/api/v1/kpi-uploads/periods")
+                assert unauthorized.status_code == 403
+        finally:
+            limiter.enabled = True
+            await engine.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_standard_seed_period_uses_canonical_month_boundaries(tmp_path):
+    async def scenario():
+        engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'seed-period.db'}")
+        async with engine.begin() as connection:
+            await connection.run_sync(
+                lambda sync_connection: KPIPeriod.__table__.create(sync_connection)
+            )
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        try:
+            async with factory() as db:
+                period = await _ensure_active_period(db)
+                period_month = datetime.strptime(period.label, "%B %Y")
+                expected = calendar_period_range(
+                    PeriodType.MONTHLY,
+                    date(period_month.year, period_month.month, 1),
+                )
+                assert period.start_date == expected.start_inclusive.replace(
+                    tzinfo=None
+                )
+                assert period.end_date == expected.end_exclusive.replace(
+                    tzinfo=None
+                )
+        finally:
             await engine.dispose()
 
     asyncio.run(scenario())

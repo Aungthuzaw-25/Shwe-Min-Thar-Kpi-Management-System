@@ -87,7 +87,7 @@
                         <select id="targetPeriod" required class="w-full sm:w-1/2 px-3 sm:px-4 py-3 sm:py-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 text-xs sm:text-sm font-bold text-slate-800 shadow-inner transition-all" onchange="validateFormState()">
                             <option value="">Loading evaluation periods…</option>
                         </select>
-                        <p class="text-[10px] sm:text-xs text-slate-500 font-medium mt-2">Template generation and upload will use this exact period.</p>
+                        <p id="periodHelp" class="text-[10px] sm:text-xs text-slate-500 font-medium mt-2">Import requires an open or in-progress period covering one complete calendar month.</p>
                     </div>
 
                     <!-- Drag & Drop Zone -->
@@ -159,6 +159,44 @@
             .replaceAll("'", "&#039;");
     }
 
+    async function getApiErrorMessage(response) {
+        if (response.status === 403) {
+            return "You do not have permission to use this KPI import feature.";
+        }
+        if (response.status === 422) {
+            return "The selected evaluation period is invalid. Reload the page and select an available period.";
+        }
+
+        let payload = null;
+        if ((response.headers.get('content-type') || '').includes('application/json')) {
+            try {
+                payload = await response.json();
+            } catch (error) {
+                return response.status >= 500
+                    ? "The server could not complete the request. Please try again later."
+                    : "The request could not be completed. Please reload the page and try again.";
+            }
+        }
+
+        const detail = payload && payload.detail;
+        if (detail && detail.code === 'validation_error' && Array.isArray(detail.errors)) {
+            const messages = detail.errors
+                .filter(message => typeof message === 'string')
+                .map(message => message.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "an employee"));
+            if (messages.length) return messages.join(' ');
+        }
+        if (detail && detail.code === 'processing_error' && typeof detail.message === 'string') {
+            return detail.message;
+        }
+        if (response.status === 400) {
+            return "The selected evaluation period is unavailable or is not a complete calendar month.";
+        }
+        if (response.status >= 500) {
+            return "The server could not complete the request. Please try again later.";
+        }
+        return "The request could not be completed. Please reload the page and try again.";
+    }
+
     async function loadPeriods() {
         try {
             const response = await fetch('/api/v1/kpi-uploads/periods');
@@ -171,17 +209,26 @@
                 showToast("You do not have permission to import KPI data.", "error");
                 return;
             }
-            if (!response.ok) throw new Error("Period list unavailable");
+            if (!response.ok) {
+                showToast(await getApiErrorMessage(response), "error");
+                periodSelect.innerHTML = '<option value="">Evaluation periods could not be loaded</option>';
+                return;
+            }
             const periods = await response.json();
+            if (!Array.isArray(periods)) {
+                periodSelect.innerHTML = '<option value="">Evaluation periods could not be loaded</option>';
+                showToast("The evaluation-period response was invalid. Please reload the page.", "error");
+                return;
+            }
             periodSelect.innerHTML = '<option value="">Select an evaluation period</option>' +
                 periods.map(period => `<option value="${escapeHTML(period.id)}">${escapeHTML(period.label)} (${escapeHTML(period.month)})</option>`).join('');
             if (periods.length === 0) {
-                periodSelect.innerHTML = '<option value="">No open evaluation periods</option>';
+                periodSelect.innerHTML = '<option value="">No eligible open or in-progress monthly periods</option>';
             }
             validateFormState();
         } catch (error) {
             periodSelect.innerHTML = '<option value="">Evaluation periods could not be loaded</option>';
-            showToast("Could not load evaluation periods. Please try again.", "error");
+            showToast("Could not connect to the server to load evaluation periods. Please try again.", "error");
         }
     }
 
@@ -192,30 +239,41 @@
             return;
         }
         try {
-            showToast("Generating template file...", "success");
-            const response = await fetch(`/api/v1/kpi-uploads/export-template?period_id=${encodeURIComponent(periodId)}`, { method: 'GET' });
+            const response = await fetch(`/api/v1/kpi-uploads/export-template?period_id=${encodeURIComponent(periodId)}`, {
+                method: 'GET',
+                credentials: 'include'
+            });
             if (response.status === 401) {
                 window.location.href = '/auth/login';
                 return;
             }
-            if (response.status === 403) {
-                showToast("You do not have permission to download the template.", "error");
+            if (!response.ok) {
+                showToast(await getApiErrorMessage(response), "error");
                 return;
             }
-            if (!response.ok) throw new Error("Failed to download template");
+            const contentType = response.headers.get('content-type') || '';
+            if (!contentType.includes('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')) {
+                showToast(await getApiErrorMessage(response), "error");
+                return;
+            }
 
             const blob = await response.blob();
+            const disposition = response.headers.get('content-disposition') || '';
+            const filenameMatch = disposition.match(/filename\s*=\s*"?([^";]+)"?/i);
+            const filename = filenameMatch
+                ? filenameMatch[1].replace(/[\\/\\\\]/g, '').trim()
+                : "KPI_Master_Template.xlsx";
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = "KPI_Master_Template.xlsx";
+            a.download = filename || "KPI_Master_Template.xlsx";
             document.body.appendChild(a);
             a.click();
             a.remove();
-            window.URL.revokeObjectURL(url);
+            window.setTimeout(() => window.URL.revokeObjectURL(url), 1000);
             showToast("Template downloaded successfully!", "success");
         } catch (error) {
-            showToast("Could not download template. Please try again.", "error");
+            showToast("Could not connect to the server to download the template. Please try again.", "error");
         }
     }
 

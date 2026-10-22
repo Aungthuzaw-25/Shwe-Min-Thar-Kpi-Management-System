@@ -29,6 +29,7 @@
     <link rel="stylesheet" href="/static/css/notifications.css">
     <link rel="stylesheet" href="/static/css/enterprise-ui.css">
     <link rel="stylesheet" href="/static/css/executive-dashboard.css">
+    <link rel="stylesheet" href="/static/css/liquid-glass-theme.css?v=20261021-4">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     {% if dashboard_variant == "executive" %}
     <script src="/static/vendor/chart.umd.min.js" defer></script>
@@ -64,7 +65,7 @@
         }
     </style>
 </head>
-<body class="flex h-screen overflow-hidden text-slate-800 relative">
+<body class="app-shell app-shell--employee flex h-screen overflow-hidden text-slate-800 relative">
 
     <!-- SIDEBAR NAVIGATION -->
     <aside id="mainSidebar" class="w-[260px] bg-slate-900 text-white flex-col shrink-0 transition-transform duration-300 absolute md:relative inset-y-0 left-0 z-30 shadow-2xl transform -translate-x-full md:translate-x-0 flex">
@@ -240,8 +241,27 @@
 
         function isAuthEndpoint(url) {
             if (!url) return false;
-            const normalized = String(url);
-            return normalized.includes('/api/v1/auth/') || normalized.includes('/auth/login') || normalized.includes('/auth/logout');
+            const requestUrl = typeof url === 'string' ? url : url.url;
+            if (!requestUrl) return false;
+            let path;
+            try {
+                path = new URL(requestUrl, window.location.origin).pathname;
+            } catch (error) {
+                return false;
+            }
+            return path === '/api/v1/auth/login'
+                || path === AUTH_REFRESH_URL
+                || path === '/api/v1/auth/logout'
+                || path.startsWith('/api/v1/auth/oauth/')
+                || path.includes('/auth/swagger-login')
+                || window.location.pathname.includes('/login');
+        }
+
+        function safeReturnPath() {
+            const path = window.location.pathname;
+            if (!path.startsWith('/') || path.startsWith('//') || path.includes('\\')
+                || path.startsWith('/auth/')) return null;
+            return path;
         }
 
         function safeLogoutFromExpiredSession(reason) {
@@ -253,7 +273,10 @@
                 console.warn('[AUTH] Could not clear stored session data.', error);
             }
             console.warn('[AUTH] Expired session detected:', reason);
-            window.location.href = '/auth/login?session_expired=true';
+            const returnPath = safeReturnPath();
+            const query = new URLSearchParams({ session_expired: 'true' });
+            if (returnPath) query.set('next', returnPath);
+            window.location.href = `/auth/login?${query.toString()}`;
         }
 
         let refreshPromise = null;
@@ -316,6 +339,8 @@
                                 if (retryResponse.status !== 401) {
                                     return retryResponse;
                                 }
+                                safeLogoutFromExpiredSession('401 after successful refresh for ' + url);
+                                return retryResponse;
                             } catch (retryError) {
                                 console.warn('[AUTH] Retry failed:', retryError);
                             }

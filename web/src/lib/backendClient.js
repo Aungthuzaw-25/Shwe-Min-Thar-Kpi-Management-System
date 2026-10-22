@@ -68,9 +68,38 @@ export function createBackendClient({
   };
 }
 
-export function sendBackendError(error, response) {
+export function sendBackendError(error, response, request) {
   if (!(error instanceof BackendResponseError)) {
     return false;
+  }
+
+  if (error.status === 401 && request) {
+    const requestedPath = request.path;
+    const safeReturnPath = typeof requestedPath === "string"
+      && requestedPath.startsWith("/")
+      && !requestedPath.startsWith("//")
+      && !requestedPath.includes("\\")
+      && !/[\u0000-\u001f]/.test(requestedPath)
+      && !requestedPath.startsWith("/auth/")
+      ? requestedPath
+      : null;
+    const query = new URLSearchParams({ session_expired: "true" });
+    if (safeReturnPath) query.set("next", safeReturnPath);
+    response.redirect(303, `/auth/login?${query.toString()}`);
+    return true;
+  }
+
+  if (error.status === 403 && request) {
+    response.status(403).type("html").send(
+      "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\">"
+      + "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+      + "<title>Access denied</title><main style=\"max-width:32rem;margin:12vh auto;"
+      + "padding:2rem;font:16px/1.5 system-ui,sans-serif;color:#171717\">"
+      + "<h1>Access denied</h1><p>You can't access this page right now. "
+      + "Your account may be locked or may not have permission.</p>"
+      + "<a href=\"/dashboard\">Return to your dashboard</a></main></html>",
+    );
+    return true;
   }
 
   const safeBody = typeof error.body === "string"

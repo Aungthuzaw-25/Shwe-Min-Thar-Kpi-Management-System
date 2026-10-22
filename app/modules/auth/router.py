@@ -13,7 +13,7 @@ from fastapi.security import OAuth2PasswordRequestForm  # 🌟 ADDED: For Swagge
 from jwt import PyJWTError as JWTError
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -26,7 +26,7 @@ from app.database.connection import get_db
 from app.models.audit_log import AuditLog
 
 # 🌟 MODIFIED: Imported TokenBlacklist from unified models
-from app.modules.auth.models import AuthSession, TokenBlacklist
+from app.modules.auth.models import AuthSession, LoginHistory, TokenBlacklist, UnlockRequest
 from app.modules.auth.oauth_state import (
     OAUTH_BINDING_COOKIE_NAME,
     consume_oauth_state,
@@ -45,11 +45,16 @@ from app.modules.auth.schemas import (
     LoginRequest,
     RefreshTokenRequest,
     TokenResponse,
+    UnlockRequestCreate,
+    UnlockRequestDetailResponse,
+    UnlockRequestResponse,
 )
 from app.modules.auth.service import AuthService
 from app.modules.departments.models import UserDepartment
 from app.modules.users import password_repo
 from app.modules.users.models import OAuthAccount, User
+from app.modules.notifications.models import Notification
+from app.modules.users.models import Role
 
 limiter = Limiter(key_func=get_remote_address)
 
@@ -368,7 +373,7 @@ async def get_current_user_accounts(
 @limiter.limit("5/minute") 
 async def login(request: Request, response: Response, payload: LoginRequest, db: AsyncSession = Depends(get_db)):
     client_ip = request.client.host if request.client else UNKNOWN_VALUE
-    user_agent = request.headers.get(USER_AGENT_HEADER, UNKNOWN_VALUE)
+    user_agent = request.headers.get(USER_AGENT_HEADER, UNKNOWN_VALUE)[:255]
 
     # Keep JSON login and Swagger login on the same authentication policy.
     auth_result = await AuthService.authenticate_user(
@@ -387,6 +392,162 @@ async def login(request: Request, response: Response, payload: LoginRequest, db:
         samesite=AUTH_COOKIE_SAMESITE, secure=secure_cookie,
     )
     return auth_result
+
+
+@router.post("/unlock-requests", response_model=UnlockRequestResponse)
+@limiter.limit("5/minute")
+async def request_account_unlock(
+    request: Request,
+    payload: UnlockRequestCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    now = utc_now_naive()
+    normalized_email = str(payload.email).strip().lower()
+    result = await db.execute(
+        select(User)
+        .where(func.lower(User.email) == normalized_email)
+        .with_for_update(of=User)
+    )
+    user = result.scalars().first()
+    accepted = False
+    if user and user.is_locked and not user.is_deleted and user.is_active:
+        locked_until = user.locked_until
+        if locked_until is None or locked_until <= now:
+            user.is_locked = False
+            user.failed_login_attempts = 0
+            user.locked_until = None
+            await db.execute(
+                update(UnlockRequest)
+                .where(
+                    UnlockRequest.user_id == user.id,
+                    UnlockRequest.status == "PENDING",
+                )
+                .values(status="RESOLVED", resolved_at=now, resolved_by=None)
+            )
+        else:
+            accepted = True
+            pending = await db.execute(
+                select(UnlockRequest.id).where(
+                    UnlockRequest.user_id == user.id,
+                    UnlockRequest.status == "PENDING",
+                )
+            )
+            if pending.scalar_one_or_none() is None:
+                ip_address = request.client.host if request.client else UNKNOWN_VALUE
+                user_agent = request.headers.get(USER_AGENT_HEADER, UNKNOWN_VALUE)[:255]
+                last_failed_agent_result = await db.execute(
+                    select(LoginHistory.user_agent)
+                    .where(
+                        LoginHistory.user_id == user.id,
+                        LoginHistory.is_success.is_(False),
+                    )
+                    .order_by(LoginHistory.attempted_at.desc())
+                    .limit(1)
+                )
+                last_failed_user_agent = last_failed_agent_result.scalar_one_or_none()
+                unlock_request = UnlockRequest(
+                    user_id=user.id,
+                    ip_address=ip_address[:50],
+                    user_agent=user_agent,
+                    failed_attempts=user.failed_login_attempts,
+                    locked_at=user.last_failed_at or now,
+                    status="PENDING",
+                )
+                db.add(unlock_request)
+                await db.flush()
+                super_admins = await db.execute(
+                    select(User)
+                    .join(Role, User.role_id == Role.id)
+                    .where(
+                        Role.name == SUPER_ADMIN_ROLE_NAME,
+                        User.is_active.is_(True),
+                        User.is_deleted.is_(False),
+                    )
+                )
+                message = (
+                    f"User ID: {user.id}; email: {user.email}; last failed IP address: "
+                    f"{user.last_failed_ip or 'Not available'}; last failed User-Agent: "
+                    f"{last_failed_user_agent or 'Not available'}; unlock request IP address: "
+                    f"{ip_address}; unlock request User-Agent: {user_agent}; "
+                    f"failed attempts: {user.failed_login_attempts}; "
+                    f"locked at: {(user.last_failed_at or now).isoformat()}."
+                )
+                for super_admin in super_admins.scalars().all():
+                    db.add(
+                        Notification(
+                            user_id=super_admin.id,
+                            title="Account unlock requested",
+                            message=message,
+                            notification_type="UNLOCK_REQUEST",
+                            group_key=str(unlock_request.id),
+                            channel="DASHBOARD",
+                        )
+                    )
+    await db.commit()
+    return UnlockRequestResponse(
+        accepted=accepted,
+        message=(
+            "Unlock request has been sent to the Super Admin."
+            if accepted
+            else "No active lockout was found. Please try signing in again."
+        ),
+    )
+
+
+def _require_unlock_super_admin(user: User) -> None:
+    if not user.role or user.role.name != SUPER_ADMIN_ROLE_NAME:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only a Super Admin can inspect or resolve unlock requests.",
+        )
+
+
+@router.get(
+    "/unlock-requests/{request_id}",
+    response_model=UnlockRequestDetailResponse,
+)
+async def inspect_unlock_request(
+    request_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_unlock_super_admin(current_user)
+    result = await db.execute(
+        select(UnlockRequest, User, Role)
+        .join(User, UnlockRequest.user_id == User.id)
+        .join(Role, User.role_id == Role.id)
+        .where(UnlockRequest.id == request_id)
+    )
+    row = result.one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Unlock request not found.")
+    unlock_request, user, role = row
+    last_failed_agent_result = await db.execute(
+        select(LoginHistory.user_agent)
+        .where(
+            LoginHistory.user_id == user.id,
+            LoginHistory.is_success.is_(False),
+        )
+        .order_by(LoginHistory.attempted_at.desc())
+        .limit(1)
+    )
+    return UnlockRequestDetailResponse(
+        request_id=unlock_request.id,
+        user_id=user.id,
+        user_name=f"{user.first_name} {user.last_name}".strip(),
+        email=user.email,
+        role=role.name,
+        failed_attempts=unlock_request.failed_attempts,
+        locked_at=unlock_request.locked_at,
+        locked_until=user.locked_until,
+        last_failed_at=user.last_failed_at,
+        last_failed_ip=user.last_failed_ip,
+        last_failed_user_agent=last_failed_agent_result.scalar_one_or_none(),
+        ip_address=unlock_request.ip_address,
+        user_agent=unlock_request.user_agent,
+        status=unlock_request.status,
+        created_at=unlock_request.created_at,
+    )
 
 # ==============================================================================
 # 🌟 NEW: SWAGGER UI LOGIN API (Swagger Button မှ ဝင်ရောက်ရန်)
@@ -407,7 +568,7 @@ async def login_for_swagger(
         form_data.username,
         form_data.password,
         ip_address=request.client.host if request.client else UNKNOWN_VALUE,
-        user_agent=request.headers.get(USER_AGENT_HEADER, UNKNOWN_VALUE),
+        user_agent=request.headers.get(USER_AGENT_HEADER, UNKNOWN_VALUE)[:255],
     )
 
     # Swagger က အတိအကျတောင်းဆိုတဲ့ format

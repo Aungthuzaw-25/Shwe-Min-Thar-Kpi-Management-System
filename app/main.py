@@ -4,12 +4,12 @@ import os
 import re
 import secrets
 from contextlib import asynccontextmanager
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from redis.asyncio import from_url as redis_from_url
 
@@ -246,6 +246,44 @@ def _http_exception_handler(request: Request, exc: HTTPException):
         return JSONResponse(
             status_code=exc.status_code,
             content={"detail": "Internal server error."},
+        )
+    accept = request.headers.get("accept", "").lower()
+    if (
+        exc.status_code == status.HTTP_401_UNAUTHORIZED
+        and "text/html" in accept
+        and not request.url.path.startswith("/api/")
+    ):
+        return_path = request.url.path
+        if (
+            return_path.startswith("/")
+            and not return_path.startswith("//")
+            and "\\" not in return_path
+            and not any(ord(character) < 32 for character in return_path)
+            and not return_path.startswith(("/auth/login", "/auth/change-password"))
+        ):
+            query = urlencode({"session_expired": "true", "next": return_path})
+        else:
+            query = urlencode({"session_expired": "true"})
+        return RedirectResponse(
+            url=f"/auth/login?{query}",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+    if (
+        exc.status_code == status.HTTP_403_FORBIDDEN
+        and "text/html" in accept
+        and not request.url.path.startswith("/api/")
+    ):
+        return HTMLResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            content=(
+                "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\">"
+                "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+                "<title>Access denied</title><main style=\"max-width:32rem;margin:12vh auto;"
+                "padding:2rem;font:16px/1.5 system-ui,sans-serif;color:#171717\">"
+                "<h1>Access denied</h1><p>You can’t access this page right now. "
+                "Your account may be locked or may not have permission.</p>"
+                "<a href=\"/dashboard\">Return to your dashboard</a></main></html>"
+            ),
         )
     return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
 

@@ -233,6 +233,10 @@
             return;
         }
         const notification = await response.json();
+        if (notification.notification_type === "UNLOCK_REQUEST" && notification.group_key) {
+            await viewUnlockRequest(notification.group_key);
+            return;
+        }
         const overlay = document.createElement("div");
         overlay.className = "app-confirm-overlay";
         overlay.setAttribute("role", "dialog");
@@ -258,6 +262,88 @@
             if (event.target === overlay) close();
         });
         deactivateModal = activateModal(overlay, overlay.querySelector(".app-confirm-submit"), close);
+    }
+
+    async function viewUnlockRequest(requestId) {
+        const response = await fetch(`/api/v1/auth/unlock-requests/${encodeURIComponent(requestId)}`);
+        if (!response.ok) {
+            showToast(
+                response.status === 403
+                    ? "Only a Super Admin can inspect unlock requests."
+                    : response.status === 404
+                        ? "Unlock request not found."
+                        : "Unable to load unlock request details.",
+                "error"
+            );
+            return;
+        }
+        const request = await response.json();
+        const overlay = document.createElement("div");
+        overlay.className = "app-confirm-overlay";
+        overlay.setAttribute("role", "dialog");
+        overlay.setAttribute("aria-modal", "true");
+        const detailRows = [
+            ["User", request.user_name],
+            ["Email", request.email],
+            ["User ID", request.user_id],
+            ["Total failed attempts", request.failed_attempts],
+            ["Last failed attempt", request.last_failed_at ? new Date(request.last_failed_at).toLocaleString() : "Not available"],
+            ["Last failed IP address", request.last_failed_ip || "Not available"],
+            ["Last failed device / User-Agent", request.last_failed_user_agent || "Not available"],
+            ["Unlock request IP address", request.ip_address || "Not available"],
+            ["Unlock request device / User-Agent", request.user_agent || "Not available"],
+            ["Locked at", request.locked_at ? new Date(request.locked_at).toLocaleString() : "Not available"],
+            ["Lock expiration", request.locked_until ? new Date(request.locked_until).toLocaleString() : "Not available"],
+            ["Request status", request.status]
+        ];
+        const detailMarkup = detailRows.map(([label, value]) =>
+            `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`
+        ).join("");
+        overlay.innerHTML = `
+            <div class="app-confirm-dialog">
+                <div class="app-confirm-content">
+                    <h2>Locked User Inspection</h2>
+                    <dl class="app-unlock-request-details">${detailMarkup}</dl>
+                </div>
+                <div class="app-confirm-actions">
+                    <button type="button" class="app-confirm-cancel">Close</button>
+                    <button type="button" class="app-confirm-submit"${request.status !== "PENDING" ? " disabled" : ""}>Unlock Account Now</button>
+                </div>
+            </div>`;
+        let deactivateModal = () => {};
+        const close = () => {
+            deactivateModal();
+            overlay.remove();
+        };
+        const closeButton = overlay.querySelector(".app-confirm-cancel");
+        const unlockButton = overlay.querySelector(".app-confirm-submit");
+        closeButton.addEventListener("click", close);
+        overlay.addEventListener("click", (event) => {
+            if (event.target === overlay) close();
+        });
+        unlockButton.addEventListener("click", async () => {
+            unlockButton.disabled = true;
+            try {
+                const unlockResponse = await fetch(
+                    `/api/v1/system/locked-users/${encodeURIComponent(request.user_id)}/unlock`,
+                    { method: "POST" }
+                );
+                const result = await unlockResponse.json().catch(() => ({}));
+                if (!unlockResponse.ok) {
+                    showToast(result.detail || "Unable to unlock this account.", "error");
+                    unlockButton.disabled = false;
+                    return;
+                }
+                showToast(result.message || "User account unlocked successfully.", "success");
+                close();
+                if (typeof window.fetchNotifications === "function") window.fetchNotifications();
+                if (typeof window.loadLockedUsers === "function") window.loadLockedUsers();
+            } catch (error) {
+                showToast("Unable to unlock this account. Please try again.", "error");
+                unlockButton.disabled = false;
+            }
+        });
+        deactivateModal = activateModal(overlay, closeButton, close);
     }
 
     window.showToast = showToast;

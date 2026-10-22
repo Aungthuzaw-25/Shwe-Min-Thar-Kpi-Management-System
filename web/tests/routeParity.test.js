@@ -62,6 +62,51 @@ const pageRoleCases = pages.flatMap(([path, allowedRoles]) => (
 ));
 
 describe("page route parity", () => {
+  it("scopes the liquid-glass stylesheet to authenticated layouts", async () => {
+    const adminResponse = await request(createApp({ backend: backendFor("Super Admin") }))
+      .get("/superadmin/dashboard")
+      .set("Cookie", "access_token=qa-token");
+    const employeeResponse = await request(createApp({
+      backend: backendFor("Department User", "L2"),
+    }))
+      .get("/dashboard")
+      .set("Cookie", "access_token=qa-token");
+    const kpiResponse = await request(createApp({ backend: backendFor("Super Admin") }))
+      .get("/superadmin/kpi")
+      .set("Cookie", "access_token=qa-token");
+    const profileResponse = await request(createApp({ backend: backendFor("Department User", "L2") }))
+      .get("/profile")
+      .set("Cookie", "access_token=qa-token");
+    const tasksResponse = await request(createApp({ backend: backendFor("Department User", "L2") }))
+      .get("/tasks")
+      .set("Cookie", "access_token=qa-token");
+    const settingsResponse = await request(createApp({ backend: backendFor("Super Admin") }))
+      .get("/system-settings")
+      .set("Cookie", "access_token=qa-token");
+    const loginResponse = await request(createApp({ backend: backendFor("Super Admin") }))
+      .get("/auth/login");
+
+    expect(adminResponse.text).toContain('class="app-shell app-shell--admin');
+    expect(employeeResponse.text).toContain('class="app-shell app-shell--employee');
+    expect(adminResponse.text).toContain("liquid-glass-theme.css?v=20261021-4");
+    expect(employeeResponse.text).toContain("liquid-glass-theme.css?v=20261021-4");
+    expect(kpiResponse.text).toContain("superadmin-kpi-glass.css?v=20261021-2");
+    expect(profileResponse.text).toContain("ep-profile.css");
+    expect(tasksResponse.text).toContain("et-tasks.css");
+    expect(settingsResponse.text).toContain("system-settings-page");
+    expect(adminResponse.text).not.toContain("login-form-glass.css");
+    expect(employeeResponse.text).not.toContain("login-form-glass.css");
+    expect(loginResponse.text).toContain("login-form-glass.css?v=20261021-2");
+    expect(loginResponse.text).toContain("sessionExpiredNotice");
+    expect(loginResponse.text).toContain("normalizePostLoginPath");
+    expect(loginResponse.text).not.toContain("liquid-glass-theme.css");
+    expect(loginResponse.text).not.toContain("app-shell");
+    expect(adminResponse.text).toContain("safeLogoutFromExpiredSession");
+    expect(employeeResponse.text).toContain("safeLogoutFromExpiredSession");
+    expect(adminResponse.text).toContain("AUTH_REFRESH_URL");
+    expect(employeeResponse.text).toContain("AUTH_REFRESH_URL");
+  });
+
   it.each(pageRoleCases)(
     "%s returns the correct access result for %s",
     async (path, role, isAllowed) => {
@@ -110,7 +155,7 @@ describe("page route parity", () => {
     expect(invalidLevel.headers.location).toBe("/profile");
   });
 
-  it("preserves 401 responses for unauthenticated page requests", async () => {
+  it("redirects unauthenticated page requests to login without forwarding queries", async () => {
     const backend = {
       get: vi.fn(async () => {
         throw new BackendResponseError(401, "application/json", {
@@ -119,8 +164,11 @@ describe("page route parity", () => {
       }),
     };
 
-    const response = await request(createApp({ backend })).get("/profile");
-    expect(response.status).toBe(401);
-    expect(response.body).toEqual({ detail: "Not authenticated. Token missing." });
+    const response = await request(createApp({ backend }))
+      .get("/profile?token=must-not-be-forwarded");
+    expect(response.status).toBe(303);
+    expect(response.headers.location).toBe(
+      "/auth/login?session_expired=true&next=%2Fprofile",
+    );
   });
 });

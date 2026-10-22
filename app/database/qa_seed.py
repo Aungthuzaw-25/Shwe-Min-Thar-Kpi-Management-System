@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-from datetime import UTC, datetime
+from datetime import date
 
 from sqlalchemy import select
 
@@ -27,13 +27,16 @@ from app.modules.kpi.models import (
     KPIPeriodStatus,
     KpiRule,
     KPIScoringRuleItem,
+    PeriodType,
 )
+from app.modules.kpi.period_ranges import calendar_period_range
 from app.modules.users.models import Permission, Position, User
 
 QA_DEPARTMENT = "QA Finance Department"
 QA_PERIOD = "QA September 2026"
-QA_PERIOD_START = datetime(2026, 9, 1, tzinfo=UTC)
-QA_PERIOD_END = datetime(2026, 9, 30, 23, 59, 59, tzinfo=UTC)
+QA_PERIOD_RANGE = calendar_period_range(PeriodType.MONTHLY, date(2026, 9, 1))
+QA_PERIOD_START = QA_PERIOD_RANGE.start_inclusive
+QA_PERIOD_END = QA_PERIOD_RANGE.end_exclusive
 TIMELINESS = "အချိန်မှီမတင်ပြခြင်း"
 QA_SUPERADMIN_EMAIL = "qa.superadmin@example"
 LEGACY_QA_SUPERADMIN_EMAIL = "qa.superadmin@example.test"

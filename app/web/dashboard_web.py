@@ -6,6 +6,7 @@ from sqlalchemy.future import select
 from app.core.config import settings
 from app.core.dependencies import get_current_user, get_permission_map
 from app.database.connection import get_db
+from app.modules.auth.profile_router import get_account
 from app.modules.departments.models import Department, UserDepartment
 from app.modules.users.avatar import avatar_color_index, avatar_initials, avatar_url
 from app.modules.users.models import OAuthAccount, Position, User
@@ -231,6 +232,32 @@ async def render_employee_profile(
     return templates.TemplateResponse(
         request=request,
         name="dashboard/profile.njk",
+        context=context,
+    )
+
+
+@router.get("/account/profile", include_in_schema=False)
+async def render_account_profile(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    account_profile = await get_account(db, current_user)
+    context = await get_employee_context(db, current_user)
+    context.update(
+        {
+            "active_page": "profile",
+            "account_profile": account_profile,
+        }
+    )
+    template_name = (
+        "dashboard/account_profile_admin.njk"
+        if account_profile["is_super_admin"]
+        else "dashboard/account_profile.njk"
+    )
+    return templates.TemplateResponse(
+        request=request,
+        name=template_name,
         context=context,
     )
 

@@ -4,7 +4,7 @@
 <link rel="stylesheet" href="/static/css/kp-profile.css?v=20261019-ui3">
 {% from "components/avatar.njk" import avatar %}
 
-<div class="kp-page acct-page" id="accountProfilePage" data-local-password-enabled="{{ 'true' if account_profile.local_password_enabled else 'false' }}">
+<div class="kp-page acct-page" id="accountProfilePage" data-local-password-enabled="{{ 'true' if account_profile.local_password_enabled else 'false' }}" data-super-admin="{{ 'true' if account_profile.is_super_admin else 'false' }}">
   <div class="kp-container">
     <header class="kp-header">
       <p class="kp-eyebrow">ACCOUNT SETTINGS</p>
@@ -96,10 +96,16 @@
               <div class="kp-field acct-field kp-field--full">
                 <label class="kp-label acct-label" for="acct-email">Email</label>
                 <div class="kp-email-wrap">
+                  {% if not account_profile.is_super_admin %}
                   <svg class="kp-email-lock" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="11" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg>
-                  <input class="kp-input acct-input" id="acct-email" type="email" autocomplete="email" value="{{ account_profile.email or '' }}" readonly aria-describedby="acct-email-readonly-hint">
+                  {% endif %}
+                  <input class="kp-input acct-input" id="acct-email" name="email" type="email" autocomplete="email" value="{{ account_profile.email or '' }}"{% if account_profile.is_super_admin %} required aria-describedby="acct-email-error"{% else %} readonly aria-describedby="acct-email-readonly-hint"{% endif %}>
                 </div>
+                {% if account_profile.is_super_admin %}
+                <span class="kp-field-error acct-field-error" id="acct-email-error" data-field-error="email"></span>
+                {% else %}
                 <p class="kp-helper acct-readonly-note" id="acct-email-readonly-hint"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><rect x="4" y="11" width="16" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg> Contact your administrator to change email</p>
+                {% endif %}
               </div>
             </div>
             <div class="kp-form-actions acct-form-actions">
@@ -226,5 +232,5 @@
   </div>
 </div>
 <script src="/static/js/avatar.js" defer></script>
-<script src="/static/js/account-profile.js?v=20261019-ui2" defer></script>
+<script src="/static/js/account-profile.js?v=20261021-profile1" defer></script>
 <script src="/static/js/kp-profile.js?v=20261019-ui2" defer></script>

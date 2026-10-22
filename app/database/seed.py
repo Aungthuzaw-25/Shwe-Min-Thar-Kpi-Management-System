@@ -1,5 +1,4 @@
 import asyncio
-import calendar
 import os
 import sys
 import uuid
@@ -29,7 +28,9 @@ from app.modules.kpi.models import (
     KPIPeriodStatus,
     KpiRule,
     KPIScoringRuleItem,
+    PeriodType,
 )
+from app.modules.kpi.period_ranges import calendar_period_range
 from app.modules.users.models import Permission, Position, Role, RolePermission, User
 
 SUPER_ADMIN_ROLE = "Super Admin"
@@ -357,10 +358,7 @@ async def _find_active_super_admin(db):
 
 async def _ensure_active_period(db):
     target_date = datetime.now(UTC)
-    year, month = target_date.year, target_date.month
-    period_start = datetime(year, month, 1, 0, 0, 0, tzinfo=UTC)
-    last_day = calendar.monthrange(year, month)[1]
-    period_end = datetime(year, month, last_day, 23, 59, 59, tzinfo=UTC)
+    period_range = calendar_period_range(PeriodType.MONTHLY, target_date.date())
     period_label = target_date.strftime("%B %Y")
     period = (
         await db.execute(select(KPIPeriod).where(KPIPeriod.label == period_label))
@@ -368,8 +366,8 @@ async def _ensure_active_period(db):
     if not period:
         period = KPIPeriod(
             label=period_label,
-            start_date=period_start,
-            end_date=period_end,
+            start_date=period_range.start_inclusive,
+            end_date=period_range.end_exclusive,
             status=KPIPeriodStatus.OPEN,
         )
         db.add(period)

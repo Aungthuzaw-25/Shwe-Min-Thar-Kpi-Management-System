@@ -10,9 +10,10 @@ from sqlalchemy import (
     Integer,
     String,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import backref, relationship
+from sqlalchemy.orm import backref, relationship, synonym
 
 from app.database.base import BaseModel
 
@@ -67,9 +68,12 @@ class User(BaseModel):
     region_town = Column(String(100), nullable=True) 
     
     is_active = Column(Boolean, default=True, index=True)
-    is_locked = Column(Boolean, default=False)
-    failed_login_attempts = Column(Integer, default=0)
-    lockout_until = Column(DateTime, nullable=True)
+    is_locked = Column(Boolean, nullable=False, default=False, server_default=text("false"))
+    failed_login_attempts = Column(Integer, nullable=False, default=0, server_default="0")
+    locked_until = Column(DateTime, nullable=True)
+    lockout_until = synonym("locked_until")
+    last_failed_ip = Column(String(50), nullable=True)
+    last_failed_at = Column(DateTime, nullable=True)
     
     must_change_password = Column(Boolean, default=True)
     

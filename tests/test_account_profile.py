@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
+from fastapi import HTTPException
 from PIL import Image
 from pydantic import ValidationError
 
@@ -13,6 +14,7 @@ from app.modules.auth.profile_router import (
     apply_profile_patch,
     get_account,
     normalize_avatar_image,
+    patch_account,
     reauthenticate_account,
 )
 from app.modules.auth.profile_router import router as profile_router
@@ -237,12 +239,13 @@ def test_oauth_provider_uses_app_base_url_and_common_microsoft_tenant(monkeypatc
     assert "login.microsoftonline.com/common/" in microsoft.discovery_url
 
 
-def test_account_profile_patch_accepts_only_frontend_display_name_and_phone():
+def test_account_profile_patch_validates_super_admin_email_and_other_fields():
     patch = AccountProfilePatch(display_name="Aung Thu Zaw", phone="+95 9 123456")
 
     assert patch.model_dump() == {
         "display_name": "Aung Thu Zaw",
         "phone": "+95 9 123456",
+        "email": None,
     }
     with pytest.raises(ValidationError):
         AccountProfilePatch(display_name="Aung", role="Super Admin")
@@ -251,6 +254,121 @@ def test_account_profile_patch_accepts_only_frontend_display_name_and_phone():
         AccountProfilePatch(display_name="Invalid\tName")
     with pytest.raises(ValidationError):
         AccountProfilePatch(display_name="Aung", phone="12345")
+    with pytest.raises(ValidationError):
+        AccountProfilePatch(display_name="Aung", email="not-an-email")
+    assert AccountProfilePatch(
+        display_name="Aung", email="aung@example.com"
+    ).email == "aung@example.com"
+
+
+@pytest.mark.asyncio
+async def test_account_patch_allows_super_admin_email_change_and_audits(monkeypatch):
+    user_id = uuid4()
+    user = SimpleNamespace(
+        id=user_id,
+        first_name="Aung",
+        last_name="Zaw",
+        phone_number="09 123456",
+        email="old@example.com",
+        role=SimpleNamespace(name="Super Admin"),
+    )
+
+    class DB:
+        def __init__(self):
+            self.entries = []
+            self.committed = False
+
+        async def execute(self, _statement):
+            return _Result([])
+
+        def add(self, entry):
+            self.entries.append(entry)
+
+        async def commit(self):
+            self.committed = True
+
+    async def account_response(_db, _user):
+        return {"email": user.email}
+
+    monkeypatch.setattr("app.modules.auth.profile_router.get_account", account_response)
+    db = DB()
+    from starlette.requests import Request
+
+    request = Request({
+        "type": "http",
+        "method": "PATCH",
+        "path": "/api/v1/account/me",
+        "headers": [],
+        "query_string": b"",
+        "client": ("127.0.0.1", 1234),
+    })
+
+    response = await patch_account(
+        request,
+        AccountProfilePatch(display_name="Aung Zaw", phone="09 123456", email="New@Example.com"),
+        user,
+        db,
+    )
+
+    assert response == {"email": "new@example.com"}
+    assert user.email == "new@example.com"
+    assert db.committed is True
+    assert db.entries[0].new_value == {"fields": ["email"]}
+
+
+@pytest.mark.asyncio
+async def test_account_patch_restricts_email_changes_and_rejects_duplicates(monkeypatch):
+    from starlette.requests import Request
+
+    request = Request({
+        "type": "http",
+        "method": "PATCH",
+        "path": "/api/v1/account/me",
+        "headers": [],
+        "query_string": b"",
+        "client": ("127.0.0.1", 1234),
+    })
+
+    class DB:
+        def __init__(self, match=None):
+            self.match = match
+            self.committed = False
+
+        async def execute(self, _statement):
+            return _Result([self.match] if self.match else [])
+
+        def add(self, _entry):
+            pass
+
+        async def commit(self):
+            self.committed = True
+
+    payload = AccountProfilePatch(
+        display_name="Aung Zaw", phone=None, email="taken@example.com"
+    )
+    regular_user = SimpleNamespace(
+        id=uuid4(),
+        first_name="Aung",
+        last_name="Zaw",
+        phone_number=None,
+        email="old@example.com",
+        role=SimpleNamespace(name="Employee"),
+    )
+    with pytest.raises(HTTPException) as forbidden:
+        await patch_account(request, payload, regular_user, DB())
+    assert forbidden.value.status_code == 403
+
+    super_admin = SimpleNamespace(
+        id=uuid4(),
+        first_name="Aung",
+        last_name="Zaw",
+        phone_number=None,
+        email="old@example.com",
+        role=SimpleNamespace(name="Super Admin"),
+    )
+    with pytest.raises(HTTPException) as duplicate:
+        await patch_account(request, payload, super_admin, DB(match=uuid4()))
+    assert duplicate.value.status_code == 409
 
 
 def test_account_api_registers_requested_endpoint_paths():
@@ -268,6 +386,12 @@ def test_account_api_registers_requested_endpoint_paths():
     assert ("/avatars/{filename}", "GET") in routes
     assert ("/me/password", "POST") in routes
     assert ("/me/reauth", "POST") in routes
+    from app.web.dashboard_web import router as dashboard_router
+
+    assert any(
+        getattr(route, "path", None) == "/account/profile"
+        for route in dashboard_router.routes
+    )
 
 
 @pytest.mark.asyncio

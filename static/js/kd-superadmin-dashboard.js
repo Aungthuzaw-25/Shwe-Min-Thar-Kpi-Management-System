@@ -73,9 +73,10 @@
 
   function setChartDefaults() {
     if (typeof window.Chart !== "function") return;
+    const styles = getComputedStyle(root);
     window.Chart.defaults.font.family = "'Plus Jakarta Sans', 'Noto Sans Myanmar', system-ui, sans-serif";
     window.Chart.defaults.font.size = 12;
-    window.Chart.defaults.color = "#566074";
+    window.Chart.defaults.color = styles.getPropertyValue("--kd-chart-text").trim() || "#566074";
   }
 
   function makeDonut(canvas, labels, values, colors, ariaLabel) {
@@ -127,10 +128,10 @@
     const accent = styles.getPropertyValue("--kd-accent").trim() || "#2F5BFF";
     const dataset = chart.data.datasets[0];
     dataset.borderColor = accent;
-    dataset.backgroundColor = "rgba(47,91,255,.12)";
+    dataset.backgroundColor = "rgba(121,13,22,.18)";
     dataset.pointRadius = 0;
     dataset.pointHoverRadius = 5;
-    dataset.pointBackgroundColor = "#FFFFFF";
+    dataset.pointBackgroundColor = "#FFF9F2";
     dataset.pointBorderColor = accent;
     dataset.pointBorderWidth = 2;
     dataset.tension = 0.35;
@@ -169,10 +170,17 @@
       );
     }
     if (chart.options.scales?.y) {
+      const chartText = styles.getPropertyValue("--kd-chart-text").trim() || "#566074";
+      const chartGrid = styles.getPropertyValue("--kd-chart-grid").trim() || "rgba(148,163,184,.25)";
       chart.options.scales.y.ticks.stepSize = 25;
-      chart.options.scales.y.grid.color = "rgba(148,163,184,.25)";
+      chart.options.scales.y.ticks.color = chartText;
+      chart.options.scales.y.grid.color = chartGrid;
       chart.options.scales.y.grid.borderDash = [4, 4];
       chart.options.scales.y.border = { display: false };
+      if (chart.options.scales.x) {
+        chart.options.scales.x.ticks.color = chartText;
+        chart.options.scales.x.grid.color = "transparent";
+      }
     }
     chart.update();
     return true;

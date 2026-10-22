@@ -91,6 +91,16 @@ def test_fastapi_dashboard_templates_render_with_user_context(path, role_name):
     try:
         with TestClient(app) as client:
             response = client.get(path)
+            liquid_glass = client.get("/static/css/liquid-glass-theme.css?v=20261021-4")
+            kpi_theme = client.get("/static/css/superadmin-kpi-glass.css?v=20261021-2")
+            login_theme = client.get("/static/css/login-form-glass.css?v=20261021-2")
+            login_page = client.get("/auth/login")
+            assert liquid_glass.status_code == 200
+            assert kpi_theme.status_code == 200
+            assert login_theme.status_code == 200
+            assert "--kg-accent:#790D16;" in kpi_theme.text
+            assert login_page.status_code == 200
+            assert "login-form-glass.css?v=20261021-2" in login_page.text
             assert client.get("/static/css/executive-dashboard.css").status_code == 200
             design_system = client.get("/static/css/design-system.css?v=20261015-1")
             assert design_system.status_code == 200
@@ -108,6 +118,8 @@ def test_fastapi_dashboard_templates_render_with_user_context(path, role_name):
 
     assert response.status_code == 200
     assert "Test User" in response.text
+    assert 'class="app-shell app-shell--admin' in response.text
+    assert "liquid-glass-theme.css?v=20261021-4" in response.text
     assert "kpi-avatar" in response.text
     assert (
         "https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"

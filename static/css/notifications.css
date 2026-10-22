@@ -63,6 +63,9 @@
 .app-confirm-content h2 { margin: 0; font-size: 1.1rem; font-weight: 800; }
 .app-confirm-content p { margin: .5rem 0 0; color: #475569; }
 .app-confirm-content small { display: block; margin-top: .5rem; color: #64748b; }
+.app-unlock-request-details { display: grid; gap: .75rem 1.25rem; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 1rem 0 0; }
+.app-unlock-request-details dt { color: #64748b; font-size: .7rem; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }
+.app-unlock-request-details dd { margin: .15rem 0 0; color: #0f172a; font-size: .8rem; overflow-wrap: anywhere; }
 .app-confirm-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: .75rem; margin-top: .5rem; }
 .app-confirm-actions button { border: 0; border-radius: .6rem; padding: .65rem 1rem; font-weight: 700; cursor: pointer; }
 .app-confirm-cancel { background: #e2e8f0; color: #334155; }
@@ -76,5 +79,10 @@
 @media (prefers-color-scheme: dark) {
     .app-toast, .app-confirm-dialog { background: #1e293b; color: #f8fafc; }
     .app-confirm-content p, .app-confirm-content small { color: #cbd5e1; }
+    .app-unlock-request-details dd { color: #f8fafc; }
     .app-prompt-input { background: #0f172a; color: #f8fafc; border-color: #475569; }
+}
+
+@media (max-width: 520px) {
+    .app-unlock-request-details { grid-template-columns: minmax(0, 1fr); }
 }

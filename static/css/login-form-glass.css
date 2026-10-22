@@ -1,0 +1,102 @@
+.login-card {
+  background: rgba(255, 255, 255, .88) !important;
+  border: 1px solid rgba(23, 33, 43, .12) !important;
+  border-radius: 24px !important;
+  box-shadow:
+    14px 14px 32px rgba(23, 33, 43, .1),
+    -10px -10px 28px rgba(255, 255, 255, .9),
+    inset 0 1px 0 rgba(255, 255, 255, .95) !important;
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  color: var(--kpi-ink, #17212b);
+  transition: box-shadow .2s ease, border-color .2s ease;
+}
+
+.login-card:focus-within {
+  border-color: rgba(36, 87, 214, .28) !important;
+  box-shadow:
+    14px 14px 32px rgba(23, 33, 43, .1),
+    -10px -10px 28px rgba(255, 255, 255, .9),
+    inset 0 1px 0 rgba(255, 255, 255, .95),
+    0 0 0 3px rgba(36, 87, 214, .08) !important;
+}
+
+.login-card label {
+  color: var(--kpi-ink, #17212b);
+}
+
+.login-input {
+  width: 100%;
+  background: rgba(255, 255, 255, .92) !important;
+  border-color: #d1d8e0 !important;
+  border-radius: 12px !important;
+  box-shadow: inset 3px 3px 7px rgba(23, 33, 43, .06), inset -3px -3px 7px rgba(255, 255, 255, .95) !important;
+}
+
+.login-input:focus {
+  border-color: var(--kpi-red) !important;
+  box-shadow: 0 0 0 4px rgba(36, 87, 214, .14), inset 2px 2px 5px rgba(23, 33, 43, .04) !important;
+}
+
+.login-input[aria-invalid="true"],
+.login-input:user-invalid {
+  border-color: #b42318 !important;
+}
+
+.login-input[aria-invalid="true"]:focus,
+.login-input:user-invalid:focus {
+  box-shadow: 0 0 0 4px rgba(180, 35, 24, .14) !important;
+}
+
+.login-submit {
+  min-height: 3rem;
+  border-radius: 12px !important;
+  box-shadow: 0 6px 16px rgba(36, 87, 214, .2) !important;
+}
+
+.login-submit:hover:not(:disabled) {
+  box-shadow: 0 10px 22px rgba(36, 87, 214, .24) !important;
+}
+
+.login-submit:disabled {
+  cursor: wait;
+}
+
+.password-toggle {
+  border-radius: 10px !important;
+}
+
+.password-toggle:focus-visible,
+.login-submit:focus-visible {
+  outline: 3px solid rgba(36, 87, 214, .42);
+  outline-offset: 2px;
+}
+
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .login-card {
+    background: #fff;
+  }
+}
+
+@media (max-width: 640px) {
+  .login-card {
+    border-radius: 20px !important;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .login-card {
+    background: #fff !important;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-card,
+  .login-input,
+  .login-submit {
+    animation: none;
+    transition: none;
+  }
+}

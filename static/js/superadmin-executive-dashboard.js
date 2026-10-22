@@ -4,6 +4,11 @@
   const root = document.getElementById('executiveDashboard');
   if (!root) return;
 
+  if (typeof window.Chart === 'function') {
+    window.Chart.defaults.color = '#FFF9F2';
+    window.Chart.defaults.borderColor = 'rgba(255, 249, 242, .16)';
+  }
+
   const context = window.KPI_EXECUTIVE_CONTEXT || {};
   const filterMode = document.getElementById('dashboardFilterMode');
   const filterYear = document.getElementById('dashboardFilterYear');

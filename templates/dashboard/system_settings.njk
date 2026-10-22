@@ -16,7 +16,7 @@
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 </style>
 
-<div class="workspace-page min-h-full overflow-y-auto custom-scrollbar flex flex-col">
+<div class="workspace-page system-settings-page min-h-full overflow-y-auto custom-scrollbar flex flex-col">
     
     <!-- HEADER -->
     <header class="app-page-header shrink-0 animate-fade-in-up">
@@ -59,6 +59,12 @@
                     <svg class="w-4 h-4 sm:w-5 sm:h-5 mr-2 sm:mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"></path></svg>
                     Maintenance
                 </button>
+                {% if user_role == "Super Admin" %}
+                <button onclick="switchSettingTab('user-security')" id="tab-user-security" class="setting-tab-btn text-slate-500 hover:bg-slate-100 w-auto lg:w-full text-left px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center shrink-0 whitespace-nowrap">
+                    <svg class="w-4 h-4 sm:w-5 sm:h-5 mr-2 sm:mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7l8-4zm-3 9l2 2 4-4"></path></svg>
+                    User Settings
+                </button>
+                {% endif %}
             </div>
         </div>
 
@@ -189,6 +195,62 @@
                     </div>
                 </div>
 
+                {% if user_role == "Super Admin" %}
+                <div id="content-user-security" class="setting-content space-y-6 hidden">
+                    <div>
+                        <h3 class="text-base sm:text-lg font-extrabold text-blue-950">User Lockout Settings</h3>
+                        <p class="mt-1 text-xs sm:text-sm text-slate-500">Configure failed-login limits and review accounts that are currently locked.</p>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+                        <div>
+                            <label for="userSecurityMaxAttempts" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-2 uppercase tracking-wide">Maximum failed attempts</label>
+                            <input id="userSecurityMaxAttempts" type="number" min="1" max="2147483647" step="1" value="5" required class="w-full rounded-xl border border-gray-200 bg-slate-50 p-3 text-sm font-semibold focus:border-blue-900 focus:bg-white focus:outline-none">
+                        </div>
+                        <div>
+                            <label for="userSecurityDuration" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-2 uppercase tracking-wide">Lockout duration (minutes)</label>
+                            <input id="userSecurityDuration" type="number" min="1" max="2147483647" step="1" value="29" required class="w-full rounded-xl border border-gray-200 bg-slate-50 p-3 text-sm font-semibold focus:border-blue-900 focus:bg-white focus:outline-none">
+                        </div>
+                    </div>
+                    <label for="superadminLockoutEnabled" class="flex min-h-11 items-center gap-3 rounded-xl border border-gray-200 p-4">
+                        <input id="superadminLockoutEnabled" type="checkbox" checked class="h-5 w-5 accent-blue-700">
+                        <span>
+                            <span class="block text-sm font-bold text-slate-800">Enable Account Lockout for Super Admin</span>
+                            <span class="mt-1 block text-xs text-slate-500">When disabled, Super Admin accounts are exempt from failed-login lockouts.</span>
+                        </span>
+                    </label>
+                    <div class="flex flex-wrap gap-3">
+                        <button type="button" id="saveUserSecuritySettingsBtn" onclick="saveUserSecuritySettings()" class="min-h-11 rounded-xl bg-blue-950 px-5 py-2.5 text-sm font-bold text-white hover:bg-blue-900">Save User Security Settings</button>
+                        <span id="userSecurityUpdatedAt" class="self-center text-xs text-slate-500"></span>
+                    </div>
+                    <section class="border-t border-gray-100 pt-5">
+                        <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                                <h4 class="text-sm font-extrabold text-blue-950">Currently Locked Users</h4>
+                                <p class="mt-1 text-xs text-slate-500">Unlock any listed account immediately, whether or not the user submitted a request.</p>
+                            </div>
+                            <button type="button" onclick="loadLockedUsers()" class="min-h-11 rounded-xl border border-gray-200 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">Refresh</button>
+                        </div>
+                        <div class="overflow-x-auto rounded-xl border border-gray-200">
+                            <table class="w-full min-w-[720px] text-left text-xs">
+                                <thead class="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500">
+                                    <tr>
+                                        <th class="px-4 py-3">User</th>
+                                        <th class="px-4 py-3">Failed attempts</th>
+                                        <th class="px-4 py-3">Last failed login</th>
+                                        <th class="px-4 py-3">Lock expires</th>
+                                        <th class="px-4 py-3">Unlock request</th>
+                                        <th class="px-4 py-3">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="lockedUsersTableBody" class="divide-y divide-gray-100">
+                                    <tr><td colspan="6" class="px-4 py-6 text-center text-slate-500">Loading locked accounts...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </div>
+                {% endif %}
+
                 <!-- 4. MAINTENANCE -->
                 <div id="content-maintenance" class="setting-content space-y-6 hidden">
                     <h3 class="text-base sm:text-lg font-extrabold text-blue-950 border-b border-gray-100 pb-3 mb-4 sm:mb-6">System Maintenance</h3>
@@ -258,6 +320,22 @@
         document.getElementById('tab-general').className = activeTabStyle;
         loadEmailProviders();
         loadSettings();
+        if (document.getElementById('content-user-security')) {
+            loadUserSecuritySettings();
+            loadLockedUsers();
+            document.getElementById('superadminLockoutEnabled').addEventListener('change', async (event) => {
+                const toggle = event.currentTarget;
+                if (toggle.checked) return;
+                toggle.checked = true;
+                const confirmed = await window.appConfirm(
+                    "⚠️ Security Warning: Disabling account lockout for Super Admin exposes this account to brute-force password attacks and is not recommended for security. Are you sure you want to proceed?",
+                    { title: "Security Warning", cancelText: "Cancel", confirmText: "Confirm & Disable" }
+                );
+                if (!confirmed) return;
+                toggle.checked = false;
+                if (!(await saveUserSecuritySettings())) toggle.checked = true;
+            });
+        }
     });
 
     async function emailProviderRequest(path, method = 'GET', body = null) {
@@ -590,7 +668,125 @@
 
         document.getElementById(`content-${tabId}`).classList.remove('hidden');
         document.getElementById(`tab-${tabId}`).className = activeTabStyle;
+        const saveAllButton = document.getElementById('saveSettingsBtn');
+        if (saveAllButton) saveAllButton.classList.toggle('hidden', tabId === 'user-security');
     }
+
+    async function userSecurityRequest(path, method = 'GET', body = null) {
+        const options = { method, headers: {} };
+        if (body !== null) {
+            options.headers['Content-Type'] = 'application/json';
+            options.body = JSON.stringify(body);
+        }
+        const response = await fetch(`/api/v1/system${path}`, options);
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            if (response.status === 401) {
+                window.location.href = '/auth/login';
+            }
+            throw new Error(result.detail || `Request failed (${response.status}).`);
+        }
+        return result;
+    }
+
+    async function loadUserSecuritySettings() {
+        try {
+            const value = await userSecurityRequest('/user-security-settings');
+            document.getElementById('userSecurityMaxAttempts').value = value.max_failed_attempts;
+            document.getElementById('userSecurityDuration').value = value.lockout_duration_minutes;
+            document.getElementById('superadminLockoutEnabled').checked = value.superadmin_lockout_enabled;
+            const updated = document.getElementById('userSecurityUpdatedAt');
+            updated.textContent = value.updated_at
+                ? `Last updated ${new Date(value.updated_at).toLocaleString()}`
+                : 'Using default security settings';
+        } catch (error) {
+            console.error('Unable to load user lockout settings:', error);
+            showToast(error.message || 'Unable to load user lockout settings.', 'error');
+        }
+    }
+
+    async function saveUserSecuritySettings() {
+        const attempts = Number(document.getElementById('userSecurityMaxAttempts').value);
+        const duration = Number(document.getElementById('userSecurityDuration').value);
+        if (!Number.isInteger(attempts) || attempts < 1 || attempts > 2147483647 ||
+            !Number.isInteger(duration) || duration < 1 || duration > 2147483647) {
+            showToast('Enter positive whole numbers within the supported integer range.', 'error');
+            return false;
+        }
+        const button = document.getElementById('saveUserSecuritySettingsBtn');
+        const previouslyDisabled = button.disabled;
+        button.disabled = true;
+        try {
+            const value = await userSecurityRequest('/user-security-settings', 'PUT', {
+                max_failed_attempts: attempts,
+                lockout_duration_minutes: duration,
+                superadmin_lockout_enabled: document.getElementById('superadminLockoutEnabled').checked
+            });
+            document.getElementById('userSecurityUpdatedAt').textContent =
+                `Last updated ${new Date(value.updated_at).toLocaleString()}`;
+            showToast('User lockout settings saved.', 'success');
+            await loadLockedUsers();
+            return true;
+        } catch (error) {
+            console.error('Unable to save user lockout settings:', error);
+            showToast(error.message || 'Unable to save user lockout settings.', 'error');
+            return false;
+        } finally {
+            button.disabled = previouslyDisabled;
+        }
+    }
+
+    function formatLockoutDate(value) {
+        if (!value) return 'Not available';
+        const date = new Date(value);
+        return Number.isNaN(date.getTime()) ? 'Not available' : date.toLocaleString();
+    }
+
+    async function loadLockedUsers() {
+        const body = document.getElementById('lockedUsersTableBody');
+        if (!body) return;
+        try {
+            const users = await userSecurityRequest('/locked-users');
+            if (!users.length) {
+                body.innerHTML = '<tr><td colspan="6" class="px-4 py-6 text-center text-slate-500">No accounts are currently locked.</td></tr>';
+                return;
+            }
+            body.innerHTML = users.map(user => `
+                <tr>
+                    <td class="px-4 py-3"><strong>${escapeHTML(user.user_name)}</strong><span class="block text-slate-500">${escapeHTML(user.email)}</span></td>
+                    <td class="px-4 py-3">${escapeHTML(user.failed_login_attempts)}</td>
+                    <td class="px-4 py-3">${escapeHTML(formatLockoutDate(user.last_failed_at))}<span class="block text-slate-500">${escapeHTML(user.last_failed_ip || 'Not available')}</span></td>
+                    <td class="px-4 py-3">${escapeHTML(formatLockoutDate(user.locked_until))}</td>
+                    <td class="px-4 py-3">${user.pending_request_id ? 'Pending' : 'None'}</td>
+                    <td class="px-4 py-3"><button type="button" data-unlock-user="${escapeHTML(user.user_id)}" class="min-h-11 rounded-lg bg-blue-950 px-3 py-2 text-xs font-bold text-white hover:bg-blue-900">Unlock Now</button></td>
+                </tr>`).join('');
+            body.querySelectorAll('[data-unlock-user]').forEach(button => {
+                button.addEventListener('click', () => unlockLockedUser(button.dataset.unlockUser, button));
+            });
+        } catch (error) {
+            console.error('Unable to load locked accounts:', error);
+            body.innerHTML = '<tr><td colspan="6" class="px-4 py-6 text-center text-red-700">Unable to load locked accounts.</td></tr>';
+        }
+    }
+
+    async function unlockLockedUser(userId, button) {
+        if (!(await window.appConfirm('Unlock this account now and reset its failed login attempts?', {
+            title: 'Unlock user account',
+            confirmText: 'Unlock Account Now'
+        }))) return;
+        button.disabled = true;
+        try {
+            const result = await userSecurityRequest(`/locked-users/${encodeURIComponent(userId)}/unlock`, 'POST');
+            showToast(result.message || 'User account unlocked successfully.', 'success');
+            await loadLockedUsers();
+        } catch (error) {
+            console.error('Unable to unlock account:', error);
+            showToast(error.message || 'Unable to unlock account.', 'error');
+            button.disabled = false;
+        }
+    }
+
+    window.loadLockedUsers = loadLockedUsers;
 
     function showToast(message, type = 'success') {
         let container = document.getElementById('toastContainer');
