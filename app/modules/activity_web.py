@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.dependencies import get_current_user
 from app.database.connection import get_db
 from app.modules.users.models import User
+from app.modules.system import branding
 from app.web.dashboard_web import get_employee_context, templates
 
 router = APIRouter()
@@ -21,6 +22,7 @@ async def notifications_page(
     if not current_user or not current_user.role:
         return RedirectResponse(url="/auth/login")
     context = await get_employee_context(db, current_user)
+    context["brand"] = await branding.resolve_brand(db)
     context["active_page"] = "notifications"
     context["layout_template"] = (
         "layouts/employee_base.njk"

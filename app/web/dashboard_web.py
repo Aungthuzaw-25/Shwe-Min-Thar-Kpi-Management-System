@@ -10,6 +10,7 @@ from app.modules.auth.profile_router import get_account
 from app.modules.departments.models import Department, UserDepartment
 from app.modules.users.avatar import avatar_color_index, avatar_initials, avatar_url
 from app.modules.users.models import OAuthAccount, Position, User
+from app.modules.system import branding
 from app.web.template_support import templates
 
 LOGIN_REDIRECT_URL = "/auth/login"
@@ -106,6 +107,7 @@ async def get_employee_context(db: AsyncSession, current_user: User) -> dict:
 @router.get("/superadmin/dashboard", include_in_schema=False)
 async def render_superadmin_dashboard_view(
     request: Request,
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     if not current_user or not current_user.role:
@@ -118,6 +120,7 @@ async def render_superadmin_dashboard_view(
         request=request,
         name="dashboard/superadmin.njk",
         context={**build_user_template_context(current_user),
+            "brand": await branding.resolve_brand(db),
             "user_role": current_user.role.name,
             "user_name": f"{current_user.first_name} {current_user.last_name}",
             "user_email": current_user.email
@@ -141,6 +144,7 @@ async def render_admin_dashboard_view(
         return RedirectResponse(url=DASHBOARD_URL)
 
     employee_context = await get_employee_context(db, current_user)
+    employee_context["brand"] = await branding.resolve_brand(db)
     return templates.TemplateResponse(
         request=request,
         name="dashboard/admin_dashboard.njk",
@@ -164,6 +168,7 @@ async def render_normal_dashboard_view(
 
     role_name = current_user.role.name
     employee_context = await get_employee_context(db, current_user)
+    employee_context["brand"] = await branding.resolve_brand(db)
     user_level = employee_context["user_level"]
 
     if role_name in [ROLE_SUPER_ADMIN]:
@@ -218,6 +223,7 @@ async def render_employee_profile(
         }
         for row in identity_rows
     }
+    context["brand"] = await branding.resolve_brand(db)
     context.update(
         {
             "active_page": "profile",
@@ -244,6 +250,7 @@ async def render_account_profile(
 ):
     account_profile = await get_account(db, current_user)
     context = await get_employee_context(db, current_user)
+    context["brand"] = await branding.resolve_brand(db)
     context.update(
         {
             "active_page": "profile",

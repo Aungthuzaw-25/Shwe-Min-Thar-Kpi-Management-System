@@ -1,15 +1,26 @@
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.database.connection import get_db
+from app.modules.system import branding
 from app.web.template_support import templates
 
 router = APIRouter()
 
 @router.get("/login", include_in_schema=False)
-async def login_page(request: Request):
-    # FastAPI Version အလိုက် request ကို Keyword Arguments အနေဖြင့် ပေးပို့ရပါမည်
+async def login_page(request: Request, db: AsyncSession = Depends(get_db)):
+    # Company trademark + which OAuth providers are configured, from the
+    # same source as GET /api/v1/system/branding/public. resolve_brand
+    # never raises, so a settings problem cannot break the login page.
+    from app.modules.auth.router import oauth_provider_availability
+
     return templates.TemplateResponse(
         request=request,
-        name="auth/login.njk"
+        name="auth/login.njk",
+        context={
+            "brand": await branding.resolve_brand(db),
+            "oauth_providers": oauth_provider_availability(),
+        },
     )
 
 @router.get('/change-password', include_in_schema=False)

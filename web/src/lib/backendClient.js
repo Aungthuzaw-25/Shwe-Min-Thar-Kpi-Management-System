@@ -21,6 +21,9 @@ const CONTEXT_PATHS = new Set([
   "/api/v1/auth/me",
   "/api/v1/auth/me/accounts",
   "/api/v1/permissions/me",
+  // Company trademark for the layouts/login: public, changes rarely,
+  // and every page render needs it — same 30s reuse as the calls above.
+  "/api/v1/system/branding/public",
 ]);
 const CONTEXT_CACHE_TTL_MS = 30_000;
 const CONTEXT_CACHE_MAX_ENTRIES = 500;

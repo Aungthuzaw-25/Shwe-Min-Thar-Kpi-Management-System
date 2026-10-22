@@ -99,6 +99,47 @@
                     </div>
                 </div>
 
+                <!-- 1b. COMPANY TRADEMARK (name + tagline + logo shown across the app) -->
+                <div class="border-t border-gray-100 pt-6 space-y-5" id="trademarkSection">
+                    <div>
+                        <h3 class="text-base sm:text-lg font-extrabold text-blue-950">Company Trademark</h3>
+                        <p class="text-xs sm:text-sm text-slate-500 mt-1">The company name, tagline and logo shown in the sidebar and on the sign-in page. Changes apply everywhere automatically.</p>
+                    </div>
+                    <div class="flex flex-col sm:flex-row gap-5 sm:gap-8">
+                        <div class="shrink-0">
+                            <span class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-2 uppercase tracking-wide">Logo</span>
+                            <div class="flex items-center gap-4">
+                                <img id="tm_logo_preview" src="{{ brand.logo_url or '/static/image/smt-logo.jpg' }}" alt="Company logo preview" class="w-20 h-20 rounded-2xl object-cover border border-gray-200 bg-slate-50 shadow-sm">
+                                <div class="space-y-2">
+                                    <p id="tm_logo_state" class="text-xs font-semibold text-slate-500">{% if brand.has_custom_logo %}Custom logo{% else %}Default logo{% endif %}</p>
+                                    <div class="flex flex-wrap gap-2">
+                                        <label for="tm_logo_file" class="cursor-pointer rounded-lg bg-blue-950 px-3 py-2 text-xs font-bold text-white hover:bg-blue-900">Upload new logo</label>
+                                        <input type="file" id="tm_logo_file" accept="image/jpeg,image/png,image/webp" class="hidden">
+                                        <button type="button" id="tm_logo_delete" onclick="deleteTrademarkLogo()" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50{% if not brand.has_custom_logo %} hidden{% endif %}">Use default logo</button>
+                                    </div>
+                                    <p class="text-[11px] text-slate-400">JPEG, PNG or WebP, up to 2 MB.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="flex-1 grid grid-cols-1 gap-4">
+                            <div>
+                                <label for="tm_company_name" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">Company Name <span class="text-red-500">*</span></label>
+                                <input type="text" id="tm_company_name" maxlength="60" value="{{ brand.company_name or '' }}" class="w-full bg-slate-50 border border-gray-200 p-3 rounded-xl text-sm font-semibold focus:outline-none focus:bg-white focus:border-blue-900 transition-all shadow-inner">
+                                <p class="text-[11px] text-slate-400 mt-1"><span id="tm_name_count">{{ (brand.company_name or '') | length }}</span>/60 characters</p>
+                            </div>
+                            <div>
+                                <label for="tm_company_tagline" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">Tagline</label>
+                                <input type="text" id="tm_company_tagline" maxlength="90" value="{{ brand.company_tagline or '' }}" class="w-full bg-slate-50 border border-gray-200 p-3 rounded-xl text-sm font-semibold focus:outline-none focus:bg-white focus:border-blue-900 transition-all shadow-inner">
+                                <p class="text-[11px] text-slate-400 mt-1"><span id="tm_tagline_count">{{ (brand.company_tagline or '') | length }}</span>/90 characters. Leave empty to show no tagline.</p>
+                            </div>
+                            <div>
+                                <button type="button" id="tm_save_btn" onclick="saveTrademark()" class="bg-blue-950 hover:bg-blue-900 text-white px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold shadow-sm transition-colors">Save name &amp; tagline</button>
+                                <p id="tm_status" class="text-xs font-semibold mt-2" role="status" aria-live="polite"></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- 2. EMAIL CONFIGURATION -->
                 <div id="content-email" class="setting-content space-y-6 hidden">
                     <div class="flex items-center justify-between border-b border-gray-100 pb-3">
@@ -320,6 +361,7 @@
         document.getElementById('tab-general').className = activeTabStyle;
         loadEmailProviders();
         loadSettings();
+        loadTrademark();
         if (document.getElementById('content-user-security')) {
             loadUserSecuritySettings();
             loadLockedUsers();
@@ -804,6 +846,120 @@
         container.appendChild(toast);
         setTimeout(() => toast.remove(), 4000);
     }
+
+    // ===== Company Trademark (name + tagline + logo) =====
+    async function brandingRequest(path, method = 'GET', body = null) {
+        const options = { method, headers: {} };
+        if (body !== null) {
+            options.headers['Content-Type'] = 'application/json';
+            options.body = JSON.stringify(body);
+        }
+        let response;
+        try {
+            response = await fetch(`/api/v1/system/branding${path}`, options);
+        } catch {
+            throw new Error('Unable to reach the server. Please try again.');
+        }
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            let message = result.detail;
+            if (Array.isArray(message)) {
+                message = message.map(item => item.msg).filter(Boolean).join(' ');
+            }
+            if (response.status === 401) message = 'Your session has expired. Please sign in again.';
+            else if (response.status === 403) message = 'You do not have permission to change trademark settings.';
+            const error = new Error(message || `Request failed (${response.status}).`);
+            error.status = response.status;
+            throw error;
+        }
+        return result;
+    }
+
+    function trademarkStatus(message, isError = false) {
+        const status = document.getElementById('tm_status');
+        status.textContent = message || '';
+        status.className = `text-xs font-semibold mt-2 ${isError ? 'text-red-700' : 'text-green-700'}`;
+    }
+
+    function applyTrademark(brand) {
+        document.getElementById('tm_company_name').value = brand.company_name || '';
+        document.getElementById('tm_company_tagline').value = brand.company_tagline || '';
+        document.getElementById('tm_name_count').textContent = (brand.company_name || '').length;
+        document.getElementById('tm_tagline_count').textContent = (brand.company_tagline || '').length;
+        document.getElementById('tm_logo_preview').src = brand.logo_url || '/static/image/smt-logo.jpg';
+        document.getElementById('tm_logo_state').textContent = brand.has_custom_logo ? 'Custom logo' : 'Default logo';
+        document.getElementById('tm_logo_delete').classList.toggle('hidden', !brand.has_custom_logo);
+    }
+
+    async function loadTrademark() {
+        try {
+            applyTrademark(await brandingRequest(''));
+        } catch (error) {
+            trademarkStatus(error.message || 'Failed to load trademark settings.', true);
+        }
+    }
+
+    async function saveTrademark() {
+        const name = document.getElementById('tm_company_name').value.trim();
+        const tagline = document.getElementById('tm_company_tagline').value.trim();
+        try {
+            const brand = await brandingRequest('', 'PUT', { company_name: name, company_tagline: tagline });
+            applyTrademark(brand);
+            // The General tab edits the same company name — keep it in sync.
+            document.getElementById('set_company_name').value = brand.company_name || '';
+            trademarkStatus('Saved. The new name and tagline now show across the app.');
+            showToast('Company trademark saved.', 'success');
+        } catch (error) {
+            trademarkStatus(error.message || 'Failed to save trademark settings.', true);
+            showToast(error.message || 'Failed to save trademark settings.', 'error');
+        }
+    }
+
+    async function deleteTrademarkLogo() {
+        try {
+            applyTrademark(await brandingRequest('/logo', 'DELETE'));
+            trademarkStatus('Default logo restored.');
+            showToast('Default logo restored.', 'success');
+        } catch (error) {
+            trademarkStatus(error.message || 'Failed to restore the default logo.', true);
+        }
+    }
+
+    document.getElementById('tm_logo_file').addEventListener('change', async (event) => {
+        const file = event.target.files && event.target.files[0];
+        event.target.value = '';
+        if (!file) return;
+        const form = new FormData();
+        form.append('file', file);
+        try {
+            let response;
+            try {
+                response = await fetch('/api/v1/system/branding/logo', { method: 'POST', body: form });
+            } catch {
+                throw new Error('Unable to reach the server. Please try again.');
+            }
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                let message = result.detail;
+                if (Array.isArray(message)) message = message.map(item => item.msg).filter(Boolean).join(' ');
+                throw new Error(message || `Upload failed (${response.status}).`);
+            }
+            applyTrademark(result);
+            trademarkStatus('Logo updated across the app.');
+            showToast('Company logo updated.', 'success');
+        } catch (error) {
+            trademarkStatus(error.message || 'Failed to upload the logo.', true);
+            showToast(error.message || 'Failed to upload the logo.', 'error');
+        }
+    });
+    ['tm_company_name', 'tm_company_tagline'].forEach((id) => {
+        const input = document.getElementById(id);
+        const counter = document.getElementById(id === 'tm_company_name' ? 'tm_name_count' : 'tm_tagline_count');
+        input.addEventListener('input', () => { counter.textContent = input.value.length; });
+        input.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') { event.preventDefault(); saveTrademark(); }
+        });
+    });
 
     async function loadSettings() {
         try {

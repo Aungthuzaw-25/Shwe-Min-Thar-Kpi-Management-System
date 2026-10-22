@@ -2,7 +2,8 @@ import logging
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
@@ -23,21 +24,25 @@ from app.modules.auth.schemas import (
     UserSecuritySettingsUpdate,
 )
 from app.modules.notifications.models import Notification
-from app.modules.system import repo
+from app.modules.system import branding, repo
 from app.modules.system.audit_log_retention import (
     AUDIT_LOG_RETENTION_KEY,
     normalize_audit_log_retention,
 )
 from app.modules.system.schemas import (
+    BrandResponse,
+    CompanyTrademarkUpdate,
     EmailProviderLifecycleRequest,
     EmailProviderSaveRequest,
     PasswordPolicyValue,
+    PublicBrandResponse,
     SystemEventLogDetailResponse,
     SystemEventLogPage,
     SystemSettingCreate,
     SystemSettingResponse,
     SystemSettingUpdate,
     normalize_email_settings,
+    normalize_general_settings,
 )
 from app.modules.users.models import Role, User
 from app.core.timezone import utc_now_naive
@@ -96,6 +101,11 @@ def _sanitize_setting_value(key: str, value: dict) -> dict:
     elif key.lower() == AUDIT_LOG_RETENTION_KEY:
         try:
             sanitized = normalize_audit_log_retention(sanitized)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    elif key.lower() == branding.GENERAL_SETTINGS_KEY:
+        try:
+            sanitized = normalize_general_settings(sanitized)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
     elif key.lower() == "security":
@@ -536,6 +546,11 @@ async def create_new_setting(
         )
     if payload.key.lower() == "email":
         _require_super_admin_email_settings(current_user)
+    if payload.key.lower() == branding.BRANDING_SETTINGS_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Branding is managed through the company trademark endpoints.",
+        )
     existing = await repo.get_setting_by_key(db, payload.key)
     if existing:
         raise HTTPException(status_code=400, detail="Setting key already exists.")
@@ -871,6 +886,11 @@ async def update_existing_setting(
         )
     if key.lower() == "email":
         _require_super_admin_email_settings(current_user)
+    if key.lower() == branding.BRANDING_SETTINGS_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Branding is managed through the company trademark endpoints.",
+        )
     setting = await repo.get_setting_by_key(db, key)
     if not setting:
         raise HTTPException(status_code=404, detail="Setting not found.")
@@ -1008,6 +1028,213 @@ async def read_system_log_detail(
     if not log:
         raise HTTPException(status_code=404, detail="System log not found.")
     return log
+
+
+# =================================================================================
+# 🌟 COMPANY TRADEMARK APIs (company name + logo)
+# =================================================================================
+
+async def _upsert_setting_value(
+    db: AsyncSession, key: str, value: dict, description: str | None = None
+):
+    existing = await repo.get_setting_by_key(db, key)
+    if existing is None:
+        return await repo.create_setting(
+            db,
+            SystemSettingCreate(key=key, value=value, description=description),
+        )
+    return await repo.update_setting(db, existing, SystemSettingUpdate(value=value))
+
+
+@router.get("/branding", response_model=BrandResponse)
+async def read_branding(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Current company trademark (name + logo) for the settings page."""
+    enforce_permission(current_user, SYSTEM_SETTINGS_VIEW_PERMISSION)
+    return await branding.resolve_brand(db)
+
+
+@router.get("/branding/public", response_model=PublicBrandResponse)
+async def read_public_branding(db: AsyncSession = Depends(get_db)):
+    """Brand + login-provider truth for the unauthenticated login page.
+
+    Returns the company name, the logo URL, and whether each OAuth
+    provider is fully configured — nothing else. A provider flag is
+    True only when that provider is connected/configured, so the login
+    page can hide every other provider's button.
+    """
+    # Lazy import, the same pattern profile_router uses: auth.router does
+    # not depend on this module, and this keeps module import order safe.
+    from app.modules.auth.router import oauth_provider_availability
+
+    brand = await branding.resolve_brand(db)
+    return {**brand, "oauth_providers": oauth_provider_availability()}
+
+
+@router.put("/branding", response_model=BrandResponse)
+async def update_branding(
+    payload: CompanyTrademarkUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Save the company name into the existing ``general`` setting.
+
+    Other general fields (timezone, date_format) and the stored logo are
+    preserved.
+    """
+    enforce_permission(current_user, SYSTEM_SETTINGS_EDIT_PERMISSION)
+    values = await branding.read_settings_values(db)
+    general = dict(values.get(branding.GENERAL_SETTINGS_KEY, {}))
+    old_value = dict(general)
+    general["company_name"] = payload.company_name
+    if "company_tagline" in payload.model_fields_set:
+        general["company_tagline"] = payload.company_tagline or ""
+    updated = await _upsert_setting_value(
+        db,
+        branding.GENERAL_SETTINGS_KEY,
+        general,
+        description="General system settings",
+    )
+    db.add(AuditLog(
+        user_id=current_user.id,
+        action="UPDATE",
+        table_name="system_settings",
+        record_id=str(updated.id),
+        old_value={"key": branding.GENERAL_SETTINGS_KEY, "value": old_value},
+        new_value={"key": branding.GENERAL_SETTINGS_KEY, "value": general},
+    ))
+    await db.commit()
+    return await branding.resolve_brand(db)
+
+
+@router.post(
+    "/branding/logo",
+    response_model=BrandResponse,
+    responses={
+        400: {"description": "Invalid image"},
+        403: {"description": "Forbidden"},
+        413: {"description": "Logo image too large"},
+    },
+)
+async def upload_branding_logo(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Upload a new company logo; it replaces the old one everywhere.
+
+    Upload safety follows the profile-avatar pipeline exactly: the
+    client filename and content type are ignored, the bytes must really
+    decode as JPEG/PNG/WebP, size/dimension limits apply, and the image
+    is re-encoded to WebP before it is stored.
+    """
+    enforce_permission(current_user, SYSTEM_SETTINGS_EDIT_PERMISSION)
+    if file.size is not None and file.size > branding.MAX_LOGO_BYTES:
+        await file.close()
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="Logo image exceeds the allowed size.",
+        )
+    content = await file.read(branding.MAX_LOGO_BYTES + 1)
+    await file.close()
+    try:
+        normalized = await run_in_threadpool(branding.normalize_logo_image, content)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+
+    values = await branding.read_settings_values(db)
+    old_reference = values.get(branding.BRANDING_SETTINGS_KEY, {})
+    previous_updated_at = old_reference.get("logo_updated_at")
+    reference = await branding.store_logo(
+        normalized,
+        previous_updated_at=(
+            previous_updated_at if isinstance(previous_updated_at, int) else None
+        ),
+    )
+    updated = await _upsert_setting_value(
+        db,
+        branding.BRANDING_SETTINGS_KEY,
+        reference,
+        description=branding.BRANDING_SETTING_DESCRIPTION,
+    )
+    db.add(AuditLog(
+        user_id=current_user.id,
+        action="UPDATE",
+        table_name="system_settings",
+        record_id=str(updated.id),
+        old_value={
+            "key": branding.BRANDING_SETTINGS_KEY,
+            "value": old_reference,
+        },
+        new_value={"key": branding.BRANDING_SETTINGS_KEY, "value": reference},
+    ))
+    await db.commit()
+    if (
+        old_reference.get("logo_object")
+        and old_reference.get("logo_storage") != reference["logo_storage"]
+    ):
+        # Same-backend uploads overwrite the same fixed key/path; only a
+        # backend switch leaves old bytes behind to clean up.
+        await branding.delete_logo(old_reference)
+    return await branding.resolve_brand(db)
+
+
+@router.delete("/branding/logo", response_model=BrandResponse)
+async def reset_branding_logo(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Remove the custom logo; the default SMT logo is served again."""
+    enforce_permission(current_user, SYSTEM_SETTINGS_EDIT_PERMISSION)
+    values = await branding.read_settings_values(db)
+    reference = values.get(branding.BRANDING_SETTINGS_KEY, {})
+    if reference.get("logo_object"):
+        await branding.delete_logo(reference)
+        updated = await _upsert_setting_value(
+            db, branding.BRANDING_SETTINGS_KEY, {}
+        )
+        db.add(AuditLog(
+            user_id=current_user.id,
+            action="UPDATE",
+            table_name="system_settings",
+            record_id=str(updated.id),
+            old_value={
+                "key": branding.BRANDING_SETTINGS_KEY,
+                "value": reference,
+            },
+            new_value={"key": branding.BRANDING_SETTINGS_KEY, "value": {}},
+        ))
+        await db.commit()
+    return await branding.resolve_brand(db)
+
+
+@router.get(
+    "/branding/logo",
+    responses={404: {"description": "No custom company logo is configured"}},
+)
+async def read_branding_logo(db: AsyncSession = Depends(get_db)):
+    """Serve the custom logo bytes (public: the login page needs them)."""
+    try:
+        values = await branding.read_settings_values(db)
+    except Exception:
+        values = {}
+    content = await branding.load_logo(
+        values.get(branding.BRANDING_SETTINGS_KEY, {})
+    )
+    if content is None:
+        raise HTTPException(
+            status_code=404, detail="No custom company logo is configured."
+        )
+    return Response(
+        content=content,
+        media_type=branding.LOGO_MEDIA_TYPE,
+        headers={
+            "Cache-Control": "public, max-age=86400",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 # =================================================================================
