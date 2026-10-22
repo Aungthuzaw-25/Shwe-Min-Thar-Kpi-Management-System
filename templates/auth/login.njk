@@ -3,23 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>KPI Dashboard - Sign In</title>
+    <title>Shwe Min Thar - Sign In</title>
     
     <link rel="stylesheet" href="/static/css/output.css">
-    <link rel="stylesheet" href="/static/css/portal-shell.css">
+    <link rel="stylesheet" href="/static/css/design-system.css?v=20261015-1">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
             color-scheme: light;
-            --kpi-red: #2457d6;
-            --kpi-red-dark: #173ea5;
-            --kpi-cream: #f5f7fa;
-            --kpi-ink: #17212b;
-            --kpi-muted: #5f6b78;
+            --kpi-red: #9b1c1c;
+            --kpi-red-dark: #790d16;
+            --kpi-cream: #f2f7fa;
+            --kpi-ink: #1c2b3a;
+            --kpi-muted: #4E657D;
         }
 
         body {
-            font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-            background: var(--kpi-cream);
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+            background:
+                radial-gradient(900px 620px at 88% -6%, rgba(255, 255, 255, .98), rgba(255, 255, 255, 0) 62%),
+                radial-gradient(1000px 760px at -6% 108%, rgba(183, 208, 229, .3), rgba(183, 208, 229, 0) 62%),
+                linear-gradient(155deg, #e9f1f6 0%, #fafcfd 52%, #eaf2f7 100%);
+            background-attachment: fixed;
         }
 
         .bg-kpi-cream { background-color: transparent; }
@@ -108,11 +113,9 @@
             
             <!-- Logo -->
             <div class="flex items-center space-x-3 z-10 relative">
-                <svg class="w-8 h-8 xl:w-10 xl:h-10 text-white" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M5 19h-4v-4h4v4zm6 0h-4v-8h4v8zm6 0h-4v-12h4v12zm6 0h-4v-16h4v16zM3 13.5l3-3 3 3 5-5 3 3 4-4v-2l-4 4-3-3-5 5-3-3-3 3v2z"/>
-                </svg>
+                <span class="bg-white rounded-xl p-1 shadow-sm shrink-0"><img src="/static/image/smt-logo.jpg" alt="Shwe Min Thar logo" class="w-9 h-9 xl:w-11 xl:h-11 rounded-lg object-cover"></span>
                 <div>
-                    <h1 class="text-2xl xl:text-3xl font-bold tracking-wide">KPI</h1>
+                    <h1 class="text-2xl xl:text-3xl font-bold tracking-wide">Shwe Min Thar</h1>
                     <p class="text-[10px] xl:text-xs text-red-200 uppercase tracking-widest">Performance Matters</p>
                 </div>
             </div>
@@ -121,7 +124,7 @@
             <div class="z-10 relative my-auto">
                 <h2 class="text-4xl xl:text-5xl font-bold leading-tight mb-4">
                     Welcome Back!<br>
-                    Sign in to your <span class="text-red-300">KPI</span><br>
+                    Sign in to your <span class="text-red-300">Shwe Min Thar</span><br>
                     Dashboard
                 </h2>
                 <p class="text-base xl:text-lg text-red-100 mb-1">Track performance. Measure progress.</p>
@@ -267,7 +270,7 @@
         <svg class="h-3 w-3 sm:h-4 sm:w-4 text-red-800 hidden sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
         </svg>
-        <span class="font-medium w-full sm:w-auto">Secure KPI Platform</span>
+        <span class="font-medium w-full sm:w-auto">Secure Shwe Min Thar</span>
         <span class="text-gray-300 hidden sm:inline">|</span>
         <span class="w-full sm:w-auto">© 2026 KPI System. All rights reserved.</span>
     </footer>

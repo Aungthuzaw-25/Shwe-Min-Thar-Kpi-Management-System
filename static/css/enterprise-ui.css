@@ -3,14 +3,14 @@
  * Motion is intentionally subtle: it establishes hierarchy without delaying work.
  */
 :root {
-    --enterprise-ink: #0f172a;
-    --enterprise-muted: #64748b;
-    --enterprise-border: #e2e8f0;
-    --enterprise-primary: #1d4ed8;
-    --enterprise-primary-dark: #1e3a8a;
-    --enterprise-focus: rgba(37, 99, 235, 0.16);
-    --enterprise-shadow: 0 18px 45px rgba(15, 23, 42, 0.08);
-    --enterprise-shadow-hover: 0 24px 55px rgba(15, 23, 42, 0.13);
+    --enterprise-ink: #17212b;
+    --enterprise-muted: #5f6b78;
+    --enterprise-border: #dbe2ea;
+    --enterprise-primary: #3d5a80;
+    --enterprise-primary-dark: #173ea5;
+    --enterprise-focus: rgba(36, 87, 214, 0.16);
+    --enterprise-shadow: 0 1px 2px rgba(23, 33, 43, 0.04);
+    --enterprise-shadow-hover: 0 8px 24px rgba(23, 33, 43, 0.08);
 }
 
 @keyframes enterprise-page-enter {
@@ -29,29 +29,20 @@
 }
 
 body {
-    background:
-        radial-gradient(circle at 100% 0, rgba(37, 99, 235, 0.045), transparent 28rem),
-        #f8fafc;
+    background: #f5f7fa;
 }
 
 main {
     isolation: isolate;
 }
 
-main > * {
-    animation: enterprise-page-enter 480ms cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-main > *:nth-child(2) { animation-delay: 60ms; }
-main > *:nth-child(3) { animation-delay: 120ms; }
-main > *:nth-child(4) { animation-delay: 180ms; }
 
 /* Shared surfaces used by the existing Tailwind templates. */
 main .bg-white.rounded-2xl,
 main .bg-white.rounded-3xl,
 main .glass-card {
-    border-color: rgba(203, 213, 225, 0.72);
-    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.045);
+    border-color: var(--enterprise-border);
+    box-shadow: var(--enterprise-shadow);
     transition: box-shadow 220ms ease, border-color 220ms ease, transform 220ms ease;
 }
 
@@ -75,7 +66,7 @@ main textarea {
 main input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):hover,
 main select:hover,
 main textarea:hover {
-    border-color: #94a3b8;
+    border-color: #b8c4d1;
 }
 
 main[class] :is(input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):focus, select:focus, textarea:focus) {

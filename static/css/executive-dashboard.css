@@ -1,11 +1,11 @@
 .executive-dashboard {
-  --legacy-bg: #f5f7fa;
+  --legacy-bg: #e3edf4;
   --legacy-surface: #ffffff;
   --legacy-surface-raised: #f8fafc;
   --legacy-border: #dbe2ea;
-  --legacy-text: #17212b;
-  --legacy-muted: #5f6b78;
-  --legacy-blue: #2457d6;
+  --legacy-text: #1c2b3a;
+  --legacy-muted: #4E657D;
+  --legacy-blue: #3d5a80;
   --legacy-green: #16794a;
   --legacy-amber: #a86400;
   --legacy-red: #c53434;
@@ -101,28 +101,28 @@
 @media (max-width: 430px) { .executive-dashboard { border-radius: .8rem; padding: .8rem; } .executive-scorecards { grid-template-columns: 1fr 1fr; gap: .55rem; } .executive-scorecard { min-height: 6.5rem; padding: .75rem; } .executive-metric { font-size: 1.45rem; } .executive-control, .executive-button { flex: 1; } .executive-updated { width: 100%; } }
 
 .exec-dashboard {
-  --exec-font: 'Plus Jakarta Sans', 'Noto Sans Myanmar', system-ui, sans-serif;
-  --exec-bg: #F3F5F9;
+  --exec-font: Inter, 'Noto Sans Myanmar', system-ui, sans-serif;
+  --exec-bg: #F5F7FA;
   --exec-card: #FFFFFF;
-  --exec-border: #E1E6EF;
-  --exec-track: #E8ECF4;
-  --exec-line: #EEF1F6;
-  --exec-text: #0F172A;
-  --exec-muted: #566074;
-  --exec-accent: #2F5BFF;
-  --exec-ok: #1F8A5B;
-  --exec-ok-bg: #DDF3E8;
-  --exec-ok-text: #0B5C3B;
-  --exec-warn: #D98A0B;
-  --exec-warn-bg: #FDEFD3;
-  --exec-warn-text: #8A4B00;
-  --exec-bad: #C0352B;
-  --exec-bad-bg: #FBE0DC;
-  --exec-bad-text: #9A261B;
-  --exec-info-bg: #E6ECFF;
-  --exec-info-text: #1E3FB8;
-  --exec-radius: 16px;
-  --exec-radius-sm: 10px;
+  --exec-border: #DBE2EA;
+  --exec-track: #E4EAF1;
+  --exec-line: #E9EEF4;
+  --exec-text: #17212B;
+  --exec-muted: #4E657D;
+  --exec-accent: #6B9BD2;
+  --exec-ok: #16794A;
+  --exec-ok-bg: #E6F4EC;
+  --exec-ok-text: #0F5C39;
+  --exec-warn: #A86400;
+  --exec-warn-bg: #FBF0DA;
+  --exec-warn-text: #7C4A03;
+  --exec-bad: #C53434;
+  --exec-bad-bg: #FDECEC;
+  --exec-bad-text: #962626;
+  --exec-info-bg: #E8EFFE;
+  --exec-info-text: #173EA5;
+  --exec-radius: 12px;
+  --exec-radius-sm: 8px;
   --exec-gap: 16px;
   --exec-pad: 20px;
   container-type: inline-size;

@@ -10,18 +10,18 @@
   ];
   const TASKS = [
     { key: "draft", label: "Draft", color: "#98A2B3" },
-    { key: "pending", label: "Pending", color: "#D98A0B" },
-    { key: "pending_approval", label: "Pending approval", color: "#7A5AF8" },
-    { key: "approved", label: "Approved", color: "#2F5BFF" },
-    { key: "completed", label: "Completed", color: "#1F8A5B" },
-    { key: "rejected", label: "Rejected", color: "#C0352B" },
+    { key: "pending", label: "Pending", color: "#F2A93B" },
+    { key: "pending_approval", label: "Pending approval", color: "#9D84D8" },
+    { key: "approved", label: "Approved", color: "#6B9BD2" },
+    { key: "completed", label: "Completed", color: "#3CB78F" },
+    { key: "rejected", label: "Rejected", color: "#EE7186" },
   ];
   const STATUS_COLORS = {
-    EXCELLENT: "#1F8A5B",
-    VERY_GOOD: "#2F5BFF",
-    GOOD: "#D98A0B",
-    FAIR: "#C0352B",
-    POOR: "#C0352B",
+    EXCELLENT: "#3CB78F",
+    VERY_GOOD: "#6B9BD2",
+    GOOD: "#3FBFB2",
+    FAIR: "#F2A93B",
+    POOR: "#EE7186",
     NOT_EVALUATED: "#CBD5E1",
     "NOT EVALUATED": "#CBD5E1",
   };
@@ -78,9 +78,9 @@
   function setChartDefaults() {
     if (typeof window.Chart !== "function") return;
     const styles = getComputedStyle(root);
-    window.Chart.defaults.font.family = "'Plus Jakarta Sans', 'Noto Sans Myanmar', system-ui, sans-serif";
+    window.Chart.defaults.font.family = "Inter, 'Noto Sans Myanmar', system-ui, sans-serif";
     window.Chart.defaults.font.size = 12;
-    window.Chart.defaults.color = styles.getPropertyValue("--kd-chart-text").trim() || "#566074";
+    window.Chart.defaults.color = styles.getPropertyValue("--kd-chart-text").trim() || "#5F6B78";
   }
 
   function makeDonut(canvas, labels, values, colors, ariaLabel) {
@@ -129,13 +129,13 @@
     const chart = window.Chart?.getChart?.(canvas);
     if (!chart) return false;
     const styles = getComputedStyle(root);
-    const accent = styles.getPropertyValue("--kd-accent").trim() || "#2F5BFF";
+    const accent = styles.getPropertyValue("--kd-accent").trim() || "#3B82F6";
     const dataset = chart.data.datasets[0];
     dataset.borderColor = accent;
-    dataset.backgroundColor = "rgba(121,13,22,.18)";
+    dataset.backgroundColor = "rgba(107,155,210,.16)";
     dataset.pointRadius = 0;
     dataset.pointHoverRadius = 5;
-    dataset.pointBackgroundColor = "#FFF9F2";
+    dataset.pointBackgroundColor = "#FFFFFF";
     dataset.pointBorderColor = accent;
     dataset.pointBorderWidth = 2;
     dataset.tension = 0.35;
@@ -147,7 +147,7 @@
       easing: "easeOutQuart",
     };
     chart.options.plugins.tooltip = {
-      backgroundColor: "#0F172A",
+      backgroundColor: "#1C2B3A",
       titleColor: "#FFFFFF",
       bodyColor: "#FFFFFF",
       padding: 10,
@@ -174,7 +174,7 @@
       );
     }
     if (chart.options.scales?.y) {
-      const chartText = styles.getPropertyValue("--kd-chart-text").trim() || "#566074";
+      const chartText = styles.getPropertyValue("--kd-chart-text").trim() || "#5F6B78";
       const chartGrid = styles.getPropertyValue("--kd-chart-grid").trim() || "rgba(148,163,184,.25)";
       chart.options.scales.y.ticks.stepSize = 25;
       chart.options.scales.y.ticks.color = chartText;
@@ -212,7 +212,7 @@
     const values = rows.map((row) => finiteNumber(row.count));
     const colors = rows.map((row, index) =>
       STATUS_COLORS[String(row.status || "").toUpperCase()]
-      || ["#2F5BFF", "#1F8A5B", "#D98A0B", "#C0352B", "#7A5AF8", "#0E7490", "#98A2B3"][index % 7]
+      || ["#6B9BD2", "#3CB78F", "#F2A93B", "#E879A6", "#9D84D8", "#3FBFB2", "#94A3B8"][index % 7]
     );
     const total = values.reduce((sum, value) => sum + (value ?? 0), 0);
     const complete = values.every((value) => value !== null);
@@ -430,7 +430,7 @@
     const paths = [
       '<path d="M4 19h16M6 16l4-5 3 3 5-8"/><path d="M15 6h3v3"/>',
       '<circle cx="9" cy="8" r="3"/><path d="M3 20v-1a6 6 0 0 1 12 0v1m2-9 2 2 4-4"/>',
-      '<path d="M12 3v18m7-14H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H5"/>',
+      '<path d="M8 3h8v3H8z"/><path d="M8 4.5H6.5A1.5 1.5 0 0 0 5 6v13.5A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H16"/><path d="m9 14.5 2.2 2.2L15.5 12"/>',
       '<path d="M12 3 2.8 20h18.4L12 3zm0 6v5m0 3h.01"/>',
     ];
     document.querySelectorAll("#primaryCards > section").forEach((card, index) => {

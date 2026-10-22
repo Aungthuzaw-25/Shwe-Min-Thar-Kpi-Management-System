@@ -1,28 +1,28 @@
 .acct-page {
   --acct-card: #FFFFFF;
-  --acct-border: #E1E6EF;
-  --acct-track: #E8ECF4;
-  --acct-line: #EEF1F6;
-  --acct-soft-bg: #F3F5F9;
-  --acct-text: #0F172A;
-  --acct-muted: #566074;
-  --acct-accent: #2F5BFF;
-  --acct-ok: #1F8A5B;
-  --acct-ok-bg: #DDF3E8;
-  --acct-ok-text: #0B5C3B;
-  --acct-warn: #D98A0B;
-  --acct-warn-bg: #FDEFD3;
-  --acct-warn-text: #8A4B00;
-  --acct-bad: #C0352B;
-  --acct-bad-bg: #FBE0DC;
-  --acct-bad-text: #9A261B;
-  --acct-radius: 16px;
+  --acct-border: #DBE2EA;
+  --acct-track: #E4EAF1;
+  --acct-line: #E9EEF4;
+  --acct-soft-bg: #F5F7FA;
+  --acct-text: #17212B;
+  --acct-muted: #5F6B78;
+  --acct-accent: #3D5A80;
+  --acct-ok: #16794A;
+  --acct-ok-bg: #E6F4EC;
+  --acct-ok-text: #0F5C39;
+  --acct-warn: #A86400;
+  --acct-warn-bg: #FBF0DA;
+  --acct-warn-text: #7C4A03;
+  --acct-bad: #C53434;
+  --acct-bad-bg: #FDECEC;
+  --acct-bad-text: #962626;
+  --acct-radius: 12px;
   --acct-input-radius: 10px;
   background: var(--acct-soft-bg);
   color: var(--acct-text);
   container-name: acct;
   container-type: inline-size;
-  font-family: 'Plus Jakarta Sans', 'Noto Sans Myanmar', system-ui, sans-serif;
+  font-family: Inter, 'Noto Sans Myanmar', system-ui, sans-serif;
   font-size: 14px;
   line-height: 1.5;
   min-width: 0;
@@ -88,7 +88,7 @@
 }
 .acct-page .acct-input:focus-visible {
   border-color: var(--acct-accent);
-  box-shadow: 0 0 0 2px rgba(47, 91, 255, .2);
+  box-shadow: 0 0 0 2px rgba(36, 87, 214, .2);
   outline: 2px solid var(--acct-accent);
   outline-offset: 2px;
 }

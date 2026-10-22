@@ -1,15 +1,15 @@
 :root {
-  --color-bg: #f5f7fa;
+  --color-bg: #eff5f8;
   --color-surface: #ffffff;
   --color-surface-subtle: #f8fafc;
   --color-surface-muted: #eef2f6;
   --color-border: #dbe2ea;
   --color-border-strong: #b8c4d1;
-  --color-text: #17212b;
-  --color-text-muted: #5f6b78;
+  --color-text: #1c2b3a;
+  --color-text-muted: #4E657D;
   --color-text-subtle: var(--color-text-muted);
-  --color-primary: #2457d6;
-  --color-primary-strong: #173ea5;
+  --color-primary: #3d5a80;
+  --color-primary-strong: #2e4562;
   --color-success: #16794a;
   --color-warning: #a86400;
   --color-danger: #c53434;
@@ -22,7 +22,7 @@
   --sidebar-width: 248px;
   --topbar-height: 64px;
   --content-gutter: clamp(16px, 2.2vw, 32px);
-  --focus-ring: 0 0 0 3px rgba(36, 87, 214, .2);
+  --focus-ring: 0 0 0 3px rgba(61, 90, 128, .22);
 }
 
 html { background: var(--color-bg); }
@@ -176,7 +176,7 @@ textarea:focus-visible, [tabindex]:focus-visible {
 }
 #mainSidebar nav > div {
   margin: 20px 8px 6px;
-  color: #8493a3;
+  color: #4E657D;
   font-size: 10px;
   letter-spacing: .1em;
 }
@@ -184,7 +184,7 @@ textarea:focus-visible, [tabindex]:focus-visible {
 #mainSidebar nav .nav-group-label {
   margin: 18px 8px 5px;
   padding: 0;
-  color: #8493a3;
+  color: #4E657D;
   background: transparent;
 }
 #mainSidebar > div:last-child {
@@ -399,4 +399,25 @@ main .rounded-2xl, main .rounded-3xl { border-radius: var(--radius-lg); }
 
 @media (prefers-reduced-motion: reduce) {
   :root *, :root *::before, :root *::after { animation-duration: .01ms; transition-duration: .01ms; }
+}
+
+/* Professional polish: sidebar footer + logo details follow the same slate
+   rail as the navigation (these elements carry legacy red utility classes
+   in the markup; the ID-scoped rules here are the single source of truth). */
+#mainSidebar > div:first-child p { color: #4E657D; }
+#mainSidebar > div:first-child button { color: #c6d1dc; }
+#mainSidebar > div:last-child > div { background: rgba(255, 255, 255, .06); }
+#mainSidebar > div:last-child > div > div:first-child > div:first-child {
+  background: var(--color-primary);
+  color: #fff;
+}
+#mainSidebar > div:last-child button {
+  background: transparent;
+  border: 1px solid #263544;
+  color: #c6d1dc;
+  border-radius: var(--radius-md);
+}
+#mainSidebar > div:last-child button:hover {
+  background: #263544;
+  color: #fff;
 }

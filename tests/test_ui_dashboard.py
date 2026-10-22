@@ -98,7 +98,7 @@ def test_fastapi_dashboard_templates_render_with_user_context(path, role_name):
             assert liquid_glass.status_code == 200
             assert kpi_theme.status_code == 200
             assert login_theme.status_code == 200
-            assert "--kg-accent:#790D16;" in kpi_theme.text
+            assert "--kg-accent:#3D5A80;" in kpi_theme.text
             assert login_page.status_code == 200
             assert "login-form-glass.css?v=20261021-2" in login_page.text
             assert client.get("/static/css/executive-dashboard.css").status_code == 200

@@ -5,7 +5,7 @@
   color: #fff;
   display: inline-flex;
   flex: none;
-  font-family: 'Plus Jakarta Sans', 'Noto Sans Myanmar', system-ui, sans-serif;
+  font-family: Inter, 'Noto Sans Myanmar', system-ui, sans-serif;
   font-weight: 700;
   justify-content: center;
   overflow: hidden;
@@ -20,7 +20,7 @@
 .kpi-avatar--96 { height: 96px; width: 96px; font-size: 38.4px; }
 .kpi-avatar--128 { height: 128px; width: 128px; font-size: 51.2px; }
 
-.kpi-avatar--color-0 { background: #2F5BFF; }
+.kpi-avatar--color-0 { background: #3D5A80; }
 .kpi-avatar--color-1 { background: #0F766E; }
 .kpi-avatar--color-2 { background: #6D3FD1; }
 .kpi-avatar--color-3 { background: #B4235A; }

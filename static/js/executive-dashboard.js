@@ -5,8 +5,8 @@
   if (!root) return;
 
   if (typeof window.Chart === 'function') {
-    window.Chart.defaults.color = '#FFF9F2';
-    window.Chart.defaults.borderColor = 'rgba(255, 249, 242, .16)';
+    window.Chart.defaults.color = '#4E657D';
+    window.Chart.defaults.borderColor = 'rgba(28, 43, 58, .07)';
   }
 
   const context = window.KPI_EXECUTIVE_CONTEXT || {};
@@ -146,8 +146,8 @@
         datasets: [{
           label: 'KPI percentage',
           data: trend.values,
-          borderColor: '#60a5fa',
-          backgroundColor: 'rgba(96,165,250,.14)',
+          borderColor: '#6B9BD2',
+          backgroundColor: 'rgba(107,155,210,.14)',
           pointBackgroundColor: '#0b1120',
           pointBorderColor: '#93c5fd',
           pointRadius: 4,
@@ -163,8 +163,8 @@
         interaction: { mode: 'index', intersect: false },
         plugins: { legend: { display: false }, tooltip: { callbacks: { label: item => ` ${item.raw}%` } } },
         scales: {
-          y: { beginAtZero: true, suggestedMax: 100, grid: { color: 'rgba(148,163,184,.12)' }, ticks: { color: '#94a3b8' } },
-          x: { grid: { display: false }, ticks: { color: '#94a3b8', maxRotation: 0 } }
+          y: { beginAtZero: true, suggestedMax: 100, grid: { color: 'rgba(28,43,58,.06)' }, ticks: { color: '#4E657D' } },
+          x: { grid: { display: false }, ticks: { color: '#4E657D', maxRotation: 0 } }
         }
       }
     });
