@@ -10,6 +10,7 @@ from sqlalchemy import String, cast, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
+from app.core.cache import cache_available, invalidate_prefix
 from app.core.config import settings
 from app.core.dependencies import enforce_permission, get_current_user
 from app.database.connection import get_db
@@ -1018,16 +1019,26 @@ async def clear_system_cache(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Clear the supported application cache, if one is configured.
+    """Clear the application dashboard cache (the ``kpi:cache:`` namespace).
 
-    The application currently has no generic cache namespace. OAuth Redis holds
-    security-sensitive transient state and must not be flushed by this endpoint.
+    Only the dashboard aggregate cache from ``app.core.cache`` is cleared.
+    OAuth Redis holds security-sensitive transient state in a different
+    namespace and is never flushed by this endpoint. When no cache is
+    configured or reachable, the endpoint stays truthful and returns 501
+    instead of pretending something was cleared.
     """
     enforce_permission(current_user, SYSTEM_SETTINGS_EDIT_PERMISSION)
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="No clearable application cache is configured.",
-    )
+    if not await cache_available():
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="No clearable application cache is configured.",
+        )
+    cleared = await invalidate_prefix("dashboard")
+    return {
+        "success": True,
+        "cleared_keys": cleared,
+        "message": "Dashboard cache cleared.",
+    }
 
 
 @router.get(

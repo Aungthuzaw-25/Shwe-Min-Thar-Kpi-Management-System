@@ -15,7 +15,7 @@ from sqlalchemy.orm import joinedload
 
 from app.core import security
 from app.core.config import settings
-from app.core.password_policy import get_password_expiry_days
+from app.core.password_policy import get_password_expiry_days, get_session_timeout_minutes
 from app.models.audit_log import AuditLog
 from app.modules.auth.models import (
     AuthSession,
@@ -354,9 +354,18 @@ class AuthService:
         )
 
         token_data = {"sub": user.email, "user_id": str(user.id), "role": role_value, "level": user_level}
+        session_timeout_minutes = await get_session_timeout_minutes(db)
         if session is not None:
             token_data["sid"] = str(session.id)
-        access_token = security.create_access_token(data=token_data)
+        # Only pass an explicit expiry when the panel setting actually
+        # changes it; the default path keeps the long-standing call shape.
+        if session_timeout_minutes != settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES:
+            access_token = security.create_access_token(
+                data=token_data,
+                expires_delta=timedelta(minutes=session_timeout_minutes),
+            )
+        else:
+            access_token = security.create_access_token(data=token_data)
         refresh_token = (
             security.create_refresh_token(data=token_data, remember_me=remember_me)
             if session is not None
@@ -368,6 +377,7 @@ class AuthService:
 
         return {
             "access_token": access_token,
+            "access_token_expires_minutes": session_timeout_minutes,
             "refresh_token": refresh_token,
             "token_type": "bearer",
             "must_change_password": bool(

@@ -39,8 +39,7 @@ export async function loadBaseContext(request, backend) {
   };
 }
 
-export async function loadEmployeeContext(request, backend, base) {
-  const permissionsResponse = await backend.get(request, "/api/v1/permissions/me");
+function buildEmployeeContext(base, permissionsResponse) {
   const permissionMap = permissionsResponse.permissions;
   const displayIdentity = base.context.position_name
     || base.context.department_name
@@ -52,4 +51,28 @@ export async function loadEmployeeContext(request, backend, base) {
     user_display_identity: displayIdentity,
     permission_map: permissionMap,
   };
+}
+
+export async function loadEmployeeContext(request, backend, base) {
+  const permissionsResponse = await backend.get(request, "/api/v1/permissions/me");
+  return buildEmployeeContext(base, permissionsResponse);
+}
+
+// Batch 2: load everything a page needs in one parallel fan-out. The
+// permissions call does not depend on the identity calls, so it starts at
+// the same time instead of waiting for them to finish first.
+export async function loadPageContext(request, backend, { employee = false } = {}) {
+  let permissionsPromise = null;
+  if (employee) {
+    permissionsPromise = backend.get(request, "/api/v1/permissions/me");
+    // Mark the promise as handled so a base-context failure cannot surface
+    // as an unhandled rejection; awaiting it below still throws normally.
+    permissionsPromise.catch(() => {});
+  }
+  const base = await loadBaseContext(request, backend);
+  if (!employee) {
+    return { base, context: base.context };
+  }
+  const permissionsResponse = await permissionsPromise;
+  return { base, context: buildEmployeeContext(base, permissionsResponse) };
 }

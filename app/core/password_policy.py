@@ -5,6 +5,7 @@ import string
 from fastapi import HTTPException
 from sqlalchemy import select
 
+from app.core.config import settings
 from app.models.system import SystemSetting
 
 DEFAULT_PASSWORD_POLICY = {
@@ -44,6 +45,35 @@ async def get_password_policy(db):
         "minimum_length": max(8, minimum_length),
         "require_complexity": complexity is not False,
     }
+
+
+async def get_session_timeout_minutes(db) -> int:
+    """Session lifetime (minutes) from the ``security`` settings row.
+
+    The System Settings panel writes ``session_timeout`` into the
+    ``security`` setting; this resolver is what makes that value real.
+    Falls back to ``JWT_ACCESS_TOKEN_EXPIRE_MINUTES`` when the setting is
+    missing/invalid, and clamps to 5 minutes .. 24 hours. Never raises:
+    a broken settings read must not break login, so any storage error
+    (including lightweight fake sessions used in tests) yields the env
+    default.
+    """
+    try:
+        result = await db.execute(
+            select(SystemSetting).where(SystemSetting.key == "security")
+        )
+        setting = result.scalars().first()
+    except Exception:
+        return settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES
+    raw_value = getattr(setting, "value", None) if setting is not None else None
+    value = raw_value if isinstance(raw_value, dict) else {}
+    try:
+        minutes = int(value.get("session_timeout") or 0)
+    except (TypeError, ValueError):
+        minutes = 0
+    if minutes <= 0:
+        return settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES
+    return min(max(minutes, 5), 60 * 24)
 
 
 async def get_password_expiry_days(db):

@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 export class BackendResponseError extends Error {
   constructor(status, contentType, body) {
     super(`Backend request failed with status ${status}`);
@@ -9,6 +11,19 @@ export class BackendResponseError extends Error {
 }
 
 const FETCH_TIMEOUT_MS = 15_000;
+
+// Batch 2: the three "who am I / what may I see" calls below are made on
+// every server-rendered page. Their answers change rarely, so the web tier
+// reuses them for 30 seconds per signed-in session instead of asking the
+// API (and behind it, the database) on every single navigation. Only
+// successful GET responses are cached; errors always go to the API.
+const CONTEXT_PATHS = new Set([
+  "/api/v1/auth/me",
+  "/api/v1/auth/me/accounts",
+  "/api/v1/permissions/me",
+]);
+const CONTEXT_CACHE_TTL_MS = 30_000;
+const CONTEXT_CACHE_MAX_ENTRIES = 500;
 
 function escapeHtml(value) {
   return value.replaceAll("&", "&amp;")
@@ -33,8 +48,27 @@ export function createBackendClient({
   baseUrl = process.env.API_BASE_URL || "http://127.0.0.1:8000",
   fetchImpl = fetch,
 } = {}) {
+  const contextCache = new Map();
+
+  function contextCacheKey(request, path) {
+    const parts = [];
+    for (const name of ["cookie", "authorization"]) {
+      const value = request.get(name);
+      if (value) parts.push(`${name}=${value}`);
+    }
+    return `${createHash("sha256").update(parts.join("\n")).digest("hex")}:${path}`;
+  }
+
   return {
     async get(request, path) {
+      const cacheable = CONTEXT_PATHS.has(path);
+      const cacheKey = cacheable ? contextCacheKey(request, path) : null;
+      if (cacheable) {
+        const hit = contextCache.get(cacheKey);
+        if (hit && Date.now() - hit.at < CONTEXT_CACHE_TTL_MS) {
+          return hit.value;
+        }
+      }
       const headers = new Headers({ accept: "application/json" });
       for (const name of ["cookie", "authorization"]) {
         const value = request.get(name);
@@ -62,6 +96,12 @@ export function createBackendClient({
 
       if (!response.ok) {
         throw new BackendResponseError(response.status, contentType, body);
+      }
+      if (cacheable) {
+        if (contextCache.size >= CONTEXT_CACHE_MAX_ENTRIES) {
+          contextCache.delete(contextCache.keys().next().value);
+        }
+        contextCache.set(cacheKey, { at: Date.now(), value: body });
       }
       return body;
     },

@@ -1,15 +1,14 @@
-import { loadBaseContext, loadEmployeeContext } from "../lib/pageContext.js";
+import { loadPageContext } from "../lib/pageContext.js";
 import { sendBackendError } from "../lib/backendClient.js";
 
 export function registerActivityRoutes(app) {
   app.get("/notifications", async (request, response, next) => {
     try {
       const backend = request.app.locals.backend;
-      const base = await loadBaseContext(request, backend);
+      const { base, context } = await loadPageContext(request, backend, { employee: true });
       if (!base.context.user_role) {
         return response.redirect(307, "/auth/login");
       }
-      const context = await loadEmployeeContext(request, backend, base);
       context.active_page = "notifications";
       context.layout_template = ["Super Admin", "Admin", "System Admin"]
         .includes(context.user_role)
