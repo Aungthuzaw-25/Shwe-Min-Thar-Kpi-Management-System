@@ -26,4 +26,14 @@ templates.env.globals.update(
     current_user=None,
     user_avatar=None,
     version=settings.VERSION,
+    # Company trademark fallback: routes that know the database brand
+    # (app.modules.system.branding.resolve_brand) override this per
+    # render; the default keeps every other render working unchanged.
+    brand={
+        "company_name": "Shwe Min Thar",
+        "company_tagline": "Performance Matters",
+        "logo_url": "/static/image/smt-logo.jpg",
+        "has_custom_logo": False,
+    },
+    oauth_providers={"google": False, "microsoft": False},
 )

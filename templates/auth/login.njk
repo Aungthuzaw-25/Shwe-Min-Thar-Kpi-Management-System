@@ -112,11 +112,11 @@
         <div class="brand-panel hidden lg:flex lg:w-1/2 bg-red-800 relative overflow-hidden flex-col justify-between p-8 xl:p-12 text-white bg-gradient-to-br from-red-900 to-red-700">
             
             <!-- Logo -->
-            <div class="flex items-center space-x-3 z-10 relative">
-                <span class="bg-white rounded-xl p-1 shadow-sm shrink-0"><img src="/static/image/smt-logo.jpg" alt="Shwe Min Thar logo" class="w-9 h-9 xl:w-11 xl:h-11 rounded-lg object-cover"></span>
-                <div>
-                    <h1 class="text-2xl xl:text-3xl font-bold tracking-wide">Shwe Min Thar</h1>
-                    <p class="text-[10px] xl:text-xs text-red-200 uppercase tracking-widest">Performance Matters</p>
+            <div class="flex items-center space-x-3 z-10 relative min-w-0">
+                <span class="bg-white rounded-xl p-1 shadow-sm shrink-0"><img src="{{ brand.logo_url or "/static/image/smt-logo.jpg" }}" alt="{{ brand.company_name or "Shwe Min Thar" }} logo" class="w-9 h-9 xl:w-11 xl:h-11 rounded-lg object-cover"></span>
+                <div class="min-w-0">
+                    <h1 class="text-2xl xl:text-3xl font-bold tracking-wide leading-tight line-clamp-2 break-words">{{ brand.company_name or "Shwe Min Thar" }}</h1>
+                    {% if brand.company_tagline %}<p class="text-[10px] xl:text-xs text-red-200 uppercase tracking-widest line-clamp-2 break-words">{{ brand.company_tagline }}</p>{% endif %}
                 </div>
             </div>
 
@@ -124,7 +124,7 @@
             <div class="z-10 relative my-auto">
                 <h2 class="text-4xl xl:text-5xl font-bold leading-tight mb-4">
                     Welcome Back!<br>
-                    Sign in to your <span class="text-red-300">Shwe Min Thar</span><br>
+                    Sign in to your <span class="text-red-300 break-words">{{ brand.company_name or "Shwe Min Thar" }}</span><br>
                     Dashboard
                 </h2>
                 <p class="text-base xl:text-lg text-red-100 mb-1">Track performance. Measure progress.</p>
@@ -246,21 +246,29 @@
                     </div>
                 </form>
 
-                <div class="flex items-center gap-3 my-5" data-oauth-divider aria-hidden="true" hidden>
+                {% set showGoogle = oauth_providers and oauth_providers.google %}
+                {% set showMicrosoft = oauth_providers and oauth_providers.microsoft %}
+                {% if showGoogle or showMicrosoft %}
+                <div class="flex items-center gap-3 my-5" data-oauth-divider aria-hidden="true">
                     <div class="h-px bg-gray-200 flex-1"></div>
                     <span class="text-xs text-gray-400">or continue with</span>
                     <div class="h-px bg-gray-200 flex-1"></div>
                 </div>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" data-oauth-buttons hidden>
-                    <button type="button" data-oauth-provider="google" hidden
-                            class="oauth-provider-btn w-full flex justify-center items-center py-2.5 px-4 border border-gray-300 rounded-lg text-xs sm:text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors">
-                        Continue with Google
+                <div class="grid grid-cols-1 {% if showGoogle and showMicrosoft %}sm:grid-cols-2{% endif %} gap-3" data-oauth-buttons>
+                    {% if showGoogle %}
+                    <button type="button" data-oauth-provider="google" class="oauth-provider-btn w-full flex justify-center items-center gap-2.5 py-3 px-4 bg-white border border-slate-200 rounded-xl shadow-sm text-sm font-semibold text-slate-700 hover:bg-slate-50 hover:shadow transition-all">
+                        <svg class="w-5 h-5 shrink-0" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M23.5 12.27c0-.85-.08-1.66-.22-2.45H12v4.64h6.45a5.52 5.52 0 0 1-2.39 3.58v2.97h3.87c2.26-2.09 3.57-5.16 3.57-8.74z"/><path fill="#34A853" d="M12 24c3.24 0 5.96-1.07 7.94-2.91l-3.87-2.97c-1.07.72-2.45 1.15-4.07 1.15-3.13 0-5.78-2.11-6.73-4.96H1.29v3.07A11.99 11.99 0 0 0 12 24z"/><path fill="#FBBC05" d="M5.27 14.31A7.2 7.2 0 0 1 4.89 12c0-.8.14-1.58.38-2.31V6.62H1.29a12 12 0 0 0 0 10.76l3.98-3.07z"/><path fill="#EA4335" d="M12 4.73c1.76 0 3.34.61 4.58 1.8l3.44-3.44A11.98 11.98 0 0 0 12 0 11.99 11.99 0 0 0 1.29 6.62l3.98 3.07C6.22 6.84 8.87 4.73 12 4.73z"/></svg>
+                        <span class="oauth-btn-label">Continue</span>
                     </button>
-                    <button type="button" data-oauth-provider="microsoft" hidden
-                            class="oauth-provider-btn w-full flex justify-center items-center py-2.5 px-4 border border-gray-300 rounded-lg text-xs sm:text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors">
-                        Continue with Microsoft
+                    {% endif %}
+                    {% if showMicrosoft %}
+                    <button type="button" data-oauth-provider="microsoft" class="oauth-provider-btn w-full flex justify-center items-center gap-2.5 py-3 px-4 bg-white border border-slate-200 rounded-xl shadow-sm text-sm font-semibold text-slate-700 hover:bg-slate-50 hover:shadow transition-all">
+                        <svg class="w-5 h-5 shrink-0" viewBox="0 0 24 24" aria-hidden="true"><path fill="#F25022" d="M2 2h9.5v9.5H2z"/><path fill="#7FBA00" d="M12.5 2H22v9.5h-9.5z"/><path fill="#00A4EF" d="M2 12.5h9.5V22H2z"/><path fill="#FFB900" d="M12.5 12.5H22V22h-9.5z"/></svg>
+                        <span class="oauth-btn-label">Continue</span>
                     </button>
+                    {% endif %}
                 </div>
+                {% endif %}
             </div>
         </div>
     </main>
@@ -396,33 +404,18 @@
             document.getElementById('remember-me').checked = true;
         }
 
+        // Provider buttons are rendered by the server only when that
+        // provider is configured (oauth_providers from /branding/public),
+        // so there is nothing to show/hide here.
         const oauthButtons = [...document.querySelectorAll('.oauth-provider-btn')];
-        const oauthArea = document.querySelector('[data-oauth-buttons]');
-        const oauthDivider = document.querySelector('[data-oauth-divider]');
-        fetch('/api/v1/auth/oauth/providers', { credentials: 'same-origin' })
-            .then((response) => response.ok ? response.json() : Promise.reject(new Error('Provider configuration unavailable')))
-            .then((providers) => {
-                let configuredCount = 0;
-                oauthButtons.forEach((button) => {
-                    const configured = providers[button.dataset.oauthProvider] === true;
-                    button.hidden = !configured;
-                    configuredCount += configured ? 1 : 0;
-                });
-                oauthArea.hidden = configuredCount === 0;
-                oauthDivider.hidden = configuredCount === 0;
-            })
-            .catch(() => {
-                oauthArea.hidden = true;
-                oauthDivider.hidden = true;
-            });
-
         oauthButtons.forEach((button) => {
             button.addEventListener('click', () => {
                 document.querySelectorAll('.oauth-provider-btn').forEach((item) => {
                     item.disabled = true;
                     item.classList.add('opacity-60', 'cursor-wait');
                 });
-                button.textContent = 'Redirecting...';
+                const label = button.querySelector('.oauth-btn-label');
+                if (label) label.textContent = 'Redirecting...';
                 const remember = document.getElementById('remember-me').checked ? '?remember_me=true' : '';
                 window.location.assign(`/api/v1/auth/${button.dataset.oauthProvider}/start${remember}`);
             });

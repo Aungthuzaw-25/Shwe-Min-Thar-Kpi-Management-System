@@ -4,11 +4,16 @@ export function normalizeUserLevel(value) {
   return ["L0", "L1", "L2"].includes(normalized) ? normalized : null;
 }
 
+import { loadPublicBrand } from "./branding.js";
+
 export async function loadBaseContext(request, backend) {
   const [user, accountData] = await Promise.all([
     backend.get(request, "/api/v1/auth/me"),
     backend.get(request, "/api/v1/auth/me/accounts"),
   ]);
+  // Company trademark for the layouts (sidebar / mobile header brand).
+  // Never rejects: loadPublicBrand falls back to the built-in defaults.
+  const { brand } = await loadPublicBrand(request, backend);
   const userRole = user.role || null;
   const positionName = user.position_name === "No Position"
     ? null
@@ -21,6 +26,7 @@ export async function loadBaseContext(request, backend) {
     user,
     accountData,
     context: {
+      brand,
       user_role: userRole,
       user_name: user.full_name,
       user_email: accountData.user_email,
