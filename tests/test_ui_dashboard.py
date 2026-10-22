@@ -162,7 +162,9 @@ def test_static_assets_are_cacheable_without_csrf_cookie():
     response = TestClient(app).get("/static/css/dashboard.css")
 
     assert response.status_code == 200
-    assert response.headers["cache-control"] == "public, max-age=3600"
+    assert response.headers["cache-control"] == (
+        "public, max-age=604800, stale-while-revalidate=86400"
+    )
     assert "set-cookie" not in response.headers
 
 
