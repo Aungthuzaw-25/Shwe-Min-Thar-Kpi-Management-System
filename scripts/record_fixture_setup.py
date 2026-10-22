@@ -13,7 +13,7 @@ USER_ID = "0c983ef6-1b74-4c99-85ad-21eda789a399"
 def login():
     response = requests.post(
         f"{BASE}/api/v1/auth/login",
-        json={"email": "sa.local@kpi.test", "password": "TempSeedPass!2026"},
+        json={"email": "sa.local@kpi.test", "password": ""},
     )
     response.raise_for_status()
     token = response.json()["access_token"]

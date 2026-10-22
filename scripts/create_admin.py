@@ -8,7 +8,7 @@ admin_payload = {
   "first_name":"Admin",
   "last_name":"DeptA",
   "email":"admin.a@kpi.test",
-  "password":"TempSeedPass!2026",
+  "password":"",
   "position_id": None,
   "region_town":"HQ",
   "role_id":"e1b10294-3e9b-4c5d-90d0-29ce03457b16",
