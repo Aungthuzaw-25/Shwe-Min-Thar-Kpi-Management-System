@@ -23,14 +23,30 @@ engine_options = {
     "pool_pre_ping": True,  # Tests connection liveness before checking out from pool
 }
 
-connect_args = {}
-if settings.DATABASE_URL.startswith("postgresql+asyncpg://"):
-    connect_args["statement_cache_size"] = 0
-    parsed = urlparse(settings.DATABASE_URL)
+def _build_connect_args(database_url: str) -> dict:
+    args: dict = {}
+    if not database_url.startswith("postgresql+asyncpg://"):
+        return args
+    # Required when connecting through Neon's PgBouncer pooler, which
+    # does not support prepared-statement caching across sessions.
+    args["statement_cache_size"] = 0
+    # Per-statement ceiling (asyncpg command_timeout): a single
+    # statement is cancelled client-side after this long instead of
+    # holding a pooled connection indefinitely. Client-side (rather
+    # than a server SET) so it also holds through the PgBouncer
+    # pooler. Long-running work such as bulk KPI calculation is many
+    # short statements, so it is unaffected; only a genuinely stuck
+    # statement is cut. Value: DB_COMMAND_TIMEOUT_SECONDS (default 60).
+    args["command_timeout"] = settings.DB_COMMAND_TIMEOUT_SECONDS
+    parsed = urlparse(database_url)
     host = (parsed.hostname or "").lower()
     is_localhost = host in {"localhost", "127.0.0.1", "::1"}
     if settings.DATABASE_SSL_REQUIRED and not is_localhost:
-        connect_args["ssl"] = True
+        args["ssl"] = True
+    return args
+
+
+connect_args = _build_connect_args(settings.DATABASE_URL)
 
 # 🌟 FIX: PostgreSQL/MySQL specific optimizations. SQLite doesn't support these pool args.
 if not settings.DATABASE_URL.startswith("sqlite"):

@@ -1312,5 +1312,10 @@ async def generate_database_backup(
                 "Access-Control-Expose-Headers": "Content-Disposition"
             }
         )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to generate backup: {str(e)}")
+    except Exception:
+        # Do not echo internal error text to the client (it can carry
+        # DB/driver details); the full error is in the server log.
+        logger.exception("System settings backup generation failed")
+        raise HTTPException(
+            status_code=500, detail="Failed to generate backup."
+        )

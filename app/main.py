@@ -1,3 +1,4 @@
+import asyncio
 import gzip
 import logging
 import os
@@ -98,7 +99,14 @@ async def lifespan(app: FastAPI):
     await bootstrap_initial_super_admin()
     oauth_redis = None
     if settings.OAUTH_ENABLED and settings.REDIS_URL:
-        oauth_redis = redis_from_url(settings.REDIS_URL, decode_responses=True)
+        oauth_redis = redis_from_url(
+            settings.REDIS_URL,
+            decode_responses=True,
+            # Same bounds as the app cache client (app.core.cache): an
+            # OAuth flow must fail fast, never hang, on a stalled Redis.
+            socket_connect_timeout=0.5,
+            socket_timeout=1.0,
+        )
         try:
             await oauth_redis.ping()
         except Exception:
@@ -135,10 +143,24 @@ async def lifespan(app: FastAPI):
 # 🌟 2. RATE LIMITER (Redis-Compatible for Multi-Worker Scaling)
 # ==============================================================================
 redis_url = getattr(settings, "REDIS_URL", None)
-if redis_url:
-    limiter = Limiter(key_func=get_remote_address, storage_uri=redis_url)
-else:
-    limiter = Limiter(key_func=get_remote_address)
+
+
+def _build_rate_limiter(redis_url: str | None) -> Limiter:
+    if redis_url:
+        # Fail open to in-memory counting when Redis is unreachable:
+        # verified live (Round 2) that without this, a Redis outage
+        # turns every rate-limited endpoint into a 500. With the
+        # fallback the endpoint still answers and limits still apply,
+        # counted per-process until Redis returns.
+        return Limiter(
+            key_func=get_remote_address,
+            storage_uri=redis_url,
+            in_memory_fallback_enabled=True,
+        )
+    return Limiter(key_func=get_remote_address)
+
+
+limiter = _build_rate_limiter(redis_url)
 
 
 # ==============================================================================
@@ -290,6 +312,52 @@ def _http_exception_handler(request: Request, exc: HTTPException):
 
 app.add_exception_handler(HTTPException, _http_exception_handler)
 
+
+class DashboardCacheInvalidationMiddleware(BaseHTTPMiddleware):
+    """Purge cached dashboard summaries after any successful API write.
+
+    The admin/superadmin dashboard summaries are cached for 60s
+    (app.core.cache). Before this middleware nothing invalidated them
+    on writes, so an approval or KPI edit could look unsaved for up to
+    a minute. The rule is deliberately broad — every successful
+    POST/PUT/PATCH/DELETE under /api/v1 purges the dashboard namespace
+    — so current *and future* write paths are covered. Excluded:
+    /api/v1/auth/* and /api/v1/account/* (login/logout/refresh/OAuth,
+    profile and password changes never change dashboard numbers).
+    Notifications created as a side effect of a covered write are
+    covered too, because the triggering write is what purges.
+
+    The purge is best-effort and fail-open (the cache helper never
+    raises), runs as a background task so the write's response is not
+    delayed, and the 60s TTL remains the backstop.
+    """
+
+    _MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+    _EXCLUDED_PREFIXES = ("/api/v1/auth/", "/api/v1/account/")
+
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        if (
+            request.method in self._MUTATING_METHODS
+            and response.status_code < 400
+            and request.url.path.startswith("/api/v1/")
+            and not request.url.path.startswith(self._EXCLUDED_PREFIXES)
+        ):
+            from app.core.cache import invalidate_dashboard_summaries
+
+            task = asyncio.ensure_future(invalidate_dashboard_summaries())
+            task.add_done_callback(self._log_purge_failure)
+        return response
+
+    @staticmethod
+    def _log_purge_failure(task: "asyncio.Task[None]") -> None:
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:  # pragma: no cover - helper is fail-open
+            logger.warning("Dashboard cache purge failed", exc_info=exc)
+
+
 # ==============================================================================
 # 🛡️ 4. SECURITY & PERFORMANCE MIDDLEWARES
 # ==============================================================================
@@ -299,6 +367,7 @@ app.add_exception_handler(HTTPException, _http_exception_handler)
 # every page response just to inject the CSP nonce.
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(RequestLoggingMiddleware)
+app.add_middleware(DashboardCacheInvalidationMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # B. Strict CORS Policy

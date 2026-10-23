@@ -90,11 +90,35 @@ async def cached_json(prefix: str, key: str, ttl_seconds: int, factory):
 
 
 async def invalidate_prefix(prefix: str) -> int:
-    """Delete every key under ``kpi:cache:<prefix>:*``; return the count."""
+    """Delete every key under ``kpi:cache:<prefix>:*``; return the count.
+
+    Fail-open like the rest of this module: a cache purge must never
+    break the request that triggered it, so Redis errors are logged and
+    the count deleted so far (possibly 0) is returned.
+    """
     client = _get_client()
     if client is None:
         return 0
     deleted = 0
-    async for key in client.scan_iter(match=f"{CACHE_PREFIX}:{prefix}:*", count=200):
-        deleted += await client.delete(key)
+    try:
+        async for key in client.scan_iter(
+            match=f"{CACHE_PREFIX}:{prefix}:*", count=200
+        ):
+            deleted += await client.delete(key)
+    except Exception:
+        logger.warning(
+            "App cache invalidation for prefix %r failed; continuing",
+            prefix,
+            exc_info=True,
+        )
     return deleted
+
+
+async def invalidate_dashboard_summaries() -> int:
+    """Best-effort purge of the cached dashboard summaries.
+
+    Called after successful data-changing requests so admin/superadmin
+    dashboards stop showing pre-change numbers immediately instead of
+    at the 60s TTL. Never raises.
+    """
+    return await invalidate_prefix("dashboard")

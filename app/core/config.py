@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     )
     REFRESH_TOKEN_EXPIRE_DAYS: int
     DATABASE_SSL_REQUIRED: bool = True
+    # Per-statement ceiling for asyncpg (seconds). One statement may
+    # never run longer than this, so a runaway query cannot hold a
+    # pooled connection forever. Long jobs (bulk KPI calculation) are
+    # many statements, not one, so they are not cut off by this.
+    DB_COMMAND_TIMEOUT_SECONDS: float = Field(default=60.0, gt=0)
     QA_DATABASE_HOST: str = "postgres-qa"
     QA_DATABASE_PORT: int = 5432
     QA_DATABASE_NAME: str = "kpi_qa"

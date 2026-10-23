@@ -169,7 +169,13 @@ class StorageService:
         """
         safe_object_name = _validate_storage_key(object_name)
         if not self.s3_client:
-            return ""
+            # Was: silently return "" — callers handed users a broken
+            # empty link. Fail loudly with the same 503 the upload path
+            # uses, so the UI can say storage is unavailable.
+            raise HTTPException(
+                status_code=503,
+                detail="Storage backend is unavailable. Please try again later.",
+            )
 
         try:
             response = self.s3_client.generate_presigned_url(
