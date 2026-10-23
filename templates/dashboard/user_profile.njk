@@ -141,7 +141,7 @@
         if(!userId) return;
 
         try {
-            const response = await fetch(`/api/v1/users/${userId}`);
+            const response = await fetchWithTimeout(`/api/v1/users/${userId}`);
             
             // 🛡️ AUTH FIX: Token/Session Timeout Redirect
             if (response.status === 401 || response.status === 403) {

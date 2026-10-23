@@ -451,9 +451,7 @@ class CachedStaticFiles(StaticFiles):
     async def get_response(self, path: str, scope):
         response = await super().get_response(path, scope)
         if response.status_code == status.HTTP_200_OK:
-            if path.endswith("service-worker.js"):
-                response.headers["Cache-Control"] = "no-cache"
-            elif path.startswith(("css/", "js/", "vendor/")):
+            if path.startswith(("css/", "js/", "vendor/")):
                 # Templates bust these URLs with ?v= version parameters (or the
                 # files are rebuilt per deploy), so a long lifetime is safe and
                 # repeat visits stop re-downloading the same bytes.

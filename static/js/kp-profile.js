@@ -4,20 +4,37 @@
 
   const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
+  const panelTimeZone = root.dataset.appTimezone || "Asia/Yangon";
+
   function formatDate(value) {
-    const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value || "");
-    if (!match) return "—";
-    const year = Number(match[1]);
-    const month = Number(match[2]);
-    const day = Number(match[3]);
-    const parsed = new Date(Date.UTC(year, month - 1, day));
-    if (
-      Number.isNaN(parsed.getTime())
-      || parsed.getUTCFullYear() !== year
-      || parsed.getUTCMonth() !== month - 1
-      || parsed.getUTCDate() !== day
-    ) return "—";
-    return `${String(day).padStart(2, "0")} ${monthNames[month - 1]} ${year}`;
+    if (!value) return "—";
+    // A date-only value is a calendar date: show it exactly as written.
+    const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+    if (dateOnly) {
+      const year = Number(dateOnly[1]);
+      const month = Number(dateOnly[2]);
+      const day = Number(dateOnly[3]);
+      const parsed = new Date(Date.UTC(year, month - 1, day));
+      if (
+        Number.isNaN(parsed.getTime())
+        || parsed.getUTCFullYear() !== year
+        || parsed.getUTCMonth() !== month - 1
+        || parsed.getUTCDate() !== day
+      ) return "—";
+      return `${String(day).padStart(2, "0")} ${monthNames[month - 1]} ${year}`;
+    }
+    // Timestamps are instants: show them on the panel timezone, the
+    // same standard the audit logs use. Slicing the date out of the
+    // string would show the UTC date, a day early for evening-UTC
+    // timestamps.
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return "—";
+    return new Intl.DateTimeFormat("en-GB", {
+      timeZone: panelTimeZone,
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    }).format(parsed);
   }
 
   root.querySelectorAll("[data-profile-date]").forEach((element) => {

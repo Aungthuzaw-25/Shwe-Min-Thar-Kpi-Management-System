@@ -47,8 +47,8 @@ async function loadNotificationHistory(page = 1) {
     container.innerHTML = '<div class="p-10 text-center text-slate-400 text-sm">Loading notifications...</div>';
     try {
         const [response, unreadResponse] = await Promise.all([
-            fetch(`/api/v1/notifications?skip=${(page - 1) * pageSize}&limit=${pageSize}`),
-            fetch("/api/v1/notifications/unread-count")
+            fetchWithTimeout(`/api/v1/notifications?skip=${(page - 1) * pageSize}&limit=${pageSize}`),
+            fetchWithTimeout("/api/v1/notifications/unread-count")
         ]);
         if (response.status === 401) {
             window.location.href = "/auth/login";
@@ -81,7 +81,7 @@ async function loadNotificationHistory(page = 1) {
                 </div>
             </button>`).join("");
     } catch (error) {
-        container.innerHTML = '<div class="p-10 text-center text-rose-500 text-sm">Unable to load notifications. Please try again.</div>';
+        container.innerHTML = '<div class="p-10 text-center text-rose-500 text-sm">Unable to load notifications. Please try again. <button type="button" onclick="loadNotificationHistory(currentPage)" class="ml-3 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50">Retry</button></div>';
     }
 }
 async function markAllNotificationsRead() {

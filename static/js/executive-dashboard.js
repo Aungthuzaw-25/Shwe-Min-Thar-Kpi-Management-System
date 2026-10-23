@@ -418,7 +418,7 @@
       limit: String(employeePageSize)
     });
     try {
-      const response = await fetch(`/api/v1/dashboard/executive/employees?${params}`, {
+      const response = await fetchWithTimeout(`/api/v1/dashboard/executive/employees?${params}`, {
         signal: controller.signal,
         credentials: 'same-origin'
       });
@@ -469,7 +469,7 @@
     target.innerHTML = listEmpty('Loading employee KPI details…');
     try {
       const params = new URLSearchParams({ period_id: periodId });
-      const response = await fetch(
+      const response = await fetchWithTimeout(
         `/api/v1/dashboard/executive/employees/${encodeURIComponent(userId)}?${params}`,
         { credentials: 'same-origin', signal: controller.signal }
       );
@@ -519,7 +519,7 @@
       const executiveUrl = selectedId
         ? `/api/v1/dashboard/executive/overview?period_id=${encodeURIComponent(selectedId)}`
         : '/api/v1/dashboard/executive/overview';
-      const executiveResponse = await fetch(executiveUrl, {
+      const executiveResponse = await fetchWithTimeout(executiveUrl, {
         signal: controller.signal,
         credentials: 'same-origin'
       });
@@ -528,7 +528,7 @@
       if (sequence !== requestSequence) return;
       const selectedPeriod = renderAvailablePeriods(intelligence);
       const periodType = selectedPeriod?.period_type || 'MONTHLY';
-      const summaryPromise = fetch(
+      const summaryPromise = fetchWithTimeout(
         `/api/v1/dashboard/summary?period_type=${encodeURIComponent(periodType)}`,
         { signal: controller.signal, credentials: 'same-origin' }
       ).then(response => {

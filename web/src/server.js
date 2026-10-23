@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import express from "express";
 import nunjucks from "nunjucks";
 import { createBackendClient } from "./lib/backendClient.js";
+import { isNavigationRequest, sendErrorPage } from "./lib/errorPage.js";
 import { registerFilters } from "./lib/nunjucks_filters.js";
 import { cspMiddleware } from "./middleware/csp.js";
 import { registerActivityRoutes } from "./routes/activity.js";
@@ -54,6 +55,12 @@ export function createApp({
       error: sanitizeLogField(error instanceof Error ? error.message : error),
     }));
     if (response.headersSent) return;
+    // A person following a link gets a readable error page with a
+    // retry; API-style requests keep the JSON error.
+    if (isNavigationRequest(request)) {
+      sendErrorPage(response, 502);
+      return;
+    }
     response.status(502).json({ detail: "The application service is temporarily unavailable." });
   });
 

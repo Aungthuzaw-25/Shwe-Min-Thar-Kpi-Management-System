@@ -299,7 +299,7 @@
         toggleLoader('tableLoader', true);
         try {
             const url = currentTab === 'active' ? API_BASE_URL : `${API_BASE_URL}?is_active=false`;
-            const response = await fetch(url);
+            const response = await fetchWithTimeout(url);
             
             // 🛡️ AUTH FIX: Redirect if unauthorized
             if (response.status === 401 || response.status === 403) {
@@ -313,7 +313,9 @@
             renderDepartments();
         } catch (error) { 
             console.error(error); 
-            showToast("Failed to load departments.", "error"); 
+            // Persistent error state (not just a toast): an empty table
+            // would read as "there are no departments".
+            document.getElementById("departmentTableBody").innerHTML = '<tr><td colspan="5" class="p-10 text-left sm:text-center text-red-500 font-bold">Failed to load departments. <button type="button" onclick="fetchDepartments()" class="ml-3 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50">Retry</button></td></tr>';
         } finally {
             toggleLoader('tableLoader', false);
         }

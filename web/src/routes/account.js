@@ -29,6 +29,7 @@ export function registerAccountRoutes(app) {
     response.render(template, {
       ...base.context,
       account_profile: accountProfile,
+      timezone: process.env.TIMEZONE || "Asia/Yangon",
     });
   }));
 }
