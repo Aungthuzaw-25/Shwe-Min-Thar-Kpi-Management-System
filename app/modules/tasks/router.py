@@ -1201,7 +1201,7 @@ async def upload_task_evidence(task_id: UUID, file: UploadFile = File(...), db: 
         await db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to upload evidence: {str(e)}")
 
-@router.get("/evidence/view", summary="Get Presigned URL to View Evidence", responses={404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
+@router.get("/evidence/view", summary="Get Presigned URL to View Evidence", responses={404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}, 503: {"description": "Storage backend unavailable"}})
 async def get_evidence_url(
     evidence_id: UUID,
     db: AsyncSession = Depends(get_db),
