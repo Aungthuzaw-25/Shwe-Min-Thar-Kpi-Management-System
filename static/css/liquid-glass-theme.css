@@ -531,6 +531,22 @@ body.app-shell {
   backdrop-filter: var(--glass-blur);
 }
 
+/* Employee dashboard polish: denser scorecards (less empty air between the
+   label and the value), a touch more air between sections. */
+.app-shell .executive-scorecard {
+  min-height: 6.25rem;
+  gap: .5rem;
+}
+
+.app-shell .executive-scorecards {
+  gap: .85rem;
+}
+
+.app-shell .executive-grid {
+  gap: 1.15rem;
+  margin-bottom: 1.15rem;
+}
+
 .app-shell .executive-control,
 .app-shell .executive-button {
   color: var(--color-text);

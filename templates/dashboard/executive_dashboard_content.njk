@@ -82,13 +82,13 @@
   </section>
 
   <section id="executiveInsightPanel" class="executive-grid executive-grid-secondary" aria-label="Executive signals and attention areas">
-    <article class="executive-panel">
+    <article class="executive-panel" id="signalsPanel">
       <div class="executive-section-heading">
         <div><p class="executive-eyebrow">Evidence-based signals</p><h2>Executive signals</h2></div>
       </div>
       <div id="executiveSignals" class="executive-list" aria-live="polite"></div>
     </article>
-    <article class="executive-panel">
+    <article class="executive-panel" id="attentionPanel">
       <div class="executive-section-heading">
         <div><p class="executive-eyebrow">Requires review</p><h2>Attention areas</h2></div>
       </div>
@@ -97,7 +97,7 @@
   </section>
 
   <section class="executive-grid executive-grid-secondary" aria-label="KPI status and data availability">
-    <article class="executive-panel">
+    <article class="executive-panel" id="statusDistributionPanel">
       <div class="executive-section-heading">
         <div>
           <p class="executive-eyebrow">Tier 2</p>
@@ -107,7 +107,7 @@
       </div>
       <div id="kpiStatusDistribution" class="executive-diagnostic-grid executive-diagnostic-grid-three" aria-live="polite"></div>
     </article>
-    <article class="executive-panel">
+    <article class="executive-panel" id="unavailableAnalyticsPanel">
       <div class="executive-section-heading">
         <div>
           <p class="executive-eyebrow">Data availability</p>
@@ -136,7 +136,7 @@
   </section>
 
   <section class="executive-grid executive-grid-secondary" aria-label="Operational diagnostics">
-    <article class="executive-panel">
+    <article class="executive-panel" id="taskLifecyclePanel" data-permission="tasks.view">
       <div class="executive-section-heading"><div><p class="executive-eyebrow">Tier 3</p><h2>Task lifecycle</h2></div></div>
       <div id="taskLifecycle" class="executive-diagnostic-grid"></div>
       <div class="executive-subsection">
@@ -144,7 +144,7 @@
         <div id="taskRisk" class="executive-risk-grid"></div>
       </div>
     </article>
-    <article class="executive-panel">
+    <article class="executive-panel" id="approvalPanel">
       <div class="executive-section-heading"><div><p class="executive-eyebrow">Tier 3</p><h2>Approval bottlenecks</h2></div></div>
       <div id="approvalDiagnostics" class="executive-diagnostic-grid executive-diagnostic-grid-four"></div>
       <div class="executive-subsection">
@@ -180,7 +180,8 @@
   window.KPI_EXECUTIVE_CONTEXT = {
     role: {{ user_role | default("") | tojson }},
     level: {{ user_level | default("") | tojson }},
-    department: {{ department_name | default("") | tojson }}
+    department: {{ department_name | default("") | tojson }},
+    permissions: {{ permission_map | default(null) | tojson }}
   };
 </script>
 <script src="/static/js/executive-dashboard.js" defer></script>
