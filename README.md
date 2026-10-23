@@ -163,9 +163,16 @@ through the proxy. Redis and MinIO are bound to loopback. Follow
 [Production deployment](#production-deployment) before using this stack beyond
 a local machine. MinIO is built locally from the pinned upstream release source
 because the published image for that release is unavailable; the first
-`docker compose up --build -d` therefore takes longer and requires internet
-access to GitHub, the Go module proxy, Docker Hub, and Alpine package
-repositories.
+`docker compose up --build -d` therefore takes longer (the MinIO source
+compile alone can take several minutes, longer on Windows/WSL) and requires
+internet access to GitHub, the Go module proxy, Docker Hub, and Alpine package
+repositories. Later starts reuse the built image and need no internet
+(`docker compose up -d --no-build --pull never`). Redis and MinIO health
+checks allow a 70–90 second first-start window before dependents are
+blocked, and a one-shot helper fixes ownership of MinIO volumes created by
+the older root-running image (data is never deleted). For the required
+`.env` values, the offline flow, and "dependency failed to start"
+troubleshooting, see the [local Docker runbook](./docs/local-docker.md).
 
 If Nginx returns `502` or `504`, first verify service health and inspect recent
 logs before changing proxy timeouts or database pool sizes:
@@ -344,7 +351,7 @@ look for them there:
 
 - `docs/` — current guides: `email-configuration.md`,
   `kpi-calculation-contract.md`, `kpi-executive-intelligence.md`,
-  `qa-environment.md`, and `qa-kpi-fixture-contract.md`.
+  `local-docker.md`, `qa-environment.md`, and `qa-kpi-fixture-contract.md`.
 - `docs/decisions/` — architecture and policy decision records.
 - `docs/perf/` — performance baselines, measurements, and screenshots.
 - `docs/reports/` — one-off project reports: migration, route parity,

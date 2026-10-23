@@ -88,7 +88,22 @@ services:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
-      retries: 5
+      start_period: 10s
+      retries: 12
+
+  # One-shot ownership fix for the MinIO data volume. MinIO now runs as
+  # uid 1000 (non-root); volumes first created by the older root-running
+  # image are root-owned and would block startup. This helper only changes
+  # ownership when the volume is not already owned by uid 1000 — it never
+  # deletes data, and on later starts it exits immediately.
+  minio-data-perms:
+    image: alpine:3.22
+    container_name: kpi_minio_data_perms
+    restart: "no"
+    user: root
+    volumes:
+      - minio_data:/data
+    entrypoint: ["sh", "-c", "stat -c %u /data | grep -qx 1000 || chown -R 1000:1000 /data"]
 
   minio:
     image: kpi-minio-community:RELEASE.2025-09-07T16-13-09Z
@@ -98,6 +113,9 @@ services:
         MINIO_RELEASE: RELEASE.2025-09-07T16-13-09Z
     container_name: kpi_minio
     restart: always
+    depends_on:
+      minio-data-perms:
+        condition: service_completed_successfully
     ports:
       - "127.0.0.1:9000:9000"
       - "127.0.0.1:9001:9001"
@@ -111,7 +129,8 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      start_period: 30s
+      retries: 12
 
 volumes:
   minio_data:
