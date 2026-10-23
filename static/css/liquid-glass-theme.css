@@ -69,10 +69,12 @@ body.app-shell {
 .app-shell #mainSidebar {
   width: var(--sidebar-width);
   margin: 14px 0 14px 14px;
-  background: rgba(251, 253, 254, .8);
-  border: 1px solid rgba(255, 255, 255, .7);
+  /* Silver-grey rail (Zenn, 2026-10-23): clearly separated from the pale
+     page background instead of blending into it. */
+  background: linear-gradient(180deg, rgba(216, 224, 234, .94), rgba(198, 209, 222, .94));
+  border: 1px solid rgba(61, 90, 128, .3);
   border-radius: 24px;
-  box-shadow: 0 24px 52px rgba(28, 43, 58, .06), inset 0 1px 0 rgba(255, 255, 255, .85);
+  box-shadow: 0 24px 52px rgba(28, 43, 58, .13), inset 0 1px 0 rgba(255, 255, 255, .65);
   -webkit-backdrop-filter: var(--glass-blur);
   backdrop-filter: var(--glass-blur);
 }
@@ -80,7 +82,7 @@ body.app-shell {
 .app-shell #mainSidebar > div:first-child,
 .app-shell #mainSidebar > div:last-child {
   background: transparent;
-  border-color: rgba(110, 143, 170, .25);
+  border-color: rgba(110, 143, 170, .38);
   color: var(--color-text);
 }
 
@@ -102,7 +104,7 @@ body.app-shell {
 .app-shell #mainSidebar nav a:hover,
 .app-shell #mainSidebar nav a:focus-visible {
   color: var(--color-text);
-  background: rgba(255, 255, 255, .8);
+  background: rgba(255, 255, 255, .55);
 }
 
 .app-shell #mainSidebar nav a.active,
@@ -124,8 +126,8 @@ body.app-shell {
 }
 
 .app-shell #mainSidebar > div:last-child > div {
-  background: rgba(255, 255, 255, .55);
-  border: 1px solid rgba(255, 255, 255, .6);
+  background: rgba(255, 255, 255, .45);
+  border: 1px solid rgba(255, 255, 255, .5);
 }
 
 .app-shell #mainSidebar > div:last-child p {
@@ -534,9 +536,20 @@ body.app-shell {
 .app-shell .executive-control,
 .app-shell .executive-button {
   color: var(--color-text);
-  background: rgba(255, 255, 255, .6);
-  border-color: rgba(110, 143, 170, .35);
+  background: #dfe8f1;
+  border-color: rgba(61, 90, 128, .45);
   border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+
+.app-shell .executive-button:hover {
+  background: #cfdeec;
+}
+
+.app-shell .executive-button-danger {
+  color: #991b1b;
+  background: #fdecec;
+  border-color: #efafaf;
 }
 
 .app-shell .executive-control:focus,
@@ -653,19 +666,25 @@ body.app-shell {
 
 .app-shell .kd-page .kd-button-primary {
   color: #ffffff;
-  background: var(--color-primary);
-  border-color: var(--color-primary);
+  background: var(--color-primary-strong);
+  border-color: var(--color-primary-strong);
+  box-shadow: 0 6px 16px rgba(46, 69, 98, .35);
 }
 
 .app-shell .kd-page .kd-button-primary:hover {
-  background: var(--color-primary-strong);
-  border-color: var(--color-primary-strong);
+  background: #22364f;
+  border-color: #22364f;
 }
 
 .app-shell .kd-page .kd-button-secondary {
   color: var(--color-text);
-  background: rgba(255, 255, 255, .6);
-  border-color: rgba(110, 143, 170, .4);
+  background: #dfe8f1;
+  border-color: rgba(61, 90, 128, .45);
+  box-shadow: var(--shadow-sm);
+}
+
+.app-shell .kd-page .kd-button-secondary:hover {
+  background: #cfdeec;
 }
 
 .app-shell .kd-page .kd-button:focus-visible,
