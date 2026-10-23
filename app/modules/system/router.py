@@ -1,10 +1,13 @@
 import logging
+import os
+import tempfile
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from starlette.background import BackgroundTask
 from pydantic import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import String, cast, select, update
@@ -25,6 +28,7 @@ from app.modules.auth.schemas import (
 )
 from app.modules.notifications.models import Notification
 from app.modules.system import branding, repo
+from app.modules.system.full_export import build_full_export_zip
 from app.modules.system.audit_log_retention import (
     AUDIT_LOG_RETENTION_KEY,
     normalize_audit_log_retention,
@@ -170,6 +174,22 @@ def _require_super_admin_user_security(user: User) -> None:
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only a Super Admin can manage user lockout settings.",
         )
+
+
+def _require_super_admin_full_export(user: User) -> None:
+    if not user.role or user.role.name != "Super Admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only a Super Admin can export the full data set.",
+        )
+
+
+def _full_export_setting_value(key: str, value):
+    """Redact a settings value for export exactly as the settings
+    backup does, so both exports withhold the same secrets."""
+    if isinstance(key, str) and key.lower() == "email":
+        value = _sanitize_setting_value(key, value)
+    return _safe_backup_value(key, value)
 
 
 def _validate_email_settings_for_save(value: dict) -> dict:
@@ -1319,3 +1339,65 @@ async def generate_database_backup(
         raise HTTPException(
             status_code=500, detail="Failed to generate backup."
         )
+
+
+@router.get(
+    "/backup/full",
+    responses={
+        403: {"description": "Super Admin only"},
+        500: {"description": "Failed to generate export"},
+    },
+)
+async def generate_full_data_export(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Export every core table as a ZIP of per-table JSON files.
+
+    Super Admin only — this is the entire company's data. Credential
+    material is never included (see app.modules.system.full_export
+    for the exclusion list). Object-storage files (evidence, avatars,
+    logos) are not part of this export; database rows only. Every
+    export is written to the audit log.
+    """
+    _require_super_admin_full_export(current_user)
+    fd, zip_path = tempfile.mkstemp(
+        prefix="full_data_export_", suffix=".zip"
+    )
+    os.close(fd)
+    try:
+        manifest = await build_full_export_zip(
+            db, zip_path, settings_sanitizer=_full_export_setting_value
+        )
+    except Exception:
+        logger.exception("Full data export generation failed")
+        try:
+            os.unlink(zip_path)
+        except OSError:
+            pass
+        raise HTTPException(
+            status_code=500, detail="Failed to generate full data export."
+        )
+    db.add(
+        AuditLog(
+            user_id=current_user.id,
+            action="DATA_EXPORT",
+            table_name="system",
+            record_id=None,
+            new_value={
+                "tables": len(manifest["tables"]),
+                "total_rows": manifest["total_rows"],
+                "excluded_tables": sorted(manifest["excluded_tables"]),
+            },
+            ip_address=request.client.host if request.client else None,
+        )
+    )
+    await db.commit()
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return FileResponse(
+        zip_path,
+        media_type="application/zip",
+        filename=f"full_data_export_{timestamp}.zip",
+        background=BackgroundTask(os.unlink, zip_path),
+    )
