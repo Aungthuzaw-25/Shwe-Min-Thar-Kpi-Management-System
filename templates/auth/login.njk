@@ -317,6 +317,26 @@
     <script src="/static/js/csrf.js"></script>
     <script src="/static/js/notifications.js"></script>
     <script>
+    // Offline: arriving at the login page must leave no previous user's
+    // cached pages/data behind (covers logout and session-expiry paths).
+    // The shell cache stays — it holds only public assets + the
+    // generic offline notice, no user data.
+    (function () {
+        try {
+            if ('caches' in window) {
+                caches.keys().then(function (names) {
+                    names.forEach(function (name) {
+                        if (name.indexOf('kpi-') === 0 && name.indexOf('kpi-shell-') !== 0) caches.delete(name);
+                    });
+                });
+            }
+            if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+                navigator.serviceWorker.controller.postMessage({ type: 'PURGE_PRIVATE' });
+            }
+        } catch (e) {}
+    })();
+    </script>
+    <script>
         // 🌟 SECURITY FIX: Global HTML Escape Function to prevent XSS
         function escapeHTML(str) {
             if (!str) return "";
