@@ -43,6 +43,7 @@
 .executive-card-label { color: var(--legacy-muted); font-size: .7rem; font-weight: 750; letter-spacing: .06em; text-transform: uppercase; }
 .executive-metric-unavailable { color: #64748b; }
 .executive-grid { display: grid; gap: 1rem; margin-bottom: 1rem; }
+.executive-span-all { grid-column: 1 / -1; }
 .executive-grid-primary { grid-template-columns: minmax(0, 1.45fr) minmax(20rem, .85fr); }
 .executive-grid-secondary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .executive-grid-tertiary { grid-template-columns: repeat(3, minmax(0, 1fr)); }

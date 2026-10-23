@@ -31,6 +31,27 @@
   const level = String(context.level || '').toUpperCase();
   const isPersonal = level === 'L2' || (!level && !['SUPER ADMIN', 'ADMIN', 'SYSTEM ADMIN', 'HR'].includes(role));
 
+  // Permission map injected by the employee page context. Admin/superadmin
+  // contexts pass null -> no permission gating there (their API scope and the
+  // backend remain the authority; this only removes cards a signed-in
+  // employee has no permission to use, per the product rule that a card the
+  // user cannot use must not render at all).
+  const permissions = (context.permissions && typeof context.permissions === 'object')
+    ? context.permissions : null;
+  const canApprove = !permissions
+    || Boolean(permissions['tasks.approve'] || permissions['kpi.approve']);
+
+  // When every sibling panel in a grid is hidden, the one remaining panel
+  // spans the full row so hiding never leaves an empty gap in the layout.
+  function refreshGridSpans() {
+    document.querySelectorAll('.executive-grid').forEach(grid => {
+      const panels = [...grid.querySelectorAll(':scope > article')];
+      const visible = panels.filter(panel => !panel.hidden);
+      panels.forEach(panel => panel.classList.toggle(
+        'executive-span-all', visible.length === 1 && visible[0] === panel));
+    });
+  }
+
   function escapeHTML(value) {
     return String(value ?? '').replace(/[&<>"']/g, char => ({
       '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
@@ -97,7 +118,12 @@
       ['Task completion', data.task_completion_percentage, '%'],
       ['Pending approvals', { value: data.pending_approvals, status: 'available' }, '', ''],       ['Unread notifications', { value: notifications?.unread_count, status: 'available' }, '', ''],       ['Activity volume', { value: activitySummary?.total, status: 'available' }, '', '']
     ];
-    document.getElementById('scorecards').innerHTML = cards.map(([label, metric, suffix, id]) => `
+    const visibleCards = cards.filter(([label, metric]) => {
+      if (label === 'Pending approvals') return canApprove;
+      if (metric?.status === 'unavailable') return label === 'Average KPI';
+      return true;
+    });
+    document.getElementById('scorecards').innerHTML = visibleCards.map(([label, metric, suffix, id]) => `
       <article class="executive-card executive-scorecard">
         <span class="executive-card-label">${label}</span>
         <strong ${id ? `id="${id}"` : ''} class="executive-metric">${metricValue(metric, suffix)}</strong>
@@ -195,9 +221,11 @@
     if (!rows?.length || isPersonal) {
       panel.hidden = isPersonal;
       if (!isPersonal) target.innerHTML = '<p class="executive-empty">No department comparison data available.</p>';
+      refreshGridSpans();
       return;
     }
     panel.hidden = false;
+    refreshGridSpans();
     target.innerHTML = `<table class="executive-table">
       <caption class="sr-only">Authorized department KPI comparison</caption>
       <thead><tr><th>Department</th><th>Employees</th><th>Evaluated</th><th>Average KPI</th><th>Excellent</th><th>Very Good</th><th>Good</th><th>Fair</th><th>Poor</th><th>Below Fair</th><th>At/Above Good</th></tr></thead>
@@ -219,20 +247,23 @@
   }
 
   function renderDiagnostics(tasks, approvals) {
-    document.getElementById('taskLifecycle').innerHTML = [
+    const lifecycleTarget = document.getElementById('taskLifecycle');
+    if (lifecycleTarget) lifecycleTarget.innerHTML = [
       diagnostic('Total', tasks.total), diagnostic('Draft', tasks.draft),
       diagnostic('Pending', tasks.pending), diagnostic('Pending approval', tasks.pending_approval),
       diagnostic('Approved', tasks.approved),
       diagnostic('Completed', tasks.completed), diagnostic('Rejected', tasks.rejected)
     ].join('');
-    document.getElementById('taskRisk').innerHTML = [
+    const riskTarget = document.getElementById('taskRisk');
+    if (riskTarget) riskTarget.innerHTML = [
       `<div class="executive-risk"><span class="executive-card-label">Overdue</span><strong class="executive-metric">${tasks.overdue}</strong></div>`,
       `<div class="executive-risk"><span class="executive-card-label">Late</span><strong class="executive-metric">${tasks.late}</strong></div>`,
       `<div class="executive-risk"><span class="executive-card-label">Completion</span><strong class="executive-metric">${metricValue(tasks.completion_percentage, '%')}</strong></div>`,
       `<div class="executive-risk"><span class="executive-card-label">Overdue rate</span><strong class="executive-metric">${metricValue(tasks.overdue_rate, '%')}</strong></div>`,
       `<div class="executive-risk"><span class="executive-card-label">Late rate</span><strong class="executive-metric">${metricValue(tasks.late_rate, '%')}</strong></div>`
     ].join('');
-    document.getElementById('approvalDiagnostics').innerHTML = [
+    const approvalTarget = document.getElementById('approvalDiagnostics');
+    if (approvalTarget) approvalTarget.innerHTML = [
       diagnostic('Pending L1', approvals.pending_l1),
       diagnostic('Pending L0', approvals.pending_l0),
       diagnostic('Total pending', approvals.total_pending_approval),
@@ -242,10 +273,13 @@
 
   function renderKpiStatusDistribution(rows) {
     const target = document.getElementById('kpiStatusDistribution');
+    const panel = document.getElementById('statusDistributionPanel');
     if (!Array.isArray(rows) || !rows.length) {
-      target.innerHTML = listEmpty('No finalized KPI status data available.');
+      if (panel) { panel.hidden = true; refreshGridSpans(); }
+      else target.innerHTML = listEmpty('No finalized KPI status data available.');
       return;
     }
+    if (panel) { panel.hidden = false; refreshGridSpans(); }
     target.innerHTML = rows.map(row => {
       const percentage = row.percentage === null
         ? '—'
@@ -258,6 +292,13 @@
   }
 
   function renderExecutiveSignals(signals, attentionAreas) {
+    const signalsPanel = document.getElementById('signalsPanel');
+    const attentionPanel = document.getElementById('attentionPanel');
+    const insightSection = document.getElementById('executiveInsightPanel');
+    if (signalsPanel) signalsPanel.hidden = !signals?.length;
+    if (attentionPanel) attentionPanel.hidden = !attentionAreas?.length;
+    if (insightSection) insightSection.hidden = !signals?.length && !attentionAreas?.length;
+    refreshGridSpans();
     const signalTarget = document.getElementById('executiveSignals');
     signalTarget.innerHTML = signals?.length ? signals.map(signal => `
       <article class="executive-list-item">
@@ -618,5 +659,17 @@
   });
   refreshButton.addEventListener('click', runDashboardLoad);
   retryButton.addEventListener('click', runDashboardLoad);
+  // Static permission/scope gates: these panels can never hold usable data
+  // for this viewer, so they are removed from view before the first load
+  // instead of rendering as empty cards.
+  if (isPersonal) {
+    const unavailablePanel = document.getElementById('unavailableAnalyticsPanel');
+    if (unavailablePanel) unavailablePanel.hidden = true;
+  }
+  if (!canApprove) {
+    const approvalPanel = document.getElementById('approvalPanel');
+    if (approvalPanel) approvalPanel.hidden = true;
+  }
+  refreshGridSpans();
   runDashboardLoad();
 })();
