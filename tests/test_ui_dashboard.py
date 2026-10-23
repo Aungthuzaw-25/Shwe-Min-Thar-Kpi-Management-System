@@ -215,3 +215,64 @@ def test_l1_user_dashboard_flow(playwright_context):
     page.wait_for_selector("#currentScore", timeout=60000)
     assert page.locator("#currentScore").first.is_visible()
     page.close()
+
+
+def test_offline_dashboard_banner_and_cached_data(playwright_context):
+    """Read-only offline: a dashboard viewed online must re-open while
+    offline, show the offline banner, and render its data from the
+    service-worker cache."""
+    page = playwright_context.new_page()
+    login(page, SUPERADMIN_EMAIL, required_ui_password("UI_TEST_SUPERADMIN_PASSWORD"))
+    page.wait_for_selector("#valUsers", timeout=60000)
+    # The first visit installs the worker; reload so the page is
+    # controlled and its dashboard reads pass through the worker.
+    page.reload(wait_until="domcontentloaded")
+    page.wait_for_selector("#valUsers", timeout=60000)
+    page.wait_for_function(
+        """async () => {
+          if (!('serviceWorker' in navigator)) return false;
+          const registration = await navigator.serviceWorker.getRegistration();
+          if (!registration || !registration.active) return false;
+          const names = await caches.keys();
+          return names.some((name) => name.startsWith('kpi-data-'));
+        }""",
+        timeout=60000,
+    )
+    playwright_context.set_offline(True)
+    try:
+        page.reload(wait_until="domcontentloaded")
+        page.wait_for_selector("#offlineBanner:not([hidden])", timeout=60000)
+        assert "offline" in page.locator("#offlineBanner").inner_text().lower()
+        assert page.locator("#valUsers").first.is_visible()
+    finally:
+        playwright_context.set_offline(False)
+    page.close()
+
+
+def test_offline_login_page_purges_private_caches(playwright_context):
+    """Arriving at the login page must leave no previous user's cached
+    pages/data behind (the shell cache of public assets may stay)."""
+    page = playwright_context.new_page()
+    login(page, SUPERADMIN_EMAIL, required_ui_password("UI_TEST_SUPERADMIN_PASSWORD"))
+    page.wait_for_selector("#valUsers", timeout=60000)
+    page.reload(wait_until="domcontentloaded")
+    page.wait_for_selector("#valUsers", timeout=60000)
+    page.wait_for_function(
+        """async () => {
+          const names = await caches.keys();
+          return names.some((name) => name.startsWith('kpi-data-'));
+        }""",
+        timeout=60000,
+    )
+    playwright_context.clear_cookies()
+    page.goto(f"{BASE_URL}/auth/login", wait_until="domcontentloaded")
+    page.wait_for_function(
+        """async () => {
+          const names = await caches.keys();
+          return !names.some(
+            (name) => name.startsWith('kpi-pages-') || name.startsWith('kpi-data-'),
+          );
+        }""",
+        timeout=60000,
+    )
+    page.close()

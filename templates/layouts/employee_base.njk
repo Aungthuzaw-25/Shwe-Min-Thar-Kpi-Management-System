@@ -54,6 +54,7 @@
     </style>
 </head>
 <body class="app-shell app-shell--employee flex h-screen overflow-hidden text-slate-800 relative">
+    <div id="offlineBanner" class="offline-banner" data-user-id="{{ user_id }}" hidden role="status">📴 You are offline. <span id="offlineBannerTime" class="offline-banner-time"></span></div>
     <!-- Global loading overlay: frosted glass + ring (design-system.css .app-loader) -->
     <div class="app-loader" aria-hidden="true">
         <div class="app-loader__card">
@@ -393,7 +394,8 @@
                 if (!response.ok) {
                     throw new Error(`Logout failed with status ${response.status}`);
                 }
-                localStorage.removeItem('user'); 
+                localStorage.removeItem('user');
+                if (window.kpiPurgeOfflineCaches) { try { await window.kpiPurgeOfflineCaches(); } catch (e) {} } // Offline: cached pages/data must not survive logout
                 window.location.replace('/auth/login');
             } catch (error) {
                 console.error('Logout error:', error);
@@ -551,6 +553,8 @@
     </script>
     {% block scripts %}{% endblock %}
     <script src="/static/js/notifications.js"></script>
+    <script src="/static/js/sw-register.js"></script>
+    <script src="/static/js/offline-ui.js"></script>
 
 </body>
 </html>

@@ -616,3 +616,8 @@ html.app-loading .app-loader {
 #mainSidebar a.sidebar-item:hover {
   transform: translateX(2px);
 }
+
+/* Offline banner (read-only offline v1) — toggled by offline-ui.js */
+.offline-banner { position: fixed; top: 0; left: 0; right: 0; z-index: 200; background: #3d5a80; color: #fff; text-align: center; font-size: .85rem; font-weight: 600; padding: .5rem 1rem; }
+.offline-banner[hidden] { display: none; }
+.offline-banner-time { font-weight: 400; }

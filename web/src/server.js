@@ -10,6 +10,7 @@ import { registerActivityRoutes } from "./routes/activity.js";
 import { registerAccountRoutes } from "./routes/account.js";
 import { registerAuthRoutes } from "./routes/auth.js";
 import { registerDashboardRoutes } from "./routes/dashboard.js";
+import { registerOfflineRoutes } from "./routes/offline.js";
 
 function sanitizeLogField(value) {
   return String(value).replaceAll(/[\r\n\t]/g, "_");
@@ -41,6 +42,7 @@ export function createApp({
   app.get("/", (_request, response) => {
     response.redirect(307, "/auth/login");
   });
+  registerOfflineRoutes(app);
   registerAuthRoutes(app);
   registerAccountRoutes(app);
   registerDashboardRoutes(app);
