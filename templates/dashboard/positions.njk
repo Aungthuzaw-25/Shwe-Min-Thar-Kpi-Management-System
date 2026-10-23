@@ -150,13 +150,13 @@
         tbody.innerHTML = '<tr><td colspan="5" class="p-10 sm:p-12 text-center"><div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-900 mx-auto"></div></td></tr>';
 
         try {
-            const res = await fetch(`/api/v1/positions/department/${deptId}`);
+            const res = await fetchWithTimeout(`/api/v1/positions/department/${deptId}`);
             // 🌟 SECURITY FIX: Handle 401/403
             if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
 
             if (res.ok) { currentPositions = await res.json(); renderTable(); } 
-            else { tbody.innerHTML = '<tr><td colspan="5" class="p-10 sm:p-12 text-center text-red-500 font-bold">ဒေတာရယူရန် မအောင်မြင်ပါ</td></tr>'; }
-        } catch (error) { tbody.innerHTML = '<tr><td colspan="5" class="p-10 sm:p-12 text-center text-red-500 font-bold">ကွန်ရက်ချိတ်ဆက်မှု အမှားအယွင်း</td></tr>'; }
+            else { tbody.innerHTML = '<tr><td colspan="5" class="p-10 sm:p-12 text-left sm:text-center text-red-500 font-bold">ဒေတာရယူရန် မအောင်မြင်ပါ <button type="button" onclick="fetchPositions()" class="ml-3 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50">Retry</button></td></tr>'; }
+        } catch (error) { tbody.innerHTML = '<tr><td colspan="5" class="p-10 sm:p-12 text-left sm:text-center text-red-500 font-bold">ကွန်ရက်ချိတ်ဆက်မှု အမှားအယွင်း <button type="button" onclick="fetchPositions()" class="ml-3 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50">Retry</button></td></tr>'; }
     }
 
     function renderTable() {

@@ -4,7 +4,7 @@
 <link rel="stylesheet" href="/static/css/kp-profile.css?v=20261019-ui3">
 {% from "components/avatar.njk" import avatar %}
 
-<div class="kp-page acct-page" id="accountProfilePage" data-local-password-enabled="{{ 'true' if account_profile.local_password_enabled else 'false' }}" data-super-admin="{{ 'true' if account_profile.is_super_admin else 'false' }}">
+<div class="kp-page acct-page" id="accountProfilePage" data-local-password-enabled="{{ 'true' if account_profile.local_password_enabled else 'false' }}" data-super-admin="{{ 'true' if account_profile.is_super_admin else 'false' }}" data-app-timezone="{{ timezone or 'Asia/Yangon' }}">
   <div class="kp-container">
     <header class="kp-header">
       <p class="kp-eyebrow">ACCOUNT SETTINGS</p>

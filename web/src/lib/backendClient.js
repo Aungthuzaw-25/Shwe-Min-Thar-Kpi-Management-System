@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isNavigationRequest, sendErrorPage } from "./errorPage.js";
 
 export class BackendResponseError extends Error {
   constructor(status, contentType, body) {
@@ -143,6 +144,12 @@ export function sendBackendError(error, response, request) {
       + "<a href=\"/dashboard\">Return to your dashboard</a></main></html>",
     );
     return true;
+  }
+
+  // A person following a link gets the friendly error page;
+  // API-style requests keep the (escaped) JSON error body.
+  if (request && isNavigationRequest(request)) {
+    return sendErrorPage(response, error.status);
   }
 
   const safeBody = typeof error.body === "string"

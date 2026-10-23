@@ -220,7 +220,7 @@
         loader.classList.remove("hidden");
         
         try {
-            const res = await fetch(`${API_TARGETS}?status=${statusFilter}`);
+            const res = await fetchWithTimeout(`${API_TARGETS}?status=${statusFilter}`);
             if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
             
             if (res.ok) {
@@ -228,10 +228,10 @@
                 renderTargets();
                 updateStats();
             } else {
-                tbody.innerHTML = `<tr><td colspan="6" class="p-10 text-center text-red-500 font-bold">Failed to load targets.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="6" class="p-10 text-left sm:text-center text-red-500 font-bold">Failed to load targets. <button type="button" onclick="fetchTargets()" class="ml-3 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50">Retry</button></td></tr>`;
             }
         } catch (error) {
-            tbody.innerHTML = `<tr><td colspan="6" class="p-10 text-center text-red-500 font-bold">Network connection error.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="6" class="p-10 text-left sm:text-center text-red-500 font-bold">Network connection error. <button type="button" onclick="fetchTargets()" class="ml-3 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50">Retry</button></td></tr>`;
         } finally {
             loader.classList.add("hidden");
         }

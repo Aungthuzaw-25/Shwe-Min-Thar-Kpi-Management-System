@@ -10,19 +10,6 @@
     <link rel="manifest" href="/static/manifest.json">
     <meta name="theme-color" content="#3d5a80">
 
-    <script>
-    // Service Worker ကို Register လုပ်ခြင်း
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/static/js/service-worker.js')
-                    .then((registration) => {
-                        console.log('ServiceWorker registration successful with scope: ', registration.scope);
-                    }, (error) => {
-                        console.log('ServiceWorker registration failed: ', error);
-                    });
-            });
-        }
-    </script>
 
     <!-- Production CSS -->
     <link rel="stylesheet" href="/static/css/output.css">
@@ -35,6 +22,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
     <!-- External Scripts -->
+    <script src="/static/js/api-fetch.js"></script>
     {% if dashboard_variant == "executive" %}
     <script src="/static/vendor/chart.umd.min.js" defer></script>
     {% endif %}

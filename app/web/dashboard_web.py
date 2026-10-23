@@ -255,6 +255,7 @@ async def render_account_profile(
         {
             "active_page": "profile",
             "account_profile": account_profile,
+            "timezone": settings.TIMEZONE,
         }
     )
     template_name = (

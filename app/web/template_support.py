@@ -1,4 +1,5 @@
-from datetime import date, datetime
+from datetime import date, datetime, timezone
+from zoneinfo import ZoneInfo
 
 from fastapi.templating import Jinja2Templates
 
@@ -9,6 +10,14 @@ from app.modules.users.avatar import avatar_color_index, avatar_initials, avatar
 def _strftime(value: date | datetime | None, format_string: str) -> str:
     if value is None:
         return ""
+    if isinstance(value, datetime):
+        # Stored timestamps are UTC instants; show them on the panel
+        # timezone, the same standard the audit logs use. Formatting the
+        # raw UTC value would show a date one day early for
+        # evening-UTC timestamps. Plain dates are calendar dates and
+        # are never shifted.
+        instant = value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+        value = instant.astimezone(ZoneInfo(settings.TIMEZONE))
     return value.strftime(format_string)
 
 

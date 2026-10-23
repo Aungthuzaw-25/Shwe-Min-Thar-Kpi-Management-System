@@ -432,7 +432,7 @@
 
     async function loadUsers() {
         try {
-            const res = await fetch('/api/v1/users/?is_active=true');
+            const res = await fetchWithTimeout('/api/v1/users/?is_active=true');
             if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
             
             if (res.ok) {
@@ -450,7 +450,7 @@
 
     async function loadDeletedUsers() {
         try {
-            const res = await fetch('/api/v1/users/deleted/list');
+            const res = await fetchWithTimeout('/api/v1/users/deleted/list');
             if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
             
             if (res.ok) {

@@ -51,12 +51,18 @@ describe("Nunjucks filters", () => {
     expect(result).toBe('"\\u003c/script\\u003e\\u0026\\u2028\\u2029"');
   });
 
-  it("formats ISO date strings without shifting their calendar date", () => {
+  it("formats dates on the panel timezone without shifting calendar dates", () => {
     const environment = new nunjucks.Environment();
     registerFilters(environment, nunjucks);
 
-    expect(environment.getFilter("strftime")("2024-02-03T23:30:00Z", "%Y-%m-%d"))
+    // A date-only value is a calendar date: never shifted.
+    expect(environment.getFilter("strftime")("2024-02-03", "%Y-%m-%d"))
       .toBe("2024-02-03");
+    // A timestamp is an instant: 23:30 UTC is already Feb 4 in
+    // Asia/Yangon (UTC+6:30), the panel timezone standard the audit
+    // logs use — the old string-slicing behaviour showed Feb 3.
+    expect(environment.getFilter("strftime")("2024-02-03T23:30:00Z", "%Y-%m-%d"))
+      .toBe("2024-02-04");
   });
 });
 

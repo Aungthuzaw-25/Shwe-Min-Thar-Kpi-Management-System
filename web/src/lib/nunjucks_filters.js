@@ -14,21 +14,35 @@ export function registerFilters(environment, nunjucks) {
       return "";
     }
 
+    // A pure calendar date ("2024-02-03") is not an instant: render it
+    // exactly as written so it can never shift a day.
+    if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value.trim())) {
+      const [year, month, day] = value.trim().split("-");
+      return String(format)
+        .replaceAll("%Y", year)
+        .replaceAll("%m", month)
+        .replaceAll("%d", day);
+    }
+
     const date = value instanceof Date ? value : new Date(value);
     if (Number.isNaN(date.getTime())) {
       throw new TypeError(`Cannot format invalid date value: ${value}`);
     }
 
-    const match = typeof value === "string"
-      ? /^(\d{4})-(\d{2})-(\d{2})/.exec(value)
-      : null;
-    const parts = match
-      ? { year: match[1], month: match[2], day: match[3] }
-      : {
-          year: String(date.getFullYear()).padStart(4, "0"),
-          month: String(date.getMonth() + 1).padStart(2, "0"),
-          day: String(date.getDate()).padStart(2, "0"),
-        };
+    // Instants are shown on the application's panel timezone — the same
+    // standard the audit logs use (their routes pass
+    // process.env.TIMEZONE || "Asia/Yangon" as the render timezone).
+    // Slicing the date out of the ISO string would show the UTC date,
+    // which is a day early for evening-UTC timestamps.
+    const parts = {};
+    for (const part of new Intl.DateTimeFormat("en-US", {
+      timeZone: process.env.TIMEZONE || "Asia/Yangon",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(date)) {
+      parts[part.type] = part.value;
+    }
 
     return String(format)
       .replaceAll("%Y", parts.year)
