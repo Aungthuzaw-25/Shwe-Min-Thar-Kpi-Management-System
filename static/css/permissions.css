@@ -1,0 +1,263 @@
+/* =====================================================================
+   Permissions page (Access control) — house design layer.
+   Visual only: the page's markup and inline script keep their Tailwind
+   utility classes (several class strings are rewritten by the script at
+   runtime, and the override collector reads some of them), so this sheet
+   restyles the existing hooks under .permissions-page instead of renaming
+   anything. Sections below mirror the page's own sections so a future
+   section (e.g. the Super-Admin-only "Download permission" section) can
+   be added as one more clearly-delimited block.
+   ===================================================================== */
+
+/* ---------- Shared controls (all tabs) ---------- */
+.permissions-page .perm-controls {
+  background: rgba(255, 255, 255, .55);
+  border: 1px solid rgba(110, 143, 170, .28);
+  border-radius: 20px;
+  box-shadow: 0 1px 2px rgba(23, 33, 43, .04);
+  padding: 1rem;
+}
+
+.permissions-page label,
+.permissions-page .perm-controls p {
+  color: var(--color-text-muted);
+}
+
+.permissions-page select:not(:disabled),
+.permissions-page input[type="text"],
+.permissions-page input[type="search"] {
+  background: rgba(255, 255, 255, .8);
+  border-color: rgba(110, 143, 170, .4);
+  color: var(--color-text);
+}
+
+.permissions-page select:focus,
+.permissions-page input[type="text"]:focus,
+.permissions-page input[type="search"]:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(61, 90, 128, .16);
+  outline: none;
+}
+
+.permissions-page input[type="checkbox"] {
+  accent-color: var(--color-primary);
+}
+
+/* Secondary (outline) buttons */
+.permissions-page #selectAllRole,
+.permissions-page #deselectAllRole,
+.permissions-page #cancelRoleChanges,
+.permissions-page #refreshAudit,
+.permissions-page #loadMoreAudit {
+  background: rgba(255, 255, 255, .65);
+  border-color: rgba(110, 143, 170, .35);
+  color: var(--color-text);
+}
+
+.permissions-page #selectAllRole:hover,
+.permissions-page #deselectAllRole:hover,
+.permissions-page #cancelRoleChanges:hover,
+.permissions-page #refreshAudit:hover,
+.permissions-page #loadMoreAudit:hover {
+  background: rgba(61, 90, 128, .08);
+}
+
+/* Primary (solid) buttons */
+.permissions-page #saveRole,
+.permissions-page #saveUserOverrides,
+#confirmModal #confirmOk {
+  background: #1c2b3a;
+}
+
+.permissions-page #saveRole:hover,
+.permissions-page #saveUserOverrides:hover,
+#confirmModal #confirmOk:hover {
+  background: var(--color-primary);
+}
+
+/* ---------- Tab navigation ---------- */
+.permissions-page .workspace-tabs {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: .25rem;
+  padding: .25rem;
+  background: rgba(61, 90, 128, .06);
+  border: 1px solid rgba(110, 143, 170, .18);
+  border-radius: 16px;
+}
+
+.permissions-page .tab-btn {
+  color: var(--color-text-muted);
+  border-radius: 12px;
+}
+
+.permissions-page .tab-btn:hover {
+  background: rgba(255, 255, 255, .7);
+  color: var(--color-text);
+}
+
+/* Active tab (the script marks it with bg-blue-950 + white text) */
+.permissions-page .tab-btn.bg-blue-950,
+.permissions-page .tab-btn.bg-blue-950:hover {
+  background: #1c2b3a;
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(28, 43, 58, .25);
+}
+
+/* ---------- Tab 1: Role matrix ---------- */
+.permissions-page #roleContext {
+  background: rgba(61, 90, 128, .07);
+  border-color: rgba(61, 90, 128, .18);
+  border-radius: 20px;
+}
+
+.permissions-page #roleContext .text-blue-700 {
+  color: var(--color-primary);
+}
+
+.permissions-page #roleContextText {
+  color: var(--color-text);
+}
+
+/* Department level pills: inactive glass, active ink (script-set classes) */
+.permissions-page .level-btn {
+  background: rgba(255, 255, 255, .65);
+  border-color: rgba(110, 143, 170, .35);
+  color: var(--color-text-muted);
+}
+
+.permissions-page .level-btn:hover {
+  background: rgba(61, 90, 128, .08);
+}
+
+.permissions-page .level-btn.bg-blue-950,
+.permissions-page .level-btn.bg-blue-950:hover {
+  background: #1c2b3a;
+  border-color: #1c2b3a;
+  color: #fff;
+}
+
+/* Group cards (role + user matrices share this treatment) */
+.permissions-page .perm-group,
+.permissions-page .user-perm-group {
+  background: rgba(255, 255, 255, .5);
+  border-color: rgba(110, 143, 170, .25);
+  border-radius: 20px;
+  box-shadow: 0 1px 2px rgba(23, 33, 43, .04);
+}
+
+.permissions-page .perm-group > div:first-child,
+.permissions-page .user-perm-group > div:first-child {
+  background: rgba(61, 90, 128, .05);
+}
+
+.permissions-page .perm-group .text-blue-950,
+.permissions-page .user-perm-group .text-blue-950 {
+  color: var(--color-text);
+}
+
+/* Matrix tables */
+.permissions-page table thead tr {
+  background: transparent;
+  color: var(--color-text-muted);
+}
+
+.permissions-page .perm-row,
+.permissions-page .user-perm-row,
+.permissions-page #auditTable tbody tr {
+  border-top-color: rgba(110, 143, 170, .14);
+}
+
+.permissions-page .perm-row:hover,
+.permissions-page .user-perm-row:hover {
+  background: rgba(61, 90, 128, .045);
+}
+
+.permissions-page #auditTable tbody tr:hover {
+  background: rgba(61, 90, 128, .045);
+}
+
+.permissions-page code {
+  color: var(--color-primary);
+}
+
+/* Status badge: Disabled takes the house neutral tint (Enabled keeps its
+   semantic green, set by the script). */
+.permissions-page .status-badge.bg-slate-100 {
+  background: rgba(110, 143, 170, .14);
+  color: var(--color-text-muted);
+}
+
+/* Sticky save bar */
+.permissions-page #rolesPanel .sticky {
+  border-color: rgba(110, 143, 170, .3);
+  border-radius: 20px;
+  box-shadow: 0 12px 32px rgba(23, 33, 43, .12);
+}
+
+/* ---------- Tab 2: User overrides ---------- */
+.permissions-page #userInfoCard {
+  background: rgba(255, 255, 255, .55);
+  border-color: rgba(110, 143, 170, .28);
+  border-radius: 20px;
+  box-shadow: 0 1px 2px rgba(23, 33, 43, .04);
+}
+
+.permissions-page #userInfoName {
+  color: var(--color-text);
+}
+
+/* Info chips: one house tint for role / level / department / position */
+.permissions-page #userInfoCard .bg-blue-100,
+.permissions-page #userInfoCard .bg-violet-100,
+.permissions-page #userInfoCard .bg-emerald-100,
+.permissions-page #userInfoCard .bg-slate-100 {
+  background: rgba(61, 90, 128, .1);
+  color: var(--color-text);
+}
+
+/* Override segmented control: Inherit active uses the house primary
+   (Allow/Deny keep their semantic green/red). */
+.permissions-page .override-btn.bg-blue-500 {
+  background: var(--color-primary);
+}
+
+.permissions-page .override-btn {
+  color: var(--color-text-muted);
+}
+
+.permissions-page .override-btn.bg-emerald-500,
+.permissions-page .override-btn.bg-blue-500,
+.permissions-page .override-btn.bg-red-500 {
+  color: #fff;
+}
+
+/* Legend + source dots: the "inherited/role" blue becomes house primary */
+.permissions-page #usersPanel .bg-blue-500 {
+  background-color: var(--color-primary);
+}
+
+/* ---------- Tab 3: Audit history ---------- */
+.permissions-page #auditTable .bg-blue-100 {
+  background: rgba(61, 90, 128, .12);
+  color: var(--color-primary);
+}
+
+/* ---------- Confirmation modal ---------- */
+#confirmModal > div {
+  border-radius: 24px;
+  box-shadow: 0 24px 64px rgba(23, 33, 43, .25);
+}
+
+#confirmModal #confirmTitle {
+  color: var(--color-text);
+}
+
+#confirmModal #confirmCancel {
+  border-color: rgba(110, 143, 170, .35);
+  color: var(--color-text);
+}
+
+#confirmModal #confirmCancel:hover {
+  background: rgba(61, 90, 128, .08);
+}

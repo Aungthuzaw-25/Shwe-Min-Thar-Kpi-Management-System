@@ -3,9 +3,10 @@
 {% block title %}Permission Management - KPI Platform{% endblock %}
 {% block content %}
 <link rel="stylesheet" href="/static/css/avatar.css">
+<link rel="stylesheet" href="/static/css/permissions.css">
 <script src="/static/js/avatar-renderer.js"></script>
 <script src="/static/js/avatar.js"></script>
-<div class="workspace-page">
+<div class="workspace-page permissions-page">
     <header class="workspace-header">
         <div>
             <h2>Access control</h2>
@@ -32,7 +33,7 @@
 
         <!-- ========== TAB 1: ROLE PERMISSION MATRIX ========== -->
         <section id="rolesPanel">
-            <div class="mb-5 grid gap-4 rounded-2xl border border-slate-100 bg-slate-50 p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
+            <div class="perm-controls mb-5 grid gap-4 rounded-2xl border border-slate-100 bg-slate-50 p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
                 <label class="flex-1 text-xs font-bold uppercase tracking-wide text-slate-600">Select Role
                     <select id="roleSelect" class="mt-2 w-full rounded-xl border border-gray-200 bg-slate-50 p-3 text-sm font-semibold focus:border-blue-500 focus:ring-2 focus:ring-blue-200"></select>
                 </label>
@@ -75,7 +76,7 @@
 
         <!-- ========== TAB 2: USER PERMISSION OVERRIDES ========== -->
         <section id="usersPanel" class="hidden">
-            <div class="mb-5 grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
+            <div class="perm-controls mb-5 grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
                 <label class="flex-1 text-xs font-bold uppercase tracking-wide text-slate-600">Select User
                     <select id="userSelect" class="mt-2 w-full rounded-xl border border-gray-200 bg-slate-50 p-3 text-sm font-semibold focus:border-blue-500 focus:ring-2 focus:ring-blue-200"></select>
                 </label>
@@ -126,7 +127,7 @@
 
         <!-- ========== TAB 3: AUDIT HISTORY ========== -->
         <section id="auditPanel" class="hidden">
-            <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div class="perm-controls mb-5 flex flex-col gap-3 sm:flex-row sm:items-end">
                 <label class="text-xs font-bold uppercase tracking-wide text-slate-600">Filter by Action
                     <select id="auditActionFilter" class="mt-2 w-full rounded-xl border border-gray-200 bg-slate-50 p-3 text-sm font-semibold">
                         <option value="">All Actions</option>
@@ -148,6 +149,9 @@
             </div>
         </section>
 
+        {# Future section mount point: retention Stage 3 adds the Super-Admin-only
+           "Download permission" section here as its own delimited <section>,
+           following the same perm-controls / group-card structure. #}
         <!-- Toast / Message -->
         <p id="message" class="mt-5 text-sm font-semibold"></p>
     </div>
