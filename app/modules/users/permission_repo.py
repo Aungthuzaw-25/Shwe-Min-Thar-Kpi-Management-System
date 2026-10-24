@@ -66,6 +66,7 @@ async def get_user_effective_permissions(
         select(User).options(
             selectinload(User.role).selectinload(Role.permissions),
             selectinload(User.permission_overrides).selectinload(UserPermissionOverride.permission),
+            selectinload(User.user_departments),
         ).where(User.id == user_id, User.is_deleted == False)
     )).scalar_one_or_none()
 
@@ -95,13 +96,24 @@ async def get_user_effective_permissions(
         for p in (user.role.permissions or []):
             role_codes.add(p.code)
 
-    # Merge into effective list
+    # Merge into effective list. The entry keeps its source/scope
+    # metadata, but `allowed` is decided by the SAME function the API
+    # enforces with (app.core.dependencies.has_effective_permission)
+    # so this admin view can never promise access the API would deny
+    # — it previously skipped the L0/L1 level gate for task-review
+    # permissions and resolved override scopes differently.
+    from app.core.dependencies import has_effective_permission
+
     effective = []
     for perm in all_permissions:
         code = perm.code
         override = override_map.get(code)
 
-        effective.append(_permission_entry(perm, override, code in role_codes))
+        entry = _permission_entry(perm, override, code in role_codes)
+        entry["allowed"] = has_effective_permission(
+            user, code, department_id=dept_id
+        )
+        effective.append(entry)
 
     return {
         "user_id": user.id,

@@ -20,6 +20,7 @@ from sqlalchemy.orm import selectinload
 from app.core import security
 from app.core.config import settings
 from app.core.dependencies import get_current_user, get_permission_map
+from app.core.permission_versions import permissions_version_for
 from app.core.password_policy import (
     get_password_policy,
     get_session_timeout_minutes,
@@ -334,6 +335,9 @@ async def get_current_user_context(db: AsyncSession = Depends(get_db), current_u
         "permissions": sorted(
             code for code, allowed in get_permission_map(user).items() if allowed
         ),
+        # Freshness marker for the web tier's context cache — see
+        # app.core.permission_versions for the contract.
+        "permissions_version": await permissions_version_for(user),
         "department_id": dept_id,
         "department_name": dept_name,
         "position_id": pos_id,
