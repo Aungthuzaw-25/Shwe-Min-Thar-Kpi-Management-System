@@ -390,7 +390,11 @@ class SystemEventLogResponse(BaseModel):
 
 
 class SystemEventLogDetailResponse(SystemEventLogResponse):
-    pass
+    # Support-only: the raw stored message, kept out of the default
+    # list view (whose `message` is always the plain-language text —
+    # see app.services.system_log_messages). The UI should show this
+    # only behind an explicit "technical details" affordance.
+    technical_message: str | None = None
 
 
 class SystemEventLogPage(BaseModel):
