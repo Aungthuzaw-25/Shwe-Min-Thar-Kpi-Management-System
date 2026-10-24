@@ -218,16 +218,19 @@
 
         try {
             const res = await fetch(`/api/v1/kpi/calculate/custom`, {
-                method: "POST", headers: { "Content-Type": "application/json" },
+                method: "POST", headers: SubmitKey.headers('kpi-calculate-custom', { "Content-Type": "application/json" }),
                 body: JSON.stringify({ start_date: startIso, end_date: endIso })
             });
             // 🌟 SECURITY FIX: Handle 401/403
             if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
-            
+
             if (res.ok) {
+                SubmitKey.clear('kpi-calculate-custom');
                 showToast(`Data aggregation executed for selected period.`, "success");
+            } else if (res.status === 409) {
+                showToast("Calculation still running — wait a moment and check before retrying.", "error");
             } else { showToast("Engine recalculation failed.", "error"); }
-        } catch (err) { showToast("Network error.", "error"); }
+        } catch (err) { showToast("Connection failed — the calculation may not have run. Check, then retry (retrying is safe).", "error"); }
     }
 
     // Year view (view filter only - no data is moved or deleted): the list
@@ -396,6 +399,7 @@
             if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
             
             if (res.ok) {
+                if (window.__periodDraft) window.__periodDraft.clear();
                 showToast("Cycle deployed successfully.", "success");
                 closeModal();
                 const createdYear = new Date(payload.start_date).getUTCFullYear();
@@ -474,5 +478,13 @@
     }
 
     document.addEventListener("DOMContentLoaded", fetchPeriods);
+</script>
+<script>
+    // Draft safety: autosave the KPI period form on this device.
+    document.addEventListener('DOMContentLoaded', function () {
+        if (!window.FormDraft) return;
+        var periodFormEl = document.getElementById('periodForm');
+        if (periodFormEl) window.__periodDraft = FormDraft.attach(periodFormEl, { key: 'period-form' });
+    });
 </script>
 {% endblock %}

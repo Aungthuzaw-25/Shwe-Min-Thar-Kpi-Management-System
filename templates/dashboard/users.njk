@@ -678,10 +678,12 @@
         }
 
         try {
-            const res = await fetch(url, { 
-                method: method, 
-                headers: { 'Content-Type': 'application/json' }, 
-                body: JSON.stringify(payload) 
+            const res = await fetch(url, {
+                method: method,
+                headers: method === 'POST'
+                    ? SubmitKey.headers('user-create', { 'Content-Type': 'application/json' })
+                    : { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
             });
             
             // 🛡️ AUTH FIX
@@ -689,15 +691,20 @@
             
             if (res.ok) {
                 const savedData = await res.json();
+                if (!isEdit) SubmitKey.clear('user-create');
+                if (window.__userDraft) window.__userDraft.clear();
                 closeUserModal();
                 showToast(isEdit ? "User updated successfully." : "User created successfully. The user must set a password before signing in.", "success");
                 await loadUsers();
+            } else if (!isEdit && res.status === 409) {
+                showToast("Still saving — wait a moment and check the list before retrying.", "error");
             } else {
+                if (!isEdit && res.status === 422) SubmitKey.clear('user-create');
                 const err = await res.json();
                 showToast(`Error: ${err.detail || 'Validation failed'}`, "error");
             }
         } catch (error) {
-            showToast("Network error occurred while saving user.", "error");
+            showToast("Connection failed — the user may not have been saved. Check the list, then retry (retrying is safe).", "error");
         } finally {
             btn.innerHTML = originalText;
             btn.disabled = false;
@@ -773,5 +780,18 @@
             }
         } catch (err) { showToast("Network error while resetting password.", "error"); }
     }
+</script>
+<script>
+    // Draft safety: autosave the user form (password fields are never saved).
+    document.addEventListener('DOMContentLoaded', function () {
+        if (!window.FormDraft) return;
+        var userFormEl = document.getElementById('userForm');
+        if (userFormEl) window.__userDraft = FormDraft.attach(userFormEl, {
+            key: function () {
+                var idEl = document.getElementById('userId');
+                return 'user-form:' + (idEl && idEl.value ? idEl.value : 'new');
+            }
+        });
+    });
 </script>
 {% endblock %}

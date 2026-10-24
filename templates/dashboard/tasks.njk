@@ -784,15 +784,28 @@
             description: document.getElementById("selfTaskDesc").value.trim(),
             category: document.getElementById("selfTaskCategory").value
         };
-        const res = await fetch('/api/v1/tasks', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(payload)
-        });
+        let res;
+        try {
+            res = await fetch('/api/v1/tasks', {
+                method: 'POST',
+                headers: SubmitKey.headers('task-create-self', {'Content-Type': 'application/json'}),
+                body: JSON.stringify(payload)
+            });
+        } catch (networkError) {
+            showToast("Connection failed — the task may not have been saved. Check the list, then retry (retrying is safe).", "error");
+            return;
+        }
         if (res.ok) {
+            SubmitKey.clear('task-create-self');
+            if (window.__taskDraft) window.__taskDraft.clear();
             closeSelfTaskModal();
             showToast("Personal task created successfully.", "success");
             loadMyTasks();
+        } else if (res.status === 409) {
+            showToast("Still saving — wait a moment and check the list before retrying.", "error");
+        } else if (res.status === 422) {
+            SubmitKey.clear('task-create-self');
+            showToast("That submit was already recorded with different details. Your text is kept — press save again to send it as a new task.", "error");
         } else {
             showToast("Failed to create task.", "error");
         }
@@ -824,22 +837,27 @@
 
             const res = await fetch('/api/v1/tasks/bulk-create', {
                 method: 'POST',
-                headers: {
+                headers: SubmitKey.headers('task-bulk-create', {
                     'Content-Type': 'application/json',
                     'X-CSRF-Token': csrfToken
-                },
+                }),
                 body: JSON.stringify(payload)
             });
             if (res.ok) {
+                SubmitKey.clear('task-bulk-create');
+                if (window.__assignDraft) window.__assignDraft.clear();
                 closeAssignTaskModal();
                 showToast("Delegated task assigned successfully.", "success");
                 loadMyTasks();
+            } else if (res.status === 409) {
+                showToast("Still saving — wait a moment and check the list before retrying.", "error");
             } else {
+                if (res.status === 422) SubmitKey.clear('task-bulk-create');
                 const err = await res.json();
                 showToast(err.detail || "Failed to assign task.", "error");
             }
         } catch(err) {
-            showToast("Network Error.", "error");
+            showToast("Connection failed — the assignment may not have been saved. Check the list, then retry (retrying is safe).", "error");
         } finally {
             btn.disabled = false;
             btn.textContent = "Deploy Assignment";
@@ -1477,7 +1495,7 @@
         try {
             const payload = { title: task.title, category: task.category, description: task.description || '' };
             const res = await fetch(`${API_BASE}/${taskId}/resubmit`, {
-                method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload)
+                method: "POST", headers: SubmitKey.headers('task-resubmit:' + taskId, { "Content-Type": "application/json" }), body: JSON.stringify(payload)
             });
             // 🛡️ AUTH FIX
             if (res.status === 401) return;
@@ -1489,6 +1507,7 @@
             }
             
             const newV2Task = await res.json();
+            SubmitKey.clear('task-resubmit:' + taskId);
 
             // Upload Evidence
             const uploadPromises = selectedResubmitFiles.map(file => {
@@ -1501,11 +1520,12 @@
             if(results.every(r => r.ok)) {
                 // Evidence တင်ပြီးသည်နှင့် Batch ကို Auto Submit လုပ်ပေးမည်
                 const submitRes = await fetch(`${API_BASE}/submit-batch`, {
-                    method: "POST", headers: { "Content-Type": "application/json" },
+                    method: "POST", headers: SubmitKey.headers('task-submit-batch', { "Content-Type": "application/json" }),
                     body: JSON.stringify({ task_ids: [newV2Task.id], reviewer_id: newV2Task.assigner_id })
                 });
 
                 if(submitRes.ok) {
+                    SubmitKey.clear('task-submit-batch');
                     showToast("Task successfully updated to Version 2 and submitted.", "success");
                     closeModals(); loadMyTasks(); switchTab('review-tab');
                 } else {
@@ -1561,20 +1581,23 @@
 
         try {
             const res = await fetch(`${API_BASE}/submit-batch`, {
-                method: "POST", headers: { "Content-Type": "application/json" },
+                method: "POST", headers: SubmitKey.headers('task-submit-batch', { "Content-Type": "application/json" }),
                 body: JSON.stringify({ task_ids: selectedTaskIdsForSubmit, reviewer_id: reviewerId })
             });
             // 🛡️ AUTH FIX
             if (res.status === 401) return;
             if (res.status === 403) { showToast("Permission Denied: this task action is not available.", "error"); return; }
-            
+            if (res.status === 409) { showToast("Still submitting — wait a moment and check the review list before retrying.", "error"); return; }
+            if (res.status === 422) SubmitKey.clear('task-submit-batch');
+
             if(res.ok) {
+                SubmitKey.clear('task-submit-batch');
                 showToast("Tasks routed for approval successfully.", "success");
                 closeModals(); loadMyTasks(); switchTab('review-tab');
             } else {
                 const err = await res.json(); showToast(err.detail || "Submission failed.", "error");
             }
-        } catch(e) { showToast("Network connection failed.", "error"); } 
+        } catch(e) { showToast("Connection failed — the submission may not have been saved. Check the review list, then retry (retrying is safe).", "error"); }
         finally { btn.innerHTML = originalText; btn.disabled = false; }
     }
 
@@ -1782,5 +1805,15 @@
     }
 </script>
 {% endif %}
+<script>
+    // Draft safety: autosave the two task forms on this device.
+    document.addEventListener('DOMContentLoaded', function () {
+        if (!window.FormDraft) return;
+        var taskFormEl = document.getElementById('taskForm');
+        if (taskFormEl) window.__taskDraft = FormDraft.attach(taskFormEl, { key: 'task-form' });
+        var assignFormEl = document.getElementById('assignTaskForm');
+        if (assignFormEl) window.__assignDraft = FormDraft.attach(assignFormEl, { key: 'assign-task-form' });
+    });
+</script>
 <script src="/static/js/et-tasks.js?v=20261020-2" defer></script>
 {% endblock %}

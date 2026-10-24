@@ -456,6 +456,7 @@
                     throw new Error(`Logout failed with status ${response.status}`);
                 }
                 localStorage.removeItem('user'); // 🌟 SECURITY: Clear local cache
+                if (window.kpiClearFormDrafts) { try { window.kpiClearFormDrafts(); } catch (e) {} } // Drafts must not survive logout
                 if (window.kpiPurgeOfflineCaches) { try { await window.kpiPurgeOfflineCaches(); } catch (e) {} } // Offline: cached pages/data must not survive logout
                 window.location.replace('/auth/login');
             } catch (error) {
@@ -631,6 +632,8 @@
     <!-- SPECIFIC PAGE SCRIPTS INJECTION -->
     {% block scripts %}{% endblock %}
     <script src="/static/js/notifications.js"></script>
+    <script src="/static/js/submit-key.js"></script>
+    <script src="/static/js/form-draft.js"></script>
     <script src="/static/js/sw-register.js"></script>
     <script src="/static/js/offline-ui.js"></script>
 

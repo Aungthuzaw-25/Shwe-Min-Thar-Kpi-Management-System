@@ -316,7 +316,7 @@
         try {
             const res = await fetch(API_TARGETS, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: SubmitKey.headers('target-create', { "Content-Type": "application/json" }),
                 body: JSON.stringify(payload)
             });
             
@@ -324,15 +324,20 @@
             if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
 
             if (res.ok) {
+                SubmitKey.clear('target-create');
+                if (window.__targetDraft) window.__targetDraft.clear();
                 showToast("Target assigned successfully.", "success");
                 closeTargetModal();
                 fetchTargets();
+            } else if (res.status === 409) {
+                showToast("Still saving — wait a moment and check the list before retrying.", "error");
             } else {
+                if (res.status === 422) SubmitKey.clear('target-create');
                 const err = await res.json();
                 showToast(err.detail || "Failed to create target.", "error");
             }
         } catch(error) {
-            showToast("System error occurred.", "error");
+            showToast("Connection failed — the target may not have been saved. Check the list, then retry (retrying is safe).", "error");
         } finally {
             btn.disabled = false;
             btn.innerHTML = `Save Target`;
@@ -358,5 +363,18 @@
             showToast("Network error.", "error");
         }
     }
+</script>
+<script>
+    // Draft safety: autosave the target form on this device.
+    document.addEventListener('DOMContentLoaded', function () {
+        if (!window.FormDraft) return;
+        var targetFormEl = document.getElementById('targetForm');
+        if (targetFormEl) window.__targetDraft = FormDraft.attach(targetFormEl, {
+            key: function () {
+                var idEl = document.getElementById('targetId');
+                return 'target-form:' + (idEl && idEl.value ? idEl.value : 'new');
+            }
+        });
+    });
 </script>
 {% endblock %}
