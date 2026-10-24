@@ -12,7 +12,10 @@
 //     are network-only and never touch a cache.
 //   * Cached data/pages belong to one signed-in user ("owner", a hash
 //     of the user id sent by sw-register.js). A different owner purges
-//     them; logout and the login page purge them too.
+//     them; logout and the login page purge them too. Page entries are
+//     owner-tagged exactly like data entries, and a cached page is
+//     served offline only when its tag matches the current owner —
+//     otherwise the generic offline page is served instead.
 //   * The offline banner in the layouts labels cached data with its
 //     cached-at time — stale data is never presented as fresh.
 //   * Bump CACHE_VERSION on any deploy that changes shell assets whose
@@ -242,20 +245,40 @@ async function networkFirstData(request, url) {
 }
 
 async function navigationHandler(request) {
+  const url = new URL(request.url);
   try {
     const response = await fetch(request);
     const owner = await ensureOwnerLoaded();
     if (response.ok && !response.redirected && owner) {
+      // Tag the page with its owner, exactly like data entries, so the
+      // offline read below can prove the page belongs to the viewer.
+      const meta = await caches.open(META_CACHE);
+      await meta.put(
+        `${url.pathname}::page-meta`,
+        new Response(JSON.stringify({ ts: Date.now(), owner }), {
+          headers: { "content-type": "application/json" },
+        }),
+      );
       const pages = await caches.open(PAGES_CACHE);
       await pages.put(request, response.clone());
     }
     return response;
   } catch (error) {
+    // Offline: serve the cached page ONLY when its owner tag matches
+    // the current owner. A mismatch — or no tag / no known owner at
+    // all (e.g. the browser reopened before any sign-in check) — falls
+    // back to the generic offline page, never to someone else's page.
+    const owner = await ensureOwnerLoaded();
     const pages = await caches.open(PAGES_CACHE);
     const cached = await pages.match(request, { ignoreSearch: true });
-    if (cached) {
-      await notifyServedFromCache(null);
-      return cached;
+    if (cached && owner) {
+      const meta = await caches.open(META_CACHE);
+      const metaHit = await meta.match(`${url.pathname}::page-meta`);
+      const parsed = metaHit ? await metaHit.json().catch(() => null) : null;
+      if (parsed && parsed.owner === owner) {
+        await notifyServedFromCache(null);
+        return cached;
+      }
     }
     const shell = await caches.open(SHELL_CACHE);
     const offline = await shell.match(OFFLINE_URL);
