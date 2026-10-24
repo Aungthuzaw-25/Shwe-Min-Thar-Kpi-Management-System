@@ -15,7 +15,7 @@ from app.modules.system.router import (
     read_all_settings,
     update_existing_setting,
 )
-from app.modules.system.audit_log_retention import normalize_audit_log_retention
+from app.modules.system.audit_log_retention import normalize_audit_retention_years
 from app.modules.system.schemas import (
     EmailConfigurationValue,
     EmailProviderLifecycleRequest,
@@ -264,16 +264,16 @@ def test_only_super_admin_can_manage_email_settings():
     assert exc.value.status_code == 403
 
 
-def test_audit_log_retention_accepts_only_supported_days_or_none():
-    assert normalize_audit_log_retention({"retention_days": None}) == {
-        "retention_days": None
-    }
-    assert normalize_audit_log_retention({"retention_days": 90}) == {
-        "retention_days": 90
-    }
-    for value in (True, 0, 31, "90", {"retention_days": 90, "extra": True}):
+def test_audit_retention_years_accepts_only_supported_years():
+    # 0 = keep forever (the default policy); 1, 2, 5 are the only
+    # finite periods a Super Admin may pick.
+    for years in (0, 1, 2, 5):
+        assert normalize_audit_retention_years({"retention_years": years}) == {
+            "retention_years": years
+        }
+    for value in (True, 3, 4, 30, "1", None, {"retention_years": 1, "extra": True}):
         with pytest.raises(ValueError):
-            normalize_audit_log_retention({"retention_days": value})
+            normalize_audit_retention_years({"retention_years": value})
 
 
 def test_only_super_admin_can_manage_audit_log_retention():
