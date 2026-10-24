@@ -313,6 +313,23 @@ def _http_exception_handler(request: Request, exc: HTTPException):
 app.add_exception_handler(HTTPException, _http_exception_handler)
 
 
+def _idempotent_replay_handler(request: Request, exc: Exception):
+    """Return the stored first response for a duplicate submit."""
+    from app.core.idempotency import REPLAYED_HEADER, IdempotentReplay
+
+    assert isinstance(exc, IdempotentReplay)
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=exc.body,
+        headers={REPLAYED_HEADER: "true"},
+    )
+
+
+from app.core.idempotency import IdempotentReplay as _IdempotentReplay
+
+app.add_exception_handler(_IdempotentReplay, _idempotent_replay_handler)
+
+
 class DashboardCacheInvalidationMiddleware(BaseHTTPMiddleware):
     """Purge cached dashboard summaries after any successful API write.
 
@@ -368,6 +385,12 @@ class DashboardCacheInvalidationMiddleware(BaseHTTPMiddleware):
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(DashboardCacheInvalidationMiddleware)
+
+from app.core.idempotency import (
+    IdempotencyCompletionMiddleware as _IdempotencyCompletionMiddleware,
+)
+
+app.add_middleware(_IdempotencyCompletionMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # B. Strict CORS Policy

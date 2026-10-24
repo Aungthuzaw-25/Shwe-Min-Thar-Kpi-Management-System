@@ -18,6 +18,7 @@ from app.core.dependencies import (
     enforce_user_scope,
     get_current_user,
 )
+from app.core.idempotency import idempotency_guard
 from app.database.connection import get_db
 from app.modules.departments.models import UserDepartment
 from app.modules.kpi.action_plan_schemas import ActionPlanCreate, ActionPlanReview
@@ -53,6 +54,7 @@ async def _enforce_kpi_record_scope(
 
 @router.post(
     "/",
+    dependencies=[Depends(idempotency_guard)],
     status_code=status.HTTP_201_CREATED,
     responses={
         400: {"description": "Action plan is not valid for this KPI record"},

@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     # pooled connection forever. Long jobs (bulk KPI calculation) are
     # many statements, not one, so they are not cut off by this.
     DB_COMMAND_TIMEOUT_SECONDS: float = Field(default=60.0, gt=0)
+    # How long an Idempotency-Key is remembered (hours). Within this
+    # window a retried submit returns the original result instead of
+    # executing twice; after it, the key counts as never seen.
+    IDEMPOTENCY_TTL_HOURS: int = Field(default=24, gt=0)
     QA_DATABASE_HOST: str = "postgres-qa"
     QA_DATABASE_PORT: int = 5432
     QA_DATABASE_NAME: str = "kpi_qa"

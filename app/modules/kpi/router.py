@@ -19,6 +19,7 @@ from app.core.dependencies import (
     get_current_user,
 )
 from app.core.timezone import APPLICATION_TIMEZONE
+from app.core.idempotency import idempotency_guard
 from app.database.connection import AsyncSessionLocal, get_db
 from app.models.audit_log import AuditLog
 from app.modules.departments.models import Department, UserDepartment
@@ -772,7 +773,7 @@ async def run_custom_kpi_background(user_ids: list[UUID], start_date: datetime, 
         logger.critical(f"[Custom KPI Worker] Fatal Database Connection Error: {str(connection_error)}", exc_info=True)
 
 
-@router.post('/calculate/custom', tags=["KPI Engine"], responses={400: {"description": "Bad Request"}, 403: {"description": "Forbidden"}, 500: {"description": "Internal Server Error"}})
+@router.post('/calculate/custom', dependencies=[Depends(idempotency_guard)], tags=["KPI Engine"], responses={400: {"description": "Bad Request"}, 403: {"description": "Forbidden"}, 500: {"description": "Internal Server Error"}})
 async def trigger_custom_calculation(
     payload: CustomKpiCalculationRequest,
     background_tasks: BackgroundTasks,
@@ -805,7 +806,7 @@ async def trigger_custom_calculation(
         raise HTTPException(status_code=500, detail="Failed to initialize background task.")
 
 
-@router.post('/calculate/explicit', tags=["KPI Engine"], responses={404: {"description": "Not Found"}, 422: {"description": "Unprocessable Entity"}})
+@router.post('/calculate/explicit', dependencies=[Depends(idempotency_guard)], tags=["KPI Engine"], responses={404: {"description": "Not Found"}, 422: {"description": "Unprocessable Entity"}})
 async def calculate_kpi_record_explicitly(
     payload: ExplicitKpiCalculationRequest,
     db: AsyncSession = Depends(get_db),
@@ -833,7 +834,7 @@ async def calculate_kpi_record_explicitly(
 # 9. Audit Logs Extraction API
 # ==============================================================================
 
-@router.post('/calculate', tags=["KPI Engine"], responses={400: {"description": "Bad Request"}, 403: {"description": "Forbidden"}})
+@router.post('/calculate', dependencies=[Depends(idempotency_guard)], tags=["KPI Engine"], responses={400: {"description": "Bad Request"}, 403: {"description": "Forbidden"}})
 async def bulk_calculate_endpoint(
     payload: BulkKpiCalculationRequest,
     background_tasks: BackgroundTasks,
