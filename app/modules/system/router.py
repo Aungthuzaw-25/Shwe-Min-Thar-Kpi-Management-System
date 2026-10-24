@@ -31,8 +31,8 @@ from app.modules.system import branding, repo
 from app.modules.system.full_export import build_full_export_zip
 from app.services.system_log_messages import plain_message_for, public_details
 from app.modules.system.audit_log_retention import (
-    AUDIT_LOG_RETENTION_KEY,
-    normalize_audit_log_retention,
+    AUDIT_RETENTION_YEARS_KEY,
+    normalize_audit_retention_years,
 )
 from app.modules.system.schemas import (
     BrandResponse,
@@ -103,9 +103,9 @@ def _sanitize_setting_value(key: str, value: dict) -> dict:
             sanitized = normalize_email_settings(sanitized)
         except ValidationError as exc:
             raise HTTPException(status_code=422, detail=exc.errors()) from exc
-    elif key.lower() == AUDIT_LOG_RETENTION_KEY:
+    elif key.lower() == AUDIT_RETENTION_YEARS_KEY:
         try:
-            sanitized = normalize_audit_log_retention(sanitized)
+            sanitized = normalize_audit_retention_years(sanitized)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
     elif key.lower() == branding.GENERAL_SETTINGS_KEY:
@@ -558,7 +558,7 @@ async def create_new_setting(
 ):
     """System Setting အသစ်ထည့်ရန်"""
     enforce_permission(current_user, SYSTEM_SETTINGS_EDIT_PERMISSION)
-    if payload.key.lower() == AUDIT_LOG_RETENTION_KEY:
+    if payload.key.lower() == AUDIT_RETENTION_YEARS_KEY:
         _require_super_admin_audit_retention(current_user)
     if "api_key" in payload.key.lower().replace("-", "_") or "apikey" in payload.key.lower():
         raise HTTPException(
@@ -580,7 +580,20 @@ async def create_new_setting(
         if payload.key.lower() == "email"
         else _sanitize_setting_value(payload.key, payload.value)
     )
-    return await repo.create_setting(db, payload)
+    created = await repo.create_setting(db, payload)
+    if payload.key.lower() == AUDIT_RETENTION_YEARS_KEY:
+        # First set of the retention period is a change from the
+        # default (0 = keep forever) — audit it like an update.
+        db.add(AuditLog(
+            user_id=current_user.id,
+            action="UPDATE",
+            table_name="system_settings",
+            record_id=str(created.id),
+            old_value={"key": created.key, "value": {"retention_years": 0}},
+            new_value={"key": created.key, "value": created.value},
+        ))
+        await db.commit()
+    return created
 
 
 @router.get(
@@ -898,7 +911,7 @@ async def update_existing_setting(
 ):
     """System Setting ပြင်ဆင်ရန် (ဥပမာ - Maintenance Mode ပိတ်/ဖွင့်)"""
     enforce_permission(current_user, SYSTEM_SETTINGS_EDIT_PERMISSION)
-    if key.lower() == AUDIT_LOG_RETENTION_KEY:
+    if key.lower() == AUDIT_RETENTION_YEARS_KEY:
         _require_super_admin_audit_retention(current_user)
     if "api_key" in key.lower().replace("-", "_") or "apikey" in key.lower():
         raise HTTPException(
