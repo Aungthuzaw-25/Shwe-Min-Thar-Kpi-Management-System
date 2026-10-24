@@ -24,6 +24,7 @@ from app.core.dependencies import (
 )
 from app.core.password_policy import get_password_policy, validate_password_strength
 from app.core.security import get_password_hash_async
+from app.core.idempotency import idempotency_guard
 from app.database.connection import get_db
 from app.modules.departments.models import Department, UserDepartment
 from app.modules.tasks.models.task import Task
@@ -237,7 +238,7 @@ async def _assign_new_user_department(
         db.add(department)
 
 
-@router.post('/', response_model=UserResponse, responses={400: {"description": "Bad Request"}, 403: {"description": "Forbidden"}, 404: {"description": "Not Found"}, 422: {"description": "Unprocessable Entity"}, 500: {"description": "Internal Server Error"}})
+@router.post('/', dependencies=[Depends(idempotency_guard)], response_model=UserResponse, responses={400: {"description": "Bad Request"}, 403: {"description": "Forbidden"}, 404: {"description": "Not Found"}, 422: {"description": "Unprocessable Entity"}, 500: {"description": "Internal Server Error"}})
 async def create_new_user(payload: UserCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
     enforce_permission(current_user, "users.create")
     role_req = await db.execute(select(Role).where(Role.id == payload.role_id))

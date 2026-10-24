@@ -19,6 +19,7 @@ except ImportError:  # pragma: no cover - environment may not include libmagic.
     magic = None
 
 from app.core.dependencies import GLOBAL_SCOPE_ROLES, enforce_permission, get_current_user
+from app.core.idempotency import idempotency_guard
 from app.core.timezone import APPLICATION_TIMEZONE
 from app.database.connection import get_db
 from app.modules.departments.models import UserDepartment
@@ -460,7 +461,7 @@ def _category_deductions(categories):
                 deductions.add(deduction["name"])
     return deductions
 
-@router.post('', response_model=TaskResponse, responses={400: {"description": "Bad Request"}, 403: {"description": "Forbidden"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
+@router.post('', dependencies=[Depends(idempotency_guard)], response_model=TaskResponse, responses={400: {"description": "Bad Request"}, 403: {"description": "Forbidden"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def create_new_task(payload: TaskCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     """ 🌟 L2 များ ကိုယ်တိုင် Task ဖန်တီးသော Endpoint (Due Date / Late Penalty မလိုပါ) """
     enforce_permission(current_user, "tasks.create")
@@ -612,7 +613,7 @@ async def _create_bulk_task_item(
     return new_task
 
 
-@router.post('/bulk-create', response_model=list[TaskResponse], status_code=status.HTTP_201_CREATED, responses={400: {"description": "Bad Request"}, 403: {"description": "Forbidden"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
+@router.post('/bulk-create', dependencies=[Depends(idempotency_guard)], response_model=list[TaskResponse], status_code=status.HTTP_201_CREATED, responses={400: {"description": "Bad Request"}, 403: {"description": "Forbidden"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def create_bulk_tasks(payload: BulkTaskCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     """ 🌟 Manager/Admin များမှ Task ကို Assign ချပေးသော Endpoint """
     enforce_permission(current_user, "tasks.create")
@@ -861,7 +862,7 @@ async def get_batch_tasks_details(batch_id: UUID, db: AsyncSession = Depends(get
         raise HTTPException(status_code=404, detail="Batch not found.")
     return tasks
 
-@router.post('/submit-batch', response_model=BatchSubmitResponse, responses={400: {"description": "Bad Request"}, 500: {"description": "Internal Server Error"}})
+@router.post('/submit-batch', dependencies=[Depends(idempotency_guard)], response_model=BatchSubmitResponse, responses={400: {"description": "Bad Request"}, 500: {"description": "Internal Server Error"}})
 async def submit_task_batch(payload: BatchSubmitRequest, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     enforce_permission(current_user, "tasks.submit")
     try:
@@ -1304,7 +1305,7 @@ async def delete_task_evidence(evidence_id: UUID, db: AsyncSession = Depends(get
 # =====================================================================
 # 🌟 FIX 2: V2 Resubmit လလုပ်ရာတွင် Auto Submit မလုပ်ရန်နှင့် Old Task မဖျက်ရန်
 # =====================================================================
-@router.post('/{task_id}/resubmit', response_model=TaskResponse, responses={403: {"description": "Forbidden"}, 404: {"description": "Not Found"}, 409: {"description": "Conflict"}, 500: {"description": "Internal Server Error"}})
+@router.post('/{task_id}/resubmit', dependencies=[Depends(idempotency_guard)], response_model=TaskResponse, responses={403: {"description": "Forbidden"}, 404: {"description": "Not Found"}, 409: {"description": "Conflict"}, 500: {"description": "Internal Server Error"}})
 async def resubmit_task(task_id: UUID, payload: TaskCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     old_task = await _authorized_task(db, task_id, current_user)
     if old_task.owner_id != current_user.id:

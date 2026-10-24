@@ -12,6 +12,7 @@ from app.core.dependencies import (
     enforce_permission,
     get_current_user,
 )
+from app.core.idempotency import idempotency_guard
 from app.database.connection import get_db
 from app.modules.departments.models import Department, UserDepartment
 from app.modules.targets.models import Target, TargetStatus
@@ -23,6 +24,7 @@ admin_checker = RoleChecker(['Super Admin', 'Admin'])
 
 @router.post(
     "/",
+    dependencies=[Depends(idempotency_guard)],
     response_model=TargetResponse,
     status_code=status.HTTP_201_CREATED,
     responses={500: {"description": "Failed to assign target"}},
