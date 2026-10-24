@@ -7,8 +7,17 @@ export function normalizeUserLevel(value) {
 import { loadPublicBrand } from "./branding.js";
 
 export async function loadBaseContext(request, backend) {
+  // /auth/me is read fresh on every load: it is the permissions_version
+  // probe. If the version changed, the backend client drops the whole
+  // cached context for this session before the reads below continue, so
+  // accounts/permissions can never come from the old permission set.
+  // Accounts runs in parallel with the probe: its only payload is the
+  // account email, which permission changes never alter — and the probe's
+  // eviction still removes its cached entry, so the next load re-reads
+  // it. (The permission-bearing read, /permissions/me, is the one that
+  // must wait for the probe — see loadPageContext.)
   const [user, accountData] = await Promise.all([
-    backend.get(request, "/api/v1/auth/me"),
+    backend.get(request, "/api/v1/auth/me", { fresh: true }),
     backend.get(request, "/api/v1/auth/me/accounts"),
   ]);
   // Company trademark for the layouts (sidebar / mobile header brand).
@@ -64,21 +73,17 @@ export async function loadEmployeeContext(request, backend, base) {
   return buildEmployeeContext(base, permissionsResponse);
 }
 
-// Batch 2: load everything a page needs in one parallel fan-out. The
-// permissions call does not depend on the identity calls, so it starts at
-// the same time instead of waiting for them to finish first.
+// Load everything a page needs. The permissions call deliberately runs
+// AFTER the base context: loadBaseContext probes /auth/me fresh, and if
+// the permissions_version changed it evicts the cached context first —
+// starting permissions in parallel (the original Batch 2 fan-out) could
+// read the stale entry before the eviction lands. When nothing changed,
+// permissions are a cache hit, so the ordering costs nothing.
 export async function loadPageContext(request, backend, { employee = false } = {}) {
-  let permissionsPromise = null;
-  if (employee) {
-    permissionsPromise = backend.get(request, "/api/v1/permissions/me");
-    // Mark the promise as handled so a base-context failure cannot surface
-    // as an unhandled rejection; awaiting it below still throws normally.
-    permissionsPromise.catch(() => {});
-  }
   const base = await loadBaseContext(request, backend);
   if (!employee) {
     return { base, context: base.context };
   }
-  const permissionsResponse = await permissionsPromise;
+  const permissionsResponse = await backend.get(request, "/api/v1/permissions/me");
   return { base, context: buildEmployeeContext(base, permissionsResponse) };
 }
