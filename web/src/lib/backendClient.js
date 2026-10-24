@@ -29,6 +29,25 @@ const CONTEXT_PATHS = new Set([
 const CONTEXT_CACHE_TTL_MS = 30_000;
 const CONTEXT_CACHE_MAX_ENTRIES = 500;
 
+// Permission freshness (companion to the backend's permissions_version):
+// /auth/me and /permissions/me answers carry an opaque
+// "permissions_version" string that changes whenever the user's role,
+// position or permission overrides change. loadBaseContext re-reads
+// /auth/me fresh on every page load and passes the answer through here;
+// when a fresh answer's version differs from the version in the cached
+// /auth/me entry, everything cached for that session is dropped at once,
+// so the very next context reads are re-fetched instead of serving the
+// old permission set for the rest of the 30 seconds. Answers without a
+// version (older backend) keep the plain 30-second behaviour.
+const VERSIONED_PATHS = new Set(["/api/v1/auth/me", "/api/v1/permissions/me"]);
+
+function permissionsVersionOf(body) {
+  if (body && typeof body === "object" && typeof body.permissions_version === "string" && body.permissions_version) {
+    return body.permissions_version;
+  }
+  return null;
+}
+
 function escapeHtml(value) {
   return value.replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
@@ -63,11 +82,29 @@ export function createBackendClient({
     return `${createHash("sha256").update(parts.join("\n")).digest("hex")}:${path}`;
   }
 
+  // Drop every cached context entry for the session that owns cacheKey
+  // when a fresh versioned answer proves the permission set changed.
+  function evictSessionIfVersionChanged(cacheKey, body) {
+    const version = permissionsVersionOf(body);
+    if (!version) return;
+    const sessionPrefix = cacheKey.slice(0, cacheKey.indexOf(":") + 1);
+    const cachedMe = contextCache.get(`${sessionPrefix}/api/v1/auth/me`);
+    const cachedVersion = cachedMe ? permissionsVersionOf(cachedMe.value) : null;
+    if (cachedVersion && cachedVersion !== version) {
+      for (const key of [...contextCache.keys()]) {
+        if (key.startsWith(sessionPrefix)) contextCache.delete(key);
+      }
+    }
+  }
+
   return {
-    async get(request, path) {
+    // fresh: skip the cache read (the answer is still written back), so a
+    // caller can re-check the backend on every load — used for the
+    // /auth/me freshness probe in loadBaseContext.
+    async get(request, path, { fresh = false } = {}) {
       const cacheable = CONTEXT_PATHS.has(path);
       const cacheKey = cacheable ? contextCacheKey(request, path) : null;
-      if (cacheable) {
+      if (cacheable && !fresh) {
         const hit = contextCache.get(cacheKey);
         if (hit && Date.now() - hit.at < CONTEXT_CACHE_TTL_MS) {
           return hit.value;
@@ -102,6 +139,9 @@ export function createBackendClient({
         throw new BackendResponseError(response.status, contentType, body);
       }
       if (cacheable) {
+        if (VERSIONED_PATHS.has(path)) {
+          evictSessionIfVersionChanged(cacheKey, body);
+        }
         if (contextCache.size >= CONTEXT_CACHE_MAX_ENTRIES) {
           contextCache.delete(contextCache.keys().next().value);
         }
