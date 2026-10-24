@@ -330,6 +330,19 @@
                             Download Settings Backup
                         </button>
                     </div>
+
+                    {% if user_role == "Super Admin" %}
+                    <div class="bg-slate-50 border border-gray-200 rounded-2xl p-5 sm:p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                        <div>
+                            <h4 class="font-extrabold text-slate-800 text-sm sm:text-base">Full Data Export</h4>
+                            <p class="text-xs sm:text-sm text-slate-500 mt-1">One ZIP file with all company data tables (35 of 38). Login/session and password data is never included. Files stored in file storage are not included.</p>
+                        </div>
+                        <button type="button" id="fullExportBtn" onclick="downloadFullExport()" class="w-full md:w-auto justify-center bg-blue-950 text-white hover:bg-blue-900 px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold shadow-sm transition-colors whitespace-nowrap flex items-center disabled:opacity-60 disabled:cursor-wait">
+                            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                            <span id="fullExportBtnLabel">Download Full Export</span>
+                        </button>
+                    </div>
+                    {% endif %}
                 </div>
 
             </form>
@@ -1139,6 +1152,46 @@
             }
         } catch(e) {
             showToast("Network error while downloading settings backup.", "error");
+        }
+    }
+
+    async function downloadFullExport() {
+        const btn = document.getElementById('fullExportBtn');
+        const label = document.getElementById('fullExportBtnLabel');
+        btn.disabled = true;
+        label.textContent = 'Preparing\u2026';
+        try {
+            const res = await fetch('/api/v1/system/backup/full', { method: 'GET' });
+            // AUTH FIX (same as downloadBackup)
+            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+
+            if (res.ok) {
+                const blob = await res.blob();
+                const url = window.URL.createObjectURL(blob);
+
+                let filename = 'full_export.zip';
+                const disposition = res.headers.get('Content-Disposition');
+                if (disposition && disposition.includes('filename=')) {
+                    filename = disposition.split('filename=')[1].replaceAll('"', '');
+                }
+
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+
+                a.remove();
+                window.URL.revokeObjectURL(url);
+                showToast("Full export downloaded successfully.", "success");
+            } else {
+                showToast("The export could not be created. Please try again.", "error");
+            }
+        } catch(e) {
+            showToast("The export could not be created. Please try again.", "error");
+        } finally {
+            btn.disabled = false;
+            label.textContent = 'Download Full Export';
         }
     }
 </script>
