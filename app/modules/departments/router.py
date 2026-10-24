@@ -15,6 +15,7 @@ from app.core.dependencies import (
     enforce_user_scope,
     get_current_user,
 )
+from app.core.permission_versions import bump_user_permissions_version
 from app.database.connection import get_db
 from app.modules.departments import repo as department_repo
 from app.modules.departments.models import Department, UserDepartment
@@ -307,6 +308,7 @@ async def assign_user_to_department(
 
         db.add(dept)
         await db.commit()
+        await bump_user_permissions_version(user_id)
         return {"message": message}
     except Exception as e:
         await db.rollback()
@@ -370,6 +372,7 @@ async def remove_user_from_department(dept_id: UUID, user_id: UUID, db: AsyncSes
 
         await db.delete(ud)
         await db.commit()
+        await bump_user_permissions_version(user_id)
         return {"message": "User removed from department successfully."}
     except Exception as e:
         await db.rollback()
@@ -410,6 +413,7 @@ async def change_user_level(dept_id: UUID, user_id: UUID, payload: ChangeLevelRe
 
         db.add(dept)
         await db.commit()
+        await bump_user_permissions_version(user_id)
         return {"message": "User level updated successfully."}
     except Exception as e:
         await db.rollback()
@@ -444,6 +448,7 @@ async def transfer_user(payload: TransferUserRequest, db: AsyncSession = Depends
         await db.delete(old_ud)
 
         await db.commit()
+        await bump_user_permissions_version(payload.user_id)
         return {"message": "User transferred to the new department successfully."}
     except Exception as e:
         await db.rollback()

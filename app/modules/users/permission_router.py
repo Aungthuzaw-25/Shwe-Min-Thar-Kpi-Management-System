@@ -6,6 +6,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.dependencies import RequirePermission, get_current_user, get_permission_map
+from app.core.permission_versions import (
+    bump_role_permissions_version,
+    bump_user_permissions_version,
+    permissions_version_for,
+)
 from app.core.exceptions import PermissionDeniedException
 from app.database.connection import get_db
 from app.models.audit_log import AuditLog
@@ -287,6 +292,7 @@ async def update_role_permissions(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     await log_audit_trail(db, current_user.id, "UPDATE_ROLE_PERMISSIONS", "roles", str(role_id),
                           {"permissions": before}, {"permissions": payload.permission_codes})
+    await bump_role_permissions_version(role_id)
     return result
 
 
@@ -382,6 +388,7 @@ async def set_user_override(
         db.add(UserPermissionOverride(user_id=user_id, permission_id=permission.id, allowed=payload.allowed,
                                       scope=payload.scope, department_id=payload.department_id))
     await db.commit()
+    await bump_user_permissions_version(user_id)
     await log_audit_trail(db, current_user.id, "UPDATE_USER_PERMISSION", "users", str(user_id),
                           old, {"permission_code": payload.permission_code, "allowed": payload.allowed, "scope": payload.scope})
     return await get_user_overrides(user_id, db)
@@ -416,6 +423,7 @@ async def delete_user_override(
         }
         await db.delete(override)
         await db.commit()
+        await bump_user_permissions_version(user_id)
         await log_audit_trail(db, current_user.id, "DELETE_USER_PERMISSION", "users", str(user_id),
                               old, None)
 
@@ -498,6 +506,7 @@ async def bulk_save_user_overrides(
         {"overrides": old_data},
         {"overrides": new_data},
     )
+    await bump_user_permissions_version(user_id)
     return {"saved": len(saved), "message": "User permission overrides saved successfully."}
 
 
@@ -531,6 +540,7 @@ async def reset_user_overrides(
             db, current_user.id, "RESET_USER_PERMISSIONS", "users", str(user_id),
             {"overrides": old_data}, {"overrides": []},
         )
+    await bump_user_permissions_version(user_id)
     return {
         "deleted": count,
         "message": (
@@ -601,6 +611,9 @@ async def my_permission_map(current_user: User = Depends(get_current_user)):
         "user_id": str(current_user.id),
         "role": current_user.role.name if current_user.role else None,
         "permissions": get_permission_map(current_user),
+        # Freshness marker for the web tier's context cache — see
+        # app.core.permission_versions for the contract.
+        "permissions_version": await permissions_version_for(current_user),
     }
 
 

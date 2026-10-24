@@ -22,6 +22,7 @@ from app.core.dependencies import (
     enforce_user_scope,
     get_current_user,
 )
+from app.core.permission_versions import bump_user_permissions_version
 from app.core.password_policy import get_password_policy, validate_password_strength
 from app.core.security import get_password_hash_async
 from app.database.connection import get_db
@@ -862,6 +863,7 @@ async def update_existing_user(user_id: UUID, payload: UserUpdate, db: AsyncSess
             description=f"Updated user {user.first_name} {user.last_name}".strip(),
         )
         await db.commit()
+        await bump_user_permissions_version(user_id)
         updated_user = await user_repo.get_user_by_id(db, user.id)
     except HTTPException:
         await db.rollback()
