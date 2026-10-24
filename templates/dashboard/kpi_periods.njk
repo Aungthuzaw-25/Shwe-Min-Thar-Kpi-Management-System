@@ -83,10 +83,16 @@
                         <h3 class="text-lg sm:text-xl font-black text-slate-900 tracking-tight">Evaluation Periods</h3>
                         <p class="text-xs sm:text-sm text-slate-500 mt-1 font-medium">Manage active and historical reporting cycles.</p>
                     </div>
+                    <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
+                        <div class="flex items-center gap-2">
+                            <label for="periodYearSelect" class="text-[10px] sm:text-[11px] font-black uppercase tracking-widest text-slate-500">Year</label>
+                            <select id="periodYearSelect" onchange="handlePeriodYearChange(this)" class="bg-white border border-slate-200 rounded-xl px-3 sm:px-4 py-2.5 text-sm font-extrabold text-slate-700 shadow-sm cursor-pointer hover:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all" aria-label="Show periods from this year"></select>
+                        </div>
                     <button onclick="openModal()" class="w-full sm:w-auto text-sm text-blue-700 bg-blue-50 border border-blue-200 px-6 py-2.5 rounded-xl hover:bg-blue-600 hover:text-white hover:border-blue-600 font-extrabold transition-all shadow-sm flex items-center justify-center active:scale-95">
                         <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg> 
                         New Cycle
                     </button>
+                    </div>
                 </div>
                 
                 <div class="overflow-x-auto custom-scrollbar flex-1 bg-white w-full">
@@ -224,15 +230,66 @@
         } catch (err) { showToast("Network error.", "error"); }
     }
 
-    async function fetchPeriods() {
+    // Year view (view filter only - no data is moved or deleted): the list
+    // shows one year's periods, defaulting to the current year. The server
+    // filters by the period's start-date year via the `year` query param;
+    // the selector's options are the years discovered in the newest periods
+    // plus the current year, so years without any periods are not listed.
+    let selectedPeriodYear = new Date().getFullYear();
+    let periodYearsDiscovered = false;
+    const knownPeriodYears = new Set([selectedPeriodYear]);
+
+    function buildPeriodYearOptions() {
+        const select = document.getElementById('periodYearSelect');
+        const years = [...knownPeriodYears].sort((a, b) => b - a);
+        select.innerHTML = years.map((year) => `<option value="${year}" ${year === selectedPeriodYear ? 'selected' : ''}>${year}</option>`).join('');
+    }
+
+    // Note: the CSP event bridge only passes literals, `event` or `this`
+    // to inline handlers, so this takes the element and reads its value.
+    function handlePeriodYearChange(selectElement) {
+        selectedPeriodYear = Number(selectElement.value);
+        fetchPeriods();
+    }
+
+    async function discoverPeriodYears() {
         try {
-            const res = await fetchWithTimeout('/api/v1/kpi/periods');
-            // 🌟 SECURITY FIX: Handle 401/403
-            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
-            
+            const res = await fetchWithTimeout('/api/v1/kpi/periods?limit=100');
+            if (res.ok) {
+                const periods = await res.json();
+                periods.forEach((period) => {
+                    const year = new Date(period.start_date).getUTCFullYear();
+                    if (Number.isFinite(year)) knownPeriodYears.add(year);
+                });
+            }
+        } catch (error) { /* discovery is best-effort; the current year is always offered */ }
+        periodYearsDiscovered = true;
+        buildPeriodYearOptions();
+    }
+
+    async function fetchPeriods() {
+        if (!periodYearsDiscovered) await discoverPeriodYears();
+        try {
+            // One year is fetched in full: page through with skip/limit until
+            // a short page comes back, so a year with 100+ periods is never
+            // silently truncated.
+            const collected = [];
+            let skip = 0;
+            let res = null;
+            while (true) {
+                res = await fetchWithTimeout(`/api/v1/kpi/periods?year=${selectedPeriodYear}&limit=100&skip=${skip}`);
+                // 🌟 SECURITY FIX: Handle 401/403
+                if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+                if (!res.ok) break;
+                const page = await res.json();
+                collected.push(...page);
+                if (page.length < 100) break;
+                skip += 100;
+            }
+
             const tbody = document.getElementById('periodsTableBody');
             if (res.ok) {
-                currentPeriods = await res.json();
+                currentPeriods = collected;
                 renderTable();
             } else { 
                 tbody.innerHTML = '<tr><td colspan="6" class="p-10 sm:p-16 text-left sm:text-center text-red-500 font-bold bg-red-50/50">Failed to load system data. <button type="button" onclick="fetchPeriods()" class="ml-3 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50">Retry</button></td></tr>'; 
@@ -250,8 +307,8 @@
                     <div class="bg-slate-50 p-4 sm:p-5 rounded-full mb-4 ring-1 ring-slate-200 shadow-inner">
                         <svg class="w-10 h-10 sm:w-12 sm:h-12 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
                     </div>
-                    <span class="font-black text-lg sm:text-xl text-slate-700 tracking-tight">No Evaluation Periods Found</span>
-                    <span class="text-xs sm:text-sm mt-2 text-slate-400 font-medium">Click "New Cycle" to initialize the first cycle.</span>
+                    <span class="font-black text-lg sm:text-xl text-slate-700 tracking-tight">No Evaluation Periods Found in ${selectedPeriodYear}</span>
+                    <span class="text-xs sm:text-sm mt-2 text-slate-400 font-medium">No cycles were created for this year. Pick another year above, or click "New Cycle" to create one.</span>
                 </td>
             </tr>`;
             return;
@@ -340,7 +397,13 @@
             
             if (res.ok) {
                 showToast("Cycle deployed successfully.", "success");
-                closeModal(); 
+                closeModal();
+                const createdYear = new Date(payload.start_date).getUTCFullYear();
+                if (Number.isFinite(createdYear)) {
+                    selectedPeriodYear = createdYear;
+                    knownPeriodYears.add(createdYear);
+                    buildPeriodYearOptions();
+                }
                 fetchPeriods();
             } else {
                 const err = await res.json(); 
