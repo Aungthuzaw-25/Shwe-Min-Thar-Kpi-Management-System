@@ -1,3 +1,4 @@
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -5,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from app.core.dependencies import RoleChecker, enforce_permission, get_current_user
+from app.core.timezone import APPLICATION_TIMEZONE
 from app.database.connection import get_db
 from app.modules.kpi import period_service
 from app.modules.kpi.models import KPIPeriod, KPIPeriodStatus
@@ -58,12 +60,31 @@ async def create_kpi_period(payload: KPIPeriodCreate, db: AsyncSession = Depends
 async def get_kpi_periods(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, gt=0, le=100),
-    db: AsyncSession = Depends(get_db), 
+    year: int | None = Query(None, ge=1900, le=9999),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Retrieve all active and historical KPI periods"""
+    """Retrieve all active and historical KPI periods.
+
+    Optional ``year`` filters server-side to periods whose
+    ``start_date`` falls in that calendar year (the Periods page's
+    year view needs the whole year, which the default newest-50
+    window cannot guarantee). Omitting it changes nothing.
+    """
     enforce_permission(current_user, "kpi.view")
-    stmt = select(KPIPeriod).where(KPIPeriod.is_deleted == False).order_by(KPIPeriod.start_date.desc()).offset(skip).limit(limit)
+    stmt = select(KPIPeriod).where(KPIPeriod.is_deleted == False)
+    if year is not None:
+        # Period boundaries are application-local midnights (see
+        # period_ranges), so the year window must be local too — a
+        # January period starts at Yangon midnight, which is still
+        # December in UTC and would land in the wrong year.
+        stmt = stmt.where(
+            KPIPeriod.start_date
+            >= datetime(year, 1, 1, tzinfo=APPLICATION_TIMEZONE),
+            KPIPeriod.start_date
+            < datetime(year + 1, 1, 1, tzinfo=APPLICATION_TIMEZONE),
+        )
+    stmt = stmt.order_by(KPIPeriod.start_date.desc()).offset(skip).limit(limit)
     result = await db.execute(stmt)
     return result.scalars().all()
 
