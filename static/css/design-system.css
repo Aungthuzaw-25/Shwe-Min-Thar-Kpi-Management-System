@@ -617,6 +617,14 @@ html.app-loading .app-loader {
   transform: translateX(2px);
 }
 
+/* Form draft restore bar (draft-safety v1) — built by form-draft.js */
+.kpi-draft-bar { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .75rem; background: #eef4fa; border: 1px solid #b9cfe4; color: #1c2b3a; border-radius: .75rem; padding: .6rem .8rem; margin-bottom: .9rem; font-size: .85rem; }
+.kpi-draft-bar[hidden] { display: none; }
+.kpi-draft-actions { display: inline-flex; gap: .45rem; }
+.kpi-draft-restore { background: #3d5a80; color: #fff; font-weight: 600; border-radius: .5rem; padding: .35rem .8rem; }
+.kpi-draft-discard { background: transparent; color: #3d5a80; font-weight: 600; border: 1px solid #3d5a80; border-radius: .5rem; padding: .35rem .8rem; }
+.kpi-draft-files { flex-basis: 100%; color: #7a4b12; font-weight: 600; }
+.kpi-draft-files:empty { display: none; }
 /* Offline banner (read-only offline v1) — toggled by offline-ui.js */
 .offline-banner { position: fixed; top: 0; left: 0; right: 0; z-index: 200; background: #3d5a80; color: #fff; text-align: center; font-size: .85rem; font-weight: 600; padding: .5rem 1rem; }
 .offline-banner[hidden] { display: none; }
