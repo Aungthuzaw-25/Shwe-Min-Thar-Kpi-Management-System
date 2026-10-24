@@ -29,6 +29,7 @@ from app.modules.auth.schemas import (
 from app.modules.notifications.models import Notification
 from app.modules.system import branding, repo
 from app.modules.system.full_export import build_full_export_zip
+from app.services.system_log_messages import plain_message_for, public_details
 from app.modules.system.audit_log_retention import (
     AUDIT_LOG_RETENTION_KEY,
     normalize_audit_log_retention,
@@ -1011,7 +1012,7 @@ async def read_system_logs(
     effective_skip = skip if skip is not None else (page - 1) * effective_size
     event_filter = event_type or service
     try:
-        items, total = await repo.get_recent_logs_page(
+        logs, total = await repo.get_recent_logs_page(
             db, skip=effective_skip, limit=effective_size, level=level,
             event_type=event_filter, search=search, start=start, end=end,
         )
@@ -1021,6 +1022,20 @@ async def read_system_logs(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="System logs are temporarily unavailable.",
         ) from exc
+    # Display rule: the list always shows the plain-language message
+    # (never a raw error/exception) and hides raw-technical detail
+    # keys; the stored record itself is unchanged for support.
+    items = [
+        {
+            "id": log.id,
+            "event_type": log.event_type,
+            "level": log.level,
+            "message": plain_message_for(log.event_type, log.level, log.message),
+            "details": public_details(log.details),
+            "created_at": log.created_at,
+        }
+        for log in logs
+    ]
     return {
         "items": items,
         "total": total,
@@ -1047,7 +1062,17 @@ async def read_system_log_detail(
     log = await repo.get_system_log(db, parsed_log_id)
     if not log:
         raise HTTPException(status_code=404, detail="System log not found.")
-    return log
+    # Same display rule as the list (plain message by default); the
+    # raw stored message rides along as technical_message for support.
+    return {
+        "id": log.id,
+        "event_type": log.event_type,
+        "level": log.level,
+        "message": plain_message_for(log.event_type, log.level, log.message),
+        "details": log.details,
+        "created_at": log.created_at,
+        "technical_message": log.message,
+    }
 
 
 # =================================================================================
