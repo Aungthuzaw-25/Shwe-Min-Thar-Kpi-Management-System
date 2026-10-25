@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field, computed_field
@@ -106,3 +106,17 @@ class UserLeaveRequest(BaseModel):
     leave_start_date: datetime | None = None
     leave_end_date: datetime | None = None
     delegated_to_id: UUID | None = None
+
+class UserOffboardRequest(BaseModel):
+    """Departure (or suspension) of an employee.
+
+    RESIGNED / TERMINATED end the account: login dies immediately,
+    the account moves to the soft-deleted (trash) state, and the
+    leaving date is stamped onto the person's KPI records and tasks
+    so history stays labelled after the account is later removed.
+    SUSPENDED only pauses the account (no leaving date, no trash).
+    """
+
+    status: str = Field("RESIGNED", pattern="^(RESIGNED|TERMINATED|SUSPENDED)$")
+    resigned_at: date | None = None
+    reason: str | None = Field(None, max_length=500)

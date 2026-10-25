@@ -50,6 +50,7 @@ from app.modules.kpi.dashboard_router import (
 from app.modules.kpi.period_router import router as kpi_period_router
 from app.modules.kpi.router import router as kpi_router
 from app.modules.notifications.router import router as notifications_router
+from app.modules.system.retention_router import router as retention_router
 from app.modules.system.router import router as system_router
 from app.modules.targets.router import router as targets_router
 from app.modules.tasks.router import router as tasks_router
@@ -511,6 +512,7 @@ app.include_router(unified_dashboard_api_router, prefix="/api/v1/dashboard", tag
 app.include_router(notifications_router, prefix="/api/v1/notifications", tags=["Notifications"])
 app.include_router(activity_router, prefix=API_V1_PREFIX)
 app.include_router(system_router, prefix=API_V1_PREFIX, tags=["System Settings"])
+app.include_router(retention_router, prefix=API_V1_PREFIX, tags=["Retention"])
 
 # ==============================================================================
 # 💻 7. FRONTEND WEB ROUTERS (Jinja2 UI Pages)

@@ -1,4 +1,7 @@
+import logging
 import traceback
+
+logger = logging.getLogger(__name__)
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -8,7 +11,7 @@ from fastapi import (  # 🌟 PERFORMANCE FIX: Added Query
     HTTPException,
     Query,
 )
-from sqlalchemy import func, text
+from sqlalchemy import func, or_, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -35,7 +38,9 @@ from app.modules.users import repo as user_repo
 from app.modules.users.presence import presence_for_users
 
 # 🌟 BUG FIX: Role Model ကို models.py မှ တိုက်ရိုက်ယူပါမည် (roles.py အဟောင်းကို မသုံးပါ)
-from app.modules.users.models import Role, User
+from app.models.audit_log import AuditLog
+from app.modules.system import retention_service as retention
+from app.modules.users.models import Role, User, UserStatus
 from app.modules.users.password_schemas import PasswordResetAdmin
 from app.modules.users.schemas import (
     RoleResponse,
@@ -44,6 +49,7 @@ from app.modules.users.schemas import (
     UserCreate,
     UserDeptResponse,
     UserLeaveRequest,
+    UserOffboardRequest,
     UserResponse,
     UserUpdate,
 )
@@ -110,6 +116,18 @@ def ensure_user_deletion_allowed(target_user: User, current_user: User) -> None:
         raise HTTPException(status_code=400, detail='You cannot delete your own account.')
     if getattr(target_user.role, 'name', '') in SUPER_ADMIN_ROLE_NAMES:
         raise HTTPException(status_code=403, detail='Super Admin accounts cannot be deleted.')
+
+
+async def _detach_department_head(db: AsyncSession, user_id: UUID) -> None:
+    """Clear departments.head_id pointing at a user (ORM update —
+    raw text() updates with str(uuid) params silently match zero
+    rows on some databases, which is how this detach once failed
+    QA; ORM binds the UUID properly everywhere)."""
+    from app.modules.departments.models import Department
+
+    await db.execute(
+        update(Department).where(Department.head_id == user_id).values(head_id=None)
+    )
 
 
 async def revoke_user_authentication(db: AsyncSession, user_id: UUID) -> None:
@@ -877,6 +895,84 @@ async def update_existing_user(user_id: UUID, payload: UserUpdate, db: AsyncSess
     refreshed_user = await user_repo.get_user_by_id(db, updated_user.id)
     return serialize_user_obj(refreshed_user)
 
+@router.post('/{user_id}/offboard', responses={400: {"description": "Bad Request"}, 403: {"description": "Forbidden"}, 404: {"description": "Not Found"}})
+async def offboard_user(user_id: UUID, payload: UserOffboardRequest, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
+    """Formal departure flow (retention design, 2026-10-23).
+
+    RESIGNED / TERMINATED: lifecycle status + leaving date are set,
+    login dies at once (sessions/OAuth revoked, account inactive),
+    the account moves to the soft-deleted state, the leaving date is
+    stamped onto the person's KPI records and tasks (the "Resigned ·
+    <date>" history label), any report-download grants end, and the
+    departure is audit-logged with its reason. ALL business data is
+    kept. SUSPENDED only pauses the account.
+    """
+    enforce_permission(current_user, "users.delete")
+    await enforce_user_scope(db, current_user, user_id)
+    stmt = select(User).options(selectinload(User.role)).where(User.id == user_id)
+    user = (await db.execute(stmt)).scalars().first()
+    if not user:
+        raise HTTPException(status_code=404, detail='User not found in the database.')
+    if getattr(user, 'is_deleted', False):
+        raise HTTPException(status_code=400, detail='This account is already offboarded or deleted.')
+    ensure_user_deletion_allowed(user, current_user)
+
+    from app.core.timezone import APPLICATION_TIMEZONE
+
+    new_status = UserStatus(payload.status)
+    user.status = new_status.value
+    if new_status == UserStatus.SUSPENDED:
+        user.is_active = False
+        await revoke_user_authentication(db, user.id)
+        db.add(AuditLog(
+            user_id=current_user.id, action="USER_SUSPENDED",
+            table_name="users", record_id=str(user.id),
+            new_value={"reason": payload.reason},
+        ))
+        await db.commit()
+        return {'message': 'User suspended: login is disabled and the account is paused. No data was changed.'}
+
+    user.resigned_at = payload.resigned_at or datetime.now(APPLICATION_TIMEZONE).date()
+    # Same email handling as soft delete so Restore can bring the
+    # original address back (and a new account may reuse it meanwhile).
+    if not user.email.startswith("deleted_"):
+        user.email = f"deleted_{int(datetime.now().timestamp())}_{user.email}"
+    await _detach_department_head(db, user_id)
+    await revoke_user_authentication(db, user.id)
+    await user_repo.soft_delete_user(db, user)
+    # Stamp the leaving date + name onto kept history rows, and end
+    # any report-download grants the person held (a grant must never
+    # survive the account leaving).
+    await retention.stamp_resigned_snapshots(db, user)
+    from sqlalchemy import update as _sa_update
+
+    from app.models.report_download import ReportDownloadGrant
+
+    await db.execute(
+        _sa_update(ReportDownloadGrant)
+        .where(
+            ReportDownloadGrant.user_id == user_id,
+            ReportDownloadGrant.is_active.is_(True),
+        )
+        .values(
+            is_active=False,
+            revoked_at=datetime.now(UTC).replace(tzinfo=None),
+            revoked_by=current_user.id,
+        )
+    )
+    db.add(AuditLog(
+        user_id=current_user.id, action="USER_OFFBOARDED",
+        table_name="users", record_id=str(user.id),
+        new_value={
+            "status": new_status.value,
+            "resigned_at": user.resigned_at.isoformat(),
+            "reason": payload.reason,
+            "employee": retention.display_name(user),
+        },
+    ))
+    await db.commit()
+    return {'message': 'Employee offboarded: login is disabled, the account is in the trash, and all KPI records and tasks are kept.'}
+
 @router.delete('/{user_id}', responses={403: {"description": "Forbidden"}, 404: {"description": "Not Found"}, 400: {"description": "Bad Request"}})
 async def delete_existing_user(user_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
     enforce_permission(current_user, "users.delete")
@@ -897,7 +993,7 @@ async def delete_existing_user(user_id: UUID, db: AsyncSession = Depends(get_db)
     if not user.email.startswith("deleted_"):
         user.email = f"deleted_{int(datetime.now().timestamp())}_{user.email}"
         
-    await db.execute(text("UPDATE departments SET head_id = NULL WHERE head_id = :uid"), {"uid": str(user_id)})
+    await _detach_department_head(db, user_id)
     await revoke_user_authentication(db, user.id)
     await user_repo.soft_delete_user(db, user)
     record_activity(
@@ -913,58 +1009,206 @@ async def delete_existing_user(user_id: UUID, db: AsyncSession = Depends(get_db)
 
 @router.delete('/{user_id}/permanent', responses={403: {"description": "Forbidden"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}, 400: {"description": "Bad Request"}})
 async def permanent_delete_user(user_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Hard-delete an account row — and ONLY the account row.
+
+    Retention scope (Zenn's final decisions, 2026-10-23): what
+    matters is the KPI record history, so kpi_records + kpi_history
+    are kept forever, and kept tasks stay at snapshot level (title,
+    owner name snapshot, status/period) while their detail tables go:
+    task_evidence (rows AND the stored files — no orphans),
+    task_histories, and reviews on the person's own tasks. Detached
+    and kept (SET NULL): action plans, assignments, targets the
+    person created, delegations, submission batches, approval queue
+    entries, and reviews the person wrote on other people's tasks.
+    Removed with the account: operational data and the person's
+    daily activity timeline ("nobody looks back at daily activity").
+    The models already carry these FK actions; the production
+    migration DDL alignment is tracked separately with Database.
+
+    Gates for a departed employee: their leaving year must have
+    ended, the company-wide full-year report for that year must have
+    been downloaded, and the year's backup must be confirmed. An
+    active employee with any KPI records or tasks must be offboarded
+    first; an account with no history at all (a test account) may be
+    removed directly. Before anything is deleted, the departed
+    identity is captured into departed_identities and linked from
+    the kept rows (grouping + Relink key).
+    """
+    from sqlalchemy import delete as sa_delete
+    from sqlalchemy import update as sa_update
+
+    from app.models.audit_log import AuditLog as AuditRow
+    from app.modules.auth.models import AuthSession as AuthSessionRow
+    from app.modules.auth.models import LoginHistory as LoginHistoryRow
+    from app.modules.auth.models import PasswordHistory as PasswordRow
+    from app.modules.auth.models import UnlockRequest as UnlockRow
+    from app.modules.departments.models import Department as DepartmentRow
+    from app.modules.departments.models import UserDepartment as MembershipRow
+    from app.modules.kpi.models import ActionPlan as ActionPlanRow
+    from app.modules.kpi.models import KPIAssignment as AssignmentRow
+    from app.modules.kpi.models import KPIFormula as FormulaRow
+    from app.modules.kpi.models import KPIRecord as RecordRow
+    from app.modules.notifications.models import Notification as NotificationRow
+    from app.modules.targets.models import Target as TargetRow
+    from app.modules.tasks.models.activity_timeline import ActivityTimeline as ActivityRow
+    from app.modules.tasks.models.approval_queue import ApprovalQueue as ApprovalQueueRow
+    from app.modules.tasks.models.submission_batch import SubmissionBatch as SubmissionBatchRow
+    from app.modules.tasks.models.task import Task as TaskRow
+    from app.modules.tasks.models.task_evidence import TaskEvidence as TaskEvidenceRow
+    from app.modules.tasks.models.task_history import TaskHistory as TaskHistoryRow
+    from app.modules.tasks.models.task_review import TaskReview as TaskReviewRow
+    from app.modules.users.models import OAuthAccount as OAuthRow
+    from app.modules.users.models import (
+        UserPermissionOverride as OverrideRow,
+    )
+
     enforce_permission(current_user, "users.delete")
     if current_user.role.name not in [SUPER_ADMIN_ROLE_NAME]:
         raise HTTPException(status_code=403, detail='Only Super Admins can permanently delete accounts.')
-    stmt = select(User).where(User.id == user_id)
-    result = await db.execute(stmt)
-    user = result.scalars().first()
-    
+    stmt = select(User).options(selectinload(User.role)).where(User.id == user_id)
+    user = (await db.execute(stmt)).scalars().first()
+
     if not user:
         raise HTTPException(status_code=404, detail=ERR_USER_NOT_FOUND)
     ensure_user_deletion_allowed(user, current_user)
-        
+
+
+    async def _count(model, column) -> int:
+        return int(
+            (await db.execute(select(func.count(model.id)).where(column == user_id))).scalar_one()
+        )
+
+    record_count = await _count(RecordRow, RecordRow.user_id)
+    task_count = await _count(TaskRow, TaskRow.owner_id)
+    departed = user.status in (UserStatus.RESIGNED.value, UserStatus.TERMINATED.value) or user.resigned_at is not None
+    if departed:
+        from app.core.timezone import APPLICATION_TIMEZONE
+
+        await retention.ensure_hard_delete_unlocked(
+            db, user=user, today=datetime.now(APPLICATION_TIMEZONE).date()
+        )
+    elif record_count or task_count:
+        raise HTTPException(
+            status_code=400,
+            detail='This employee still has KPI records or tasks. Offboard them first — permanent deletion only unlocks after their leaving year ends.',
+        )
+
     try:
-        uid_param = {"uid": str(user_id)}
+        # 1. Identity capture FIRST: backstop the resigned snapshots,
+        #    then create/link the departed-identity registry row.
+        await retention.stamp_resigned_snapshots(db, user)
+        identity = await retention.capture_departed_identity(db, user)
+
+        # 2. Kill authentication paths + detach the references the
+        #    decided scope leaves to us.
         await revoke_user_authentication(db, user.id)
-        
-        await db.execute(text("UPDATE departments SET head_id = NULL WHERE head_id = :uid"), uid_param)
-        await db.execute(text("UPDATE tasks SET assigner_id = NULL WHERE assigner_id = :uid"), uid_param)
-        await db.execute(text("UPDATE kpi_formulas SET created_by_id = NULL WHERE created_by_id = :uid"), uid_param)
-        await db.execute(text("UPDATE kpi_action_plans SET reviewed_by_id = NULL WHERE reviewed_by_id = :uid"), uid_param)
-        
-        await db.execute(text("DELETE FROM activity_timelines WHERE user_id = :uid"), uid_param)
-        
-        await db.execute(text("UPDATE tasks SET batch_id = NULL WHERE batch_id IN (SELECT id FROM submission_batches WHERE submitter_id = :uid)"), uid_param)
-        await db.execute(text("DELETE FROM task_histories WHERE changed_by = :uid OR task_id IN (SELECT id FROM tasks WHERE owner_id = :uid)"), uid_param)
-        await db.execute(text("DELETE FROM task_evidence WHERE uploaded_by = :uid OR task_id IN (SELECT id FROM tasks WHERE owner_id = :uid)"), uid_param)
-        await db.execute(text("DELETE FROM task_reviews WHERE reviewer_id = :uid OR task_id IN (SELECT id FROM tasks WHERE owner_id = :uid)"), uid_param)
-        
-        await db.execute(text("DELETE FROM approval_queues WHERE reviewer_id = :uid OR batch_id IN (SELECT id FROM submission_batches WHERE submitter_id = :uid)"), uid_param)
-        await db.execute(text("DELETE FROM submission_batches WHERE submitter_id = :uid"), uid_param)
-        await db.execute(text("DELETE FROM tasks WHERE owner_id = :uid"), uid_param)
-        
-        await db.execute(text("DELETE FROM kpi_history WHERE changed_by_id = :uid OR kpi_record_id IN (SELECT id FROM kpi_records WHERE user_id = :uid)"), uid_param)
-        await db.execute(text("DELETE FROM kpi_action_plans WHERE user_id = :uid"), uid_param)
-        await db.execute(text("DELETE FROM kpi_records WHERE user_id = :uid"), uid_param)
-        await db.execute(text("DELETE FROM kpi_assignments WHERE user_id = :uid OR assigned_by_id = :uid"), uid_param)
-        await db.execute(text("DELETE FROM formula_audit_logs WHERE action_by_id = :uid"), uid_param)
-        
-        await db.execute(text("DELETE FROM audit_logs WHERE user_id = :uid"), uid_param)
-        await db.execute(text("DELETE FROM user_departments WHERE user_id = :uid"), uid_param)
-        await db.execute(text("DELETE FROM password_history WHERE user_id = :uid"), uid_param)
-        await db.execute(text("DELETE FROM login_history WHERE user_id = :uid"), uid_param)
-        await db.execute(text("DELETE FROM notifications WHERE user_id = :uid"), uid_param)
-        
+        # Every detach goes through ORM updates (see
+        # _detach_department_head for why raw text() is banned here).
+        for model, column in (
+            (DepartmentRow, DepartmentRow.head_id),
+            (User, User.delegated_to_id),
+            (TaskRow, TaskRow.assigner_id),
+            (FormulaRow, FormulaRow.created_by_id),
+            (ActionPlanRow, ActionPlanRow.reviewed_by_id),
+            (TargetRow, TargetRow.created_by_id),
+            (ActionPlanRow, ActionPlanRow.user_id),
+            (AssignmentRow, AssignmentRow.user_id),
+            (SubmissionBatchRow, SubmissionBatchRow.submitter_id),
+            (ApprovalQueueRow, ApprovalQueueRow.reviewer_id),
+            (TaskReviewRow, TaskReviewRow.reviewer_id),
+        ):
+            await db.execute(
+                sa_update(model).where(column == user_id).values({column.key: None})
+            )
+
+        # 3. Task detail purge: kept tasks stay at snapshot level.
+        #    FIRST the outcome facts are copied onto the task rows
+        #    (what was finished, when, with what result — the
+        #    handover record), THEN the trail goes: evidence rows +
+        #    their stored files, histories, reviews on the person's
+        #    own tasks, and the person's activity timeline. File
+        #    paths are collected first; the files themselves are
+        #    deleted after the commit.
+        own_task_ids = list(
+            (await db.execute(select(TaskRow.id).where(TaskRow.owner_id == user_id))).scalars().all()
+        )
+        await retention.stamp_task_outcomes(db, own_task_ids)
+        evidence_filter = or_(
+            TaskEvidenceRow.task_id.in_(own_task_ids),
+            TaskEvidenceRow.uploaded_by == user_id,
+        )
+        evidence_paths = list(
+            (await db.execute(select(TaskEvidenceRow.file_path).where(evidence_filter))).scalars().all()
+        )
+        await db.execute(sa_delete(TaskEvidenceRow).where(evidence_filter))
+        await db.execute(
+            sa_delete(TaskHistoryRow).where(
+                or_(
+                    TaskHistoryRow.task_id.in_(own_task_ids),
+                    TaskHistoryRow.changed_by == user_id,
+                )
+            )
+        )
+        if own_task_ids:
+            await db.execute(
+                sa_delete(TaskReviewRow).where(TaskReviewRow.task_id.in_(own_task_ids))
+            )
+        await db.execute(sa_delete(ActivityRow).where(ActivityRow.user_id == user_id))
+
+        # 4. Account/operational data dies with the account.
+        for model in (
+            AuthSessionRow, OAuthRow, PasswordRow, LoginHistoryRow,
+            NotificationRow, MembershipRow, OverrideRow, UnlockRow,
+        ):
+            await db.execute(sa_delete(model).where(model.user_id == user_id))
+
+        # 5. Audit BEFORE the row goes (the actor survives).
+        db.add(AuditLog(
+            user_id=current_user.id, action="USER_HARD_DELETED",
+            table_name="users", record_id=str(user.id),
+            new_value={
+                "employee": retention.display_name(user),
+                "resigned_at": user.resigned_at.isoformat() if user.resigned_at else None,
+                "identity_id": str(identity.id) if identity else None,
+                "kpi_records_kept": record_count,
+                "tasks_kept": task_count,
+                "evidence_files_removed": len(evidence_paths),
+            },
+        ))
+
+        # 6. Detach kept history explicitly (the schema's SET NULL
+        #    does the same on PostgreSQL), then the account row.
+        await db.execute(
+            sa_update(RecordRow).where(RecordRow.user_id == user_id).values(user_id=None)
+        )
+        await db.execute(
+            sa_update(TaskRow).where(TaskRow.owner_id == user_id).values(owner_id=None)
+        )
+        await db.execute(
+            sa_update(AuditRow).where(AuditRow.user_id == user_id).values(user_id=None)
+        )
         await db.delete(user)
         await db.commit()
-        
-        return {'message': 'User permanently deleted successfully (Hard Delete).'}
-    except Exception as e:
+    except HTTPException:
         await db.rollback()
-        print("====== HARD DELETE ERROR ======")
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Database Error: {str(e)}")
+        raise
+    except Exception:
+        await db.rollback()
+        logger.exception("Permanent user deletion failed")
+        raise HTTPException(status_code=500, detail="Permanent deletion failed. Nothing was deleted.")
+
+    # 7. Stored evidence files last (post-commit, best-effort): a
+    #    storage failure is logged loudly, never silently orphaned.
+    if evidence_paths:
+        from app.services.storage_service import storage_service
+
+        for path in evidence_paths:
+            try:
+                await storage_service.delete_file(path)
+            except Exception:
+                logger.exception("Failed to delete evidence file %s after hard delete", path)
+
+    return {'message': 'Account permanently deleted. KPI records, tasks and audit history were kept.'}
 
 @router.put('/{user_id}/reset-password', responses={400: {"description": "Bad Request"}, 403: {"description": "Forbidden"}, 404: {"description": "Not Found"}})
 async def reset_user_password(user_id: UUID, payload: PasswordResetAdmin, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
@@ -1031,11 +1275,25 @@ async def restore_user(user_id: UUID, db: AsyncSession = Depends(get_db), curren
                 raise HTTPException(status_code=400, detail='Cannot restore: Original email is currently registered to another active account.')
             user.email = original_email
 
+    # Re-hire case 1 (retention design): restoring a departed
+    # employee brings the lifecycle back to ACTIVE and clears the
+    # leaving date; their KPI records and tasks reconnect through
+    # the account automatically. The departure itself stays in the
+    # audit trail.
+    was_departed = user.status in (UserStatus.RESIGNED.value, UserStatus.TERMINATED.value)
     user.is_deleted = False
     user.is_active = True
+    user.status = UserStatus.ACTIVE.value
+    user.resigned_at = None
     db.add(user)
+    db.add(AuditLog(
+        user_id=current_user.id,
+        action="USER_REHIRED" if was_departed else "USER_RESTORED",
+        table_name="users", record_id=str(user.id),
+        new_value={"employee": retention.display_name(user)},
+    ))
     await db.commit()
-    
+
     restored_user = await user_repo.get_user_by_id(db, user_id)
     return serialize_user_obj(restored_user)
 

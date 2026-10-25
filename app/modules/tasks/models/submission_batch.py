@@ -8,7 +8,7 @@ from app.database.base import BaseModel
 class SubmissionBatch(BaseModel):
     __tablename__ = 'submission_batches'
 
-    submitter_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False, index=True)
+    submitter_id = Column(UUID(as_uuid=True), ForeignKey('users.id', ondelete='SET NULL'), nullable=True, index=True)
     total_tasks = Column(Integer, default=0)
     status = Column(String, default="PENDING") 
 

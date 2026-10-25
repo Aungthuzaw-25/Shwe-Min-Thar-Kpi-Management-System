@@ -8,6 +8,7 @@ from sqlalchemy import (
     JSON,
     Boolean,
     Column,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -196,10 +197,30 @@ class KPIRecord(BaseModel):
     """Task 5.2 - 5.6: KPI Evaluation Aggregated Records"""
     __tablename__ = "kpi_records"
 
-    user_id = Column(UUID(as_uuid=True), ForeignKey(USERS_ID, ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey(USERS_ID, ondelete=SET_NULL), nullable=True, index=True)
     department_id = Column(UUID(as_uuid=True), ForeignKey(DEPARTMENTS_ID, ondelete=SET_NULL), nullable=True, index=True)
     formula_id = Column(UUID(as_uuid=True), ForeignKey(KPI_FORMULAS_ID, ondelete=SET_NULL), nullable=True, index=True)
     kpi_period_id = Column(UUID(as_uuid=True), ForeignKey("kpi_periods.id", ondelete=SET_NULL), nullable=True, index=True)
+
+    # Identity snapshot taken when the record is calculated, so a past
+    # score stays attributable even after the account is archived/removed.
+    employee_name = Column(String(255), nullable=True)
+    department_name = Column(String(255), nullable=True)
+    # Stamped by the offboarding flow (a record is calculated before the
+    # person leaves, so this cannot be filled at calculation time) —
+    # powers the "Resigned · <date>" badge on history views after the
+    # account row itself is gone.
+    employee_resigned_at = Column(Date, nullable=True)
+    # Grouping key to the departed-identity registry row, set by the
+    # hard-delete flow. Exact per-person grouping/relink must use this
+    # id, never the name/email snapshots (names repeat; emails can be
+    # re-registered by someone else later).
+    departed_identity_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("departed_identities.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
 
     period_type = Column(SQLEnum(PeriodType), nullable=False, index=True)
     period_start = Column(DateTime(timezone=True), nullable=False, index=True)
@@ -235,6 +256,8 @@ class KPIRecord(BaseModel):
         Index('idx_kpi_user_period_history', 'user_id', 'period_type', 'period_start'),
         # Department Ranking & Summary အမြန်ဆုံးဆွဲရန်
         Index('idx_kpi_dept_summary', 'department_id', 'period_type', 'period_start'),
+        # Super Admin year view: all records of a period type in a date range
+        Index('idx_kpi_records_period_lookup', 'period_type', 'period_start'),
         Index(
             'idx_kpi_records_user_period_deleted',
             'user_id',
@@ -258,7 +281,7 @@ class KPIAssignment(BaseModel):
 
     department_id = Column(UUID(as_uuid=True), ForeignKey(DEPARTMENTS_ID, ondelete="CASCADE"), nullable=False)
     position_id = Column(UUID(as_uuid=True), ForeignKey(POSITIONS_ID, ondelete="CASCADE"), nullable=False)
-    user_id = Column(UUID(as_uuid=True), ForeignKey(USERS_ID, ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey(USERS_ID, ondelete="SET NULL"), nullable=True, index=True)
     kpi_formula_id = Column(UUID(as_uuid=True), ForeignKey(KPI_FORMULAS_ID, ondelete="CASCADE"), nullable=False, index=True)
     kpi_period_id = Column(UUID(as_uuid=True), ForeignKey("kpi_periods.id", ondelete="CASCADE"), nullable=False, index=True)
 
@@ -316,7 +339,7 @@ class ActionPlan(BaseModel):
     __tablename__ = "kpi_action_plans"
 
     kpi_record_id = Column(UUID(as_uuid=True), ForeignKey("kpi_records.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
-    user_id = Column(UUID(as_uuid=True), ForeignKey(USERS_ID, ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey(USERS_ID, ondelete="SET NULL"), nullable=True, index=True)
 
     description = Column(Text, nullable=False)
     target_completion_date = Column(DateTime(timezone=True), nullable=False)

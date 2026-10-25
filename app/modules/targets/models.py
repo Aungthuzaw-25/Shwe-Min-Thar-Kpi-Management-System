@@ -32,7 +32,7 @@ class Target(BaseModel):
     status = Column(Enum(TargetStatus), nullable=False, default=TargetStatus.ACTIVE)
     
     # Audit tracking
-    created_by_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    created_by_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
     # Relationships
     department = relationship("Department")

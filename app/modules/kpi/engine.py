@@ -491,6 +491,28 @@ def _validate_formula_effective_month(
         raise ValueError("KPI record formula is not effective for the selected period.")
 
 
+async def _apply_record_snapshots(db, record, user, formula) -> None:
+    """Stamp the identity snapshots at calculation time (retention
+    design): the person's name and the department name live ON the
+    record, so a past score stays attributable after the account is
+    archived or removed."""
+    name = f"{user.first_name or ''} {user.last_name or ''}".strip()
+    if name:
+        record.employee_name = name
+    if formula.department_id is not None:
+        from app.modules.departments.models import Department
+
+        dept_name = (
+            await db.execute(
+                select(Department.name).where(Department.id == formula.department_id)
+            )
+        ).scalar_one_or_none()
+        if dept_name:
+            record.department_name = dept_name
+    if getattr(user, "resigned_at", None) is not None:
+        record.employee_resigned_at = user.resigned_at
+
+
 async def _save_kpi_record(
     db,
     user,
@@ -519,24 +541,25 @@ async def _save_kpi_record(
             db, record, formula, period, period_end, total_score, percentage,
             explicit_record_id,
         )
+        await _apply_record_snapshots(db, record, user, formula)
         return
     if explicit_record_id is not None:
         raise ValueError(KPI_RECORD_NOT_FOUND)
-    db.add(
-        KPIRecord(
-            user_id=user.id,
-            department_id=formula.department_id,
-            formula_id=formula.id,
-            period_type=period_type,
-            period_start=period_start,
-            period_end=period_end,
-            kpi_period_id=period.id if period else None,
-            weighted_score=total_score,
-            raw_score=total_score,
-            percentage=percentage,
-            status_bucket=KPICalculationEngine.get_grade(percentage),
-        )
+    record = KPIRecord(
+        user_id=user.id,
+        department_id=formula.department_id,
+        formula_id=formula.id,
+        period_type=period_type,
+        period_start=period_start,
+        period_end=period_end,
+        kpi_period_id=period.id if period else None,
+        weighted_score=total_score,
+        raw_score=total_score,
+        percentage=percentage,
+        status_bucket=KPICalculationEngine.get_grade(percentage),
     )
+    await _apply_record_snapshots(db, record, user, formula)
+    db.add(record)
 
 
 async def _ensure_period_open(db, period) -> None:

@@ -9,7 +9,7 @@ class TaskReview(BaseModel):
     __tablename__ = 'task_reviews'
 
     task_id = Column(UUID(as_uuid=True), ForeignKey('tasks.id'), nullable=False, index=True)
-    reviewer_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False, index=True)
+    reviewer_id = Column(UUID(as_uuid=True), ForeignKey('users.id', ondelete='SET NULL'), nullable=True, index=True)
     reviewer_level = Column(String(10), nullable=False) # L1, L0
     
     # 🌟 3-Stage Action: Approve, Delay-Valid-Reason, Reject-Invalid-Reason

@@ -722,32 +722,48 @@ async def get_kpi_ranking(
     period_type: PeriodType = PeriodType.MONTHLY,
     limit: int = Query(10, gt=0, le=100),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    year: int | None = Query(None, ge=1900, le=9999),
 ):
-    """Rank from the current month (or today), independent of summary date filters."""
+    """Leaderboard. Without ``year``: the current period, as before —
+    but departed employees are no longer filtered out (historical
+    records count). With ``year``: that calendar year's records
+    (the year view), including people who have since left or whose
+    accounts were removed; their names come from the record
+    snapshots and they carry the Resigned label data.
+    """
     enforce_permission(current_user, PERM_KPI_VIEW)
     try:
-        today = datetime.now(APPLICATION_TIMEZONE).date()
-        start_date = today.replace(day=1) if period_type == PeriodType.MONTHLY else today
+        # Direct (non-HTTP) callers may receive the Query default
+        # object itself; only a real int is a year filter.
+        if not isinstance(year, int):
+            year = None
         authorized_department_ids = await get_authorized_department_ids(db, current_user)
-        
+
         stmt = select(KPIRecord).options(
             joinedload(KPIRecord.user).selectinload(User.user_departments)
         ).where(
             KPIRecord.period_type == period_type,
             KPIRecord.is_deleted == False,
-            KPIRecord.user.has(User.is_deleted == False),
-            KPIRecord.period_start >= start_date
         )
+        if year is not None:
+            stmt = stmt.where(
+                KPIRecord.period_start >= datetime(year, 1, 1, tzinfo=APPLICATION_TIMEZONE),
+                KPIRecord.period_start < datetime(year + 1, 1, 1, tzinfo=APPLICATION_TIMEZONE),
+            )
+        else:
+            today = datetime.now(APPLICATION_TIMEZONE).date()
+            start_date = today.replace(day=1) if period_type == PeriodType.MONTHLY else today
+            stmt = stmt.where(KPIRecord.period_start >= start_date)
         if authorized_department_ids is not None:
             stmt = stmt.where(KPIRecord.department_id.in_(authorized_department_ids))
 
         stmt = stmt.order_by(
             desc(KPIRecord.weighted_score), KPIRecord.user_id, KPIRecord.id
         ).limit(limit)
-        
+
         records = (await db.execute(stmt)).scalars().all()
-        
+
         # 🌟 O(1) Bulk fetch departments to eliminate N+1 loop query
         dept_ids = {r.department_id for r in records if r.department_id is not None}
         department_map = {}
@@ -756,77 +772,68 @@ async def get_kpi_ranking(
             depts = (await db.execute(dept_stmt)).all()
             department_map = {d.id: d.name for d in depts}
 
+        # Records whose account is gone resolve their display id via
+        # the departed-identity registry.
+        identity_ids = {
+            getattr(r, "departed_identity_id", None)
+            for r in records
+            if r.user_id is None
+            and getattr(r, "departed_identity_id", None) is not None
+        }
+        identity_map = {}
+        if identity_ids:
+            from app.models.departed_identity import DepartedIdentity
+
+            ident_stmt = select(DepartedIdentity).where(
+                DepartedIdentity.id.in_(identity_ids)
+            )
+            identity_map = {
+                i.id: i for i in (await db.execute(ident_stmt)).scalars().all()
+            }
+
         ranking_list = []
         for index, record in enumerate(records):
             dept_name = "Unknown"
+            snapshot_dept = getattr(record, "department_name", None)
             if record.department_id is not None:
-                dept_name = department_map.get(record.department_id, "Unknown")
+                dept_name = department_map.get(
+                    record.department_id, snapshot_dept or "Unknown"
+                )
+            elif snapshot_dept:
+                dept_name = snapshot_dept
+
+            identity = identity_map.get(getattr(record, "departed_identity_id", None))
+            if record.user is not None:
+                user_id = record.user_id
+                user_name = f"{record.user.first_name} {record.user.last_name}"
+            elif identity is not None:
+                user_id = identity.original_user_id
+                user_name = record.employee_name or identity.employee_name
+            else:
+                # No account and no identity (should not happen after
+                # the retention flows); skip rather than break the board.
+                continue
 
             ranking_list.append(KPIRankingResponse(
-                user_id=record.user_id,
-                user_name=f"{record.user.first_name} {record.user.last_name}",
+                user_id=user_id,
+                user_name=user_name,
                 department_name=dept_name,
                 total_score=record.weighted_score,
                 percentage=record.percentage,
                 grade=record.status_bucket.value if hasattr(record.status_bucket, 'value') else str(record.status_bucket),
-                rank=index + 1  
+                rank=index + 1,
+                resigned_at=getattr(record, "employee_resigned_at", None),
+                is_departed=getattr(record, "employee_resigned_at", None) is not None,
             ))
-            
+
         return ranking_list
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception(f"Dashboard ranking generation failed: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to generate leaderboard.")
 
 
-# ==============================================================================
-# 6. Dashboard: Trend Charts
-# ==============================================================================
-@router.get('/dashboard/charts/{target_user_id}', response_model=KPIChartResponse, tags=["Dashboard"], responses={500: {"description": "Internal Server Error"}})
-async def get_kpi_trend_chart(
-    target_user_id: UUID,
-    period_type: PeriodType = PeriodType.MONTHLY,
-    days_limit: int = Query(180, le=365), 
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """Return a rolling ``days_limit`` chart independent of summary date filters."""
-    enforce_permission(current_user, PERM_KPI_VIEW)
-    await enforce_user_scope(db, current_user, target_user_id)
- 
-    try:
-        start_date = datetime.now(APPLICATION_TIMEZONE).date() - timedelta(days=days_limit)
-
-        stmt = select(KPIRecord).where(
-            KPIRecord.user_id == target_user_id,
-            KPIRecord.period_type == period_type,
-            KPIRecord.is_deleted == False,
-            KPIRecord.period_start >= start_date
-        ).order_by(asc(KPIRecord.period_start))
-        
-        records = (await db.execute(stmt)).scalars().all()
-        
-        data_points = []
-        for record in records:
-            date_label = record.period_start.strftime("%Y-%m-%d") if period_type == PeriodType.DAILY else record.period_start.strftime("%b %Y")
-            data_points.append(KPIChartPoint(
-                date_label=date_label,
-                score=record.weighted_score,
-                percentage=record.percentage
-            ))
-            
-        return KPIChartResponse(
-            user_id=target_user_id,
-            period_type=period_type,
-            data_points=data_points
-        )
-    except Exception as e:
-        logger.exception(f"Dashboard chart generation failed for {target_user_id}: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to load trend chart data.")
-
-
-# ==============================================================================
-# 7. KPI Reports: Summary Report
-# ==============================================================================
 def _normalize_report_period_type(period_type: str) -> str:
     try:
         return PeriodType(period_type.strip().upper()).value

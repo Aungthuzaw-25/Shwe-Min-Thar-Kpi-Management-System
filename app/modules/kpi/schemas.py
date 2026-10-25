@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
@@ -353,6 +353,9 @@ class KPIRankingResponse(BaseModel):
     percentage: float
     grade: str
     rank: int
+    # Departed-employee label: render "Resigned · <resigned_at>".
+    resigned_at: date | None = None
+    is_departed: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -381,6 +384,9 @@ class KpiReportItem(BaseModel):
     evaluated_tasks_count: int
     period_type: str
     created_at: datetime | None = None
+    # Departed-employee label: render "Resigned · <resigned_at>".
+    resigned_at: date | None = None
+    is_departed: bool = False
 
 class KpiReportSummaryResponse(BaseModel):
     success: bool = True

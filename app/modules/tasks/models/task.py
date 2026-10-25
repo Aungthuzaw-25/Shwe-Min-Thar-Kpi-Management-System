@@ -3,7 +3,7 @@ Enterprise Task & Workflow Engine Model
 """
 import enum
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import JSON, Boolean, Column, Date, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -54,7 +54,27 @@ class Task(BaseModel):
     late_days = Column(Integer, default=0, nullable=False) # အမှန်တကယ် ဘယ်နှစ်ရက် နောက်ကျသွားသလဲ
 
     # Task တာဝန်ယူလုပ်ဆောင်သူ (L2 Staff)
-    owner_id = Column(UUID(as_uuid=True), ForeignKey('users.id', ondelete="CASCADE"), nullable=False, index=True)
+    owner_id = Column(UUID(as_uuid=True), ForeignKey('users.id', ondelete="SET NULL"), nullable=True, index=True)
+
+    # Owner name snapshot, so a finished task stays attributable after
+    # the owner's account is removed (owner_id is then NULL).
+    owner_name = Column(String(255), nullable=True)
+    # Stamped by the offboarding flow; same "Resigned · <date>" badge
+    # contract as kpi_records.employee_resigned_at.
+    owner_resigned_at = Column(Date, nullable=True)
+    # Grouping key to the departed-identity registry; same contract as
+    # kpi_records.departed_identity_id.
+    departed_identity_id = Column(UUID(as_uuid=True), ForeignKey('departed_identities.id', ondelete="RESTRICT"), nullable=True, index=True)
+
+    # Outcome snapshot, stamped by the hard-delete flow BEFORE the
+    # step-by-step history/review trail is purged (Zenn's rule:
+    # outcomes stay, activity trails go). For a completed task:
+    # {"completed_at": iso, "result": text} — the completion moment
+    # comes from the history entry that moved the task to COMPLETED
+    # and the result text from the final review (or that entry's
+    # remarks). Lets a successor see what the departed person
+    # finished without any personal activity trail surviving.
+    outcome_snapshot = Column(JSON, nullable=True)
     
     # Task Assign ချပေးသူ သို့မဟုတ် လက်ရှိ စစ်ဆေးနေသော Manager (L1/L0)
     assigner_id = Column(UUID(as_uuid=True), ForeignKey('users.id', ondelete=SET_NULL), nullable=True, index=True)

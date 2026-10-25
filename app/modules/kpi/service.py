@@ -482,7 +482,9 @@ class KpiReportService:
                 grade=row["grade"], 
                 evaluated_tasks_count=row["evaluated_tasks_count"],
                 period_type=row["period_type"],
-                created_at=row["latest_evaluation_date"]
+                created_at=row["latest_evaluation_date"],
+                resigned_at=row.get("resigned_at"),
+                is_departed=bool(row.get("is_departed")),
             )
             report_items.append(item)
 
