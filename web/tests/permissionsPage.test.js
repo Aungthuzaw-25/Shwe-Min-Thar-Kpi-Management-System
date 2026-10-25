@@ -53,8 +53,8 @@ describe("permissions page polish (visual only)", () => {
     expect(css).toContain(".permissions-page select:not(:disabled)");
   });
 
-  it("marks the mount point for the future Super-Admin-only Download permission section", () => {
-    expect(template).toContain('Super-Admin-only');
-    expect(template).toContain('"Download permission" section here');
+  it("carries the Super-Admin-only Download permission section (Stage 3 filled the mount point)", () => {
+    expect(template).toContain('id="download-permission-section"');
+    expect(template).toContain('{% if user_role == "Super Admin" %}');
   });
 });
