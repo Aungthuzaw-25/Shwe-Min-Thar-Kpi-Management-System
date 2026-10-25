@@ -261,6 +261,24 @@
         overlay.addEventListener("click", (event) => {
             if (event.target === overlay) close();
         });
+        // Formula lifecycle notes (closing soon / closed) get a direct
+        // path to that formula's period linking on the KPI page.
+        if (["KPI formula closing soon", "KPI formula closed"].includes(notification.title || "")) {
+            const nameMatch = /KPI formula '([^']+)'/.exec(notification.message || "");
+            const actions = overlay.querySelector(".app-confirm-actions");
+            const actionBtn = overlay.querySelector(".app-confirm-submit");
+            const cancelBtn = document.createElement("button");
+            cancelBtn.type = "button";
+            cancelBtn.className = "app-confirm-cancel";
+            cancelBtn.textContent = "Close";
+            cancelBtn.addEventListener("click", close);
+            actions.prepend(cancelBtn);
+            actionBtn.textContent = notification.title === "KPI formula closed" ? "Revive formula" : "Link periods";
+            actionBtn.addEventListener("click", () => {
+                const target = nameMatch ? `?formula=${encodeURIComponent(nameMatch[1])}` : "";
+                window.location.href = `/superadmin/kpi${target}`;
+            });
+        }
         deactivateModal = activateModal(overlay, overlay.querySelector(".app-confirm-submit"), close);
     }
 

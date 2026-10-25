@@ -41,7 +41,7 @@ const API_BASE = "/api/v1/kpi";
 
         initializeFormulaCardActions();
         fetchDepartments();
-        loadDepartmentKPIs();
+        loadDepartmentKPIs().then(() => openFormulaFromQuery());
         loadAssignmentOptions();
 
         const tabActions = [
@@ -156,6 +156,15 @@ const API_BASE = "/api/v1/kpi";
             } else if (button.matches("[data-delete-formula]")) {
                 closeMenus();
                 deleteFormula(button.dataset.deleteFormula);
+            } else if (button.matches("[data-close-formula]")) {
+                closeMenus();
+                closeFormula(button.dataset.closeFormula, button.dataset.formulaName || "This formula");
+            } else if (button.matches("[data-revive-formula]")) {
+                closeMenus();
+                openReviveFormula(button.dataset.reviveFormula);
+            } else if (button.matches("[data-view-formula]")) {
+                closeMenus();
+                openViewFormula(button.dataset.viewFormula);
             }
         });
 
@@ -355,6 +364,170 @@ const API_BASE = "/api/v1/kpi";
     }
 
     // 1. FORMULAS WORKFLOW
+
+    // Period links + lifecycle (backend contract: period_ids,
+    // is_closed, closed_at, lifecycle_status on every formula).
+    let formulaModalMode = "edit"; // "edit" | "revive" | "view"
+    let formulaPeriodsLoadFailed = false;
+    let lastFormulas = [];
+
+    function encodeFormula(formula) {
+        return encodeURIComponent(JSON.stringify(formula)).replaceAll("'", "%27");
+    }
+
+    async function loadFormulaPeriods(selectedIds) {
+        const list = document.getElementById("fPeriodsList");
+        if (!list) return;
+        const selected = new Set((selectedIds || []).map(String));
+        formulaPeriodsLoadFailed = false;
+        list.innerHTML = '<p class="text-xs sm:text-sm text-slate-400 font-medium">Loading periods…</p>';
+        try {
+            const periods = [];
+            let skip = 0;
+            for (;;) {
+                const res = await fetch(`${API_BASE}/periods?skip=${skip}&limit=100`);
+                if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+                if (!res.ok) throw new Error(`Periods request failed (${res.status})`);
+                const page = await res.json();
+                if (!Array.isArray(page)) throw new Error("Periods response must be an array.");
+                periods.push(...page);
+                if (page.length < 100) break;
+                skip += 100;
+            }
+            periods.sort((a, b) => String(b.start_date || "").localeCompare(String(a.start_date || "")));
+            if (periods.length === 0) {
+                list.innerHTML = '<p class="text-xs sm:text-sm text-slate-400 font-medium">No periods exist yet. Create a period first (KPI Periods page), then link it here.</p>';
+                return;
+            }
+            list.innerHTML = periods.map(p => {
+                const status = String(p.status || "").toUpperCase();
+                const chip = status === "OPEN"
+                    ? "bg-emerald-50 text-emerald-700 border border-emerald-100"
+                    : status === "DRAFT"
+                        ? "bg-amber-50 text-amber-700 border border-amber-100"
+                        : "bg-slate-50 text-slate-500 border border-slate-200";
+                return `
+                <label class="flex items-start gap-2.5 sm:gap-3 p-3 sm:p-3.5 rounded-xl border border-slate-200 bg-slate-50/60 hover:border-blue-300 cursor-pointer transition-colors">
+                    <input type="checkbox" class="f-period-checkbox mt-0.5 w-4 h-4 accent-blue-700 shrink-0" value="${escapeHTML(p.id)}" ${selected.has(String(p.id)) ? "checked" : ""}>
+                    <span class="flex-1 min-w-0">
+                        <span class="block text-xs sm:text-sm font-bold text-slate-800 truncate">${escapeHTML(p.label || "Period")}</span>
+                        <span class="block text-[10px] sm:text-xs text-slate-500 font-medium">${escapeHTML(p.start_date || "")} → ${escapeHTML(p.end_date || "")}</span>
+                    </span>
+                    <span class="text-[8px] sm:text-[9px] font-extrabold uppercase tracking-widest px-2 py-1 rounded-md ${chip}">${escapeHTML(status || "—")}</span>
+                </label>`;
+            }).join("");
+        } catch (error) {
+            console.error("Failed to load periods for the formula form:", error);
+            formulaPeriodsLoadFailed = true;
+            list.innerHTML = '<p class="text-xs sm:text-sm text-red-500 font-semibold">Periods could not be loaded. Saving will leave the current period links unchanged.</p>';
+        } finally {
+            applyFormulaModalMode();
+        }
+    }
+
+    function selectedFormulaPeriodIds() {
+        return [...document.querySelectorAll(".f-period-checkbox:checked")].map(cb => cb.value);
+    }
+
+    function setFormulaModalLock(locked) {
+        const modal = document.getElementById("formulasModal");
+        if (!modal) return;
+        modal.querySelectorAll("input, select, textarea").forEach(el => {
+            if (el.classList.contains("f-period-checkbox")) return;
+            el.disabled = locked;
+        });
+        document.getElementById("categoriesContainer")?.querySelectorAll("button, input, select, textarea").forEach(el => { el.disabled = locked; });
+        const addBtn = modal.querySelector(".kg-add-category");
+        if (addBtn) addBtn.disabled = locked;
+    }
+
+    function applyFormulaModalMode() {
+        const saveBtn = document.getElementById("saveFormulaBtn");
+        const hint = document.getElementById("fPeriodsHint");
+        const checkboxes = document.querySelectorAll(".f-period-checkbox");
+        if (formulaModalMode === "view") {
+            setFormulaModalLock(true);
+            checkboxes.forEach(cb => { cb.disabled = true; });
+            if (saveBtn) saveBtn.style.display = "none";
+            if (hint) hint.textContent = "This formula is closed. Its rules are kept exactly as they were; revive it with new periods to use it again.";
+        } else if (formulaModalMode === "revive") {
+            setFormulaModalLock(true);
+            checkboxes.forEach(cb => { cb.disabled = false; });
+            if (saveBtn) { saveBtn.style.display = ""; saveBtn.textContent = "Revive Formula"; }
+            if (hint) hint.textContent = "Choose the period(s) this formula applies to now. Its rules are reused exactly as they are — only the periods change. The old periods stay in its history and are not re-activated.";
+        } else {
+            setFormulaModalLock(false);
+            checkboxes.forEach(cb => { cb.disabled = false; });
+            if (saveBtn) { saveBtn.style.display = ""; saveBtn.textContent = "Save Formula"; }
+            if (hint) hint.textContent = "Choose the periods this formula applies to. If none are chosen, the formula follows the Effective Month rule (older behaviour).";
+        }
+    }
+
+    async function saveRevivedFormula() {
+        const fId = document.getElementById("fId").value;
+        const periodIds = selectedFormulaPeriodIds();
+        if (periodIds.length === 0) {
+            showToast("Choose at least one period to revive this formula.", "error");
+            return;
+        }
+        try {
+            const res = await fetch(`${API_BASE}/formulas/${fId}/revive`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ period_ids: periodIds })
+            });
+            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+            if (res.ok) {
+                showToast("Formula revived with its new periods.", "success");
+                closeFormulasModal();
+                loadDepartmentKPIs();
+            } else {
+                const err = await res.json().catch(() => ({}));
+                showToast(err.detail || "The formula could not be revived.", "error");
+            }
+        } catch (err) { showToast("System connectivity error.", "error"); }
+    }
+
+    async function closeFormula(id, name) {
+        const confirmed = await window.appConfirm(
+            `"${name}" will stop applying everywhere, including template downloads and calculations. Its rules are kept, and it can be revived later by linking new periods.`,
+            { title: "Close this formula?", confirmText: "Close formula" }
+        );
+        if (!confirmed) return;
+        try {
+            const res = await fetch(`${API_BASE}/formulas/${id}/close`, { method: "POST" });
+            if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
+            if (res.ok) {
+                showToast("Formula closed. Its rules are kept for later reuse.", "success");
+                loadDepartmentKPIs();
+            } else {
+                const err = await res.json().catch(() => ({}));
+                showToast(err.detail || "The formula could not be closed.", "error");
+            }
+        } catch (err) { showToast("System connectivity error.", "error"); }
+    }
+
+    // The pre-close warning / closed notifications send the Super
+    // Admin here with ?formula=<name>: land them on that formula's
+    // period linking — the revive form when it already closed, the
+    // edit form (picker inside) while it is still open.
+    function openFormulaFromQuery() {
+        const name = new URLSearchParams(window.location.search).get("formula");
+        if (!name) return;
+        const formula = (lastFormulas || []).find(f => f.name === name);
+        if (!formula) {
+            showToast("That formula could not be found.", "error");
+            return;
+        }
+        if (formula.is_closed) {
+            openReviveFormula(encodeFormula(formula));
+            showToast("This formula is closed. Choose new period(s) to use it again.", "success");
+        } else {
+            editFormula(encodeFormula(formula));
+            showToast("Link the next period under 'Applies to Periods', then save.", "success");
+        }
+    }
+
     async function loadDepartmentKPIs() {
         const container = document.getElementById("formulaCardsContainer");
         if (!container) {
@@ -375,6 +548,7 @@ const API_BASE = "/api/v1/kpi";
 
             const formulas = await formRes.json();
             if (!Array.isArray(formulas)) throw new Error("Formula response must be an array.");
+            lastFormulas = formulas;
             container.innerHTML = "";
 
             if(formulas.length === 0) {
@@ -421,7 +595,32 @@ const API_BASE = "/api/v1/kpi";
                     statusBadge = `<span class="bg-slate-50 text-slate-400 ring-slate-200 px-3 py-1.5 rounded-lg text-[9px] sm:text-[10px] font-black uppercase tracking-wider ring-1 inset-ring shadow-sm">Archived</span>`;
                     menuItems += `<button type="button" data-workflow-action="activate" data-formula-id="${escapeHTML(formula.id)}" class="w-full text-left px-5 py-3 text-sm font-bold text-blue-700 hover:bg-blue-50 transition-colors">Restore (Activate)</button>`;
                 }
-                menuItems += `<button type="button" data-delete-formula="${escapeHTML(formula.id)}" class="w-full text-left px-5 py-3 text-sm font-semibold text-red-600 hover:bg-red-50 border-t border-slate-100 transition-colors">Delete Formula</button>`;
+                if (formula.is_closed) {
+                    menuItems = `
+                        <button type="button" data-view-formula="${escapeHTML(encodedFormula)}" class="w-full text-left px-5 py-3 text-sm font-semibold text-slate-700 hover:text-blue-700 hover:bg-blue-50 border-b border-slate-100 transition-colors">View Rules</button>
+                        <button type="button" data-revive-formula="${escapeHTML(encodedFormula)}" class="w-full text-left px-5 py-3 text-sm font-bold text-emerald-700 hover:bg-emerald-50 transition-colors">Use Again — Link New Periods</button>`;
+                } else {
+                    menuItems += `<button type="button" data-close-formula="${escapeHTML(formula.id)}" data-formula-name="${escapeHTML(formula.name)}" class="w-full text-left px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 border-t border-slate-100 transition-colors">Close Formula</button>`;
+                    menuItems += `<button type="button" data-delete-formula="${escapeHTML(formula.id)}" class="w-full text-left px-5 py-3 text-sm font-semibold text-red-600 hover:bg-red-50 border-t border-slate-100 transition-colors">Delete Formula</button>`;
+                }
+
+                // Lifecycle badge (period links / closure), shown next
+                // to the workflow status badge.
+                let lifecycleBadge = '';
+                let lifecycleNote = '';
+                if (formula.is_closed) {
+                    const closedDate = formula.closed_at ? String(formula.closed_at).slice(0, 10) : '';
+                    lifecycleBadge = `<span class="bg-red-50 text-red-700 ring-red-200 px-3 py-1.5 rounded-lg text-[9px] sm:text-[10px] font-black uppercase tracking-wider ring-1 inset-ring shadow-sm">Closed${closedDate ? ` · ${escapeHTML(closedDate)}` : ''}</span>`;
+                    lifecycleNote = `<p class="text-[11px] sm:text-xs text-red-600 font-semibold mb-4 sm:mb-5 -mt-2">Closed — not used in template downloads or calculations. Its rules are kept and can be reused.</p>`;
+                } else if (formula.lifecycle_status === 'linked') {
+                    const count = (formula.period_ids || []).length;
+                    lifecycleBadge = `<span class="bg-emerald-50 text-emerald-700 ring-emerald-200 px-3 py-1.5 rounded-lg text-[9px] sm:text-[10px] font-black uppercase tracking-wider ring-1 inset-ring shadow-sm">Linked · ${count} period${count === 1 ? '' : 's'}</span>`;
+                } else if (formula.lifecycle_status === 'unlinked') {
+                    lifecycleBadge = `<span class="bg-amber-50 text-amber-700 ring-amber-200 px-3 py-1.5 rounded-lg text-[9px] sm:text-[10px] font-black uppercase tracking-wider ring-1 inset-ring shadow-sm">No periods linked</span>`;
+                    lifecycleNote = `<p class="text-[11px] sm:text-xs text-amber-600 font-semibold mb-4 sm:mb-5 -mt-2">Not linked to any period right now — it does not apply anywhere until periods are linked.</p>`;
+                } else {
+                    lifecycleBadge = `<span class="bg-slate-100 text-slate-500 ring-slate-200 px-3 py-1.5 rounded-lg text-[9px] sm:text-[10px] font-black uppercase tracking-wider ring-1 inset-ring shadow-sm">Effective-month rule</span>`;
+                }
 
                 const isActiveStyle = formula.status === 'ACTIVE' ? 'border-blue-300 shadow-lg ring-4 ring-blue-50 scale-[1.01]' : 'border-slate-200 shadow-sm hover:shadow-md hover:-translate-y-1';
                 const regionText = formula.region_town ? escapeHTML(formula.region_town) : 'All Regions';
@@ -447,9 +646,11 @@ const API_BASE = "/api/v1/kpi";
                             </div>
                         </div>
 
-                        <div class="flex justify-end mb-4 sm:mb-5">
+                        <div class="flex flex-wrap justify-end gap-1.5 sm:gap-2 mb-4 sm:mb-5">
                             ${statusBadge}
+                            ${lifecycleBadge}
                         </div>
+                        ${lifecycleNote}
 
                         <div class="flex-1 text-xs sm:text-sm mb-5 sm:mb-6 bg-slate-50/50 p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-inner">
                             <p class="text-[9px] sm:text-[10px] font-black text-slate-400 mb-2 sm:mb-3 uppercase tracking-widest">Weight Distribution</p>
@@ -581,10 +782,13 @@ const API_BASE = "/api/v1/kpi";
         deductionIndex = 0;
         updateTotalWeightIndicator();
         addCategory();
+
+        formulaModalMode = "edit";
+        applyFormulaModalMode();
+        loadFormulaPeriods([]);
     }
 
-    async function editFormula(encodedData) {
-        const f = JSON.parse(decodeURIComponent(encodedData));
+    async function fillFormulaModal(f) {
 
         document.getElementById("fId").value = f.id;
         document.getElementById("fName").value = f.name || "";
@@ -595,6 +799,10 @@ const API_BASE = "/api/v1/kpi";
 
         document.getElementById("fDepartment").value = f.department_id || "";
         await loadPositionsForDepartment(f.department_id, f.position_name);
+        // The old edit flow never filled the effective month; the
+        // form must show the formula's real value.
+        const monthInput = document.getElementById("fEffectiveMonth");
+        if (monthInput) monthInput.value = f.effective_month || "";
 
         document.getElementById("categoriesContainer").innerHTML = "";
         categoryIndex = 0;
@@ -614,6 +822,34 @@ const API_BASE = "/api/v1/kpi";
         modal.classList.remove("opacity-0");
         content.classList.remove("scale-95");
         content.classList.add("scale-100");
+    }
+
+    async function editFormula(encodedData) {
+        formulaModalMode = "edit";
+        const f = JSON.parse(decodeURIComponent(encodedData));
+        await fillFormulaModal(f);
+        applyFormulaModalMode();
+        loadFormulaPeriods(f.period_ids || []);
+    }
+
+    async function openReviveFormula(encodedData) {
+        formulaModalMode = "revive";
+        const f = JSON.parse(decodeURIComponent(encodedData));
+        await fillFormulaModal(f);
+        document.getElementById("modalTitle").innerText = "Use Formula Again";
+        applyFormulaModalMode();
+        // The picker starts EMPTY on purpose: reviving always links
+        // fresh periods; the old ones stay in the formula's history.
+        loadFormulaPeriods([]);
+    }
+
+    async function openViewFormula(encodedData) {
+        formulaModalMode = "view";
+        const f = JSON.parse(decodeURIComponent(encodedData));
+        await fillFormulaModal(f);
+        document.getElementById("modalTitle").innerText = "Closed Formula — Rules";
+        applyFormulaModalMode();
+        loadFormulaPeriods(f.period_ids || []);
     }
 
     function closeFormulasModal() {
@@ -855,6 +1091,8 @@ const API_BASE = "/api/v1/kpi";
     }
 
     async function saveFormula() {
+        if (formulaModalMode === "view") return;
+        if (formulaModalMode === "revive") { await saveRevivedFormula(); return; }
         const payload = {
             name: document.getElementById("fName").value.trim(),
             region_town: document.getElementById("fRegionTown").value.trim() || null,
@@ -951,6 +1189,13 @@ const API_BASE = "/api/v1/kpi";
         // 🌟 END OF VALIDATION 🌟
 
         if(Math.abs(totalWeight - 100) > 0.01) return showToast(`Total category weights must equal exactly 100%. Current: ${totalWeight}%`, "error");
+
+        // Period links ride the same save. If the picker failed to
+        // load, omit the field entirely so the server leaves the
+        // current links untouched instead of replacing them.
+        if (!formulaPeriodsLoadFailed) {
+            payload.period_ids = selectedFormulaPeriodIds();
+        }
 
         const fId = document.getElementById("fId").value;
         const url = fId ? `${API_BASE}/formulas/${fId}` : `${API_BASE}/formulas`;
