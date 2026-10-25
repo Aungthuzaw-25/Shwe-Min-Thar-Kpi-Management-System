@@ -80,6 +80,108 @@ async def _locked_audit_log_retention():
     await _run_with_lock("audit_logs.retention", run_audit_log_retention_job)
 
 
+async def run_yearly_report_reminder_job(now=None) -> int:
+    """December reminder: until the company-wide full-year report for
+    the current year has been downloaded, notify every Super Admin —
+    on Dec 1, then weekly (8/15/22), with a final strong warning on
+    Dec 28. Returns how many notifications were created. The check
+    itself is harmless on any other day (it creates nothing).
+    """
+    from datetime import datetime as _dt
+
+    from sqlalchemy import select as _select
+
+    from app.core.timezone import APPLICATION_TIMEZONE
+    from app.database.connection import AsyncSessionLocal
+    from app.modules.notifications.repo import create_notification
+    from app.modules.system.retention_service import full_year_download_exists
+    from app.modules.users.models import Role, User
+
+    moment = now or _dt.now(APPLICATION_TIMEZONE)
+    if moment.month != 12 or moment.day not in (1, 8, 15, 22, 28):
+        return 0
+    year = moment.year
+    async with AsyncSessionLocal() as db:
+        if await full_year_download_exists(db, year):
+            return 0
+        admins = (
+            await db.execute(
+                _select(User)
+                .join(Role, User.role_id == Role.id)
+                .where(
+                    Role.name == "Super Admin",
+                    User.is_active.is_(True),
+                    User.is_deleted.is_(False),
+                )
+            )
+        ).scalars().all()
+        final = moment.day == 28
+        title = (
+            f"FINAL WARNING: download the {year} full-year KPI report now"
+            if final
+            else f"Reminder: download the {year} full-year KPI report"
+        )
+        message = (
+            f"The company-wide full-year KPI report for {year} has not been "
+            "downloaded yet. Download it (Reports → window: Yearly, scope: "
+            "Company-wide) and confirm the year's backup — departed "
+            "employees' accounts cannot be permanently removed until both "
+            "are done."
+        )
+        created = 0
+        for admin in admins:
+            await create_notification(
+                db,
+                {
+                    "user_id": admin.id,
+                    "title": title,
+                    "message": message,
+                    "notification_type": "YEARLY_REPORT_REMINDER",
+                    "channel": "DASHBOARD",
+                },
+                commit=False,
+            )
+            created += 1
+        await db.commit()
+        return created
+
+
+async def run_task_snapshot_purge_job(now=None) -> int:
+    """Daily: purge departed task snapshots past their 1-year keep.
+
+    Zenn's retention rule (2026-10-23): the snapshot-level task
+    rows of a hard-deleted employee live one year after the hard
+    delete (handover), then go automatically. KPI records/history
+    are kept forever and are never touched by the purge.
+    """
+    now = now or _app_now()
+    purged = 0
+    async with async_session_maker() as db:
+        from app.modules.system import retention_service as retention
+
+        summaries = await retention.purge_expired_task_snapshots(
+            db, today=now.date()
+        )
+        purged = sum(item["tasks_removed"] for item in summaries)
+    if purged:
+        logger.info(
+            "Retention purge: removed %d expired task snapshots", purged
+        )
+    return purged
+
+
+async def _locked_task_snapshot_purge():
+    await _run_with_lock(
+        "retention.task_snapshot_purge", run_task_snapshot_purge_job
+    )
+
+
+async def _locked_yearly_report_reminder():
+    await _run_with_lock(
+        "retention.yearly_report_reminder", run_yearly_report_reminder_job
+    )
+
+
 async def run_formula_lifecycle_job(now=None) -> dict:
     """Formula lifecycle (Zenn, 2026-10-24): warn, then auto-close.
 
@@ -422,6 +524,31 @@ def start_scheduler():
         coalesce=True,
         max_instances=1,
     )
+
+    scheduler.add_job(
+        _locked_yearly_report_reminder,
+        "cron",
+        month=12,
+        day="1,8,15,22,28",
+        hour=9,
+        minute=0,
+        id="yearly_report_reminder",
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+    )
+
+    scheduler.add_job(
+        _locked_task_snapshot_purge,
+        "cron",
+        hour=3,
+        minute=30,
+        id="task_snapshot_purge",
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+    )
+
 
     scheduler.add_job(
         _locked_formula_lifecycle,

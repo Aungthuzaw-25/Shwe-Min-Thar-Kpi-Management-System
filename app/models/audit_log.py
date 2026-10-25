@@ -11,7 +11,7 @@ class AuditLog(Base):
     __tablename__ = 'audit_logs'
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=True , index=True)  # Nullable for system actions
+    user_id = Column(UUID(as_uuid=True), ForeignKey('users.id', ondelete='SET NULL'), nullable=True , index=True)  # Nullable for system actions; SET NULL keeps the audit trail when a user is removed
     action = Column(String(50), nullable=False) # e.g., CREATE, UPDATE, DELETE, LOGIN
     table_name = Column(String(50), nullable=True)
     record_id = Column(String(50), nullable=True)

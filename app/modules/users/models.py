@@ -1,9 +1,11 @@
+import enum
 import uuid
 
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
     Column,
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -46,6 +48,20 @@ class Role(BaseModel):
         overlaps=PERMISSIONS_ROLES_OVERLAP
     )
 
+class UserStatus(str, enum.Enum):
+    """Employment lifecycle status of an account.
+
+    Stored as a plain string in ``users.status``; accounts are archived
+    through this status instead of being hard-deleted once they have
+    KPI/task history.
+    """
+
+    ACTIVE = "ACTIVE"
+    RESIGNED = "RESIGNED"
+    TERMINATED = "TERMINATED"
+    SUSPENDED = "SUSPENDED"
+
+
 # ==============================================================================
 # မူလ User Model (မည်သည့် Code မှ မဖျက်ထားပါ)
 # ==============================================================================
@@ -80,7 +96,17 @@ class User(BaseModel):
     is_on_leave = Column(Boolean, default=False)
     leave_start_date = Column(DateTime, nullable=True)
     leave_end_date = Column(DateTime, nullable=True)
-    delegated_to_id = Column(UUID(as_uuid=True), ForeignKey(USER_ID_FOREIGN_KEY), nullable=True)
+
+    # Employment lifecycle: see UserStatus. Existing accounts are ACTIVE;
+    # resigned_at records the leaving date for RESIGNED/TERMINATED.
+    status = Column(
+        String(20),
+        nullable=False,
+        default=UserStatus.ACTIVE.value,
+        server_default="ACTIVE",
+    )
+    resigned_at = Column(Date, nullable=True)
+    delegated_to_id = Column(UUID(as_uuid=True), ForeignKey(USER_ID_FOREIGN_KEY, ondelete="SET NULL"), nullable=True)
     
     role_id = Column(UUID(as_uuid=True), ForeignKey("roles.id"), nullable=False, index=True)
     

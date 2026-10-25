@@ -5,6 +5,7 @@ from sqlalchemy import func, literal
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
+from app.models.departed_identity import DepartedIdentity
 from app.modules.departments.models import Department
 from app.modules.kpi.models import KPIFormula, KPIRecord
 from app.modules.users.avatar import avatar_color_index, avatar_initials, avatar_url
@@ -65,27 +66,41 @@ async def get_kpi_report_data(
     """
     Report အတွက် KPIRecord, User နှင့် Department Data များကို Join လုပ်၍ ဆွဲထုတ်မည်။
     """
+    # Historical reporting INCLUDES departed employees (retention
+    # design): the user join is an OUTER join, soft-deleted users are
+    # no longer filtered out, and rows whose account is gone fall
+    # back to the record's own snapshots (employee_name /
+    # department_name) and to the departed-identity registry for the
+    # user id and email.
     stmt = (
         select(
-            User.id.label("user_id"),
+            func.coalesce(User.id, DepartedIdentity.original_user_id).label("user_id"),
             # ⚡ LOGICAL BUG FIX: Use concat_ws to prevent NULL results if last_name is missing
-            func.concat_ws(" ", User.first_name, User.last_name).label("full_name"),
-            User.email.label("email"),
+            func.coalesce(
+                func.concat_ws(" ", User.first_name, User.last_name),
+                KPIRecord.employee_name,
+                DepartedIdentity.employee_name,
+            ).label("full_name"),
+            func.coalesce(User.email, DepartedIdentity.email).label("email"),
             User.avatar_path.label("avatar_path"),
             User.avatar_updated_at.label("avatar_updated_at"),
-            Department.name.label("department_name"),
+            func.coalesce(Department.name, KPIRecord.department_name).label("department_name"),
             KPIRecord.weighted_score.label("total_score"),
-            KPIRecord.status_bucket.label("grade"), 
-            literal(1).label("evaluated_tasks_count"), 
+            KPIRecord.status_bucket.label("grade"),
+            literal(1).label("evaluated_tasks_count"),
             KPIRecord.period_type.label("period_type"),
-            KPIRecord.created_at.label("latest_evaluation_date")
+            KPIRecord.created_at.label("latest_evaluation_date"),
+            KPIRecord.employee_resigned_at.label("employee_resigned_at"),
         )
-        .join(User, KPIRecord.user_id == User.id)
+        .outerjoin(User, KPIRecord.user_id == User.id)
+        .outerjoin(
+            DepartedIdentity,
+            KPIRecord.departed_identity_id == DepartedIdentity.id,
+        )
         .outerjoin(Department, KPIRecord.department_id == Department.id)
         .where(
             KPIRecord.period_type == period_type,
             KPIRecord.is_deleted == False,
-            User.is_deleted == False,
         )
     )
 
@@ -105,7 +120,7 @@ async def get_kpi_report_data(
     for row in rows:
         report_data.append({
             "user_id": row.user_id,
-            "full_name": row.full_name,
+            "full_name": row.full_name or "Unknown",
             "avatar_url": avatar_url(row.avatar_path, row.avatar_updated_at),
             "initials": avatar_initials(row.full_name, row.email),
             "avatar_color_index": avatar_color_index(row.user_id),
@@ -115,7 +130,12 @@ async def get_kpi_report_data(
             "grade": str(row.grade.value) if hasattr(row.grade, 'value') else str(row.grade),
             "evaluated_tasks_count": int(row.evaluated_tasks_count),
             "period_type": str(row.period_type.value) if hasattr(row.period_type, 'value') else str(row.period_type),
-            "latest_evaluation_date": row.latest_evaluation_date
+            "latest_evaluation_date": row.latest_evaluation_date,
+            # Departed label data: the UI renders "Resigned · <date>"
+            # from these; is_departed is true whenever the row carries
+            # a leaving date (account present or already removed).
+            "resigned_at": row.employee_resigned_at,
+            "is_departed": row.employee_resigned_at is not None,
         })
         
     return report_data

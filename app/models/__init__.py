@@ -3,6 +3,14 @@ from app.database.connection import Base
 
 # 🌟 6. Audit & Auth Logs
 from app.models.audit_log import AuditLog
+from app.models.departed_identity import DepartedIdentity
+from app.models.report_download import (
+    ReportDownload,
+    ReportDownloadGrant,
+    ReportGrantScope,
+    ReportType,
+)
+from app.models.yearly_retention import YearlyRetention
 
 # 🌟 7. System Settings & Logs
 from app.models.system import SystemEventLog, SystemSetting
@@ -45,6 +53,12 @@ __all__ = [
     'BaseModel',
     'Base',
     'AuditLog',
+    'DepartedIdentity',
+    'ReportDownload',
+    'ReportDownloadGrant',
+    'ReportGrantScope',
+    'ReportType',
+    'YearlyRetention',
     'SystemEventLog',
     'SystemSetting',
     'AuthSession',

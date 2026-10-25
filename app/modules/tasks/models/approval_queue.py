@@ -9,7 +9,7 @@ class ApprovalQueue(BaseModel):
     __tablename__ = 'approval_queues'
 
     batch_id = Column(UUID(as_uuid=True), ForeignKey('submission_batches.id'), nullable=False ,index=True)
-    reviewer_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False, index=True)
+    reviewer_id = Column(UUID(as_uuid=True), ForeignKey('users.id', ondelete='SET NULL'), nullable=True, index=True)
 
     pending_count = Column(Integer, default=0)
     completed_count = Column(Integer, default=0)
