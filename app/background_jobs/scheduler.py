@@ -80,6 +80,170 @@ async def _locked_audit_log_retention():
     await _run_with_lock("audit_logs.retention", run_audit_log_retention_job)
 
 
+async def run_formula_lifecycle_job(now=None) -> dict:
+    """Formula lifecycle (Zenn, 2026-10-24): warn, then auto-close.
+
+    For every open formula WITH current period links (legacy
+    unlinked formulas are never auto-closed):
+    - 7 days before its last linked period ends, every Super Admin
+      gets an in-app notification asking whether to continue —
+      extend by linking the next period (the note says plainly when
+      no later period exists yet).
+    - Once that period has ended, the formula auto-closes:
+      closed_at is stamped, its links become history, an audit row
+      is written, and the Super Admins get the closing note.
+    Date-exact conditions make the daily run idempotent.
+    """
+    from sqlalchemy import select as _select
+
+    from app.core.timezone import as_application_time
+    from app.models.audit_log import AuditLog
+    from app.modules.kpi.models import (
+        FormulaStatus,
+        KPIFormula,
+        KPIFormulaPeriod,
+        KPIPeriod,
+    )
+    from app.modules.notifications.repo import create_notification
+    from app.modules.users.models import Role, User
+
+    moment = now or datetime.now(timezone)
+    today = as_application_time(moment).date()
+    warned = 0
+    closed = 0
+    async with AsyncSessionLocal() as db:
+        admins = (
+            await db.execute(
+                _select(User)
+                .join(Role, User.role_id == Role.id)
+                .where(
+                    Role.name == "Super Admin",
+                    User.is_active.is_(True),
+                    User.is_deleted.is_(False),
+                )
+            )
+        ).scalars().all()
+        formulas = (
+            await db.execute(
+                _select(KPIFormula).where(
+                    KPIFormula.status == FormulaStatus.ACTIVE,
+                    KPIFormula.is_active.is_(True),
+                    KPIFormula.is_deleted.is_(False),
+                    KPIFormula.closed_at.is_(None),
+                )
+            )
+        ).scalars().all()
+        for formula in formulas:
+            links = (
+                await db.execute(
+                    _select(KPIFormulaPeriod).where(
+                        KPIFormulaPeriod.formula_id == formula.id,
+                        KPIFormulaPeriod.is_current.is_(True),
+                    )
+                )
+            ).scalars().all()
+            if not links:
+                continue
+            periods = (
+                await db.execute(
+                    _select(KPIPeriod).where(
+                        KPIPeriod.id.in_([link.period_id for link in links]),
+                        KPIPeriod.is_deleted.is_(False),
+                    )
+                )
+            ).scalars().all()
+            if not periods:
+                continue
+            last_period = max(
+                periods, key=lambda p: as_application_time(p.end_date)
+            )
+            end_date = as_application_time(last_period.end_date).date()
+            days_left = (end_date - today).days
+            if days_left == 7:
+                later_exists = (
+                    await db.execute(
+                        _select(KPIPeriod.id)
+                        .where(
+                            KPIPeriod.is_deleted.is_(False),
+                            KPIPeriod.end_date > last_period.end_date,
+                        )
+                        .limit(1)
+                    )
+                ).first() is not None
+                message = (
+                    f"KPI formula '{formula.name}' is linked to {last_period.label}, "
+                    f"which ends on {end_date.isoformat()}. If it is not linked to a "
+                    "later period, it will close after that day. To keep using it, "
+                    "link the next period to the formula."
+                )
+                if not later_exists:
+                    message += (
+                        " No later period exists yet — create the next period "
+                        "first, then link it."
+                    )
+                # Dedupe: one warning per formula per admin, even if
+                # the job runs twice on the warning day.
+                from app.modules.notifications.models import Notification
+
+                already = (
+                    await db.execute(
+                        _select(Notification.id)
+                        .where(
+                            Notification.title == "KPI formula closing soon",
+                            Notification.message == message,
+                        )
+                        .limit(1)
+                    )
+                ).first()
+                if already is None:
+                    for admin in admins:
+                        await create_notification(db, {
+                            "user_id": admin.id,
+                            "title": "KPI formula closing soon",
+                            "message": message,
+                            "notification_type": "SYSTEM",
+                            "channel": "DASHBOARD",
+                        }, commit=False)
+                    warned += 1
+            elif days_left < 0:
+                formula.closed_at = moment
+                for link in links:
+                    link.is_current = False
+                db.add(AuditLog(
+                    user_id=None, action="FORMULA_AUTO_CLOSED",
+                    table_name="kpi_formulas", record_id=str(formula.id),
+                    new_value={
+                        "formula": formula.name,
+                        "last_period": last_period.label,
+                        "period_ended": end_date.isoformat(),
+                    },
+                ))
+                for admin in admins:
+                    await create_notification(db, {
+                        "user_id": admin.id,
+                        "title": "KPI formula closed",
+                        "message": (
+                            f"KPI formula '{formula.name}' closed because its last "
+                            f"linked period ({last_period.label}) has ended. Its "
+                            "rules are kept — revive it any time by linking a new "
+                            "period."
+                        ),
+                        "notification_type": "SYSTEM",
+                        "channel": "DASHBOARD",
+                    }, commit=False)
+                closed += 1
+        await db.commit()
+    if warned or closed:
+        logger.info(
+            "Formula lifecycle: warned %s, auto-closed %s", warned, closed
+        )
+    return {"warned": warned, "closed": closed}
+
+
+async def _locked_formula_lifecycle():
+    await _run_with_lock("formula.lifecycle", run_formula_lifecycle_job)
+
+
 async def _run_sync_notification_job():
     await asyncio.to_thread(process_batch_notifications)
 
@@ -254,6 +418,17 @@ def start_scheduler():
         hour=3,
         minute=0,
         id="audit_log_retention_cleanup",
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+    )
+
+    scheduler.add_job(
+        _locked_formula_lifecycle,
+        "cron",
+        hour=8,
+        minute=30,
+        id="formula_lifecycle",
         replace_existing=True,
         coalesce=True,
         max_instances=1,

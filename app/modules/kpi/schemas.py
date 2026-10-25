@@ -215,6 +215,11 @@ class KPIFormulaCreate(BaseModel):
     is_active: bool = True
     effective_month: str | None = Field(None, description="e.g., 2024-11")
     expression: str | None = None  # New optional expression field
+    # Periods this formula applies to (explicit links). On create:
+    # links are made current. Omit on update to leave links as-is.
+    period_ids: list[UUID] | None = Field(
+        None, description="Periods this formula applies to (explicit links)"
+    )
 
     @model_validator(mode='after')
     def validate_formula_rules(self):
@@ -234,6 +239,9 @@ class KPIFormulaUpdate(BaseModel):
     categories: list[KPICategoryConfig] | None = None
     is_active: bool | None = None
     effective_month: str | None = None
+    # Present (even as []) = replace the current period links with
+    # exactly this set; absent = leave links untouched.
+    period_ids: list[UUID] | None = None
 
     @model_validator(mode='after')
     def validate_formula_rules(self):
@@ -254,8 +262,29 @@ class KPIFormulaResponse(KPIFormulaCreate):
 
     created_by_email: str | None = None
     updated_at: datetime | None = None
+    # Lifecycle (filled by the API, not stored on the formula row):
+    # current period links, closure state, and a one-word lifecycle
+    # label for list display: "closed" | "linked" | "legacy".
+    period_ids: list[UUID] = []
+    closed_at: datetime | None = None
+    is_closed: bool = False
+    lifecycle_status: str = "legacy"
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class FormulaPeriodsUpdate(BaseModel):
+    period_ids: list[UUID] = Field(
+        ..., description="The exact set of periods this formula applies to now"
+    )
+
+
+class FormulaReviveRequest(BaseModel):
+    # Validated in the endpoint: a revived formula MUST link at
+    # least one period (clear business message, not a bare 422).
+    period_ids: list[UUID] = Field(
+        ..., description="Periods to link when reviving (at least one)"
+    )
 
 # ---------------------------------------------------------
 # 3. KPI Records

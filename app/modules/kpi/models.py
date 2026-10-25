@@ -128,6 +128,12 @@ class KPIFormula(BaseModel):
     parent_formula_id = Column(UUID(as_uuid=True), ForeignKey(KPI_FORMULAS_ID, ondelete=SET_NULL), nullable=True)
 
     effective_month = Column(String(7), nullable=True, index=True) # "YYYY-MM"
+    # Lifecycle: NULL = open. Set when the formula auto-closes (its
+    # linked periods have all ended) or is closed manually. A closed
+    # formula never applies and is never deleted — its rules stay for
+    # later reuse; reviving clears this stamp and requires NEW period
+    # links (old links stay non-current history).
+    closed_at = Column(DateTime(timezone=True), nullable=True)
     created_by_id = Column(UUID(as_uuid=True), ForeignKey(USERS_ID, ondelete=SET_NULL), nullable=True)
 
     # Relationships
@@ -139,6 +145,36 @@ class KPIFormula(BaseModel):
 
     __table_args__ = (
         Index('idx_formula_targeting', 'department_id', 'user_level', 'status', 'is_active'),
+    )
+
+
+class KPIFormulaPeriod(BaseModel):
+    """Explicit link: a formula applies to a specific KPI period.
+
+    Read rule (back-compat): only CURRENT links count. A formula
+    with current links applies to exactly those periods; a formula
+    with NO link rows at all keeps the legacy ``effective_month``
+    rule unchanged. A formula whose links all became non-current
+    (closed, or periods unlinked) applies NOWHERE until new links
+    are added — it never falls back to the legacy rule, because it
+    was explicitly linked once. Link rows are kept as history when
+    they stop being current (``is_current`` flips to false); they
+    are hard-removed only when either side is deleted (CASCADE on
+    both FKs).
+    """
+
+    __tablename__ = "kpi_formula_periods"
+
+    formula_id = Column(
+        UUID(as_uuid=True), ForeignKey(KPI_FORMULAS_ID, ondelete="CASCADE"), nullable=False, index=True
+    )
+    period_id = Column(
+        UUID(as_uuid=True), ForeignKey("kpi_periods.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    is_current = Column(Boolean, nullable=False, default=True)
+
+    __table_args__ = (
+        UniqueConstraint("formula_id", "period_id", name="uq_formula_period_link"),
     )
 
 

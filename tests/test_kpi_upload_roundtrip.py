@@ -22,6 +22,7 @@ from app.modules.kpi.models import (
     FormulaStatus,
     KPIAssignment,
     KPIFormula,
+    KPIFormulaPeriod,
     KPIHistory,
     KPIPeriod,
     KPIPeriodStatus,
@@ -43,6 +44,7 @@ TABLES = [
     Position.__table__,
     User.__table__,
     KPIFormula.__table__,
+        KPIFormulaPeriod.__table__,
     KPIPeriod.__table__,
     KPIAssignment.__table__,
     KPIRecord.__table__,
@@ -360,7 +362,11 @@ def test_template_endpoint_reports_period_without_applicable_formula(tmp_path):
                     params={"period_id": str(period.id)},
                 )
                 assert response.status_code == 400
-                assert "No active employees have an applicable KPI formula" in str(
+                # Split error (2026-10-24): the formula side is the
+                # problem here (the only formula is inactive), so the
+                # message must say no formula applies — not blame
+                # employees.
+                assert "No KPI formula applies to this period yet" in str(
                     response.json()["detail"]
                 )
         finally:
