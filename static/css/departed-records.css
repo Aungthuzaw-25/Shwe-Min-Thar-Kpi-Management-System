@@ -1,0 +1,15 @@
+/* Departed Employee Records — shared bits for the users hub and the
+   SA dashboard year board. Page layout itself uses Tailwind utilities. */
+.resigned-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    background: #f1f5f9;
+    color: #475569;
+    border: 1px solid #e2e8f0;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+}

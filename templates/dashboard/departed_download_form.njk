@@ -1,0 +1,56 @@
+{# Report download form — shared by the Departed hub (Super Admin) and the
+   grantee download block (non-SA viewers with a grant). The scope options
+   are filled by departed-records.js: both scopes for Super Admins, exactly
+   the viewer's granted scopes for everyone else. #}
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+    <div>
+        <label for="depWindowType" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wide">Period</label>
+        <select id="depWindowType" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-semibold">
+            <option value="MONTHLY">Monthly</option>
+            <option value="QUARTERLY">Quarterly</option>
+            <option value="YEARLY">Yearly</option>
+            <option value="CUSTOM">Custom range</option>
+        </select>
+    </div>
+    <div id="depYearField">
+        <label for="depYear" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wide">Year</label>
+        <select id="depYear" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-semibold"></select>
+    </div>
+    <div id="depMonthField">
+        <label for="depMonth" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wide">Month</label>
+        <select id="depMonth" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-semibold">
+            <option value="1">January</option><option value="2">February</option><option value="3">March</option>
+            <option value="4">April</option><option value="5">May</option><option value="6">June</option>
+            <option value="7">July</option><option value="8">August</option><option value="9">September</option>
+            <option value="10">October</option><option value="11">November</option><option value="12">December</option>
+        </select>
+    </div>
+    <div id="depQuarterField" class="hidden">
+        <label for="depQuarter" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wide">Quarter</label>
+        <select id="depQuarter" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-semibold">
+            <option value="1">Q1 (Jan – Mar)</option><option value="2">Q2 (Apr – Jun)</option>
+            <option value="3">Q3 (Jul – Sep)</option><option value="4">Q4 (Oct – Dec)</option>
+        </select>
+    </div>
+    <div id="depCustomField" class="hidden sm:col-span-2">
+        <label class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wide">Custom range</label>
+        <div class="flex items-center gap-2">
+            <input type="date" id="depStart" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-semibold">
+            <span class="text-slate-400 font-bold">→</span>
+            <input type="date" id="depEnd" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-semibold">
+        </div>
+    </div>
+    <div>
+        <label for="depScope" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wide">Scope</label>
+        <select id="depScope" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-semibold"></select>
+    </div>
+    <div id="depDeptField" class="hidden">
+        <label for="depDept" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wide">Department</label>
+        <select id="depDept" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-semibold"></select>
+    </div>
+</div>
+<p class="text-[11px] sm:text-xs text-slate-500 font-medium mt-3 leading-relaxed">Boundary rule: a record is included when its period <span class="font-bold text-slate-700">starts</span> inside the chosen window — a window crossing a period boundary includes every period that starts inside it. Departed employees are included with a “Resigned · date” label. The file name carries the window and the scope.</p>
+<p class="text-[11px] sm:text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 font-semibold mt-2">Only a Yearly, company-wide, Jan 1 – Dec 31 download counts toward the year-end lock. Monthly, quarterly, custom or department downloads never unlock a year.</p>
+<div class="mt-4">
+    <button type="button" id="depDownloadBtn" class="px-5 py-2.5 rounded-xl bg-blue-950 hover:bg-blue-900 text-white text-xs sm:text-sm font-bold shadow-md transition-all">Download report (CSV)</button>
+</div>

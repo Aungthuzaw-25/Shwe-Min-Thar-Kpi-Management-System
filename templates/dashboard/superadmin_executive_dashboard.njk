@@ -5,6 +5,7 @@
 <link rel="stylesheet" href="/static/css/kd-superadmin-dashboard.css?v=20261019-4">
 <script src="/static/js/avatar-renderer.js"></script>
 <script src="/static/js/avatar.js"></script>
+<link rel="stylesheet" href="/static/css/departed-records.css">
 
 <div id="executiveDashboard" class="kd-page exec-dashboard" aria-busy="false" data-run="0">
   <div class="kd-progress" aria-hidden="true"></div>
@@ -236,6 +237,25 @@
         <div id="employeeDetail" class="kd-employee-detail exec-employee-detail" role="region" aria-live="polite" hidden></div>
       </section>
     </section>
+
+    <section id="depYearBoard" class="kd-card kd-analysis-card exec-card exec-panel" aria-labelledby="depBoardHeading">
+      <div class="kd-card-heading exec-section-heading">
+        <div><p class="kd-eyebrow">Past-year history view</p><h2 id="depBoardHeading" class="kd-card-title">Year leaderboard</h2>
+        <p class="kd-caption">True numbers for the chosen year, including departed staff (grey Resigned badge). Names come from record snapshots when the account is gone.</p></div>
+        <div class="flex items-center gap-2">
+          <label for="depBoardYear" class="kd-caption">Year</label>
+          <select id="depBoardYear" class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-800"></select>
+        </div>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-xs sm:text-sm text-left min-w-[640px]">
+          <thead class="text-[10px] sm:text-xs text-slate-500 uppercase tracking-wider bg-slate-50 border-b border-slate-100">
+            <tr><th class="px-4 py-3 font-bold">Rank</th><th class="px-4 py-3 font-bold">Employee</th><th class="px-4 py-3 font-bold">Department</th><th class="px-4 py-3 font-bold">Score</th><th class="px-4 py-3 font-bold">Grade</th></tr>
+          </thead>
+          <tbody id="depBoardRows"></tbody>
+        </table>
+      </div>
+    </section>
   </div>
 </div>
 
@@ -247,3 +267,4 @@
 </script>
 <script src="/static/js/kd-superadmin-dashboard.js?v=20261019-2" defer></script>
 <script src="/static/js/superadmin-executive-dashboard.js?v=20261019-2" defer></script>
+<script src="/static/js/departed-records.js" defer></script>

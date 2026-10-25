@@ -5,6 +5,7 @@
 
 {% block content %}
 <link rel="stylesheet" href="/static/css/avatar.css">
+<link rel="stylesheet" href="/static/css/departed-records.css">
 <script src="/static/js/avatar-renderer.js"></script>
 <script src="/static/js/avatar.js"></script>
 <style>
@@ -97,6 +98,102 @@
                     </tr>
                 </tbody>
             </table>
+        </div>
+    </div>
+</div>
+
+<!-- DEPARTED EMPLOYEE RECORDS HUB -->
+{% if user_role == "Super Admin" %}
+<section id="depHub" data-sa="1" class="mx-4 sm:mx-6 md:mx-8 mb-6 sm:mb-8 bg-slate-50/80 border border-slate-200 rounded-3xl p-4 sm:p-6 md:p-8 shadow-sm">
+    <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-3 mb-5">
+        <div>
+            <h2 class="text-xl sm:text-2xl font-extrabold text-blue-950 tracking-tight">Departed Employee Records</h2>
+            <p class="text-xs sm:text-sm text-slate-500 mt-1 font-medium">Everything about employees who left: their kept records, report downloads, year-end status, and Relink. Records, tasks and audit history are never removed — only the account row goes.</p>
+        </div>
+        <div class="flex flex-col gap-2 shrink-0">
+            <a href="/superadmin/permissions#download-permission-section" class="px-4 py-2 rounded-xl bg-white border border-slate-200 text-xs sm:text-sm font-bold text-blue-900 hover:bg-blue-50 shadow-sm text-center">Download permission စီမံရန် →</a>
+            <a href="/system-settings" class="px-4 py-2 rounded-xl bg-white border border-slate-200 text-xs sm:text-sm font-bold text-blue-900 hover:bg-blue-50 shadow-sm text-center">Audit retention ဆက်တင် →</a>
+        </div>
+    </div>
+
+    <div class="bg-white border border-slate-200 rounded-3xl p-4 sm:p-6 mb-5">
+        <h3 class="text-base sm:text-lg font-extrabold text-blue-950 mb-4">Departed list</h3>
+        <div id="depDepartedList">
+            <p class="text-xs sm:text-sm text-slate-500 font-medium">Loading departed list…</p>
+        </div>
+    </div>
+
+    <div class="bg-white border border-slate-200 rounded-3xl p-4 sm:p-6 mb-5">
+        <h3 class="text-base sm:text-lg font-extrabold text-blue-950 mb-4">Report downloads</h3>
+        {% include "dashboard/departed_download_form.njk" %}
+    </div>
+
+    <div class="bg-white border border-slate-200 rounded-3xl p-4 sm:p-6 mb-5">
+        <h3 class="text-base sm:text-lg font-extrabold text-blue-950 mb-1">Per-year status &amp; year-end removal</h3>
+        <p class="text-xs sm:text-sm text-slate-500 font-medium mb-4">Permanent removal unlocks only when the leaving year has ended AND the company-wide full-year report was downloaded AND the backup was confirmed.</p>
+        <div class="flex flex-wrap items-center gap-3 mb-4">
+            <label for="depLockYear" class="text-[11px] sm:text-xs font-bold text-slate-700 uppercase tracking-wide">Year</label>
+            <select id="depLockYear" class="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-semibold"></select>
+            <button type="button" id="depLockRefresh" class="px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-xs sm:text-sm font-bold text-slate-700 hover:bg-slate-50">Refresh</button>
+            <button type="button" id="depBackupBtn" class="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs sm:text-sm font-bold shadow-sm">Confirm backup done</button>
+        </div>
+        <div id="depLockGates" class="space-y-1.5 mb-3">
+            <p class="text-xs sm:text-sm text-slate-500 font-medium">Loading year status…</p>
+        </div>
+        <div id="depLockBanner" class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs sm:text-sm font-bold text-slate-600">Loading…</div>
+        <p id="depReminderLine" class="text-[11px] sm:text-xs text-slate-500 font-medium mt-3"></p>
+        <button type="button" id="depGoTrash" class="mt-4 px-4 py-2 rounded-xl bg-white border border-slate-200 text-xs sm:text-sm font-bold text-blue-900 hover:bg-blue-50">Go to Deleted Users (Trash) →</button>
+    </div>
+
+    <div id="depRelinkPanel" class="hidden bg-white border border-slate-200 rounded-3xl p-4 sm:p-6 mb-5"></div>
+
+    <div class="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs sm:text-sm font-medium text-blue-900 leading-relaxed">
+        <span class="font-extrabold">Restore (same-year returnees):</span> use Restore in the Deleted Users (Trash) tab — the account returns to ACTIVE and its records reconnect automatically. The department-head role and old sessions are NOT restored.
+    </div>
+</section>
+{% else %}
+<div id="depDownloadBlock" class="hidden mx-4 sm:mx-6 md:mx-8 mb-6 sm:mb-8 bg-white border border-slate-200 rounded-3xl p-4 sm:p-6 md:p-8 shadow-sm">
+    <h2 class="text-xl sm:text-2xl font-extrabold text-blue-950 tracking-tight mb-1">Report downloads</h2>
+    <p class="text-xs sm:text-sm text-slate-500 font-medium mb-4">Your download grant decides what you can download — nothing else does.</p>
+    {% include "dashboard/departed_download_form.njk" %}
+</div>
+{% endif %}
+
+<!-- OFFBOARD MODAL -->
+<div id="offboardModal" class="fixed inset-0 z-[70] hidden flex items-center justify-center bg-slate-900/60 backdrop-blur-sm transition-opacity opacity-0 p-2 sm:p-4">
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-lg mx-auto overflow-hidden flex flex-col max-h-[95vh] sm:max-h-[90vh]">
+        <div class="px-5 sm:px-8 py-4 sm:py-5 border-b border-gray-100 flex justify-between items-center bg-slate-50 shrink-0">
+            <div>
+                <h3 class="text-lg sm:text-xl font-extrabold text-blue-950 tracking-tight">Offboard employee</h3>
+                <p class="text-[10px] sm:text-xs text-slate-500 mt-0.5 sm:mt-1 font-medium">For <span id="offboardUserName" class="font-bold text-slate-700"></span></p>
+            </div>
+            <button onclick="closeOffboardModal()" class="text-slate-400 hover:text-red-500 bg-white border border-gray-200 p-1.5 sm:p-2 rounded-xl focus:outline-none transition-colors shadow-sm shrink-0 ml-2">✕</button>
+        </div>
+        <div class="px-5 sm:px-8 py-5 sm:py-6 overflow-y-auto flex-1 bg-white space-y-4">
+            <input type="hidden" id="offboardUserId">
+            <div>
+                <label for="offboardStatus" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wide">Departure type</label>
+                <select id="offboardStatus" class="w-full px-3 sm:px-4 py-2.5 bg-slate-50 border border-gray-200 rounded-xl text-xs sm:text-sm font-semibold">
+                    <option value="RESIGNED">Resigned</option>
+                    <option value="TERMINATED">Terminated</option>
+                    <option value="SUSPENDED">Suspended (pause only)</option>
+                </select>
+            </div>
+            <div>
+                <label for="offboardDate" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wide">Leaving date</label>
+                <input type="date" id="offboardDate" class="w-full px-3 sm:px-4 py-2.5 bg-slate-50 border border-gray-200 rounded-xl text-xs sm:text-sm font-semibold">
+            </div>
+            <div>
+                <label for="offboardReason" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wide">Reason (optional)</label>
+                <textarea id="offboardReason" rows="2" maxlength="500" class="w-full px-3 sm:px-4 py-2.5 bg-slate-50 border border-gray-200 rounded-xl text-xs sm:text-sm font-semibold" placeholder="Recorded in the audit log"></textarea>
+            </div>
+            <div class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs sm:text-sm font-medium text-amber-800 leading-relaxed">
+                What happens for Resigned / Terminated: login stops immediately and sessions are revoked, the account moves to trash, the leaving date is stamped onto kept KPI records and tasks (“Resigned · date”), any download grants end, and the department-head seat is freed. KPI records, tasks and audit history are kept. Suspended only pauses the account — nothing moves to trash.
+            </div>
+        </div>
+        <div class="px-5 sm:px-8 py-4 border-t border-gray-100 bg-slate-50 flex justify-end gap-2 shrink-0">
+            <button onclick="closeOffboardModal()" class="px-5 py-2.5 rounded-xl bg-white border border-gray-200 text-xs sm:text-sm font-bold text-slate-600 hover:bg-slate-50">Cancel</button>
+            <button onclick="submitOffboard()" class="px-5 py-2.5 rounded-xl bg-blue-950 hover:bg-blue-900 text-white text-xs sm:text-sm font-bold shadow-md">Offboard</button>
         </div>
     </div>
 </div>
@@ -235,6 +332,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="/static/js/departed-records.js"></script>
 <script>
     'use strict';
 
@@ -561,6 +659,9 @@
                             <svg class="w-4 h-4 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
                         </button>
                         ${isSuperAdmin ? '' : `
+                        <button onclick="openOffboardModal('${safeUserJSON}')" class="p-1.5 sm:p-2 text-amber-700 hover:bg-amber-50 rounded-xl transition-colors" title="Offboard Employee">
+                            <svg class="w-4 h-4 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
+                        </button>
                         <button onclick="deleteUser('${user.id}')" class="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded-xl transition-colors" title="Delete User">
                             <svg class="w-4 h-4 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                         </button>`}
