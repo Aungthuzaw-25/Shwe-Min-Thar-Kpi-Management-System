@@ -42,7 +42,7 @@ from app.core.dependencies import (
 from app.core.timezone import as_application_time
 from app.database.connection import get_db
 from app.modules.departments.models import UserDepartment
-from app.modules.kpi.engine import KPICalculationEngine
+from app.modules.kpi.engine import KPICalculationEngine, any_formula_applies_to_period
 from app.modules.kpi.models import (
     KPIFormula,
     KPIPeriod,
@@ -157,22 +157,15 @@ async def _resolve_period(
 async def _resolve_user_formula(
     db: AsyncSession, user: User, period: KPIPeriod
 ) -> KPIFormula | None:
-    period_range = _period_month_range(period)
+    """Resolve against the SELECTED period itself (the single
+    applicability rule) — no date-based period re-derivation, so an
+    overlapping neighbour period can no longer poison a download."""
     try:
-        formula, resolved_period = (
-            await KPICalculationEngine.get_applicable_formula_and_period(
-                db, user, period_range.start_inclusive
-            )
-        )
+        return await KPICalculationEngine.get_formula_for_period(db, user, period)
     except ValueError as exc:
         raise UploadValidationError(
             f"KPI formula resolution is ambiguous for {user.email} in the selected period."
         ) from exc
-    if resolved_period is None or resolved_period.id != period.id:
-        raise UploadValidationError(
-            f"No unambiguous KPI period/formula context exists for {user.email}."
-        )
-    return formula
 
 
 async def _read_upload_dataframe(file: UploadFile) -> ParsedWorkbook:
@@ -664,14 +657,27 @@ async def export_kpi_template(
         users = (
             await db.execute(_scoped_active_users_statement(department_ids))
         ).scalars().unique().all()
+        if not users:
+            raise UploadValidationError(
+                "No active employees are in scope for this period, so the template would list nobody. "
+                "Check that the employees are active in departments you can access."
+            )
         formulas_by_user = {}
         for user in users:
             formula = await _resolve_user_formula(db, user, period)
             if formula is not None:
                 formulas_by_user[user.id] = formula
         if not formulas_by_user:
+            # Split the old blanket "no effective user" message by
+            # its actual cause (formula side vs employee side).
+            if not await any_formula_applies_to_period(db, period, department_ids):
+                raise UploadValidationError(
+                    "No KPI formula applies to this period yet. Link a formula to this period "
+                    "(open the formula and link this period), then download the template again."
+                )
             raise UploadValidationError(
-                "No active employees have an applicable KPI formula for this period."
+                "Formulas apply to this period, but none of them match the employees in scope. "
+                "Check the formulas' department, level and position targeting."
             )
         try:
             contract = build_header_contract(list(formulas_by_user.values()))

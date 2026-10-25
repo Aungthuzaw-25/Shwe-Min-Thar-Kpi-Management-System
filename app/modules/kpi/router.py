@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -49,6 +49,8 @@ from app.modules.kpi.schemas import (
     KPIChartPoint,
     KPIChartResponse,
     KPIDeductionRequest,
+    FormulaPeriodsUpdate,
+    FormulaReviveRequest,
     KPIFormulaCreate,
     KPIFormulaResponse,
     KPIFormulaUpdate,
@@ -257,6 +259,31 @@ async def _authorized_active_user_ids(
 
 
 
+async def _formula_response(db: AsyncSession, formula):
+    """Attach the lifecycle fields (current period_ids, is_closed,
+    and the one-word label closed | linked | unlinked | legacy) to
+    the formula object; the response model serializes them."""
+    from app.modules.kpi.engine import formula_period_links
+
+    formula_id = getattr(formula, "id", None)
+    links = (
+        await formula_period_links(db, formula_id)
+        if formula_id is not None
+        else []
+    )
+    current = [link.period_id for link in links if link.is_current]
+    closed_at = getattr(formula, "closed_at", None)
+    formula.period_ids = current
+    formula.is_closed = closed_at is not None
+    formula.lifecycle_status = (
+        "closed" if closed_at is not None
+        else "linked" if current
+        else "unlinked" if links
+        else "legacy"
+    )
+    return formula
+
+
 # ==============================================================================
 # 2. KPI Formulas
 # ==============================================================================
@@ -269,7 +296,8 @@ async def create_kpi_formula(
     enforce_permission(current_user, "kpi.create")
     await enforce_department_scope(db, current_user, payload.department_id)
     try:
-        return await kpi_service.create_kpi_formula(db, payload)
+        created = await kpi_service.create_kpi_formula(db, payload)
+        return await _formula_response(db, created)
     except SQLAlchemyError as e:
         await db.rollback()
         logger.exception(f"Error creating formula: {str(e)}", exc_info=True)
@@ -285,7 +313,8 @@ async def edit_kpi_formula(
     enforce_permission(current_user, PERM_KPI_EDIT)
     await _load_formula_in_scope(db, current_user, formula_id)
     try:
-        return await kpi_service.update_kpi_formula(db, formula_id, payload)
+        updated = await kpi_service.update_kpi_formula(db, formula_id, payload)
+        return await _formula_response(db, updated)
     except SQLAlchemyError as e:
         await db.rollback()
         logger.exception(f"Error updating formula {formula_id}: {str(e)}", exc_info=True)
@@ -301,7 +330,8 @@ async def get_kpi_formulas(
     enforce_permission(current_user, PERM_KPI_VIEW)
     formulas = await kpi_repo.get_all_formulas(db, skip=skip, limit=limit)
     department_ids = await get_authorized_department_ids(db, current_user)
-    return formulas if department_ids is None else [formula for formula in formulas if str(formula.department_id) in department_ids]
+    visible = formulas if department_ids is None else [formula for formula in formulas if str(formula.department_id) in department_ids]
+    return [await _formula_response(db, formula) for formula in visible]
 
 @router.put('/formulas/{formula_id}/toggle', response_model=KPIFormulaResponse, responses={404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def toggle_kpi_formula(
@@ -316,7 +346,8 @@ async def toggle_kpi_formula(
         if not formula:
             raise HTTPException(status_code=404, detail=ERR_FORMULA_NOT_FOUND)
             
-        return await kpi_repo.toggle_formula_status(db, formula, payload.is_active)
+        toggled = await kpi_repo.toggle_formula_status(db, formula, payload.is_active)
+        return await _formula_response(db, toggled)
     except SQLAlchemyError as e:
         await db.rollback()
         logger.exception(f"Error toggling formula {formula_id}: {str(e)}", exc_info=True)
@@ -345,7 +376,7 @@ async def _transition_formula_state(
         formula.status = new_status
         await db.commit()
         await db.refresh(formula)
-        return formula
+        return await _formula_response(db, formula)
     except HTTPException:
         raise
     except SQLAlchemyError as e:
@@ -372,6 +403,92 @@ async def activate_formula(formula_id: UUID, db: AsyncSession = Depends(get_db),
 @router.post('/formulas/{formula_id}/archive', response_model=KPIFormulaResponse, responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def archive_formula(formula_id: UUID, db: AsyncSession = Depends(get_db), _: User = Depends(allow_admins)):
     return await _transition_formula_state(db, formula_id, [FormulaStatus.ACTIVE, FormulaStatus.APPROVED], FormulaStatus.ARCHIVED, _)
+
+@router.put('/formulas/{formula_id}/periods', response_model=KPIFormulaResponse, responses={404: {"description": "Not Found"}, 422: {"description": "Unknown period"}, 500: {"description": "Internal Server Error"}})
+async def set_formula_periods(
+    formula_id: UUID,
+    payload: FormulaPeriodsUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(allow_admins),
+):
+    """Set the exact periods this formula applies to (link
+    management without the versioning side effects of a full
+    formula edit). Links leaving the set become history, never
+    deleted rows."""
+    enforce_permission(current_user, PERM_KPI_EDIT)
+    formula = await _load_formula_in_scope(db, current_user, formula_id)
+    if not formula:
+        raise HTTPException(status_code=404, detail=ERR_FORMULA_NOT_FOUND)
+    await kpi_service.set_formula_period_links(db, formula, payload.period_ids)
+    db.add(AuditLog(
+        user_id=current_user.id, action="FORMULA_PERIODS_UPDATED",
+        table_name="kpi_formulas", record_id=str(formula.id),
+        new_value={"period_ids": [str(pid) for pid in payload.period_ids]},
+    ))
+    await db.commit()
+    await db.refresh(formula)
+    return await _formula_response(db, formula)
+
+
+@router.post('/formulas/{formula_id}/close', response_model=KPIFormulaResponse, responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
+async def close_kpi_formula(
+    formula_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(allow_admins),
+):
+    """Manually close a formula (the manual path for legacy
+    formulas, which auto-close never touches). A closed formula
+    applies nowhere; its rules stay untouched for a later revive."""
+    enforce_permission(current_user, PERM_KPI_EDIT)
+    formula = await _load_formula_in_scope(db, current_user, formula_id)
+    if not formula:
+        raise HTTPException(status_code=404, detail=ERR_FORMULA_NOT_FOUND)
+    if formula.closed_at is not None:
+        raise HTTPException(status_code=400, detail="This formula is already closed.")
+    formula.closed_at = datetime.now(UTC)
+    await kpi_service.set_formula_period_links(db, formula, [])
+    db.add(AuditLog(
+        user_id=current_user.id, action="FORMULA_CLOSED",
+        table_name="kpi_formulas", record_id=str(formula.id),
+        new_value={"manual": True},
+    ))
+    await db.commit()
+    await db.refresh(formula)
+    return await _formula_response(db, formula)
+
+
+@router.post('/formulas/{formula_id}/revive', response_model=KPIFormulaResponse, responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 422: {"description": "Period link required / unknown period"}, 500: {"description": "Internal Server Error"}})
+async def revive_kpi_formula(
+    formula_id: UUID,
+    payload: FormulaReviveRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(allow_admins),
+):
+    """Bring a closed formula back: the SAME record and rules are
+    reused — only the closure stamp clears and NEW period links
+    are set (at least one is mandatory)."""
+    enforce_permission(current_user, PERM_KPI_EDIT)
+    formula = await _load_formula_in_scope(db, current_user, formula_id)
+    if not formula:
+        raise HTTPException(status_code=404, detail=ERR_FORMULA_NOT_FOUND)
+    if formula.closed_at is None:
+        raise HTTPException(status_code=400, detail="This formula is not closed, so it cannot be revived.")
+    if not payload.period_ids:
+        raise HTTPException(
+            status_code=422,
+            detail="Reviving a formula requires linking at least one period. Choose the period(s) it applies to.",
+        )
+    await kpi_service.set_formula_period_links(db, formula, payload.period_ids)
+    formula.closed_at = None
+    db.add(AuditLog(
+        user_id=current_user.id, action="FORMULA_REVIVED",
+        table_name="kpi_formulas", record_id=str(formula.id),
+        new_value={"period_ids": [str(pid) for pid in payload.period_ids]},
+    ))
+    await db.commit()
+    await db.refresh(formula)
+    return await _formula_response(db, formula)
+
 
 @router.delete('/formulas/{formula_id}', status_code=status.HTTP_204_NO_CONTENT, responses={404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def delete_kpi_formula(formula_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(allow_super_admins)):

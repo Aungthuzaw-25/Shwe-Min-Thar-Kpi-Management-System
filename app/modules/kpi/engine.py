@@ -18,6 +18,7 @@ from app.modules.kpi.models import (
     FormulaStatus,
     KPIAssignment,
     KPIFormula,
+    KPIFormulaPeriod,
     KPIHistory,
     KPILevelSetting,
     KPIPeriod,
@@ -198,6 +199,115 @@ def _validate_fallback_formula_priority(formulas) -> None:
         raise ValueError("Multiple equally-prioritized active KPI formulas matched the user.")
 
 
+# ----------------------------------------------------------------------
+# Formula <-> period applicability — THE single rule (Zenn, 2026-10-24)
+# ----------------------------------------------------------------------
+async def formula_period_links(db: AsyncSession, formula_id) -> list:
+    """All link rows (current + history) for one formula."""
+    return (
+        await db.execute(
+            select(KPIFormulaPeriod).where(
+                KPIFormulaPeriod.formula_id == formula_id
+            )
+        )
+    ).scalars().all()
+
+
+async def formula_applies_to_period(
+    db: AsyncSession, formula: KPIFormula, period: KPIPeriod
+) -> bool:
+    """The one applicability rule, used by downloads AND calculation:
+
+    1. ``closed_at`` set -> applies nowhere.
+    2. Has CURRENT links -> applies exactly to those periods.
+    3. Never had any link row -> legacy ``effective_month`` rule
+       (NULL = always; otherwise effective from that month onward).
+    4. Has link history but nothing current -> applies nowhere
+       (an explicitly-linked formula never falls back to legacy).
+    """
+    if formula.closed_at is not None:
+        return False
+    links = await formula_period_links(db, formula.id)
+    current = [link for link in links if link.is_current]
+    if current:
+        return any(link.period_id == period.id for link in current)
+    if links:
+        return False
+    if formula.effective_month is None:
+        return True
+    period_month = as_application_time(period.start_date).strftime("%Y-%m")
+    return formula.effective_month <= period_month
+
+
+async def _find_fallback_formula_for_period(db, user, period):
+    """Fallback targeting (department/level/position) for ONE period,
+    filtered by the single applicability rule. Formulas with a
+    current link to this period outrank legacy-applicable ones;
+    within a tier the historical priority holds (effective_month,
+    then version)."""
+    department_id, user_level = _active_membership_context(user)
+    if not department_id and _has_active_position(user):
+        department_id = user.position.department_id
+    if not department_id or not user_level:
+        return None
+    position_filter = _fallback_position_filter(user)
+    statement = select(KPIFormula).options(
+        selectinload(KPIFormula.scoring_rules)
+    ).where(
+        KPIFormula.department_id == department_id,
+        KPIFormula.user_level == user_level,
+        position_filter,
+        KPIFormula.status == FormulaStatus.ACTIVE,
+        KPIFormula.is_active == True,
+        KPIFormula.is_deleted == False,
+    )
+    if user.region_town:
+        statement = statement.where(KPIFormula.region_town == user.region_town)
+    candidates = (await db.execute(statement)).scalars().all()
+    applicable = []
+    for candidate in candidates:
+        if await formula_applies_to_period(db, candidate, period):
+            links = await formula_period_links(db, candidate.id)
+            linked_here = any(
+                link.is_current and link.period_id == period.id for link in links
+            )
+            applicable.append((0 if linked_here else 1, candidate))
+    if not applicable:
+        return None
+    applicable.sort(key=lambda item: item[0])
+    tier = [c for tier_no, c in applicable if tier_no == applicable[0][0]]
+    # Priority: effective_month desc, version desc, id asc as the
+    # deterministic tail (mirrors the legacy query's ordering).
+    tier.sort(key=lambda f: str(f.id))
+    tier.sort(
+        key=lambda f: (f.effective_month or "", f.version),
+        reverse=True,
+    )
+    _validate_fallback_formula_priority(tier)
+    return tier[0]
+
+
+async def any_formula_applies_to_period(
+    db: AsyncSession, period: KPIPeriod, department_ids=None
+) -> bool:
+    """True when at least one live formula applies to the period
+    (used to explain a template download failure precisely)."""
+    statement = select(KPIFormula).where(
+        KPIFormula.status == FormulaStatus.ACTIVE,
+        KPIFormula.is_active == True,
+        KPIFormula.is_deleted == False,
+        KPIFormula.closed_at.is_(None),
+    )
+    if department_ids is not None:
+        statement = statement.where(
+            KPIFormula.department_id.in_(department_ids)
+        )
+    for candidate in (await db.execute(statement)).scalars().all():
+        if await formula_applies_to_period(db, candidate, period):
+            return True
+    return False
+
+
 async def _collect_deductions(db, user, formula, period_start, period_end):
     start = as_application_time(period_start)
     end = as_application_time(period_end)
@@ -375,6 +485,8 @@ async def _validate_record_assignment(
 def _validate_formula_effective_month(
     formula: KPIFormula, effective_month: str
 ) -> None:
+    # Retained for compatibility with older callers/tests; the live
+    # rule is formula_applies_to_period (links/closed/legacy).
     if formula.effective_month and formula.effective_month > effective_month:
         raise ValueError("KPI record formula is not effective for the selected period.")
 
@@ -639,16 +751,46 @@ class KPICalculationEngine:
                     KPIFormula.status == FormulaStatus.ACTIVE,
                     KPIFormula.is_active == True,
                     KPIFormula.is_deleted == False,
-                    or_(
-                        KPIFormula.effective_month.is_(None),
-                        KPIFormula.effective_month <= target_date.strftime("%Y-%m"),
-                    ),
                 )
                 formula = (await db.execute(stmt_form)).scalars().first()
-                if formula:
+                if formula and await formula_applies_to_period(db, formula, period):
                     return formula, period
 
-        return await _find_fallback_formula(db, user, target_date.strftime("%Y-%m")), period
+        if period is None:
+            # No period contains the date — nothing period-based can
+            # apply; the legacy month fallback is the only answer
+            # (date-only calculation entry points rely on it).
+            return await _find_fallback_formula(db, user, target_date.strftime("%Y-%m")), period
+        return await _find_fallback_formula_for_period(db, user, period), period
+
+    @staticmethod
+    async def get_formula_for_period(db: AsyncSession, user: User, period: KPIPeriod):
+        """Period-explicit resolution (template download + uploads):
+        the assignment for THIS period first, then the period
+        fallback — all under the single applicability rule, with no
+        date-based period re-derivation."""
+        stmt_assign = select(KPIAssignment).where(
+            KPIAssignment.user_id == user.id,
+            KPIAssignment.kpi_period_id == period.id,
+            KPIAssignment.is_deleted == False,
+        ).order_by(KPIAssignment.created_at.desc(), KPIAssignment.id)
+        assignments = (await db.execute(stmt_assign)).scalars().all()
+        if len(assignments) > 1:
+            raise ValueError("Multiple active KPI assignments matched the user and period.")
+        assignment = assignments[0] if assignments else None
+        if assignment:
+            stmt_form = select(KPIFormula).options(
+                selectinload(KPIFormula.scoring_rules)
+            ).where(
+                KPIFormula.id == assignment.kpi_formula_id,
+                KPIFormula.status == FormulaStatus.ACTIVE,
+                KPIFormula.is_active == True,
+                KPIFormula.is_deleted == False,
+            )
+            formula = (await db.execute(stmt_form)).scalars().first()
+            if formula and await formula_applies_to_period(db, formula, period):
+                return formula
+        return await _find_fallback_formula_for_period(db, user, period)
 
     @staticmethod
     async def resolve_explicit_calculation_context(
@@ -679,8 +821,8 @@ class KPICalculationEngine:
         _validate_explicit_record_entities(record, user, period, formula)
         period_range = _validated_record_period_range(record, period)
         await _validate_record_assignment(db, context, record)
-        effective_month = period_range.start_inclusive.strftime("%Y-%m")
-        _validate_formula_effective_month(formula, effective_month)
+        if not await formula_applies_to_period(db, formula, period):
+            raise ValueError("KPI record formula is not effective for the selected period.")
 
         return ResolvedKPICalculationContext(
             user=user,

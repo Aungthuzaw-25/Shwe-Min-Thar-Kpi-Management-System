@@ -23,6 +23,7 @@ from app.modules.kpi.executive_intelligence_service import (
 )
 from app.modules.kpi.models import (
     KPIFormula,
+    KPIFormulaPeriod,
     KPIHistory,
     KPIPeriod,
     KPIPeriodStatus,
@@ -42,6 +43,7 @@ TABLES = [
     User.__table__,
     UserDepartment.__table__,
     KPIFormula.__table__,
+        KPIFormulaPeriod.__table__,
     KPIPeriod.__table__,
     KPIRecord.__table__,
     KPIHistory.__table__,

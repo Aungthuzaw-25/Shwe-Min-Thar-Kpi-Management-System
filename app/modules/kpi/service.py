@@ -16,7 +16,9 @@ from app.modules.kpi.models import (
     FormulaStatus,
     KpiCategory,
     KPIFormula,
+    KPIFormulaPeriod,
     KPILevelSetting,
+    KPIPeriod,
     KPIRecord,
     KPIScoringRuleItem,
     PeriodType,
@@ -128,6 +130,71 @@ async def update_kpi_level_setting(db: AsyncSession, level_name: str, setting_in
 # 2. KPI Formulas Logic (Admin မှ Category နှင့် Rules များ သတ်မှတ်ခြင်း & Versioning)
 # ==============================================================================
 
+async def set_formula_period_links(
+    db: AsyncSession, formula: KPIFormula, period_ids
+) -> list:
+    """Make ``period_ids`` the formula's exact CURRENT link set.
+
+    Rows are never deleted: links leaving the set flip to
+    ``is_current=False`` (history — the formula was linked once, so
+    it must never fall back to the legacy month rule), links in the
+    set are created or reactivated. Unknown/deleted periods are a
+    clear 422 (e.g. extending to a next period that does not exist
+    yet: create it first).
+    """
+    wanted = list(dict.fromkeys(period_ids or []))
+    if wanted:
+        found = (
+            await db.execute(
+                select(KPIPeriod).where(
+                    KPIPeriod.id.in_(wanted),
+                    KPIPeriod.is_deleted.is_(False),
+                )
+            )
+        ).scalars().all()
+        found_ids = {period.id for period in found}
+        missing = [str(pid) for pid in wanted if pid not in found_ids]
+        if missing:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "Period(s) not found: " + ", ".join(missing)
+                    + ". Create the period first, then link it to the formula."
+                ),
+            )
+    links = (
+        await db.execute(
+            select(KPIFormulaPeriod).where(
+                KPIFormulaPeriod.formula_id == formula.id
+            )
+        )
+    ).scalars().all()
+    wanted_set = set(wanted)
+    known = {link.period_id for link in links}
+    for link in links:
+        link.is_current = link.period_id in wanted_set
+    for pid in wanted:
+        if pid not in known:
+            db.add(
+                KPIFormulaPeriod(
+                    formula_id=formula.id, period_id=pid, is_current=True
+                )
+            )
+    await db.flush()
+    return wanted
+
+
+async def current_period_ids(db: AsyncSession, formula_id) -> list:
+    links = (
+        await db.execute(
+            select(KPIFormulaPeriod).where(
+                KPIFormulaPeriod.formula_id == formula_id,
+                KPIFormulaPeriod.is_current.is_(True),
+            )
+        )
+    ).scalars().all()
+    return [link.period_id for link in links]
+
 async def create_kpi_formula(db: AsyncSession, formula_in: KPIFormulaCreate):
     """KPI Formula အသစ်ဖန်တီးမည် (Region, Position, Categories များပါဝင်သည်)"""
     
@@ -153,9 +220,12 @@ async def create_kpi_formula(db: AsyncSession, formula_in: KPIFormulaCreate):
         effective_month=formula_in.effective_month
     )
     db.add(new_formula)
-    
+
     # 🌟 Transaction Integrity: Commit မလုပ်သေးဘဲ Formula ID ရယူရန် flush အသုံးပြုသည်
     await db.flush()
+
+    if getattr(formula_in, "period_ids", None) is not None:
+        await set_formula_period_links(db, new_formula, formula_in.period_ids)
 
     await _sync_formula_categories(db, formula_in.categories)
 
@@ -261,6 +331,10 @@ async def update_kpi_formula(db: AsyncSession, formula_id: UUID, formula_in: KPI
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="KPI Formula မတွေ့ရှိပါ။")
 
     update_data = formula_in.model_dump(exclude_unset=True)
+    period_ids_set = "period_ids" in getattr(
+        formula_in, "model_fields_set", set()
+    )
+    period_ids = update_data.pop("period_ids", None)
     if "position_id" in update_data:
         position = await _resolve_formula_position(
             db, formula.department_id, update_data["position_id"]
@@ -269,7 +343,14 @@ async def update_kpi_formula(db: AsyncSession, formula_id: UUID, formula_in: KPI
 
     # 🌟 Formula သည် ACTIVE, APPROVED သို့မဟုတ် ARCHIVED ဖြစ်နေလျှင် အသစ် (Version အသစ်) အဖြစ် DRAFT ပြန်လုပ်မည်
     if formula.status in [FormulaStatus.ACTIVE, FormulaStatus.APPROVED, FormulaStatus.ARCHIVED]:
-        return await _create_new_formula_version(db, formula, update_data, formula_in)
+        new_formula = await _create_new_formula_version(db, formula, update_data, formula_in)
+        if period_ids_set:
+            # Links belong to the version the update produced (the
+            # addressed record keeps its own links untouched).
+            await set_formula_period_links(db, new_formula, period_ids)
+            await db.commit()
+            await db.refresh(new_formula)
+        return new_formula
 
     # 🌟 DRAFT သို့မဟုတ် REVIEW အဆင့်ဖြစ်နေလျှင် ထိုနေရာတွင်ပင် တိုက်ရိုက်ပြင်ဆင်မည်
     if "categories" in update_data:
@@ -285,6 +366,9 @@ async def update_kpi_formula(db: AsyncSession, formula_id: UUID, formula_in: KPI
 
     for field, value in update_data.items():
         setattr(formula, field, value)
+
+    if period_ids_set:
+        await set_formula_period_links(db, formula, period_ids)
 
     await db.commit()
     await db.refresh(formula)
