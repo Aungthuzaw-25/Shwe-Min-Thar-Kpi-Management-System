@@ -137,6 +137,9 @@ export function registerDashboardRoutes(app) {
     allowedRoles: roles.superAdminTools,
     extras: () => ({ timezone: process.env.TIMEZONE || "Asia/Yangon" }),
   });
+  registerPage(app, "/superadmin/health", "dashboard/system_health.njk", {
+    allowedRoles: roles.superAdmin,
+  });
   registerPage(app, "/superadmin/process-tracking", "dashboard/process_tracking.njk", {
     allowedRoles: roles.superAdminTools,
   });

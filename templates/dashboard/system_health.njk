@@ -1,0 +1,47 @@
+{% extends "layouts/base.njk" %}
+{% set active_page = "system_health" %}
+
+{% block title %}System Health - KPI Platform{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="/static/css/system-health.css">
+{% if user_role == "Super Admin" %}
+<div class="workspace-page" id="healthPage">
+    <header class="workspace-header">
+        <div>
+            <h2 class="text-2xl sm:text-3xl font-extrabold text-blue-950 tracking-tight">System Health</h2>
+            <p class="text-slate-500 mt-1 text-xs sm:text-sm">Live status of the database, data, security, activity, file storage and cache. Updates every 15 seconds.</p>
+        </div>
+        <button type="button" id="healthRefreshBtn" class="bg-white border border-gray-200 text-slate-600 hover:text-blue-800 px-4 py-2.5 rounded-xl text-sm font-bold shadow-sm">Refresh now</button>
+    </header>
+
+    <div id="healthOverall" class="health-overall health-overall--loading" role="status">
+        <span id="healthOverallDot" class="health-dot" aria-hidden="true"></span>
+        <div class="health-overall__text">
+            <strong id="healthOverallLabel">Checking system health…</strong>
+            <span id="healthOverallMeta" class="health-overall__meta">First check in progress.</span>
+        </div>
+    </div>
+
+    <div id="healthError" class="health-error" hidden></div>
+
+    <section id="healthAttention" class="health-attention" hidden>
+        <h3 class="health-attention__title">Needs attention</h3>
+        <ul id="healthAttentionList" class="health-attention__list"></ul>
+        <p class="health-attention__note">Each entry above is also recorded in <a href="/superadmin/system-logs">System Logs</a> under HEALTH_CHECK, with the component name.</p>
+    </section>
+
+    <section class="health-grid" id="healthGrid" aria-label="System components">
+        <p class="health-loading">Loading system health…</p>
+    </section>
+</div>
+{% else %}
+<div class="workspace-page">
+    <p class="text-slate-500 text-sm">You do not have access to this page.</p>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/system-health.js" defer></script>
+{% endblock %}
