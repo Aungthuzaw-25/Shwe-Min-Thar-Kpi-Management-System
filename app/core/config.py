@@ -58,7 +58,10 @@ class Settings(BaseSettings):
     S3_ACCESS_KEY: str | None = None
     S3_SECRET_KEY: str | None = None
     S3_BUCKET_NAME: str = "kpi-evidence"
-    ALLOWED_ORIGINS: str = "http://localhost:8000,http://127.0.0.1:8000"
+    # No default on purpose: CORS origins come from the environment
+    # (.env) only. A localhost default here used to silently CORS-block
+    # the real production domain whenever the env var was forgotten.
+    ALLOWED_ORIGINS: str
     REDIS_URL: str | None = None
     OAUTH_ENABLED: bool = False
     APP_BASE_URL: str | None = None
@@ -159,6 +162,15 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_security_settings(self):
+        # Fail fast in EVERY environment (not just production): a
+        # missing or blank value must never fall back to anything.
+        if not self.ALLOWED_ORIGINS.strip():
+            raise ValueError(
+                "ALLOWED_ORIGINS must be set in the environment (.env) to a "
+                "non-empty comma-separated list of origins; no default is "
+                "provided. Development example: http://localhost:8000. "
+                "Production must list the real domain(s)."
+            )
         if self.USE_S3 and not all(
             (self.S3_ENDPOINT, self.S3_ACCESS_KEY, self.S3_SECRET_KEY)
         ):
@@ -187,8 +199,6 @@ class Settings(BaseSettings):
             raise ValueError(
                 "JWT_SECRET_KEY must be a non-placeholder value of at least 32 characters in production."
             )
-        if not self.ALLOWED_ORIGINS.strip():
-            raise ValueError("ALLOWED_ORIGINS must be configured in production.")
         if not self.DATABASE_SSL_REQUIRED:
             raise ValueError("DATABASE_SSL_REQUIRED must be enabled in production.")
         database_host = (urlparse(getattr(self, "DATABASE_URL", "")).hostname or "").lower()
