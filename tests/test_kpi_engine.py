@@ -207,6 +207,125 @@ async def test_target_lookup_filters_month_and_department_and_allows_global_targ
     assert "targets.is_deleted = false" in str(compiled)
 
 
+@pytest.mark.asyncio
+async def test_target_direction_lower_overrides_non_count_metric():
+    """Explicit LOWER beats the legacy inference: a PERCENTAGE
+    target would infer HIGHER (50/100 -> 2.5), but direction LOWER
+    scores target/actual (100/50 -> clamp -> 5.0)."""
+    target = SimpleNamespace(
+        name="Defect Rate", department_id="dept-1", target_value=100.0,
+        metric_type="PERCENTAGE", status="ACTIVE", is_deleted=False,
+    )
+
+    class Session:
+        async def execute(self, _statement):
+            return SimpleNamespace(
+                scalars=lambda: SimpleNamespace(all=lambda: [target])
+            )
+
+    assert await calculate_target_based_score(
+        Session(), "dept-1", "2026-11", "defect rate", 5.0,
+        {"defect rate": 50.0}, direction="LOWER",
+    ) == 5.0
+    # No direction: legacy HIGHER inference for non-COUNT.
+    assert await calculate_target_based_score(
+        Session(), "dept-1", "2026-11", "defect rate", 5.0,
+        {"defect rate": 50.0},
+    ) == 2.5
+
+
+@pytest.mark.asyncio
+async def test_target_direction_higher_overrides_count_metric():
+    """Explicit HIGHER beats the legacy COUNT inference: COUNT
+    would infer LOWER (2/1 -> clamp -> 5.0), but direction HIGHER
+    scores actual/target (1/2 -> 2.5)."""
+    target = SimpleNamespace(
+        name="Target Count", department_id="dept-1", target_value=2.0,
+        metric_type="COUNT", status="ACTIVE", is_deleted=False,
+    )
+
+    class Session:
+        async def execute(self, _statement):
+            return SimpleNamespace(
+                scalars=lambda: SimpleNamespace(all=lambda: [target])
+            )
+
+    assert await calculate_target_based_score(
+        Session(), "dept-1", "2026-11", "target count", 5.0,
+        {"target count": 1.0}, direction="HIGHER",
+    ) == 2.5
+    # No direction: legacy LOWER inference for COUNT (already
+    # covered by the contract tests above; pinned here too).
+    assert await calculate_target_based_score(
+        Session(), "dept-1", "2026-11", "target count", 5.0,
+        {"target count": 1.0},
+    ) == 5.0
+
+
+@pytest.mark.asyncio
+async def test_score_formula_categories_passes_category_direction():
+    """The category dict's direction reaches the engine, and a
+    category without one keeps the legacy inference."""
+    target = SimpleNamespace(
+        name="Defect Rate", department_id="dept-1", target_value=100.0,
+        metric_type="PERCENTAGE", status="ACTIVE", is_deleted=False,
+    )
+
+    class Session:
+        async def execute(self, _statement):
+            return SimpleNamespace(
+                scalars=lambda: SimpleNamespace(all=lambda: [target])
+            )
+
+    formula = SimpleNamespace(
+        categories=[{
+            "name": "Defect Rate", "weight": 1.0, "max_score": 5.0,
+            "evaluation_type": "TARGET", "direction": "LOWER",
+        }],
+        scoring_rules=[],
+    )
+    assert await score_formula_categories(
+        Session(), formula, "dept-1", "2026-11", {"defect rate": 50.0}
+    ) == 5.0
+
+    legacy_formula = SimpleNamespace(
+        categories=[{
+            "name": "Defect Rate", "weight": 1.0, "max_score": 5.0,
+            "evaluation_type": "TARGET",
+        }],
+        scoring_rules=[],
+    )
+    assert await score_formula_categories(
+        Session(), legacy_formula, "dept-1", "2026-11", {"defect rate": 50.0}
+    ) == 2.5
+
+
+@pytest.mark.asyncio
+async def test_deduction_category_direction_is_ignored():
+    """A direction stored on a DEDUCTION category must not change
+    its rule-based score."""
+    formula = SimpleNamespace(
+        categories=[{
+            "name": "Late Submission", "weight": 1.0, "max_score": 5.0,
+            "evaluation_type": "DEDUCTION", "direction": "LOWER",
+        }],
+        scoring_rules=[
+            SimpleNamespace(
+                category_name="late submission",
+                rule_name="late submission",
+                operator=">=",
+                target_value="5",
+                deduct_score="2.5",
+            )
+        ],
+    )
+    assert await score_formula_categories(
+        db=None, formula=formula, dept_id=None,
+        target_month_str="2026-09",
+        final_merged_data={"late submission": 7},
+    ) == 2.5
+
+
 def test_deduction_rule_groups_use_maximum_within_group_and_sum_across_groups():
     rules = [
         SimpleNamespace(rule_name="Rule A", operator=">=", target_value="1", deduct_score="1"),

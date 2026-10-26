@@ -10,6 +10,7 @@ from sqlalchemy.future import select
 from app.database.connection import AsyncSessionLocal
 from app.modules.kpi import repo as kpi_repo
 from app.modules.kpi.engine import KPICalculationEngine, calculate_custom_period_kpi
+from app.modules.kpi.engine_helpers import standardize_key
 
 # Models and utilities
 from app.modules.kpi.models import (
@@ -283,6 +284,32 @@ def _build_scoring_rule_items(formula_id, categories) -> list[KPIScoringRuleItem
     return rules
 
 
+def _resolve_category_directions(categories, stored_categories) -> None:
+    """Fill in missing TARGET directions on an update, in place.
+
+    - A category whose name matches a stored category keeps the
+      stored direction (so re-saving an old formula never silently
+      changes its scores).
+    - A genuinely new TARGET category defaults to HIGHER (same
+      default as create).
+    - New DEDUCTION categories keep no direction (ignored anyway).
+    Stored directions outside HIGHER/LOWER are treated as absent.
+    """
+    stored_by_name = {
+        standardize_key(cat.get("name", "")): cat
+        for cat in (stored_categories or [])
+    }
+    for cat in categories:
+        if cat.direction is not None:
+            continue
+        stored = stored_by_name.get(standardize_key(cat.name))
+        stored_direction = (stored or {}).get("direction")
+        if stored_direction in ("HIGHER", "LOWER"):
+            cat.direction = stored_direction
+        elif cat.evaluation_type == "TARGET":
+            cat.direction = "HIGHER"
+
+
 async def _create_new_formula_version(
     db: AsyncSession, formula: KPIFormula, update_data: dict, formula_in: KPIFormulaUpdate
 ) -> KPIFormula:
@@ -331,6 +358,13 @@ async def update_kpi_formula(db: AsyncSession, formula_id: UUID, formula_in: KPI
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="KPI Formula မတွေ့ရှိပါ။")
 
     update_data = formula_in.model_dump(exclude_unset=True)
+    if formula_in.categories is not None:
+        # Both update paths store categories from the request models
+        # (the version path via update_data, the draft path via a
+        # fresh dump), so resolve directions on the models once and
+        # rebuild the dumped list from them.
+        _resolve_category_directions(formula_in.categories, formula.categories or [])
+        update_data["categories"] = [cat.model_dump() for cat in formula_in.categories]
     period_ids_set = "period_ids" in getattr(
         formula_in, "model_fields_set", set()
     )

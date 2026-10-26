@@ -195,6 +195,14 @@ class KPICategoryConfig(BaseModel):
     # 🌟 NEW: Target လား Deduction လား ခွဲခြားရန် Field အသစ် ဖြည့်စွက်ထားပါသည်
     evaluation_type: Literal["DEDUCTION", "TARGET"] = Field("DEDUCTION", description="Deduction သို့မဟုတ် Target")
 
+    # Target direction: HIGHER = higher actual is better,
+    # LOWER = lower actual is better. TARGET categories only — the
+    # engine ignores it for DEDUCTION. None = legacy category
+    # (engine falls back to the old metric_type inference).
+    direction: Literal["HIGHER", "LOWER"] | None = Field(
+        None, description="TARGET အတွက် HIGHER (များလေ ကောင်းလေ) သို့မဟုတ် LOWER (နည်းလေ ကောင်းလေ)"
+    )
+
     deductions: list[KPIDeductionItem] | None = []
 
 class KPIFormulaCreate(BaseModel):
@@ -224,6 +232,12 @@ class KPIFormulaCreate(BaseModel):
     @model_validator(mode='after')
     def validate_formula_rules(self):
         self.categories = _normalize_timeliness_category(self.categories)
+        # New TARGET categories default to HIGHER (the common case).
+        # Legacy categories are unaffected: they already carry a
+        # stored direction, or no direction at all (engine fallback).
+        for cat in self.categories:
+            if cat.evaluation_type == "TARGET" and cat.direction is None:
+                cat.direction = "HIGHER"
         total_weight = sum(cat.weight for cat in self.categories)
         if not (0.99 <= total_weight <= 1.01):
             raise ValueError(f"Category Weights စုစုပေါင်းသည် 1.0 (100%) ဖြစ်ရပါမည်။ လက်ရှိ: {total_weight}")
