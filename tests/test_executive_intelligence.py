@@ -1080,3 +1080,77 @@ def test_trend_direction_uses_unrounded_delta(
     current, previous, expected_delta, expected_direction
 ):
     assert _trend_change(current, previous) == (expected_delta, expected_direction)
+
+
+async def _test_period_employees_sorted_score_desc(db):
+    """Department KPI (Zenn, 2026-10-26): the period_id employee
+    list must come back score high -> low, server-side. Names here
+    deliberately invert scores, so name order would fail this."""
+    role = Role(name=f"Sort test role {uuid4()}")
+    department = Department(name=f"Sort department {uuid4()}")
+    db.add_all([role, department])
+    await db.flush()
+    period = KPIPeriod(
+        label="Sort period",
+        start_date=datetime(2026, 6, 1, tzinfo=UTC),
+        end_date=datetime(2026, 6, 30, 23, 59, tzinfo=UTC),
+        status=KPIPeriodStatus.FINALIZED,
+        is_deleted=False,
+    )
+    db.add(period)
+    await db.flush()
+    users = []
+    for first_name, score in (("Aaron", 30), ("Zed", 90)):
+        user = User(
+            email=f"{uuid4()}@example.test",
+            hashed_password="x",
+            first_name=first_name,
+            last_name="Test",
+            role_id=role.id,
+            role=role,
+            permission_overrides=[],
+            is_active=True,
+            is_deleted=False,
+        )
+        db.add(user)
+        await db.flush()
+        db.add(
+            UserDepartment(
+                user_id=user.id,
+                department_id=department.id,
+                user_level="L2",
+                is_deleted=False,
+            )
+        )
+        db.add(
+            KPIRecord(
+                user_id=user.id,
+                department_id=department.id,
+                kpi_period_id=period.id,
+                period_type=PeriodType.MONTHLY,
+                period_start=period.start_date,
+                period_end=period.end_date,
+                raw_score=score / 20,
+                weighted_score=score / 20,
+                percentage=score,
+                status_bucket=KPIStatus.GOOD,
+                is_deleted=False,
+            )
+        )
+        users.append(user)
+    await db.flush()
+    page = await list_executive_employee_results(
+        db,
+        period_id=period.id,
+        scope_user_ids=None,
+        department_ids=[department.id],
+        offset=0,
+        limit=10,
+    )
+    assert page.total == 2
+    assert [item.percentage for item in page.items] == [90, 30]
+    assert [item.employee_name for item in page.items] == ["Zed Test", "Aaron Test"]
+
+
+def test_period_employees_sorted_score_desc(tmp_path):
+    _run_isolated_test(tmp_path, _test_period_employees_sorted_score_desc)
