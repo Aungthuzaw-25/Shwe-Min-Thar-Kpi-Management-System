@@ -158,6 +158,30 @@ def test_avatar_macro_accepts_missing_user():
     assert "kpi-avatar--color-0" in rendered
 
 
+def test_avatar_macro_photo_keeps_color_fallback():
+    # A photo avatar whose image fails must still show its initials on
+    # the per-user colour — not white text on a transparent circle
+    # (which vanished against the white card below the dark banner).
+    avatar_macro = dashboard_web.templates.get_template(
+        "components/avatar.njk"
+    ).module.avatar
+
+    rendered = str(
+        avatar_macro(
+            {
+                "display_name": "Thae Aung",
+                "avatar_url": "/static/image/does-not-exist.jpg",
+                "avatar_color_index": 3,
+                "initials": "TA",
+            },
+            128,
+        )
+    )
+
+    assert "kpi-avatar--photo" in rendered
+    assert "kpi-avatar--color-3" in rendered
+
+
 def test_static_assets_are_cacheable_without_csrf_cookie():
     response = TestClient(app).get("/static/css/dashboard.css")
 

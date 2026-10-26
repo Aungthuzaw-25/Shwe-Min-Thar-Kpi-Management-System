@@ -31,10 +31,13 @@
             </div>
         </div>
         <div class="w-full md:w-auto mt-2 md:mt-0">
+            {% set canEditKpi = permission_map['kpi.edit'] if permission_map is defined and permission_map['kpi.edit'] is defined else true %}
+            {% if canEditKpi %}
             <button onclick="openTargetModal()" class="w-full md:w-auto justify-center bg-blue-950 hover:bg-blue-900 text-white px-5 py-2.5 sm:py-3 rounded-xl text-sm font-bold flex items-center shadow-md transition-all duration-300 transform hover:-translate-y-0.5">
                 <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
                 Assign New Target
             </button>
+            {% endif %}
         </div>
     </header>
 
@@ -249,6 +252,12 @@
         document.getElementById("statMissed").innerText = missed;
     }
 
+    // Viewer permissions (U5): null map fails open — the API still enforces.
+    const viewerPermissions = {{ permission_map | default(null) | tojson }};
+    function canPerm(key) {
+        return !viewerPermissions || viewerPermissions[key] !== false;
+    }
+
     function renderTargets() {
         const tbody = document.getElementById("targetsTableBody");
         tbody.innerHTML = "";
@@ -276,9 +285,10 @@
                     <td class="p-4 sm:p-5 text-center font-bold text-slate-500">${escapeHTML(t.target_month)}</td>
                     <td class="p-4 sm:p-5 text-center"><span class="px-2.5 py-1 rounded-md text-[9px] sm:text-[10px] font-extrabold uppercase border shadow-sm ${badgeClass}">${escapeHTML(t.status)}</span></td>
                     <td class="p-4 sm:p-5 text-right">
+                        ${canPerm('kpi.edit') ? `
                         <button onclick="deleteTarget('${t.id}')" class="text-slate-400 hover:text-white hover:bg-red-500 p-2 sm:p-2.5 rounded-xl border border-slate-200 hover:border-red-500 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-red-500" title="Delete Target">
                             <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                        </button>
+                        </button>` : ''}
                     </td>
                 </tr>
             `;

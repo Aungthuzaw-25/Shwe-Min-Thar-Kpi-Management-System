@@ -222,11 +222,11 @@
       </section>
     </section>
 
-    <section id="employeeResultsSection" class="kd-grid kd-employee-grid" aria-label="Employee KPI results">
+    <section id="employeeResultsSection" class="kd-grid kd-employee-grid" aria-label="Employee KPI results · Overview">
       <section id="employeeResultsPanel" class="kd-card kd-analysis-card exec-card exec-panel" aria-labelledby="employeeResultsHeading">
         <div class="kd-card-heading exec-section-heading">
-          <div><p class="kd-eyebrow">Authorized employee scope</p><h2 id="employeeResultsHeading" class="kd-card-title">Employee KPI results</h2>
-            <p class="kd-caption">Scores are averaged across the selected range; details show the latest result.</p>
+          <div><p class="kd-eyebrow">Authorized employee scope</p><h2 id="employeeResultsHeading" class="kd-card-title">Employee KPI results · Overview</h2>
+            <p class="kd-caption">Overview — Scores are averaged across the selected range; details show the latest result.</p>
             <span id="employeePageMeta" class="kd-caption"></span></div>
           <div class="kd-pagination exec-pagination">
             <button id="employeePrevious" class="kd-button exec-button" type="button" disabled>Previous</button>
@@ -258,6 +258,8 @@
     </section>
   </div>
 </div>
+
+{% include "dashboard/whats_new.njk" %}
 
 <script>
   window.KPI_EXECUTIVE_CONTEXT = {

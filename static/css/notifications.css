@@ -37,6 +37,7 @@
     font-weight: 800;
 }
 .app-toast-message { flex: 1; font-size: .875rem; line-height: 1.35; }
+.app-toast-action { flex: 0 0 auto; align-self: center; border: 0; background: transparent; color: #2563eb; font-size: .875rem; font-weight: 700; white-space: nowrap; cursor: pointer; text-decoration: none; }
 .app-toast-close { border: 0; background: transparent; color: #64748b; font-size: 1.25rem; line-height: 1; cursor: pointer; }
 .app-toast-leaving { animation: app-toast-out .2s ease-in forwards; }
 .app-confirm-overlay {
@@ -78,6 +79,7 @@
 @keyframes app-toast-out { to { opacity: 0; transform: translateY(-.5rem); } }
 @media (prefers-color-scheme: dark) {
     .app-toast, .app-confirm-dialog { background: #1e293b; color: #f8fafc; }
+    .app-toast-action { color: #93c5fd; }
     .app-confirm-content p, .app-confirm-content small { color: #cbd5e1; }
     .app-unlock-request-details dd { color: #f8fafc; }
     .app-prompt-input { background: #1c2b3a; color: #f8fafc; border-color: #475569; }

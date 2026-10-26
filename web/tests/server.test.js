@@ -126,11 +126,13 @@ describe("Express pages and CSP middleware", () => {
       .set("Cookie", "access_token=qa-token")
       .set("Authorization", "Bearer qa-header")
       .expect(200);
-    // Page-context fan-out guard: exactly the three base calls —
-    // /api/v1/auth/me, /api/v1/auth/me/accounts, and the company-trademark
-    // brand read (/api/v1/system/branding/public, cached per request).
+    // Page-context fan-out guard: exactly four calls — /api/v1/auth/me,
+    // /api/v1/auth/me/accounts, the company-trademark brand read
+    // (/api/v1/system/branding/public, cached per request), and the
+    // /api/v1/permissions/me read that supplies permission_map for the
+    // U5 button gates (a cache hit when permissions_version is unchanged).
     // If this number grows again, the page is doing too much per render.
-    expect(fetchImpl).toHaveBeenCalledTimes(3);
+    expect(fetchImpl).toHaveBeenCalledTimes(4);
     for (const [, options] of fetchImpl.mock.calls) {
       expect(options.headers.get("cookie")).toBe("access_token=qa-token");
       expect(options.headers.get("authorization")).toBe("Bearer qa-header");
