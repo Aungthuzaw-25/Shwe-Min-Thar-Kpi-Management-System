@@ -133,6 +133,19 @@ class CompanyTrademarkUpdate(BaseModel):
         return validate_company_tagline(value)
 
 
+class SystemHealthComponent(BaseModel):
+    status: str
+    latency_ms: int | None = None
+    message: str
+    details: dict[str, Any] = {}
+
+
+class SystemHealthResponse(BaseModel):
+    overall: str
+    checked_at: datetime
+    components: dict[str, SystemHealthComponent]
+
+
 class BrandResponse(BaseModel):
     company_name: str
     company_tagline: str

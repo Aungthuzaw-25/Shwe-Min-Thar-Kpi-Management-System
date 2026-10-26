@@ -29,12 +29,14 @@ from app.modules.auth.schemas import (
 from app.modules.notifications.models import Notification
 from app.modules.system import branding, repo
 from app.modules.system.full_export import build_full_export_zip
+from app.modules.system.health import collect_system_health
 from app.services.system_log_messages import plain_message_for, public_details
 from app.modules.system.audit_log_retention import (
     AUDIT_RETENTION_YEARS_KEY,
     normalize_audit_retention_years,
 )
 from app.modules.system.schemas import (
+    SystemHealthResponse,
     BrandResponse,
     CompanyTrademarkUpdate,
     EmailProviderLifecycleRequest,
@@ -175,6 +177,26 @@ def _require_super_admin_user_security(user: User) -> None:
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only a Super Admin can manage user lockout settings.",
         )
+
+
+def _require_super_admin_system_health(user: User) -> None:
+    if not user.role or user.role.name != "Super Admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only a Super Admin can view system health.",
+        )
+
+
+@router.get("/health", response_model=SystemHealthResponse)
+async def get_system_health(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """System Health (Super Admin only): all seven component
+    checks in one response, cached server-side for 10 seconds.
+    Polling-friendly; no WebSocket."""
+    _require_super_admin_system_health(current_user)
+    return await collect_system_health(db)
 
 
 def _require_super_admin_full_export(user: User) -> None:
