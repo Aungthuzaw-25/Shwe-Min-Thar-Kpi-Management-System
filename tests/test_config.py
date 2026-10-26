@@ -7,6 +7,7 @@ def _isolated_settings_kwargs():
     return {
         "PROJECT_NAME": "KPI",
         "VERSION": "test",
+        "ALLOWED_ORIGINS": "https://app.example.com",
         "DATABASE_URL": "sqlite+aiosqlite:///:memory:",
         "REFRESH_TOKEN_EXPIRE_DAYS": 7,
         "USE_S3": False,
@@ -73,6 +74,40 @@ def test_missing_production_jwt_secret_fails_closed():
             ALLOWED_ORIGINS="https://app.example.com",
             REFRESH_TOKEN_EXPIRE_DAYS=7,
         )
+
+
+def test_allowed_origins_is_required_field():
+    # Single source of truth is the environment: no code default may
+    # silently CORS-block the real domain when the env var is forgotten.
+    assert Settings.model_fields["ALLOWED_ORIGINS"].is_required()
+
+
+def test_missing_allowed_origins_fails_fast(monkeypatch):
+    monkeypatch.delenv("ALLOWED_ORIGINS", raising=False)
+    settings_kwargs = _isolated_settings_kwargs()
+    settings_kwargs.pop("ALLOWED_ORIGINS")
+
+    with pytest.raises(ValueError, match="ALLOWED_ORIGINS"):
+        Settings(_env_file=None, **settings_kwargs)
+
+
+def test_blank_allowed_origins_fails_fast():
+    settings_kwargs = _isolated_settings_kwargs()
+    settings_kwargs["ALLOWED_ORIGINS"] = "   "
+
+    with pytest.raises(ValueError, match="ALLOWED_ORIGINS must be set"):
+        Settings(_env_file=None, **settings_kwargs)
+
+
+def test_production_missing_allowed_origins_fails_at_startup(monkeypatch):
+    monkeypatch.delenv("ALLOWED_ORIGINS", raising=False)
+    settings_kwargs = _isolated_settings_kwargs()
+    settings_kwargs.pop("ALLOWED_ORIGINS")
+    settings_kwargs["ENV"] = "production"
+    settings_kwargs["DATABASE_SSL_REQUIRED"] = True
+
+    with pytest.raises(ValueError, match="ALLOWED_ORIGINS"):
+        Settings(_env_file=None, **settings_kwargs)
 
 
 def test_fix_neon_url_removes_asyncpg_unsupported_query_params():
@@ -185,6 +220,7 @@ def test_qa_accepts_only_the_local_qa_database_target():
         QA_DATABASE_PORT=5432,
         QA_DATABASE_NAME="kpi_qa",
         USE_S3=False,
+        ALLOWED_ORIGINS="https://app.example.com",
     )
 
     configured.validate_security_settings()
@@ -215,6 +251,7 @@ def test_qa_rejects_remote_or_mismatched_database_targets(database_url, match):
         QA_DATABASE_PORT=5432,
         QA_DATABASE_NAME="kpi_qa",
         USE_S3=False,
+        ALLOWED_ORIGINS="https://app.example.com",
     )
 
     with pytest.raises(ValueError, match=match):
