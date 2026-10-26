@@ -57,8 +57,15 @@ async def calculate_target_based_score(
     std_cat_name: str,
     max_score: float,
     final_merged_data: dict[str, float],
+    direction: str | None = None,
 ) -> float:
-    """Return the score for a TARGET-based category."""
+    """Return the score for a TARGET-based category.
+
+    direction: the formula category's explicit direction
+    ("HIGHER" = higher actual is better, "LOWER" = lower actual is
+    better). When absent (legacy categories), the old inference
+    applies: a COUNT metric_type means LOWER, anything else HIGHER.
+    """
     stmt_target = select(Target).where(
         Target.target_month == target_month_str,
         Target.is_deleted == False,
@@ -76,9 +83,16 @@ async def calculate_target_based_score(
         return 0.0
     actual_val = float(final_merged_data[std_cat_name])
 
-    metric_type_attr = getattr(assigned_target, "metric_type", "")
-    metric_type_val = getattr(metric_type_attr, "value", str(metric_type_attr)).upper()
-    is_lower_better = "COUNT" in metric_type_val
+    if direction == "LOWER":
+        is_lower_better = True
+    elif direction == "HIGHER":
+        is_lower_better = False
+    else:
+        # Legacy category without an explicit direction: keep the
+        # old inference so existing scores never change.
+        metric_type_attr = getattr(assigned_target, "metric_type", "")
+        metric_type_val = getattr(metric_type_attr, "value", str(metric_type_attr)).upper()
+        is_lower_better = "COUNT" in metric_type_val
 
     if math.isclose(target_val, 0.0):
         achievement_ratio = 1.0
@@ -128,6 +142,8 @@ async def score_formula_categories(
         eval_type = category.get("evaluation_type", "DEDUCTION")
 
         if eval_type == "TARGET":
+            # direction is TARGET-only: DEDUCTION categories never
+            # reach this branch, so a stray direction there is ignored.
             cat_actual_score = await calculate_target_based_score(
                 db=db,
                 dept_id=dept_id,
@@ -135,6 +151,7 @@ async def score_formula_categories(
                 std_cat_name=std_cat_name,
                 max_score=max_score,
                 final_merged_data=final_merged_data,
+                direction=category.get("direction"),
             )
         else:
             cat_rules = [
