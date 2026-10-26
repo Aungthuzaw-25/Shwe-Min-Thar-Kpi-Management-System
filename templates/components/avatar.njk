@@ -4,7 +4,7 @@
 {% set image_url = avatar_user.avatar_url|default(none, true) %}
 {% set color_index = avatar_user.avatar_color_index|default(0, true) %}
 {% set initials = avatar_user.initials|default('?', true) %}
-<span class="kpi-avatar kpi-avatar--{{ size }}{% if image_url %} kpi-avatar--photo{% else %} kpi-avatar--color-{{ color_index }}{% endif %}" role="img" aria-label="{{ display_name }}">
+<span class="kpi-avatar kpi-avatar--{{ size }} kpi-avatar--color-{{ color_index }}{% if image_url %} kpi-avatar--photo{% endif %}" role="img" aria-label="{{ display_name }}">
   {% if image_url %}
   <img class="kpi-avatar__image" src="{{ image_url }}" alt="{{ display_name }}" loading="lazy" width="{{ size }}" height="{{ size }}" data-kpi-avatar-image>
   <span class="kpi-avatar__initials kpi-avatar__fallback" aria-hidden="true">{{ initials }}</span>

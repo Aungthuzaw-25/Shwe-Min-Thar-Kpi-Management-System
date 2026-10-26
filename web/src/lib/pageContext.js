@@ -79,11 +79,25 @@ export async function loadEmployeeContext(request, backend, base) {
 // starting permissions in parallel (the original Batch 2 fan-out) could
 // read the stale entry before the eviction lands. When nothing changed,
 // permissions are a cache hit, so the ordering costs nothing.
+//
+// Admin pages also receive permission_map (U5): their action buttons
+// hide when the viewer's effective permission is denied, instead of
+// showing a button that only 403s on use. The employee path keeps its
+// exact behaviour; the admin path fails open (map null) if the
+// permissions read itself fails, so a permissions outage never breaks
+// admin page renders — the API still enforces every mutation.
 export async function loadPageContext(request, backend, { employee = false } = {}) {
   const base = await loadBaseContext(request, backend);
-  if (!employee) {
-    return { base, context: base.context };
+  if (employee) {
+    const permissionsResponse = await backend.get(request, "/api/v1/permissions/me");
+    return { base, context: buildEmployeeContext(base, permissionsResponse) };
   }
-  const permissionsResponse = await backend.get(request, "/api/v1/permissions/me");
-  return { base, context: buildEmployeeContext(base, permissionsResponse) };
+  let permissionMap = null;
+  try {
+    const permissionsResponse = await backend.get(request, "/api/v1/permissions/me");
+    permissionMap = permissionsResponse.permissions;
+  } catch {
+    permissionMap = null;
+  }
+  return { base, context: { ...base.context, permission_map: permissionMap } };
 }

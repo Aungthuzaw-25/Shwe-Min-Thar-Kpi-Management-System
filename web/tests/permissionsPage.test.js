@@ -22,12 +22,13 @@ describe("permissions page polish (visual only)", () => {
   });
 
   it("behaviour-critical hooks are untouched (script rewrites these class strings)", () => {
-    // The inline script reassigns these classNames at runtime and the
-    // override collector queries .bg-emerald-500/.bg-red-500 — the polish
-    // must never rename them.
+    // The inline script reassigns these classNames at runtime — the polish
+    // must never rename them. (The user-matrix control changed from a
+    // 3-button group to a toggle in the toggle task: the collector now
+    // reads row data-pending instead of button classes.)
     expect(template).toContain('class="tab-btn rounded-xl bg-blue-950 px-5 py-2.5 text-sm font-bold text-white transition-all"');
     expect(template).toContain('btn.className = "tab-btn rounded-xl bg-blue-950 px-5 py-2.5 text-sm font-bold text-white transition-all"');
-    expect(template).toContain('.override-btn.bg-emerald-500, .override-btn.bg-red-500');
+    expect(template).toContain('row.dataset.pending');
     expect(template).toContain('id="saveRole"');
     expect(template).toContain('id="saveUserOverrides"');
     expect(template).toContain('id="confirmModal"');
@@ -46,7 +47,7 @@ describe("permissions page polish (visual only)", () => {
     expect(css).toContain(".permissions-page .user-perm-group");
     expect(css).toContain(".permissions-page .perm-row:hover");
     expect(css).toContain(".permissions-page #auditTable .bg-blue-100");
-    expect(css).toContain(".permissions-page .override-btn.bg-blue-500");
+    expect(css).toContain(".permissions-page .perm-toggle");
   });
 
   it("disabled selects keep their disabled look (focus/glass rules skip them)", () => {

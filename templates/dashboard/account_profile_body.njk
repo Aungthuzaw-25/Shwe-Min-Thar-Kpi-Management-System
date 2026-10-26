@@ -32,10 +32,11 @@
       <aside class="kp-card acct-card kp-summary-card acct-summary" aria-label="Account summary">
         <div class="kp-summary-banner" aria-hidden="true"></div>
         <div class="kp-summary-identity">
-          <div class="kp-summary-avatar acct-summary-avatar">{{ avatar(account_profile, 128) }}</div>
-          <button class="kp-camera-button" type="button" data-photo-trigger aria-label="Upload photo" title="Upload photo">
-            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h-4L8.5 6H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-3.5L14 4Z"></path><circle cx="12" cy="13" r="3"></circle></svg>
-          </button>
+          <div class="kp-summary-avatar acct-summary-avatar">{{ avatar(account_profile, 128) }}
+            <button class="kp-camera-button" type="button" data-photo-trigger aria-label="Upload photo" title="Upload photo">
+              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h-4L8.5 6H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-3.5L14 4Z"></path><circle cx="12" cy="13" r="3"></circle></svg>
+            </button>
+          </div>
           <div class="kp-summary-name acct-summary-name" data-profile-summary-name>{{ account_profile.display_name }}</div>
           <span class="kp-role-pill acct-role-pill">{{ account_profile.role }}</span>
         </div>

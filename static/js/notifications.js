@@ -18,7 +18,7 @@
         return container;
     }
 
-    function showToast(message, type = "info", duration = 4500) {
+    function showToast(message, type = "info", duration = 4500, options = {}) {
         const container = ensureContainer();
         const toast = document.createElement("div");
         const kind = ["success", "error", "warning", "info"].includes(type) ? type : "info";
@@ -43,7 +43,26 @@
         close.textContent = "×";
         close.addEventListener("click", () => dismiss(toast));
 
-        toast.append(icon, text, close);
+        toast.append(icon, text);
+        // Optional actions (e.g. "View profile"): each is { label, href }
+        // or { label, onClick }. Clicking one dismisses the toast first.
+        // Existing 3-argument calls are unaffected.
+        const actions = Array.isArray(options.actions) ? options.actions : [];
+        for (const action of actions) {
+            if (!action || !action.label) continue;
+            const el = action.href ? document.createElement("a") : document.createElement("button");
+            if (action.href) el.href = action.href;
+            else el.type = "button";
+            el.className = "app-toast-action";
+            el.textContent = String(action.label);
+            el.addEventListener("click", (event) => {
+                if (!action.href) event.preventDefault();
+                dismiss(toast);
+                if (typeof action.onClick === "function") action.onClick();
+            });
+            toast.append(el);
+        }
+        toast.append(close);
         container.appendChild(toast);
         window.setTimeout(() => dismiss(toast), duration);
         return toast;

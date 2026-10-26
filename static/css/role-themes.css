@@ -1,0 +1,381 @@
+/* Role-family themes (Zenn, 2026-10-25). One file, loaded last in both
+   layouts, so these rules win over the shared glass theme without
+   touching layout, structure, charts, semantic colours, or login.
+   The viewer’s role family picks the theme: Super Admin → blue,
+   Admin / HR / System Admin → EXCLUSIVE, everyone else → POWERFUL.
+   Pages rendered without a role get no theme class and keep the
+   current look. Text colours below all clear AA on their backgrounds;
+   terracotta fills keep white only on large bold text, body text uses
+   a darkened terracotta instead. */
+
+/* ================= Shared: search inputs (all roles, same look) =====
+   Pill shape, white background, soft warm peach glow underneath,
+   gentle focus glow. Icon positions are untouched (markup). */
+.app-shell main input[type="search"],
+.app-shell main input[placeholder*="Search"],
+.app-shell main input[placeholder*="search"] {
+  /* !important: the glass theme's :is(input:not(...)) rule outranks a
+     plain attribute selector; the pill treatment must win, search
+     inputs only, nowhere else. */
+  border-radius: 999px !important;
+  background-color: #ffffff !important;
+  box-shadow: 0 10px 26px rgba(237, 137, 54, .18), 0 2px 8px rgba(237, 137, 54, .10) !important;
+}
+.app-shell main input[type="search"]:focus,
+.app-shell main input[placeholder*="Search"]:focus,
+.app-shell main input[placeholder*="search"]:focus {
+  /* The glow is the focus indicator, so no harsh outline. */
+  outline: none;
+  border-color: #f39500 !important;
+  box-shadow: 0 0 0 3px rgba(243, 149, 0, .28), 0 12px 30px rgba(237, 137, 54, .22) !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-shell main input[type="search"],
+  .app-shell main input[placeholder*="Search"],
+  .app-shell main input[placeholder*="search"] {
+    transition: none;
+  }
+}
+/* Search inputs with no sibling icon get the same right-side icon as a
+   background image (permissions role/user/user-search, system logs).
+   Every other search input carries a real svg sibling on the right. */
+.app-shell main #roleSearch,
+.app-shell main #userSearch,
+.app-shell main #userSearchInput,
+.app-shell main #logSearch {
+  padding-right: 40px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-size: 16px 16px;
+  background-position: right 14px center;
+}
+/* Tasks + profile search bars are wrappers (input is transparent
+   inside), so the pill and glow live on the wrapper, not the input. */
+.app-shell .et-page .et-search,
+.app-shell .ep-page .ep-permission-search {
+  border-radius: 999px;
+  overflow: hidden;
+  box-shadow: 0 10px 26px rgba(237, 137, 54, .18), 0 2px 8px rgba(237, 137, 54, .10);
+}
+.app-shell .et-page .et-search:focus-within,
+.app-shell .ep-page .ep-permission-search:focus-within {
+  border-color: #f39500;
+  box-shadow: 0 0 0 3px rgba(243, 149, 0, .28), 0 12px 30px rgba(237, 137, 54, .22);
+}
+.app-shell .et-page .et-search > svg,
+.app-shell .ep-page .ep-permission-search > svg {
+  margin-left: 0;
+  margin-right: 13px;
+}
+.app-shell main input.et-search-input,
+.app-shell main input.ep-search-input {
+  border-radius: 0 !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
+}
+
+/* ================= SUPER ADMIN — Premium blue ====================== */
+.app-shell.theme-sa #mainSidebar {
+  background: linear-gradient(180deg, #1a3d63, #0a1931);
+  border-color: rgba(179, 207, 229, .35);
+}
+.app-shell.theme-sa #mainSidebar nav a { color: #b3cfe5; }
+.app-shell.theme-sa #mainSidebar nav a:hover,
+.app-shell.theme-sa #mainSidebar nav a:focus-visible {
+  color: #ffffff;
+  background: rgba(255, 255, 255, .12);
+}
+.app-shell.theme-sa #mainSidebar nav a.active,
+.app-shell.theme-sa #mainSidebar nav a.sidebar-item-active,
+.app-shell.theme-sa #mainSidebar nav a.bg-blue-600,
+.app-shell.theme-sa .sidebar-link.active {
+  color: #ffffff;
+  background: #4a7fa7;
+  box-shadow: 0 10px 20px rgba(10, 25, 49, .45);
+}
+.app-shell.theme-sa #mainSidebar nav > div,
+.app-shell.theme-sa #mainSidebar nav .nav-group-label { color: #b3cfe5; }
+.app-shell.theme-sa #mainSidebar > div:first-child,
+.app-shell.theme-sa #mainSidebar > div:last-child,
+.app-shell.theme-sa #mainSidebar > div:last-child > * { color: #f6fafd; }
+.app-shell.theme-sa #mainSidebar > div:first-child svg { fill: #b3cfe5; }
+.app-shell.theme-sa #mainSidebar > div:first-child button { color: #b3cfe5; }
+.app-shell.theme-sa #mainSidebar > div:last-child > div {
+  background: rgba(255, 255, 255, .08);
+  border-color: rgba(255, 255, 255, .15);
+}
+.app-shell.theme-sa #mainSidebar > div:last-child p { color: #b3cfe5; }
+.app-shell.theme-sa #mainSidebar > div:last-child .text-sm { color: #f6fafd; }
+.app-shell.theme-sa #mainSidebar > div:last-child button {
+  background: rgba(255, 255, 255, .10);
+  border-color: rgba(255, 255, 255, .25);
+  color: #f6fafd;
+}
+.app-shell.theme-sa #mainSidebar > div:last-child button:hover {
+  background: rgba(255, 255, 255, .20);
+  color: #ffffff;
+}
+.app-shell.theme-sa #mainSidebar .bg-blue-600 { background: #4a7fa7; }
+.app-shell.theme-sa .app-topbar {
+  background: #0a1931;
+  border-bottom-color: rgba(179, 207, 229, .25);
+}
+.app-shell.theme-sa .app-topbar__eyebrow { color: #b3cfe5; }
+.app-shell.theme-sa .app-topbar__title,
+.app-shell.theme-sa .app-topbar__user strong { color: #ffffff; }
+.app-shell.theme-sa .app-topbar__user span { color: rgba(255, 255, 255, .75); }
+.app-shell.theme-sa .app-topbar__icon {
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, .25);
+}
+.app-shell.theme-sa .app-topbar__icon:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, .12);
+  border-color: rgba(255, 255, 255, .35);
+}
+.app-shell.theme-sa .exec-mobile-sidebar-toggle,
+.app-shell.theme-sa main > div.md\:hidden { background: #0a1931; }
+.app-shell.theme-sa main .bg-blue-950 { background-color: #1a3d63; }
+.app-shell.theme-sa main .hover\:bg-blue-900:hover { background-color: #4a7fa7; }
+.app-shell.theme-sa main button.bg-blue-600,
+.app-shell.theme-sa main a.bg-blue-600,
+.app-shell.theme-sa main button.bg-blue-700,
+.app-shell.theme-sa main a.bg-blue-700,
+.app-shell.theme-sa main button.bg-indigo-600,
+.app-shell.theme-sa main a.bg-indigo-600 { background-color: #1a3d63; }
+.app-shell.theme-sa main button.bg-blue-600:hover,
+.app-shell.theme-sa main a.bg-blue-600:hover,
+.app-shell.theme-sa main button.bg-blue-700:hover,
+.app-shell.theme-sa main a.bg-blue-700:hover,
+.app-shell.theme-sa main button.bg-indigo-600:hover,
+.app-shell.theme-sa main a.bg-indigo-600:hover { background-color: #4a7fa7; }
+.app-shell.theme-sa .kd-page .kd-button-primary {
+  background: #1a3d63;
+  border-color: #1a3d63;
+  box-shadow: 0 6px 16px rgba(26, 61, 99, .35);
+}
+.app-shell.theme-sa .kd-page .kd-button-primary:hover { background: #4a7fa7; }
+.app-shell.theme-sa .exec-dashboard .exec-button-primary {
+  background: #1a3d63;
+  border-color: #1a3d63;
+}
+.app-shell.theme-sa .exec-dashboard .exec-button-primary:hover { background: #4a7fa7; }
+.app-shell.theme-sa .et-page .et-button--primary {
+  background: #1a3d63 !important;
+  border-color: #1a3d63 !important;
+}
+.app-shell.theme-sa .et-page .et-button--primary:hover { background: #4a7fa7 !important; }
+.app-shell.theme-sa .kd-page .kd-button:not(.kd-button-primary) { border-color: #b3cfe5; }
+.app-shell.theme-sa .exec-dashboard .exec-button:not(.exec-button-primary) { border-color: #b3cfe5; }
+.app-shell.theme-sa main .text-blue-950 { color: #0a1931; }
+.app-shell.theme-sa main .text-blue-600 { color: #4a7fa7; }
+.app-shell.theme-sa main .bg-blue-50 { background-color: #e8f0f7; }
+.app-shell.theme-sa .workspace-tabs button[aria-selected="true"],
+.app-shell.theme-sa .workspace-tabs button.active { color: #1a3d63; }
+.app-shell.theme-sa .focus\:border-blue-500:focus { border-color: #4a7fa7; }
+.app-shell.theme-sa .focus\:ring-blue-200:focus { --tw-ring-color: #4a7fa7; }
+.app-shell.theme-sa .accent-blue-900 { accent-color: #1a3d63; }
+
+/* ================= ADMIN / HR — EXCLUSIVE ========================== */
+.app-shell.theme-admin #mainSidebar {
+  background: linear-gradient(180deg, #5c3d2e, #2d2424);
+  border-color: rgba(237, 192, 151, .35);
+}
+.app-shell.theme-admin #mainSidebar nav a { color: #edc097; }
+.app-shell.theme-admin #mainSidebar nav a:hover,
+.app-shell.theme-admin #mainSidebar nav a:focus-visible {
+  color: #ffffff;
+  background: rgba(255, 255, 255, .12);
+}
+.app-shell.theme-admin #mainSidebar nav a.active,
+.app-shell.theme-admin #mainSidebar nav a.sidebar-item-active,
+.app-shell.theme-admin #mainSidebar nav a.bg-blue-600,
+.app-shell.theme-admin .sidebar-link.active {
+  color: #2d2424;
+  background: #edc097;
+  box-shadow: 0 10px 20px rgba(45, 36, 36, .45);
+}
+.app-shell.theme-admin #mainSidebar nav > div,
+.app-shell.theme-admin #mainSidebar nav .nav-group-label { color: #edc097; }
+.app-shell.theme-admin #mainSidebar > div:first-child,
+.app-shell.theme-admin #mainSidebar > div:last-child,
+.app-shell.theme-admin #mainSidebar > div:last-child > * { color: #fdf8f2; }
+.app-shell.theme-admin #mainSidebar > div:first-child svg { fill: #edc097; }
+.app-shell.theme-admin #mainSidebar > div:first-child button { color: #edc097; }
+.app-shell.theme-admin #mainSidebar > div:last-child > div {
+  background: rgba(255, 255, 255, .08);
+  border-color: rgba(255, 255, 255, .15);
+}
+.app-shell.theme-admin #mainSidebar > div:last-child p { color: #edc097; }
+.app-shell.theme-admin #mainSidebar > div:last-child .text-sm { color: #fdf8f2; }
+.app-shell.theme-admin #mainSidebar > div:last-child button {
+  background: rgba(255, 255, 255, .10);
+  border-color: rgba(255, 255, 255, .25);
+  color: #fdf8f2;
+}
+.app-shell.theme-admin #mainSidebar > div:last-child button:hover {
+  background: rgba(255, 255, 255, .20);
+  color: #ffffff;
+}
+.app-shell.theme-admin #mainSidebar .bg-blue-600 { background: #bb5c38; }
+.app-shell.theme-admin .app-topbar {
+  background: #2d2424;
+  border-bottom-color: rgba(237, 192, 151, .25);
+}
+.app-shell.theme-admin .app-topbar__eyebrow { color: #edc097; }
+.app-shell.theme-admin .app-topbar__title,
+.app-shell.theme-admin .app-topbar__user strong { color: #ffffff; }
+.app-shell.theme-admin .app-topbar__user span { color: rgba(255, 255, 255, .75); }
+.app-shell.theme-admin .app-topbar__icon {
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, .25);
+}
+.app-shell.theme-admin .app-topbar__icon:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, .12);
+  border-color: rgba(255, 255, 255, .35);
+}
+.app-shell.theme-admin .exec-mobile-sidebar-toggle,
+.app-shell.theme-admin main > div.md\:hidden { background: #2d2424; }
+.app-shell.theme-admin main .bg-blue-950 { background-color: #5c3d2e; }
+.app-shell.theme-admin main .hover\:bg-blue-900:hover { background-color: #9a4630; }
+.app-shell.theme-admin main button.bg-blue-600,
+.app-shell.theme-admin main a.bg-blue-600,
+.app-shell.theme-admin main button.bg-blue-700,
+.app-shell.theme-admin main a.bg-blue-700,
+.app-shell.theme-admin main button.bg-indigo-600,
+.app-shell.theme-admin main a.bg-indigo-600 { background-color: #5c3d2e; }
+.app-shell.theme-admin main button.bg-blue-600:hover,
+.app-shell.theme-admin main a.bg-blue-600:hover,
+.app-shell.theme-admin main button.bg-blue-700:hover,
+.app-shell.theme-admin main a.bg-blue-700:hover,
+.app-shell.theme-admin main button.bg-indigo-600:hover,
+.app-shell.theme-admin main a.bg-indigo-600:hover { background-color: #9a4630; }
+.app-shell.theme-admin .kd-page .kd-button-primary {
+  background: #5c3d2e;
+  border-color: #5c3d2e;
+  box-shadow: 0 6px 16px rgba(92, 61, 46, .35);
+}
+.app-shell.theme-admin .kd-page .kd-button-primary:hover { background: #9a4630; }
+.app-shell.theme-admin .exec-dashboard .exec-button-primary {
+  background: #5c3d2e;
+  border-color: #5c3d2e;
+}
+.app-shell.theme-admin .exec-dashboard .exec-button-primary:hover { background: #9a4630; }
+.app-shell.theme-admin .et-page .et-button--primary {
+  background: #5c3d2e !important;
+  border-color: #5c3d2e !important;
+}
+.app-shell.theme-admin .et-page .et-button--primary:hover { background: #9a4630 !important; }
+.app-shell.theme-admin .kd-page .kd-button:not(.kd-button-primary) { border-color: #edc097; }
+.app-shell.theme-admin .exec-dashboard .exec-button:not(.exec-button-primary) { border-color: #edc097; }
+.app-shell.theme-admin main .text-blue-950 { color: #2d2424; }
+.app-shell.theme-admin main .text-blue-600 { color: #9a4630; }
+.app-shell.theme-admin main .bg-blue-50 { background-color: #f7ead9; }
+.app-shell.theme-admin .workspace-tabs button[aria-selected="true"],
+.app-shell.theme-admin .workspace-tabs button.active { color: #5c3d2e; }
+.app-shell.theme-admin .focus\:border-blue-500:focus { border-color: #bb5c38; }
+.app-shell.theme-admin .focus\:ring-blue-200:focus { --tw-ring-color: #bb5c38; }
+.app-shell.theme-admin .accent-blue-900 { accent-color: #bb5c38; }
+
+/* ================= EMPLOYEE — POWERFUL ============================= */
+.app-shell.theme-employee #mainSidebar {
+  background: linear-gradient(180deg, #0f2c67, #0a1e47);
+  border-color: rgba(255, 202, 3, .35);
+}
+.app-shell.theme-employee #mainSidebar nav a { color: #ffffff; }
+.app-shell.theme-employee #mainSidebar nav a:hover,
+.app-shell.theme-employee #mainSidebar nav a:focus-visible {
+  color: #ffffff;
+  background: rgba(255, 255, 255, .12);
+}
+.app-shell.theme-employee #mainSidebar nav a.active,
+.app-shell.theme-employee #mainSidebar nav a.sidebar-item-active,
+.app-shell.theme-employee #mainSidebar nav a.bg-blue-600,
+.app-shell.theme-employee .sidebar-link.active {
+  color: #0f2c67;
+  background: #ffca03;
+  box-shadow: 0 10px 20px rgba(15, 44, 103, .45);
+}
+.app-shell.theme-employee #mainSidebar nav > div,
+.app-shell.theme-employee #mainSidebar nav .nav-group-label { color: rgba(255, 255, 255, .65); }
+.app-shell.theme-employee #mainSidebar > div:first-child,
+.app-shell.theme-employee #mainSidebar > div:last-child,
+.app-shell.theme-employee #mainSidebar > div:last-child > * { color: #ffffff; }
+.app-shell.theme-employee #mainSidebar > div:first-child svg { fill: #ffca03; }
+.app-shell.theme-employee #mainSidebar > div:first-child button { color: rgba(255, 255, 255, .75); }
+.app-shell.theme-employee #mainSidebar > div:last-child > div {
+  background: rgba(255, 255, 255, .08);
+  border-color: rgba(255, 255, 255, .15);
+}
+.app-shell.theme-employee #mainSidebar > div:last-child p { color: rgba(255, 255, 255, .75); }
+.app-shell.theme-employee #mainSidebar > div:last-child .text-sm { color: #ffffff; }
+.app-shell.theme-employee #mainSidebar > div:last-child button {
+  background: rgba(255, 255, 255, .10);
+  border-color: rgba(255, 255, 255, .25);
+  color: #ffffff;
+}
+.app-shell.theme-employee #mainSidebar > div:last-child button:hover {
+  background: rgba(255, 255, 255, .20);
+  color: #ffffff;
+}
+.app-shell.theme-employee #mainSidebar .bg-blue-600 { background: #f39500; }
+.app-shell.theme-employee .app-topbar {
+  background: #0f2c67;
+  border-bottom-color: rgba(255, 202, 3, .25);
+}
+.app-shell.theme-employee .app-topbar__eyebrow { color: #ffca03; }
+.app-shell.theme-employee .app-topbar__title,
+.app-shell.theme-employee .app-topbar__user strong { color: #ffffff; }
+.app-shell.theme-employee .app-topbar__user span { color: rgba(255, 255, 255, .75); }
+.app-shell.theme-employee .app-topbar__icon {
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, .25);
+}
+.app-shell.theme-employee .app-topbar__icon:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, .12);
+  border-color: rgba(255, 255, 255, .35);
+}
+.app-shell.theme-employee .exec-mobile-sidebar-toggle,
+.app-shell.theme-employee main > div.md\:hidden { background: #0f2c67; }
+.app-shell.theme-employee main .bg-blue-950 { background-color: #cd1818; }
+.app-shell.theme-employee main .hover\:bg-blue-900:hover { background-color: #a81212; }
+.app-shell.theme-employee main button.bg-blue-600,
+.app-shell.theme-employee main a.bg-blue-600,
+.app-shell.theme-employee main button.bg-blue-700,
+.app-shell.theme-employee main a.bg-blue-700,
+.app-shell.theme-employee main button.bg-indigo-600,
+.app-shell.theme-employee main a.bg-indigo-600 { background-color: #cd1818; }
+.app-shell.theme-employee main button.bg-blue-600:hover,
+.app-shell.theme-employee main a.bg-blue-600:hover,
+.app-shell.theme-employee main button.bg-blue-700:hover,
+.app-shell.theme-employee main a.bg-blue-700:hover,
+.app-shell.theme-employee main button.bg-indigo-600:hover,
+.app-shell.theme-employee main a.bg-indigo-600:hover { background-color: #a81212; }
+.app-shell.theme-employee .kd-page .kd-button-primary {
+  background: #cd1818;
+  border-color: #cd1818;
+  box-shadow: 0 6px 16px rgba(205, 24, 24, .35);
+}
+.app-shell.theme-employee .kd-page .kd-button-primary:hover { background: #a81212; }
+.app-shell.theme-employee .exec-dashboard .exec-button-primary {
+  background: #cd1818;
+  border-color: #cd1818;
+}
+.app-shell.theme-employee .exec-dashboard .exec-button-primary:hover { background: #a81212; }
+.app-shell.theme-employee .et-page .et-button--primary {
+  background: #cd1818 !important;
+  border-color: #cd1818 !important;
+}
+.app-shell.theme-employee .et-page .et-button--primary:hover { background: #a81212 !important; }
+.app-shell.theme-employee .kd-page .kd-button:not(.kd-button-primary) { border-color: #ffca03; }
+.app-shell.theme-employee .exec-dashboard .exec-button:not(.exec-button-primary) { border-color: #ffca03; }
+.app-shell.theme-employee main .text-blue-950 { color: #0f2c67; }
+.app-shell.theme-employee main .text-blue-600 { color: #cd1818; }
+.app-shell.theme-employee main .bg-blue-50 { background-color: #fff6d6; }
+.app-shell.theme-employee .workspace-tabs button[aria-selected="true"],
+.app-shell.theme-employee .workspace-tabs button.active { color: #0f2c67; }
+.app-shell.theme-employee .focus\:border-blue-500:focus { border-color: #f39500; }
+.app-shell.theme-employee .focus\:ring-blue-200:focus { --tw-ring-color: #f39500; }
+.app-shell.theme-employee .accent-blue-900 { accent-color: #cd1818; }

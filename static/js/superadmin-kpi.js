@@ -182,12 +182,17 @@ const API_BASE = "/api/v1/kpi";
             console.error(`KPI management tab not found: ${tabId}`);
             return;
         }
+        // Panels carry BOTH the `hidden` class AND the `hidden` attribute
+        // (template markup); toggling only the class left every non-formula
+        // tab invisible forever. Keep both in sync.
         document.querySelectorAll('.tab-content').forEach(el => {
             el.classList.add('hidden');
+            el.hidden = true;
             el.classList.remove('animate-fade-in-up');
         });
 
         targetTab.classList.remove('hidden');
+        targetTab.hidden = false;
         void targetTab.offsetWidth;
         targetTab.classList.add('animate-fade-in-up');
 

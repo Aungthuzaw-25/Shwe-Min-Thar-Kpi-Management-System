@@ -60,7 +60,7 @@
             <!-- Search bar for role matrix -->
             <div class="mb-4">
                 <label for="roleSearch" class="sr-only">Search role permissions</label>
-                <input id="roleSearch" type="text" placeholder="🔍 Search permissions..." class="w-full max-w-md rounded-xl border border-gray-200 bg-slate-50 px-4 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+                <input id="roleSearch" type="text" placeholder="Search permissions..." class="w-full max-w-md rounded-xl border border-gray-200 bg-slate-50 px-4 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
             </div>
             <div id="roleMatrix" class="space-y-4"></div>
             <div class="sticky bottom-3 z-10 mt-6 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-lg backdrop-blur sm:flex-row sm:items-center sm:justify-between">
@@ -120,7 +120,7 @@
             <!-- Search bar for user overrides -->
             <div class="mb-4">
                 <label for="userSearch" class="sr-only">Search user permissions</label>
-                <input id="userSearch" type="text" placeholder="🔍 Search permissions..." class="w-full max-w-md rounded-xl border border-gray-200 bg-slate-50 px-4 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+                <input id="userSearch" type="text" placeholder="Search permissions..." class="w-full max-w-md rounded-xl border border-gray-200 bg-slate-50 px-4 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
             </div>
             <div id="userMatrix" class="space-y-1"></div>
         </section>
@@ -203,6 +203,22 @@
 // GLOBAL STATE
 // =====================================================================
 const roleSelect = document.getElementById("roleSelect");
+// Viewer identity for U3/U5 gates. A null permission map (FastAPI-tier
+// render) fails open — buttons stay, as today; the API still enforces.
+const viewerIsSuperAdmin = {% if user_role == "Super Admin" %}true{% else %}false{% endif %};
+const viewerPermissions = {{ permission_map | default(null) | tojson }};
+function canPerm(key) {
+    return !viewerPermissions || viewerPermissions[key] !== false;
+}
+// U3: only a Super Admin may change the Admin role's matrix. Other
+// viewers see it read-only — their save 403s at the API today.
+function isRoleLockedForViewer() {
+    return !viewerIsSuperAdmin && selectedRoleName() === "Admin";
+}
+if (!canPerm('system.permissions.manage')) {
+    document.getElementById("saveUserOverrides").disabled = true;
+    document.getElementById("resetUserOverrides").disabled = true;
+}
 const userSelect = document.getElementById("userSelect");
 const roleMatrix = document.getElementById("roleMatrix");
 const userMatrixEl = document.getElementById("userMatrix");
@@ -262,6 +278,20 @@ function setRoleDirty(dirty) {
     roleDirty = dirty;
     const save = document.getElementById("saveRole");
     const summary = document.getElementById("roleChangeSummary");
+    if (isRoleLockedForViewer()) {
+        save.disabled = true;
+        save.classList.toggle("opacity-50", true);
+        summary.textContent = "Only a Super Admin can change the Admin role.";
+        summary.className = "text-sm font-semibold text-slate-500";
+        return;
+    }
+    if (!canPerm('system.permissions.manage')) {
+        save.disabled = true;
+        save.classList.toggle("opacity-50", true);
+        summary.textContent = "You do not have permission to manage permissions.";
+        summary.className = "text-sm font-semibold text-slate-500";
+        return;
+    }
     const count = [...roleMatrix.querySelectorAll(".role-permission:checked")]
         .filter(cb => cb.checked !== roleBaseline.has(cb.value)).length;
     save.disabled = !dirty;
@@ -277,7 +307,7 @@ function updateRoleContext() {
         : selectedRoleName();
     document.getElementById("roleProtectedBadge").classList.toggle(
         "hidden",
-        !["Super Admin"].includes(selectedRoleName())
+        !["Super Admin"].includes(selectedRoleName()) && !isRoleLockedForViewer()
     );
     document.querySelectorAll(".level-btn").forEach(btn => {
         const active = btn.dataset.level === selectedDepartmentLevel;
@@ -338,7 +368,7 @@ function renderRoleMatrix(assigned) {
             <div class="flex items-center justify-between bg-slate-50 px-4 py-3">
                 <span class="text-sm font-extrabold text-blue-950">${esc(group)}</span>
                 <label class="flex items-center gap-2 text-xs text-slate-500 cursor-pointer">
-                    <input type="checkbox" class="group-select-all h-4 w-4 accent-blue-900" data-group="${esc(group)}">
+                    <input type="checkbox" class="group-select-all h-4 w-4 accent-blue-900" data-group="${esc(group)}" ${isRoleLockedForViewer() ? "disabled" : ""}>
                     Select All
                 </label>
             </div>
@@ -357,7 +387,7 @@ function renderRoleMatrix(assigned) {
             html += `<tr class="border-t border-slate-50 hover:bg-blue-50/50 transition-colors perm-row" data-code="${esc(p.code)}">
                 <td class="px-4 py-3">
                     <label class="flex items-center gap-3 cursor-pointer">
-                        <input class="role-permission h-4 w-4 accent-blue-900 rounded" type="checkbox" value="${esc(p.code)}" ${isChecked ? "checked" : ""} data-group="${esc(group)}">
+                        <input class="role-permission h-4 w-4 accent-blue-900 rounded" type="checkbox" value="${esc(p.code)}" ${isChecked ? "checked" : ""} ${isRoleLockedForViewer() ? "disabled" : ""} data-group="${esc(group)}">
                         <code class="text-xs font-mono font-semibold text-blue-900">${esc(p.code)}</code>
                     </label>
                 </td>
@@ -427,12 +457,12 @@ async function loadRole() {
     setRoleDirty(false);
 }
 
-// Select / deselect all buttons
+// Select / deselect all buttons (locked checkboxes are skipped)
 document.getElementById("selectAllRole").onclick = () => {
-    roleMatrix.querySelectorAll(".role-permission").forEach(c => { if (!c.checked) { c.checked = true; c.dispatchEvent(new Event("change")); } });
+    roleMatrix.querySelectorAll(".role-permission").forEach(c => { if (!c.disabled && !c.checked) { c.checked = true; c.dispatchEvent(new Event("change")); } });
 };
 document.getElementById("deselectAllRole").onclick = () => {
-    roleMatrix.querySelectorAll(".role-permission").forEach(c => { if (c.checked) { c.checked = false; c.dispatchEvent(new Event("change")); } });
+    roleMatrix.querySelectorAll(".role-permission").forEach(c => { if (!c.disabled && c.checked) { c.checked = false; c.dispatchEvent(new Event("change")); } });
 };
 document.getElementById("cancelRoleChanges").onclick = () => loadRole().catch(e => setMessage(e.message));
 document.querySelectorAll(".level-btn").forEach(btn => {
@@ -447,6 +477,7 @@ document.querySelectorAll(".level-btn").forEach(btn => {
 
 // Save role permissions
 document.getElementById("saveRole").onclick = async () => {
+    if (isRoleLockedForViewer() || !canPerm('system.permissions.manage')) return;
     const codes = [...roleMatrix.querySelectorAll(".role-permission:checked")].map(c => c.value);
     const ok = await showConfirm("Save Role Permissions?", `This will set ${codes.length} permission(s) for the selected role. Continue?`);
     if (!ok) return;
@@ -526,7 +557,7 @@ function renderUserMatrix(permissions) {
                         <tr class="text-left text-xs uppercase tracking-wide text-slate-400 bg-slate-25">
                             <th class="px-4 py-2 w-1/4">Permission</th>
                             <th class="px-4 py-2 text-center w-24">Status</th>
-                            <th class="px-4 py-2 text-center w-48">Override</th>
+                            <th class="px-4 py-2 text-center w-48">Allowed</th>
                             <th class="px-4 py-2 text-center w-36">Scope</th>
                             <th class="px-4 py-2 w-1/4">Description</th>
                         </tr>
@@ -542,34 +573,34 @@ function renderUserMatrix(permissions) {
             const statusIcon = p.allowed ? "✓" : "✗";
             const statusClass = p.allowed ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-600";
 
-            // Determine current override state
-            const isOverrideAllow = p.source === "override";
-            const isOverrideDeny = p.source === "denied_override";
-            const isInherit = p.source === "role" || p.source === "default";
+            // Toggle state (option B — follow the role): the toggle shows
+            // the EFFECTIVE state (allowed on/off). Pending override starts
+            // from the server source; roleAllowed is known only for
+            // role/default rows — for override rows the role value is
+            // masked, so turning one back on always writes an explicit
+            // Allow override rather than guessing inherit.
+            const pending = p.source === "override" ? "allow" : p.source === "denied_override" ? "deny" : "inherit";
+            const roleAllowed = p.source === "role" ? (p.allowed ? "true" : "false") : p.source === "default" ? "false" : "";
+            const scopeOff = !p.allowed;
 
-            html += `<tr class="border-t border-slate-50 hover:bg-blue-50/30 transition-colors user-perm-row" data-code="${esc(p.code)}">
+            html += `<tr class="border-t border-slate-50 hover:bg-blue-50/30 transition-colors user-perm-row" data-code="${esc(p.code)}" data-pending="${pending}" data-role-allowed="${roleAllowed}" data-original-source="${esc(p.source)}" data-original-scope="${esc(p.scope)}">
                 <td class="px-4 py-3">
                     <div class="flex items-center gap-2">
-                        <span class="inline-block h-2.5 w-2.5 rounded-full ${sourceColor}"></span>
+                        <span class="perm-source-dot inline-block h-2.5 w-2.5 rounded-full ${sourceColor}"></span>
                         <code class="text-xs font-mono font-semibold text-blue-900">${esc(p.code)}</code>
                     </div>
-                    <div class="mt-0.5 ml-[18px] text-[10px] text-slate-400">${esc(sourceLabel)}</div>
+                    <div class="perm-source-label mt-0.5 ml-[18px] text-[10px] text-slate-400">${esc(sourceLabel)}</div>
                 </td>
                 <td class="px-4 py-3 text-center">
-                    <span class="inline-block w-7 h-7 rounded-full text-center leading-7 text-xs font-bold ${statusClass}">${statusIcon}</span>
+                    <span class="perm-status inline-block w-7 h-7 rounded-full text-center leading-7 text-xs font-bold ${statusClass}">${statusIcon}</span>
                 </td>
                 <td class="px-4 py-3 text-center">
-                    <div class="inline-flex rounded-lg border border-slate-200 overflow-hidden">
-                        <button data-code="${esc(p.code)}" data-action="allow"
-                            class="override-btn px-3 py-1.5 text-xs font-bold transition-all ${isOverrideAllow ? "bg-emerald-500 text-white" : "bg-white text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"}">Allow</button>
-                        <button data-code="${esc(p.code)}" data-action="inherit"
-                            class="override-btn px-3 py-1.5 text-xs font-bold transition-all border-x border-slate-200 ${isInherit ? "bg-blue-500 text-white" : "bg-white text-slate-400 hover:bg-blue-50 hover:text-blue-600"}">Inherit</button>
-                        <button data-code="${esc(p.code)}" data-action="deny"
-                            class="override-btn px-3 py-1.5 text-xs font-bold transition-all ${isOverrideDeny ? "bg-red-500 text-white" : "bg-white text-slate-400 hover:bg-red-50 hover:text-red-600"}">Deny</button>
-                    </div>
+                    <button type="button" class="perm-toggle${p.allowed ? " is-on" : ""}" role="switch" aria-checked="${p.allowed}" aria-label="Allow ${esc(p.code)}" data-code="${esc(p.code)}">
+                        <span class="perm-toggle-knob" aria-hidden="true"></span>
+                    </button>
                 </td>
                 <td class="px-4 py-3 text-center">
-                    <select data-scope-code="${esc(p.code)}" ${isInherit ? "disabled" : ""} class="scope-select rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-semibold ${isInherit ? "bg-slate-100 text-slate-400 cursor-not-allowed" : "bg-white"} focus:ring-2 focus:ring-blue-200">
+                    <select data-scope-code="${esc(p.code)}" ${scopeOff ? "disabled" : ""} class="scope-select rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-semibold ${scopeOff ? "bg-slate-100 text-slate-400 cursor-not-allowed" : "bg-white"} focus:ring-2 focus:ring-blue-200">
                         <option value="ALL" ${p.scope === "ALL" ? "selected" : ""}>All Data</option>
                         <option value="DEPARTMENT" ${p.scope === "DEPARTMENT" ? "selected" : ""}>Department</option>
                         <option value="OWN" ${p.scope === "OWN" ? "selected" : ""}>Own Data</option>
@@ -582,29 +613,73 @@ function renderUserMatrix(permissions) {
     }
     userMatrixEl.innerHTML = html;
 
-    // Wire override buttons
-    userMatrixEl.querySelectorAll(".override-btn").forEach(btn => {
-        btn.onclick = () => {
-            const code = btn.dataset.code;
-            const action = btn.dataset.action;
-            // Update button group visuals
-            const row = btn.closest("tr");
-            row.querySelectorAll(".override-btn").forEach(b => {
-                b.className = b.className.replace(/bg-\w+-500 text-white/g, "").trim();
-                b.classList.add("bg-white", "text-slate-400");
-                b.classList.remove("bg-emerald-500", "bg-blue-500", "bg-red-500", "text-white");
-            });
-            if (action === "allow") { btn.classList.add("bg-emerald-500", "text-white"); btn.classList.remove("bg-white", "text-slate-400"); }
-            else if (action === "inherit") { btn.classList.add("bg-blue-500", "text-white"); btn.classList.remove("bg-white", "text-slate-400"); }
-            else if (action === "deny") { btn.classList.add("bg-red-500", "text-white"); btn.classList.remove("bg-white", "text-slate-400"); }
-            const scope = row.querySelector(".scope-select");
-            if (scope) {
-                scope.disabled = action === "inherit";
-                scope.classList.toggle("bg-slate-100", scope.disabled);
-                scope.classList.toggle("text-slate-400", scope.disabled);
-                scope.classList.toggle("cursor-not-allowed", scope.disabled);
-                scope.classList.toggle("bg-white", !scope.disabled);
+    // Toggle state helpers: effective = pending override if any, else
+    // the role value. The source mark follows the PENDING source, so
+    // the row always shows what saving will write.
+    function userRowEffective(row) {
+        if (row.dataset.pending === "allow") return true;
+        if (row.dataset.pending === "deny") return false;
+        return row.dataset.roleAllowed === "true";
+    }
+    function userRowPendingSource(row) {
+        if (row.dataset.pending === "allow") return "override";
+        if (row.dataset.pending === "deny") return "denied_override";
+        return row.dataset.originalSource;
+    }
+    function refreshUserRow(row) {
+        const on = userRowEffective(row);
+        const toggle = row.querySelector(".perm-toggle");
+        toggle.setAttribute("aria-checked", on ? "true" : "false");
+        toggle.classList.toggle("is-on", on);
+        const status = row.querySelector(".perm-status");
+        status.textContent = on ? "✓" : "✗";
+        status.className = `perm-status inline-block w-7 h-7 rounded-full text-center leading-7 text-xs font-bold ${on ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-600"}`;
+        const src = userRowPendingSource(row);
+        const colors = { role: "bg-blue-500", override: "bg-amber-500", denied_override: "bg-red-500", default: "bg-slate-300" };
+        const labels = { role: "Role", override: "Allow Override", denied_override: "Deny Override", default: "Default" };
+        row.querySelector(".perm-source-dot").className = `perm-source-dot inline-block h-2.5 w-2.5 rounded-full ${colors[src]}`;
+        row.querySelector(".perm-source-label").textContent = labels[src];
+        // Scope is pickable only while the toggle is ON.
+        const scope = row.querySelector(".scope-select");
+        if (scope) {
+            scope.disabled = !on;
+            scope.classList.toggle("bg-slate-100", !on);
+            scope.classList.toggle("text-slate-400", !on);
+            scope.classList.toggle("cursor-not-allowed", !on);
+            scope.classList.toggle("bg-white", on);
+        }
+    }
+
+    // Wire toggles (option B mapping)
+    userMatrixEl.querySelectorAll(".perm-toggle").forEach(toggle => {
+        toggle.onclick = () => {
+            const row = toggle.closest("tr");
+            if (userRowEffective(row)) {
+                row.dataset.pending = "deny";
+            } else {
+                // OFF -> ON: back to inherit when the role allows it,
+                // else an explicit Allow override (never guess inherit
+                // when the role value is masked by an existing override).
+                row.dataset.pending = row.dataset.roleAllowed === "true" ? "inherit" : "allow";
             }
+            refreshUserRow(row);
+        };
+    });
+
+    // Scope changes: an ON row that still follows its role becomes an
+    // Allow override the moment its scope moves off the original
+    // (scope only travels with an override); moving it back restores
+    // inherit. Rows that started with an override keep their pending.
+    userMatrixEl.querySelectorAll(".scope-select").forEach(sel => {
+        sel.onchange = () => {
+            const row = sel.closest("tr");
+            const startedInherit = row.dataset.originalSource === "role" || row.dataset.originalSource === "default";
+            if (row.dataset.pending === "inherit" && userRowEffective(row) && sel.value !== row.dataset.originalScope) {
+                row.dataset.pending = "allow";
+            } else if (row.dataset.pending === "allow" && startedInherit && sel.value === row.dataset.originalScope) {
+                row.dataset.pending = "inherit";
+            }
+            refreshUserRow(row);
         };
     });
 }
@@ -621,28 +696,28 @@ document.getElementById("userSearch").addEventListener("input", (e) => {
     });
 });
 
-// Collect current user override state from UI
+// Collect current user override state from UI: only pending
+// allow/deny rows are sent (the bulk endpoint replaces all overrides,
+// so inherit rows are deleted server-side by their absence).
 function collectUserOverrides() {
     const overrides = [];
     userMatrixEl.querySelectorAll(".user-perm-row").forEach(row => {
-        const code = row.dataset.code;
-        const activeBtn = row.querySelector(".override-btn.bg-emerald-500, .override-btn.bg-red-500");
-        if (!activeBtn) return; // "inherit" = no override
-
-        const allowed = activeBtn.dataset.action === "allow";
+        const pending = row.dataset.pending;
+        if (pending !== "allow" && pending !== "deny") return;
         const scopeSelect = row.querySelector(".scope-select");
         const scope = scopeSelect ? scopeSelect.value : "ALL";
-        overrides.push({ permission_code: code, allowed, scope, department_id: null });
+        overrides.push({ permission_code: row.dataset.code, allowed: pending === "allow", scope, department_id: null });
     });
     return overrides;
 }
 
 // Save all overrides
 document.getElementById("saveUserOverrides").onclick = async () => {
+    if (!canPerm('system.permissions.manage')) return;
     const uid = userSelect.value;
     if (!uid) return;
     const overrides = collectUserOverrides();
-    const ok = await showConfirm("Save User Overrides?", `This will save ${overrides.length} override(s) for this user. Permissions set to "Inherit" will use role defaults. Continue?`);
+    const ok = await showConfirm("Save User Overrides?", `This will save ${overrides.length} permission change(s) for this user. Permissions you did not change keep following their role. Continue?`);
     if (!ok) return;
     const response = await fetch(`/api/v1/permissions/user/${uid}/bulk`, {
         method: "PUT", headers: {"Content-Type": "application/json"},
@@ -655,6 +730,7 @@ document.getElementById("saveUserOverrides").onclick = async () => {
 
 // Reset to role defaults
 document.getElementById("resetUserOverrides").onclick = async () => {
+    if (!canPerm('system.permissions.manage')) return;
     const uid = userSelect.value;
     if (!uid) return;
     const ok = await showConfirm("Reset to Role Defaults?", "This will remove ALL user-specific overrides. The user will inherit all permissions from their role only. Continue?");

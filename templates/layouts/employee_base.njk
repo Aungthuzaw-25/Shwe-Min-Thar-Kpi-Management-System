@@ -17,6 +17,7 @@
     <link rel="stylesheet" href="/static/css/enterprise-ui.css">
     <link rel="stylesheet" href="/static/css/executive-dashboard.css">
     <link rel="stylesheet" href="/static/css/liquid-glass-theme.css?v=20261021-4">
+    <link rel="stylesheet" href="/static/css/role-themes.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     <script src="/static/js/api-fetch.js"></script>
     {% if dashboard_variant == "executive" %}
@@ -53,7 +54,7 @@
         }
     </style>
 </head>
-<body class="app-shell app-shell--employee flex h-screen overflow-hidden text-slate-800 relative">
+<body class="app-shell app-shell--employee flex h-screen overflow-hidden text-slate-800 relative {% if user_role == 'Super Admin' %}theme-sa{% elif user_role in ['Admin', 'HR', 'System Admin'] %}theme-admin{% elif user_role %}theme-employee{% endif %}">
     <div id="offlineBanner" class="offline-banner" data-user-id="{{ user_id }}" hidden role="status">📴 You are offline. <span id="offlineBannerTime" class="offline-banner-time"></span></div>
     <!-- Global loading overlay: frosted glass + ring (design-system.css .app-loader) -->
     <div class="app-loader" aria-hidden="true">
@@ -85,7 +86,7 @@
             <!-- L0 NAVIGATION -->
             {% if user_level in ['L0', 'Level 0'] %}
                 <div class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 px-3">Director Operations</div>
-                <a href="/l0/dashboard" class="sidebar-link flex items-center px-4 py-3.5 text-sm font-bold rounded-xl {% if active_page == 'dashboard' %}active{% else %}text-slate-300{% endif %}">
+                <a href="/dashboard" class="sidebar-link flex items-center px-4 py-3.5 text-sm font-bold rounded-xl {% if active_page == 'dashboard' %}active{% else %}text-slate-300{% endif %}">
                     <svg class="w-5 h-5 mr-3 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
                     Department Overview
                 </a>
@@ -98,7 +99,7 @@
             <!-- L1 NAVIGATION -->
             {% elif user_level in ['L1', 'Level 1'] %}
                 <div class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 px-3">Team Supervisor</div>
-                <a href="/l1/dashboard" class="sidebar-link flex items-center px-4 py-3.5 text-sm font-bold rounded-xl {% if active_page == 'dashboard' %}active{% else %}text-slate-300{% endif %}">
+                <a href="/dashboard" class="sidebar-link flex items-center px-4 py-3.5 text-sm font-bold rounded-xl {% if active_page == 'dashboard' %}active{% else %}text-slate-300{% endif %}">
                     <svg class="w-5 h-5 mr-3 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
                     Team Dashboard
                 </a>
