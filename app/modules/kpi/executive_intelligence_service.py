@@ -980,7 +980,14 @@ async def list_executive_employee_results(
             return ExecutiveEmployeePage(items=[], total=0, offset=offset, limit=limit)
         records = _ranked_records([period_id], period_type)
         filters = _record_filters(records, scope_user_ids, department_ids)
-        order_by = [User.first_name, User.last_name, User.id]
+        # Department KPI top performers need score order, not name
+        # order (the range path below already sorts this way).
+        order_by = [
+            records.c.percentage.desc().nulls_last(),
+            User.first_name,
+            User.last_name,
+            User.id,
+        ]
     else:
         if period_start is None or period_end is None:
             return ExecutiveEmployeePage(items=[], total=0, offset=offset, limit=limit)
