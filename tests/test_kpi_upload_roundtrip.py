@@ -32,7 +32,7 @@ from app.modules.kpi.models import (
 )
 from app.modules.kpi.period_ranges import calendar_period_range
 from app.modules.kpi.upload_contract import HeaderContractError, build_header_contract
-from app.modules.kpi.upload_router import admin_hr_checker, limiter, router
+from app.modules.kpi.upload_router import limiter, router
 from app.modules.tasks.models.task import Task
 from app.modules.tasks.models.task_review import TaskReview
 from app.modules.users.models import Position, Role, User
@@ -170,7 +170,8 @@ async def _client(session_factory, admin):
             yield db
 
     app.dependency_overrides[get_db] = override_db
-    app.dependency_overrides[admin_hr_checker] = lambda: admin
+    # E2: upload routes are gated by get_current_user + permission
+    # keys now (the old admin_hr_checker role gate is deleted).
     app.dependency_overrides[get_current_user] = lambda: admin
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
 

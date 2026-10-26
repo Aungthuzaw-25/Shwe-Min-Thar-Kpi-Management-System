@@ -35,9 +35,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.dependencies import (
-    RoleChecker,
     enforce_permission,
     get_authorized_department_ids,
+    get_current_user,
 )
 from app.core.timezone import as_application_time
 from app.database.connection import get_db
@@ -64,7 +64,6 @@ from app.modules.users.models import User
 logger = logging.getLogger(__name__)
 limiter = Limiter(key_func=get_remote_address)
 router = APIRouter(prefix="/kpi-uploads", tags=["KPI Excel Uploads"])
-admin_hr_checker = RoleChecker(["Super Admin", "Admin", "HR"])
 
 MAX_FILE_SIZE = 5 * 1024 * 1024
 ALLOWED_EXTENSIONS = {".csv", ".xlsx"}
@@ -608,7 +607,7 @@ def _user_metadata(user: User, department_ids: set[str] | None) -> dict[str, str
 
 async def list_import_periods(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(admin_hr_checker),
+    current_user: User = Depends(get_current_user),
 ):
     enforce_permission(current_user, "kpi.create")
     periods = (
@@ -637,7 +636,7 @@ async def list_import_periods(
 async def get_import_periods(
     request: Request,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(admin_hr_checker),
+    current_user: User = Depends(get_current_user),
 ):
     return await list_import_periods(db, current_user)
 
@@ -648,7 +647,7 @@ async def export_kpi_template(
     request: Request,
     period_id: UUID = Query(...),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(admin_hr_checker),
+    current_user: User = Depends(get_current_user),
 ):
     enforce_permission(current_user, "report.export")
     try:
@@ -737,7 +736,7 @@ async def upload_monthly_kpi_data(
     period_id: Annotated[UUID | None, Form()] = None,
     target_month: Annotated[str | None, Form()] = None,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(admin_hr_checker),
+    current_user: User = Depends(get_current_user),
 ):
     enforce_permission(current_user, "kpi.create")
     try:

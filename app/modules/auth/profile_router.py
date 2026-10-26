@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core import security
-from app.core.dependencies import get_current_user
+from app.core.dependencies import enforce_user_scope, get_current_user
 from app.database.connection import get_db
 from app.models.audit_log import AuditLog
 from app.modules.auth.models import AuthSession, PasswordHistory
@@ -332,6 +332,13 @@ async def get_account_avatar(
             User.is_deleted.is_(False),
         )
     )).scalars().first()
+    # I5: any authenticated user could fetch any user's avatar by
+    # filename. Ownership now follows the same scope as every other
+    # user read (enforce_user_scope): self, SA/HR, or Admin / dept
+    # head of a shared department. Unknown filenames still 404 (no
+    # existence leak).
+    if owner:
+        await enforce_user_scope(db, user, owner)
     image_path = _stored_avatar_path(filename) if owner else None
     if (
         image_path is None

@@ -32,10 +32,16 @@
             </div>
         </div>
         <div class="flex items-center gap-3 w-full md:w-auto mt-2 md:mt-0">
+            {# I6: hide the export button when the server-rendered
+               permission map says no report.export. On render paths
+               without a map (Express), the button renders and the JS
+               gate below decides — fail-closed either way. #}
+            {% if permission_map is undefined or permission_map['report.export'] %}
             <button onclick="exportToCSV()" id="exportBtn" disabled class="w-full md:w-auto justify-center bg-white text-gray-400 border border-gray-200 px-5 py-2.5 sm:py-3 rounded-xl text-xs sm:text-sm font-bold flex items-center shadow-sm transition-all duration-300">
                 <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                 Export CSV
             </button>
+            {% endif %}
         </div>
     </header>
 
@@ -195,7 +201,7 @@
                 reportData = result.data || [];
                 renderReport(result);
                 
-                if(reportData.length > 0) {
+                if(reportData.length > 0 && await canExportReport()) {
                     exportBtn.disabled = false;
                     exportBtn.className = "w-full md:w-auto justify-center bg-white text-blue-700 hover:text-blue-900 border border-blue-200 hover:bg-blue-50 px-5 py-2.5 sm:py-3 rounded-xl text-xs sm:text-sm font-bold flex items-center shadow-sm transition-all duration-300";
                 }
@@ -242,8 +248,24 @@
         });
     }
 
+    // I6: client-side export is gated on report.export, fetched
+    // once from /permissions/me (the same source the sidebar uses).
+    // Fail-closed: any fetch failure leaves the button disabled.
+    let exportPermissionChecked = null;
+    async function canExportReport() {
+        if (exportPermissionChecked !== null) return exportPermissionChecked;
+        try {
+            const permResponse = await fetch('/api/v1/permissions/me');
+            const permData = await permResponse.json();
+            exportPermissionChecked = !!(permData.permissions && permData.permissions['report.export']);
+        } catch (e) {
+            exportPermissionChecked = false;
+        }
+        return exportPermissionChecked;
+    }
     function exportToCSV() {
         if (!reportData || reportData.length === 0) return;
+        if (!exportPermissionChecked) return;
 
         const periodType = document.getElementById("periodType").value;
         // Today's date on the panel timezone (toISOString would give

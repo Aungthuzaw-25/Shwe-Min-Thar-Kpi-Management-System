@@ -3,9 +3,9 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-# 🌟 ပြင်ဆင်ချက်: get_current_user နှင့် RoleChecker ကို ပြောင်းလဲအသုံးပြုထားပါသည်
+# E2: positions are gated by permission keys (department.edit /
+# department.view), not by role names.
 from app.core.dependencies import (
-    RoleChecker,
     enforce_department_scope,
     enforce_permission,
     get_current_user,
@@ -17,12 +17,10 @@ from app.modules.users.position_schemas import PositionCreate, PositionResponse,
 
 router = APIRouter(prefix="/positions", tags=["Positions"])
 
-# 🌟 ပြင်ဆင်ချက်: RoleChecker သို့ ပြောင်းထားပါသည်
-admin_only = RoleChecker(["Super Admin", "Admin", "HR"])
 DEPARTMENT_EDIT_PERMISSION = "department.edit"
 POSITION_NOT_FOUND = "Position not found"
 
-@router.post("/", response_model=PositionResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(admin_only)], responses={403: {"description": "Forbidden"}, 404: {"description": "Not Found"}})
+@router.post("/", response_model=PositionResponse, status_code=status.HTTP_201_CREATED, responses={403: {"description": "Forbidden"}, 404: {"description": "Not Found"}})
 async def create_new_position(
     position_in: PositionCreate,
     db: AsyncSession = Depends(get_db),
@@ -54,7 +52,7 @@ async def read_position(
     await enforce_department_scope(db, current_user, position.department_id)
     return position
 
-@router.put("/{position_id}", response_model=PositionResponse, dependencies=[Depends(admin_only)], responses={403: {"description": "Forbidden"}, 404: {"description": "Not Found"}})
+@router.put("/{position_id}", response_model=PositionResponse, responses={403: {"description": "Forbidden"}, 404: {"description": "Not Found"}})
 async def update_existing_position(
     position_id: UUID,
     position_in: PositionUpdate,
@@ -71,7 +69,7 @@ async def update_existing_position(
         raise HTTPException(status_code=404, detail=POSITION_NOT_FOUND)
     return updated
 
-@router.delete("/{position_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(admin_only)], responses={403: {"description": "Forbidden"}, 404: {"description": "Not Found"}})
+@router.delete("/{position_id}", status_code=status.HTTP_204_NO_CONTENT, responses={403: {"description": "Forbidden"}, 404: {"description": "Not Found"}})
 async def delete_existing_position(
     position_id: UUID,
     db: AsyncSession = Depends(get_db),

@@ -3,7 +3,7 @@ import { sendBackendError } from "../lib/backendClient.js";
 
 const roles = {
   superAdmin: ["Super Admin"],
-  admin: ["Admin", "System Admin"],
+  admin: ["Admin"],
   adminTools: ["Super Admin", "Admin"],
   kpiUpload: ["Super Admin", "Admin", "HR"],
   superAdminTools: ["Super Admin"],

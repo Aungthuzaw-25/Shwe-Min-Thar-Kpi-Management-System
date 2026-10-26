@@ -7,7 +7,6 @@ from sqlalchemy.orm import joinedload
 
 from app.core.dependencies import (
     GLOBAL_SCOPE_ROLES,
-    RoleChecker,
     enforce_department_scope,
     enforce_permission,
     get_current_user,
@@ -20,7 +19,6 @@ from app.modules.targets.schemas import TargetCreate, TargetResponse
 from app.modules.users.models import User
 
 router = APIRouter()
-admin_checker = RoleChecker(['Super Admin', 'Admin'])
 
 @router.post(
     "/",
@@ -32,7 +30,7 @@ admin_checker = RoleChecker(['Super Admin', 'Admin'])
 async def create_target(
     payload: TargetCreate, 
     db: AsyncSession = Depends(get_db), 
-    current_user: User = Depends(admin_checker)
+    current_user: User = Depends(get_current_user)
 ):
     enforce_permission(current_user, "kpi.edit")
     try:
@@ -120,7 +118,7 @@ async def get_targets(
 async def delete_target(
     target_id: UUID, 
     db: AsyncSession = Depends(get_db), 
-    current_user: User = Depends(admin_checker)
+    current_user: User = Depends(get_current_user)
 ):
     enforce_permission(current_user, "kpi.edit")
     try:

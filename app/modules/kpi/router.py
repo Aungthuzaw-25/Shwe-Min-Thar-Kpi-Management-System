@@ -70,34 +70,24 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 ROLE_SUPER_ADMIN = "Super Admin"
-ROLE_LEVEL_1 = "Level 1"
-ROLE_LEVEL_0 = "Level 0"
+# I1: ROLE_LEVEL_* constants deleted with the dead role names they
+# carried — L0/L1 are membership levels, checked via user_departments.
 ERR_FORMULA_NOT_FOUND = "Formula not found."
 PERM_KPI_EDIT = "kpi.edit"
 PERM_KPI_VIEW = "kpi.view"
+PERM_KPI_DELETE = "kpi.delete"
 ERR_KPI_RECORD_NOT_FOUND = "KPI Record not found."
 PERM_KPI_CALCULATE = "kpi.calculate"
 
 # ==============================================================================
-# 🌟 2. DEPENDENCIES: Centralized Role-Based Access Control (RBAC)
+# 2. DEPENDENCIES: permission-key gates (E2 — the local RoleChecker
+#    is deleted; routes are gated by catalog keys, except
+#    require_report_access, the level-aware report scope, which stays)
 # ==============================================================================
-class RoleChecker:
-    def __init__(self, allowed_roles: list[str]):
-        self.allowed_roles = allowed_roles
-
-    def __call__(self, user: User = Depends(get_current_user)) -> User:
-        if user.role.name not in self.allowed_roles:
-            logger.warning(f"Unauthorized access attempt by User {user.id} ({user.role.name})")
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, 
-                detail="Not authorized to perform this action."
-            )
-        return user
-
-allow_admins = RoleChecker([ROLE_SUPER_ADMIN, "Admin"])
-allow_super_admins = RoleChecker([ROLE_SUPER_ADMIN])
-allow_reports = RoleChecker([ROLE_SUPER_ADMIN, "Admin", "HR", ROLE_LEVEL_0, ROLE_LEVEL_1])
-allow_charts = RoleChecker([ROLE_SUPER_ADMIN, "Admin", ROLE_LEVEL_0, ROLE_LEVEL_1])
+# E2: the local RoleChecker helpers are deleted with the role gates
+# they served — every route here is now gated by a permission key
+# (or by require_report_access, the level-aware report scope, which
+# stays). ROLE_* constants remain for require_report_access.
 
 
 async def require_report_access(
@@ -105,7 +95,7 @@ async def require_report_access(
     current_user: User = Depends(get_current_user),
 ) -> User:
     """Allow report readers by role or by their assigned department level."""
-    allowed_roles = {ROLE_SUPER_ADMIN, "Admin", "HR", ROLE_LEVEL_0, ROLE_LEVEL_1}
+    allowed_roles = {ROLE_SUPER_ADMIN, "Admin", "HR"}
     if current_user.role and current_user.role.name in allowed_roles:
         return current_user
 
@@ -161,7 +151,7 @@ class AuditLogResponse(BaseModel):
 @router.get('/settings', response_model=list[KPILevelSettingResponse], responses={500: {"description": "Internal Server Error"}})
 async def get_kpi_settings(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(allow_admins)
+    current_user: User = Depends(get_current_user)
 ):
     enforce_permission(current_user, "system.settings.view")
     try:
@@ -175,7 +165,7 @@ async def update_kpi_setting(
     level_name: str,
     payload: KPILevelSettingUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(allow_super_admins)
+    current_user: User = Depends(get_current_user)
 ):
     enforce_permission(current_user, "system.settings.edit")
     try:
@@ -190,7 +180,7 @@ async def update_targeted_department_levels(
     department_id: UUID,
     payload: DepartmentKPILevelUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(allow_admins)
+    current_user: User = Depends(get_current_user)
 ):
     enforce_permission(current_user, "system.settings.edit")
     await enforce_department_scope(db, current_user, department_id)
@@ -291,7 +281,7 @@ async def _formula_response(db: AsyncSession, formula):
 async def create_kpi_formula(
     payload: KPIFormulaCreate, 
     db: AsyncSession = Depends(get_db), 
-    current_user: User = Depends(allow_admins)
+    current_user: User = Depends(get_current_user)
 ):
     enforce_permission(current_user, "kpi.create")
     await enforce_department_scope(db, current_user, payload.department_id)
@@ -308,7 +298,7 @@ async def edit_kpi_formula(
     formula_id: UUID,
     payload: KPIFormulaUpdate, 
     db: AsyncSession = Depends(get_db), 
-    current_user: User = Depends(allow_admins)
+    current_user: User = Depends(get_current_user)
 ):
     enforce_permission(current_user, PERM_KPI_EDIT)
     await _load_formula_in_scope(db, current_user, formula_id)
@@ -338,7 +328,7 @@ async def toggle_kpi_formula(
     formula_id: UUID,
     payload: KPIFormulaUpdate,
     db: AsyncSession = Depends(get_db), 
-    current_user: User = Depends(allow_admins)
+    current_user: User = Depends(get_current_user)
 ):
     enforce_permission(current_user, PERM_KPI_EDIT)
     try:
@@ -385,31 +375,36 @@ async def _transition_formula_state(
         raise HTTPException(status_code=500, detail="State transition failed due to a database error.")
 
 @router.post('/formulas/{formula_id}/submit', response_model=KPIFormulaResponse, responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
-async def submit_formula_for_review(formula_id: UUID, db: AsyncSession = Depends(get_db), _: User = Depends(allow_admins)):
-    return await _transition_formula_state(db, formula_id, [FormulaStatus.DRAFT], FormulaStatus.REVIEW, _)
+async def submit_formula_for_review(formula_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    enforce_permission(current_user, PERM_KPI_EDIT)
+    return await _transition_formula_state(db, formula_id, [FormulaStatus.DRAFT], FormulaStatus.REVIEW, current_user)
 
 @router.post('/formulas/{formula_id}/approve', response_model=KPIFormulaResponse, responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
-async def approve_formula(formula_id: UUID, db: AsyncSession = Depends(get_db), _: User = Depends(allow_super_admins)):
-    return await _transition_formula_state(db, formula_id, [FormulaStatus.REVIEW], FormulaStatus.APPROVED, _)
+async def approve_formula(formula_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    enforce_permission(current_user, PERM_KPI_EDIT)
+    return await _transition_formula_state(db, formula_id, [FormulaStatus.REVIEW], FormulaStatus.APPROVED, current_user)
 
 @router.post('/formulas/{formula_id}/reject', response_model=KPIFormulaResponse, responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
-async def reject_formula(formula_id: UUID, db: AsyncSession = Depends(get_db), _: User = Depends(allow_super_admins)):
-    return await _transition_formula_state(db, formula_id, [FormulaStatus.REVIEW], FormulaStatus.DRAFT, _)
+async def reject_formula(formula_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    enforce_permission(current_user, PERM_KPI_EDIT)
+    return await _transition_formula_state(db, formula_id, [FormulaStatus.REVIEW], FormulaStatus.DRAFT, current_user)
 
 @router.post('/formulas/{formula_id}/activate', response_model=KPIFormulaResponse, responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
-async def activate_formula(formula_id: UUID, db: AsyncSession = Depends(get_db), _: User = Depends(allow_admins)):
-    return await _transition_formula_state(db, formula_id, [FormulaStatus.APPROVED, FormulaStatus.ARCHIVED], FormulaStatus.ACTIVE, _)
+async def activate_formula(formula_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    enforce_permission(current_user, PERM_KPI_EDIT)
+    return await _transition_formula_state(db, formula_id, [FormulaStatus.APPROVED, FormulaStatus.ARCHIVED], FormulaStatus.ACTIVE, current_user)
 
 @router.post('/formulas/{formula_id}/archive', response_model=KPIFormulaResponse, responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
-async def archive_formula(formula_id: UUID, db: AsyncSession = Depends(get_db), _: User = Depends(allow_admins)):
-    return await _transition_formula_state(db, formula_id, [FormulaStatus.ACTIVE, FormulaStatus.APPROVED], FormulaStatus.ARCHIVED, _)
+async def archive_formula(formula_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    enforce_permission(current_user, PERM_KPI_EDIT)
+    return await _transition_formula_state(db, formula_id, [FormulaStatus.ACTIVE, FormulaStatus.APPROVED], FormulaStatus.ARCHIVED, current_user)
 
 @router.put('/formulas/{formula_id}/periods', response_model=KPIFormulaResponse, responses={404: {"description": "Not Found"}, 422: {"description": "Unknown period"}, 500: {"description": "Internal Server Error"}})
 async def set_formula_periods(
     formula_id: UUID,
     payload: FormulaPeriodsUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(allow_admins),
+    current_user: User = Depends(get_current_user),
 ):
     """Set the exact periods this formula applies to (link
     management without the versioning side effects of a full
@@ -434,7 +429,7 @@ async def set_formula_periods(
 async def close_kpi_formula(
     formula_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(allow_admins),
+    current_user: User = Depends(get_current_user),
 ):
     """Manually close a formula (the manual path for legacy
     formulas, which auto-close never touches). A closed formula
@@ -462,7 +457,7 @@ async def revive_kpi_formula(
     formula_id: UUID,
     payload: FormulaReviveRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(allow_admins),
+    current_user: User = Depends(get_current_user),
 ):
     """Bring a closed formula back: the SAME record and rules are
     reused — only the closure stamp clears and NEW period links
@@ -491,7 +486,8 @@ async def revive_kpi_formula(
 
 
 @router.delete('/formulas/{formula_id}', status_code=status.HTTP_204_NO_CONTENT, responses={404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
-async def delete_kpi_formula(formula_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(allow_super_admins)):
+async def delete_kpi_formula(formula_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    enforce_permission(current_user, PERM_KPI_DELETE)
     try:
         formula = await _load_formula_in_scope(db, current_user, formula_id)
         if not formula:
@@ -551,7 +547,7 @@ async def freeze_kpi_record(
     record_id: UUID, 
     payload: KPIFreezeRequest, 
     db: AsyncSession = Depends(get_db), 
-    current_user: User = Depends(allow_admins)
+    current_user: User = Depends(get_current_user)
 ):
     enforce_permission(current_user, PERM_KPI_EDIT)
     try:
@@ -579,7 +575,7 @@ async def override_kpi_record(
     record_id: UUID, 
     payload: KPIOverrideRequest, 
     db: AsyncSession = Depends(get_db), 
-    current_user: User = Depends(allow_admins)
+    current_user: User = Depends(get_current_user)
 ):
     enforce_permission(current_user, PERM_KPI_EDIT)
     try:
@@ -647,7 +643,7 @@ async def deduct_kpi_record(
     record_id: UUID, 
     payload: KPIDeductionRequest, 
     db: AsyncSession = Depends(get_db), 
-    current_user: User = Depends(allow_admins)
+    current_user: User = Depends(get_current_user)
 ):
     enforce_permission(current_user, PERM_KPI_EDIT)
     try:
@@ -902,7 +898,7 @@ async def trigger_custom_calculation(
     payload: CustomKpiCalculationRequest,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(allow_admins)
+    current_user: User = Depends(get_current_user)
 ):
     enforce_permission(current_user, PERM_KPI_CALCULATE)
     try:
@@ -934,7 +930,7 @@ async def trigger_custom_calculation(
 async def calculate_kpi_record_explicitly(
     payload: ExplicitKpiCalculationRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(allow_admins),
+    current_user: User = Depends(get_current_user),
 ):
     enforce_permission(current_user, PERM_KPI_CALCULATE)
     record = await db.get(KPIRecord, payload.record_id)
@@ -963,7 +959,7 @@ async def bulk_calculate_endpoint(
     payload: BulkKpiCalculationRequest,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(allow_admins),
+    current_user: User = Depends(get_current_user),
 ):
     """Bulk KPI calculation for multiple users.
     If `user_ids` is empty, all active users are targeted.
@@ -1003,8 +999,12 @@ async def get_system_audit_logs(
     search: str | None = Query(None, max_length=200),
     action: str | None = Query(None, max_length=50),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(allow_super_admins)
+    current_user: User = Depends(get_current_user)
 ):
+    # E2: was SA-only by role; now the catalog key system.audit.view
+    # (previously dormant) is the gate. Admin does not hold it by
+    # default, so Admin access does not change.
+    enforce_permission(current_user, "system.audit.view")
     try:
         stmt = _audit_log_query(action, search)
         stmt = (

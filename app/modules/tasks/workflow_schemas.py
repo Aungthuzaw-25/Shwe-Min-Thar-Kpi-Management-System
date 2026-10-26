@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -28,7 +29,11 @@ class QueueItemResponse(BaseModel):
     submitted_at: datetime
 
 class BatchReviewRequest(BaseModel):
-    action: str  # APPROVED, REJECTED, DELAY
+    # E1 fix (roles audit): a plain str let ANY value skip the
+    # if/elif permission gate in review_task_batch_api. Literal
+    # rejects unknown actions at validation (422) before any
+    # permission logic or service call runs.
+    action: Literal["APPROVED", "REJECTED", "DELAY"]
     comments: str | None = None
     next_reviewer_id: UUID | None = None
     deduction_rule: str | None = None  # 🌟 FIX: KPI အမှတ်လျော့မည့် ခေါင်းစဉ်ကို ထည့်သွင်းရန်
