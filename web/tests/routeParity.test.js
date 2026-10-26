@@ -52,6 +52,7 @@ const pages = [
   ["/system-settings", ["Super Admin"]],
   ["/superadmin/audit-logs", ["Super Admin"]],
   ["/superadmin/system-logs", ["Super Admin"]],
+  ["/superadmin/health", ["Super Admin"]],
   ["/superadmin/process-tracking", ["Super Admin"]],
   ["/tasks", null],
   ["/notifications", null],
