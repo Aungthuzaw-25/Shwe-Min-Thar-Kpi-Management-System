@@ -1,0 +1,199 @@
+# Production Monitor — probes production from GitHub Actions, emails all SAs on change.
+#
+# Design (see docs in ~/workspace/your_files/agent-docs/devops/Production-Monitor.md):
+# - No checkout: the probe + alert script is inline, so no repo code ever runs here.
+# - Probe: GET <PROD_BASE_URL>/health (API + DB, returns 200/503) AND
+#   GET <PROD_BASE_URL>/auth/login (web tier via proxy). Both must be 200.
+# - Debounce: up to 4 attempts, 45s apart (~3 min). One failed probe is NOT an alert.
+# - State: a GitHub Issue titled "🚨 Production is down (monitor)".
+#   Open issue = down. No open issue = up. This is the only state — no other storage.
+# - Emails are sent ONLY on transitions (down -> email once, up -> recovered once).
+#   If an issue is already open, a still-down run sends NO repeat email.
+# - Email is sent BEFORE the issue is created/closed, so a failed email retries
+#   on the next run instead of being silently lost behind an already-changed issue.
+# - Owner setup (never committed to this repo, which is public):
+#   Secrets:  RESEND_API_KEY, MONITOR_SENDER_EMAIL, MONITOR_SA_EMAILS (comma-separated)
+#   Variable: PROD_BASE_URL (public production URL, no trailing slash)
+# - Scheduled workflows run only from the default branch, so this monitor starts
+#   only after this file is merged to main AND the secrets/variable above are set.
+# - To disable: Actions tab -> Production Monitor -> Disable workflow (do not just
+#   delete the schedule line — a disabled workflow is visible and reversible).
+
+name: Production Monitor
+
+"on":
+  schedule:
+    # Every 5 minutes (UTC). GitHub does not guarantee exact timing — runs may
+    # start a few minutes late under load. This is a 5-minute monitor, not a
+    # second-precision one.
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+    inputs:
+      probe_only:
+        description: "Probe only — no issue, no email (use this first after setup)"
+        required: false
+        default: "false"
+        type: boolean
+      send_test_email:
+        description: "Send a test email to all SA recipients and exit (no issue change)"
+        required: false
+        default: "false"
+        type: boolean
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: production-monitor
+  cancel-in-progress: false
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PROD_BASE_URL: ${{ vars.PROD_BASE_URL }}
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      MONITOR_SENDER_EMAIL: ${{ secrets.MONITOR_SENDER_EMAIL }}
+      MONITOR_SA_EMAILS: ${{ secrets.MONITOR_SA_EMAILS }}
+      ISSUE_TITLE: "🚨 Production is down (monitor)"
+    steps:
+      - name: Check monitor configuration
+        run: |
+          missing=""
+          [ -n "$PROD_BASE_URL" ] || missing="$missing PROD_BASE_URL(variable)"
+          [ -n "$RESEND_API_KEY" ] || missing="$missing RESEND_API_KEY(secret)"
+          [ -n "$MONITOR_SENDER_EMAIL" ] || missing="$missing MONITOR_SENDER_EMAIL(secret)"
+          [ -n "$MONITOR_SA_EMAILS" ] || missing="$missing MONITOR_SA_EMAILS(secret)"
+          if [ -n "$missing" ]; then
+            echo "::error::Monitor is not configured. Missing:$missing — set them in Settings -> Secrets and variables -> Actions. No issue and no email were sent."
+            exit 1
+          fi
+      - name: Probe production (4 attempts, 45s apart)
+        id: probe
+        run: |
+          # Non-failing curl: the HTTP code itself is the signal (200 = up,
+          # 503 = API reports DB unhealthy, 000 = no answer at all).
+          probe_once() {
+            health_code=$(curl -sS -m 15 -o /dev/null -w "%{http_code}" "$PROD_BASE_URL/health" 2>/dev/null || echo "000")
+            login_code=$(curl -sS -m 15 -o /dev/null -w "%{http_code}" "$PROD_BASE_URL/auth/login" 2>/dev/null || echo "000")
+            echo "$health_code $login_code"
+          }
+          status="down"
+          for attempt in 1 2 3 4; do
+            read -r health_code login_code <<< "$(probe_once)"
+            echo "attempt $attempt: health=$health_code login=$login_code"
+            if [ "$health_code" = "200" ] && [ "$login_code" = "200" ]; then
+              status="up"
+              break
+            fi
+            if [ "$attempt" -lt 4 ]; then
+              sleep 45
+            fi
+          done
+          echo "result=$status" >> "$GITHUB_OUTPUT"
+          echo "Production is $status after attempt $attempt."
+
+      - name: Probe-only mode (no issue, no email)
+        if: ${{ inputs.probe_only == true }}
+        run: |
+          echo "Probe-only run finished with result: ${{ steps.probe.outputs.result }}. No issue was opened/closed and no email was sent."
+
+      - name: Send test email (no issue change)
+        if: ${{ inputs.send_test_email == true && inputs.probe_only != true }}
+        env:
+          MONITOR_MODE: test
+        run: |
+          python3 - << 'PY'
+          import json, os, sys, urllib.request
+          recipients = [r.strip() for r in os.environ["MONITOR_SA_EMAILS"].split(",") if r.strip()]
+          if not recipients or any("@" not in r for r in recipients):
+              print("::error::MONITOR_SA_EMAILS must be a comma-separated list of email addresses.")
+              sys.exit(1)
+          body = {
+              "from": os.environ["MONITOR_SENDER_EMAIL"],
+              "to": recipients,
+              "subject": "[KPI] Production monitor — test email",
+              "text": "This is a test email from the KPI production monitor.\n\nIf you received this, monitor email delivery works. No production outage is implied by this message.\n",
+          }
+          req = urllib.request.Request(
+              "https://api.resend.com/emails",
+              data=json.dumps(body).encode(),
+              headers={"Authorization": "Bearer " + os.environ["RESEND_API_KEY"], "Content-Type": "application/json"},
+              method="POST",
+          )
+          try:
+              with urllib.request.urlopen(req, timeout=30) as resp:
+                  print(f"Test email accepted by Resend (HTTP {resp.status}).")
+          except Exception as exc:
+              print(f"::error::Test email failed: {exc}")
+              sys.exit(1)
+          PY
+
+      - name: Handle down / recovered (email first, then issue state)
+        if: ${{ inputs.probe_only != true && inputs.send_test_email != true }}
+        env:
+          PROBE_RESULT: ${{ steps.probe.outputs.result }}
+        run: |
+          set -e
+          open_issue=$(gh issue list --state open --limit 100 --json number,title --jq --arg t "$ISSUE_TITLE" '.[] | select(.title == $t) | .number' | head -n 1 || true)
+          stamp=$(date -u +"%Y-%m-%d %H:%M UTC")
+
+          send_email() {
+            subject="$1"
+            text="$2"
+            MONITOR_SUBJECT="$subject" MONITOR_TEXT="$text" python3 - << 'PY'
+          import json, os, sys, urllib.request
+          recipients = [r.strip() for r in os.environ["MONITOR_SA_EMAILS"].split(",") if r.strip()]
+          if not recipients or any("@" not in r for r in recipients):
+              print("::error::MONITOR_SA_EMAILS must be a comma-separated list of email addresses.")
+              sys.exit(1)
+          body = {
+              "from": os.environ["MONITOR_SENDER_EMAIL"],
+              "to": recipients,
+              "subject": os.environ["MONITOR_SUBJECT"],
+              "text": os.environ["MONITOR_TEXT"],
+          }
+          req = urllib.request.Request(
+              "https://api.resend.com/emails",
+              data=json.dumps(body).encode(),
+              headers={"Authorization": "Bearer " + os.environ["RESEND_API_KEY"], "Content-Type": "application/json"},
+              method="POST",
+          )
+          try:
+              with urllib.request.urlopen(req, timeout=30) as resp:
+                  print(f"Email accepted by Resend (HTTP {resp.status}).")
+          except Exception as exc:
+              print(f"::error::Email failed: {exc}")
+              sys.exit(1)
+          PY
+          }
+
+          if [ "$PROBE_RESULT" = "down" ]; then
+            if [ -n "$open_issue" ]; then
+              echo "Production still down; issue #$open_issue is already open, so no repeat email was sent."
+              exit 0
+            fi
+            send_email "[KPI] Production is DOWN" "Production health probe failed after 4 attempts (checked $stamp).
+
+          What this means: the production site did not answer its health check and login page after retries. Check the Railway dashboard (API service) and Neon (database) first, then follow the alert playbook in the monitor doc.
+
+          You will receive a 'recovered' email when the monitor sees production healthy again. This issue tracks the outage: it stays open until recovery."
+            gh issue create --title "$ISSUE_TITLE" --body "Production health probe failed after 4 attempts at $stamp (UTC).
+
+          The monitor sent a DOWN email to all configured SA recipients before opening this issue. This issue stays open until a later run sees production healthy again, at which point the monitor sends a recovered email and closes this issue.
+
+          Do not close this issue by hand unless production is verified healthy — closing it early will make the next down run send a fresh DOWN email."
+            echo "DOWN email sent and issue created."
+          else
+            if [ -z "$open_issue" ]; then
+              echo "Production is up and no outage issue is open. Nothing to do."
+              exit 0
+            fi
+            send_email "[KPI] Production recovered" "Production is healthy again (checked $stamp).
+
+          The monitor saw the health check and login page answer again after the outage. Please still verify by logging in and opening a dashboard before treating the outage as fully resolved."
+            gh issue close "$open_issue"
+            echo "Recovered email sent and issue #$open_issue closed."
+          fi
