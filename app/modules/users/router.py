@@ -1086,7 +1086,7 @@ async def update_existing_user(user_id: UUID, payload: UserUpdate, db: AsyncSess
     return serialize_user_obj(refreshed_user)
 
 @router.post('/{user_id}/offboard', responses={400: {"description": "Bad Request"}, 403: {"description": "Forbidden"}, 404: {"description": "Not Found"}})
-async def offboard_user(user_id: UUID, payload: UserOffboardRequest, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
+async def offboard_user(user_id: UUID, payload: UserOffboardRequest, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Formal departure flow (retention design, 2026-10-23).
 
     RESIGNED / TERMINATED: lifecycle status + leaving date are set,
