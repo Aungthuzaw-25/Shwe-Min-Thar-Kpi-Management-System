@@ -303,6 +303,22 @@ class FormulaReviveRequest(BaseModel):
 # ---------------------------------------------------------
 # 3. KPI Records
 # ---------------------------------------------------------
+class CategoryExceedance(BaseModel):
+    """One TARGET category's over-achievement at calculation time.
+
+    exceeded_pct is None when not computable (no target, target <= 0,
+    or no actual). actual_zero flags the LOWER + actual == 0 edge
+    (a perfect zero, not an ordinary over-run)."""
+
+    category: str
+    direction: str | None = None
+    target_value: float | None = None
+    actual_value: float | None = None
+    exceeded: bool = False
+    exceeded_pct: float | None = None
+    actual_zero: bool = False
+
+
 class KPIRecordResponse(BaseModel):
     id: UUID
     user_id: UUID
@@ -317,6 +333,8 @@ class KPIRecordResponse(BaseModel):
     weighted_score: float
     percentage: float
     grade: KPIStatus
+
+    exceeded_categories: list[CategoryExceedance] | None = None
 
     is_frozen: bool = False
     is_overridden: bool = False

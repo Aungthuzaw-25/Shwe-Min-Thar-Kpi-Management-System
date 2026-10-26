@@ -106,6 +106,98 @@ async def calculate_target_based_score(
     return max_score * achievement_ratio
 
 
+def _target_is_lower_better(assigned_target) -> bool:
+    """Legacy direction inference shared by scoring and exceedance:
+    a COUNT metric means lower is better, anything else higher."""
+    metric_type_attr = getattr(assigned_target, "metric_type", "")
+    metric_type_val = getattr(metric_type_attr, "value", str(metric_type_attr)).upper()
+    return "COUNT" in metric_type_val
+
+
+async def target_category_exceedances(
+    db: AsyncSession,
+    formula: Any,
+    dept_id,
+    target_month_str: str,
+    final_merged_data: dict[str, float],
+) -> list[dict]:
+    """Per-TARGET-category over-achievement info (score untouched).
+
+    One entry per TARGET category: category name, resolved direction,
+    target/actual values, whether the uncapped ratio exceeds 1
+    (HIGHER: actual > target; LOWER: actual < target), and the
+    exceeded percentage when computable. Non-computable cases (no
+    target, target <= 0, no actual) report exceeded=False and
+    exceeded_pct=None. LOWER with actual == 0 is flagged separately
+    (actual_zero) — a perfect zero, not an ordinary over-run.
+    """
+    # No TARGET categories: never touch the targets table. (Some
+    # calculation paths run against subset schemas without it, and
+    # the old scoring path only queried targets for TARGET cats.)
+    target_categories = [
+        category for category in (formula.categories or [])
+        if category.get("evaluation_type") == "TARGET"
+    ]
+    if not target_categories:
+        return []
+    stmt_target = select(Target).where(
+        Target.target_month == target_month_str,
+        Target.is_deleted == False,
+        or_(Target.department_id == dept_id, Target.department_id.is_(None)),
+    )
+    targets = (await db.execute(stmt_target)).scalars().all()
+
+    entries = []
+    for category in target_categories:
+        cat_name = category.get("name", "")
+        std_cat_name = standardize_key(cat_name)
+        entry = {
+            "category": cat_name,
+            "direction": None,
+            "target_value": None,
+            "actual_value": None,
+            "exceeded": False,
+            "exceeded_pct": None,
+        }
+        assigned_target = _find_assigned_target(targets, std_cat_name, dept_id)
+        if (
+            not assigned_target
+            or not assigned_target.target_value
+            or assigned_target.target_value <= 0
+            or std_cat_name not in final_merged_data
+        ):
+            entries.append(entry)
+            continue
+        target_val = float(assigned_target.target_value)
+        actual_val = float(final_merged_data[std_cat_name])
+        # Rebase reconciliation (direction merged first): an explicit
+        # category direction wins; legacy inference is the fallback.
+        explicit_direction = (category.get("direction") or "").upper()
+        if explicit_direction in ("HIGHER", "LOWER"):
+            is_lower_better = explicit_direction == "LOWER"
+        else:
+            is_lower_better = _target_is_lower_better(assigned_target)
+        entry["direction"] = "LOWER" if is_lower_better else "HIGHER"
+        entry["target_value"] = target_val
+        entry["actual_value"] = actual_val
+        if is_lower_better:
+            entry["exceeded"] = actual_val < target_val
+            if actual_val < target_val:
+                entry["exceeded_pct"] = round(
+                    (target_val - actual_val) / target_val * 100, 2
+                )
+                if actual_val == 0:
+                    entry["actual_zero"] = True
+        else:
+            entry["exceeded"] = actual_val > target_val
+            if actual_val > target_val:
+                entry["exceeded_pct"] = round(
+                    (actual_val - target_val) / target_val * 100, 2
+                )
+        entries.append(entry)
+    return entries
+
+
 def calculate_deduction_based_score(
     cat_name: str,
     cat_rules: list[KPIScoringRuleItem],

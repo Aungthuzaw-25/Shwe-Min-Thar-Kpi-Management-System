@@ -10,6 +10,7 @@ from app.core.dependencies import GLOBAL_SCOPE_ROLES, enforce_permission
 from app.core.timezone import APPLICATION_TIMEZONE
 from app.modules.departments.models import UserDepartment
 from app.modules.kpi.engine import trigger_kpi_recalculation
+from app.modules.kpi.overachievement import flush_pending_notifications
 
 # 🌟 FIX: Updated import to use the refactored module-level function
 from app.modules.notifications.repo import create_notification
@@ -199,11 +200,15 @@ async def review_task_l1(db: AsyncSession, task_id: UUID, payload: TaskReviewInp
             if task.owner and task.owner.user_departments:
                 owner_dept_id = task.owner.user_departments[0].department_id
                 
+            pending_notifications: list = []
             await trigger_kpi_recalculation(
-                db=db, user_level="L2", user_id=task.owner_id, 
-                department_id=owner_dept_id, target_date=target_date, commit=False
+                db=db, user_level="L2", user_id=task.owner_id,
+                department_id=owner_dept_id, target_date=target_date, commit=False,
+                pending_notifications=pending_notifications,
             )
         await db.commit()
+        if payload.action in ["APPROVED", "REJECTED"]:
+            await flush_pending_notifications(db, pending_notifications)
         return task
 
     except Exception as e:
@@ -353,14 +358,17 @@ async def verify_task_l0(db: AsyncSession, task_id: UUID, payload: TaskReviewInp
             target_kpi_level,
         )
         await db.flush()
+        pending_notifications: list = []
         if target_kpi_user_id and target_kpi_dept:
             target_date = task.due_date if task.due_date else datetime.now(timezone)
             await trigger_kpi_recalculation(
-                db=db, user_level=target_kpi_level, user_id=target_kpi_user_id, 
-                department_id=target_kpi_dept, target_date=target_date, commit=False
+                db=db, user_level=target_kpi_level, user_id=target_kpi_user_id,
+                department_id=target_kpi_dept, target_date=target_date, commit=False,
+                pending_notifications=pending_notifications,
             )
         await db.commit()
-            
+        await flush_pending_notifications(db, pending_notifications)
+
         return task
 
     except Exception as e:

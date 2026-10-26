@@ -233,6 +233,14 @@ class KPIRecord(BaseModel):
 
     status_bucket = Column(SQLEnum(KPIStatus), nullable=False, default=KPIStatus.GOOD, index=True)
 
+    # Per-TARGET-category over-achievement at calculation time
+    # (list of {category, direction, target_value, actual_value,
+    # exceeded, exceeded_pct, actual_zero?}). Scores are capped, so
+    # this is the only place the excess survives — it powers the
+    # over-achievement notice and the Frontend badge. NULL = record
+    # predates the feature or has no TARGET categories.
+    exceeded_categories = Column(JSON, nullable=True)
+
     # Admin Overrides & Freezing
     is_frozen = Column(Boolean, default=False, index=True)
     is_overridden = Column(Boolean, default=False)

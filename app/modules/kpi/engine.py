@@ -13,7 +13,12 @@ from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 
 from app.core.timezone import as_application_time
-from app.modules.kpi.engine_helpers import score_formula_categories, standardize_key
+from app.modules.kpi.engine_helpers import (
+    score_formula_categories,
+    standardize_key,
+    target_category_exceedances,
+)
+from app.modules.kpi.overachievement import notify_overachievements
 from app.modules.kpi.models import (
     FormulaStatus,
     KPIAssignment,
@@ -536,13 +541,14 @@ async def _save_kpi_record(
         if record.is_frozen or record.is_overridden:
             if explicit_record_id is not None:
                 raise ValueError("Frozen or overridden KPI records cannot be recalculated.")
-            return
+            # No recalculation happened: no new exceedances, no notice.
+            return None
         _update_kpi_record(
             db, record, formula, period, period_end, total_score, percentage,
             explicit_record_id,
         )
         await _apply_record_snapshots(db, record, user, formula)
-        return
+        return record
     if explicit_record_id is not None:
         raise ValueError(KPI_RECORD_NOT_FOUND)
     record = KPIRecord(
@@ -560,6 +566,7 @@ async def _save_kpi_record(
     )
     await _apply_record_snapshots(db, record, user, formula)
     db.add(record)
+    return record
 
 
 async def _ensure_period_open(db, period) -> None:
@@ -867,6 +874,7 @@ class KPICalculationEngine:
         *,
         context: KPICalculationContext | None = None,
         commit: bool = True,
+        pending_notifications: list | None = None,
     ):
         """
         Core Engine: Aggregates tasks, parses text-based deductions, calculates target completion, 
@@ -897,27 +905,79 @@ class KPICalculationEngine:
                 return None
             counts, values = await _collect_deductions(db, user, formula, period_start, period_end)
             merged_data = _merge_kpi_data(values, counts, task_data or {})
+            target_month_str = as_application_time(period_start).strftime("%Y-%m")
             total_score = await score_formula_categories(
                 db,
                 formula,
                 formula.department_id,
-                as_application_time(period_start).strftime("%Y-%m"),
+                target_month_str,
                 merged_data,
             )
             weighted_max = formula_max_score(formula)
             percentage = 0.0 if weighted_max <= 0 else min(100.0, max(0.0, total_score / weighted_max * 100.0))
             if explicit_record_id is None:
-                await _save_kpi_record(
+                saved_record = await _save_kpi_record(
                     db, user, formula, period, period_type, period_start, period_end,
                     total_score, percentage,
                 )
             else:
-                await _save_kpi_record(
+                saved_record = await _save_kpi_record(
                     db, user, formula, period, period_type, period_start, period_end,
                     total_score, percentage, explicit_record_id=explicit_record_id,
                 )
+            # Over-achievement is info-only: the score above stays
+            # capped, while the excess is stored on the record and
+            # notified once. Frozen/overridden skips save nothing.
+            exceedances = []
+            if saved_record is not None:
+                exceedances = await target_category_exceedances(
+                    db, formula, formula.department_id, target_month_str, merged_data
+                )
+                saved_record.exceeded_categories = exceedances
             if commit:
                 await db.commit()
+            if saved_record is not None and user is not None:
+                employee_name = f"{user.first_name} {user.last_name}".strip()
+                if pending_notifications is not None:
+                    # The caller owns the transaction: collect the
+                    # notice and let the caller flush it AFTER its
+                    # own commit. Sending here would persist via the
+                    # notifier's own session even if the caller
+                    # later rolls back (orphan notice + dedup
+                    # suppressing the true notice on retry).
+                    if any(entry.get("exceeded") for entry in exceedances):
+                        pending_notifications.append({
+                            "employee_id": user.id,
+                            "employee_name": employee_name,
+                            "period_type": period_type,
+                            "period_start": period_start,
+                            "exceedances": exceedances,
+                        })
+                else:
+                    # After commit when possible, so a notice never
+                    # lands for a record whose own transaction
+                    # rolled back. Best-effort: a notice failure
+                    # must never fail the calculation that saved.
+                    if not commit:
+                        logger.warning(
+                            "Over-achievement notice sent before outer "
+                            "commit for user %s: pass "
+                            "pending_notifications to defer it",
+                            user.id,
+                        )
+                    try:
+                        await notify_overachievements(
+                            db,
+                            employee_id=user.id,
+                            employee_name=employee_name,
+                            period_type=period_type,
+                            period_start=period_start,
+                            exceedances=exceedances,
+                        )
+                    except Exception:
+                        logger.exception(
+                            "Over-achievement notice failed for user %s", user.id
+                        )
             return resolved.record if explicit_record_id is not None else None
         except Exception:
             await db.rollback()
@@ -964,6 +1024,7 @@ async def trigger_kpi_recalculation(
     department_id: UUID | None = None,
     *,
     commit: bool = True,
+    pending_notifications: list | None = None,
 ):
     """Entry Point for on-the-fly recalculations whenever a task is processed."""
     
@@ -992,6 +1053,7 @@ async def trigger_kpi_recalculation(
         period_range.end_exclusive,
         PeriodType.MONTHLY,
         commit=commit,
+        pending_notifications=pending_notifications,
     )
 
 async def calculate_custom_period_kpi(db: AsyncSession, user_id: UUID, start_date: datetime, end_date: datetime, task_data: dict = None):
