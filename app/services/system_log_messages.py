@@ -79,6 +79,17 @@ def _looks_non_technical(message: str) -> bool:
 
 def plain_message_for(event_type: str, level: LogLevel, raw_message: str) -> str:
     """The only message text the System Logs UI should show by default."""
+    if (event_type or "").upper() == "HEALTH_CHECK":
+        # Health-check rows are written in plain language already
+        # ("System health: <component> <plain reason>") — the read
+        # path passes them through unchanged. Anything else is
+        # treated as technical text and replaced by the generic
+        # level fallback, so SQL, paths, or exception text can
+        # never leak into the System Logs UI.
+        candidate = (raw_message or "").strip()
+        if candidate.startswith("System health:"):
+            return candidate
+        return _LEVEL_FALLBACKS.get(level, _LEVEL_FALLBACKS[LogLevel.INFO])
     known = _EVENT_MESSAGES.get((event_type or "").upper())
     if known:
         return known
