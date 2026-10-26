@@ -570,8 +570,8 @@ async def deactivate_super_admin(
         raise HTTPException(status_code=403, detail=ERR_NOT_SUPER_ADMIN)
     if current_user.id == user.id:
         raise HTTPException(status_code=403, detail='You cannot deactivate your own Super Admin account.')
-    if user.is_active and (await count_active_super_admins(db, exclude_user_id=None) <= 1):
-        raise HTTPException(status_code=400, detail='Cannot deactivate the last active Super Admin.')
+    if user.is_active and (await count_active_super_admins(db, exclude_user_id=None) <= 2):
+        raise HTTPException(status_code=400, detail='Cannot deactivate this Super Admin: at least 2 active Super Admins must remain.')
 
     old_snapshot = {'is_active': user.is_active}
     user.is_active = False
@@ -613,8 +613,8 @@ async def delete_super_admin(
         raise HTTPException(status_code=403, detail=ERR_NOT_SUPER_ADMIN)
     if current_user.id == user.id:
         raise HTTPException(status_code=403, detail='You cannot delete your own Super Admin account.')
-    if user.is_active and (await count_active_super_admins(db) <= 1):
-        raise HTTPException(status_code=400, detail='Cannot delete the last active Super Admin.')
+    if user.is_active and (await count_active_super_admins(db) <= 2):
+        raise HTTPException(status_code=400, detail='Cannot delete this Super Admin: at least 2 active Super Admins must remain.')
 
     old_snapshot = {'email': user.email, 'is_active': user.is_active, 'role': user.role.name if user.role else None}
     if not user.email.startswith('deleted_'):
@@ -746,6 +746,25 @@ async def _validate_user_update_target(
     await _validate_user_update_role(db, payload)
     await _validate_user_update_email(db, payload, user)
     await _validate_user_update_department(db, payload, current_user)
+    # Min-2 SA rule: demoting an active Super Admin must never drop
+    # active Super Admins below 2 (a peer SA must exist for MFA
+    # reset/disable confirmations).
+    if (
+        payload.role_id is not None
+        and payload.role_id != user.role_id
+        and user.is_active
+        and getattr(user.role, "name", "") == SUPER_ADMIN_ROLE_NAME
+    ):
+        target_role = (
+            await db.execute(select(Role).where(Role.id == payload.role_id))
+        ).scalar_one_or_none()
+        if target_role is not None and target_role.name != SUPER_ADMIN_ROLE_NAME:
+            remaining = await count_active_super_admins(db, exclude_user_id=user.id)
+            if remaining < 2:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Cannot demote this Super Admin: at least 2 active Super Admins must remain.",
+                )
     return user
 
 

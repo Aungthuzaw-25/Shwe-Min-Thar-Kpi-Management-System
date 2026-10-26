@@ -24,6 +24,7 @@ from app.modules.auth.models import (
     UnlockRequest,
     UserSecuritySettings,
 )
+from app.modules.auth import sa_mfa
 from app.modules.departments.models import UserDepartment
 from app.modules.users.models import Role, User
 
@@ -196,9 +197,10 @@ class AuthService:
         db: AsyncSession, 
         email: str, 
         password: str, 
-        ip_address: str = "Unknown", 
+        ip_address: str = "Unknown",
         user_agent: str = "Unknown",
         remember_me: bool = False,
+        totp_code: str | None = None,
     ) -> dict[str, Any]:
         now = datetime.now(UTC).replace(tzinfo=None)
         ip_address = (ip_address or "Unknown")[:50]
@@ -222,6 +224,65 @@ class AuthService:
         user.failed_login_attempts = 0
         user.is_locked = False
         user.locked_until = None
+        # SA second factor: a confirmed TOTP enrollment makes the
+        # rotating code mandatory on every password login. Wrong
+        # codes never touch the password lockout counter — they use
+        # their own 5-wrong -> 1-hour freeze (sa_mfa). MFA config
+        # problems fail CLOSED (503), never skip the second factor.
+        if sa_mfa.is_super_admin(user):
+            secret_row = await sa_mfa.confirmed_secret(db, user.id)
+            if secret_row is not None:
+                if not sa_mfa.normalize_code(totp_code):
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail={
+                            "code": "MFA_REQUIRED",
+                            "message": "Enter the 6-digit code from your authenticator app.",
+                        },
+                    )
+                try:
+                    frozen_until = await sa_mfa.is_totp_frozen(db, user.id)
+                    if frozen_until is not None:
+                        raise HTTPException(
+                            status_code=status.HTTP_401_UNAUTHORIZED,
+                            detail={
+                                "code": "MFA_INVALID",
+                                "message": "Invalid authenticator code.",
+                            },
+                        )
+                    secret = sa_mfa.decrypt_secret(secret_row.secret_encrypted)
+                    step = sa_mfa.matching_step(secret, totp_code)
+                except sa_mfa.MFAConfigError:
+                    raise HTTPException(
+                        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                        detail={
+                            "code": "MFA_UNAVAILABLE",
+                            "message": "Authenticator verification is not available right now.",
+                        },
+                    )
+                if step is None:
+                    await sa_mfa.record_wrong_totp(db, user.id)
+                    await db.commit()
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail={
+                            "code": "MFA_INVALID",
+                            "message": "Invalid authenticator code.",
+                        },
+                    )
+                # Strict no-reuse: a step consumed by an earlier login
+                # is rejected even inside its window. A replay is not
+                # a wrong code, so it does not feed the freeze counter
+                # — it simply fails closed.
+                if not await sa_mfa.consume_totp_step(db, user.id, step):
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail={
+                            "code": "MFA_INVALID",
+                            "message": "Invalid authenticator code.",
+                        },
+                    )
+                await sa_mfa.clear_totp_attempts(db, user.id)
         await AuthService._mark_expired_password(db, user, now)
         db.add(
             LoginHistory(
@@ -338,8 +399,14 @@ class AuthService:
         user_agent: str = "Unknown",
         remember_me: bool = False,
         audit_action: str = "OAUTH_LOGIN",
+        via_recovery: bool = False,
     ) -> dict[str, Any]:
-        """Issue the existing AuthSession/JWT pair for any trusted identity."""
+        """Issue the existing AuthSession/JWT pair for any trusted identity.
+
+        ``via_recovery`` marks a session created by an SA TOTP
+        recovery login: that session may reset the password once
+        without the old password, then the flag clears.
+        """
         now = datetime.now(UTC).replace(tzinfo=None)
         if audit_action != "LOGIN":
             db.add(AuditLog(
@@ -352,6 +419,8 @@ class AuthService:
         session = await AuthService._persist_authenticated_session(
             db, user, ip_address, user_agent, remember_me, now
         )
+        if session is not None:
+            session.via_recovery = via_recovery
 
         token_data = {"sub": user.email, "user_id": str(user.id), "role": role_value, "level": user_level}
         session_timeout_minutes = await get_session_timeout_minutes(db)
