@@ -24,8 +24,8 @@ const API_BASE = "/api/v1/kpi";
             document.body.appendChild(container);
         }
         const toast = document.createElement('div');
-        const config = type === 'success' ? 'bg-emerald-50 text-emerald-800 border-emerald-500' : 'bg-red-50 text-red-800 border-red-500';
-        const icon = type === 'success' ? '<svg class="w-5 h-5 text-emerald-500 mr-2 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>' : '<svg class="w-5 h-5 text-red-500 mr-2 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>';
+        const config = type === 'success' ? 'bg-emerald-50 text-emerald-800 border-emerald-500' : type === 'warning' ? 'bg-amber-50 text-amber-800 border-amber-500' : 'bg-red-50 text-red-800 border-red-500';
+        const icon = type === 'success' ? '<svg class="w-5 h-5 text-emerald-500 mr-2 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>' : type === 'warning' ? '<svg class="w-5 h-5 text-amber-500 mr-2 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>' : '<svg class="w-5 h-5 text-red-500 mr-2 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>';
 
         toast.className = `flex items-start px-4 py-3 sm:px-5 sm:py-4 rounded-xl shadow-lg border-l-4 ${config} text-xs sm:text-sm font-semibold animate-fade-in-up w-full bg-white`;
         toast.innerHTML = icon + `<div>${escapeHTML(message)}</div>`;
@@ -54,6 +54,38 @@ const API_BASE = "/api/v1/kpi";
             document.getElementById(buttonId)?.addEventListener("click", () => switchTab(panelId));
         });
         document.getElementById("createFormulaButton")?.addEventListener("click", openFormulasModal);
+
+        // Category-name suggestions: rows are built dynamically, so wire
+        // by delegation on the container. Timeliness inputs are readonly
+        // and never get a dropdown.
+        document.getElementById("categoriesContainer")?.addEventListener("focusin", (event) => {
+            const input = event.target.closest?.(".cat-name");
+            if (!input) return;
+            loadCategorySuggestions().then(() => renderCategorySuggestions(input));
+        });
+        document.getElementById("categoriesContainer")?.addEventListener("input", (event) => {
+            const input = event.target.closest?.(".cat-name");
+            if (!input) return;
+            renderCategorySuggestions(input);
+        });
+        document.getElementById("categoriesContainer")?.addEventListener("click", (event) => {
+            const chip = event.target.closest?.(".kg-suggest-chip");
+            if (!chip) return;
+            const field = chip.closest(".kg-category-name-field");
+            const input = field?.querySelector(".cat-name");
+            if (input) {
+                input.value = chip.dataset.suggestName || "";
+                input.dispatchEvent(new Event("input", { bubbles: true }));
+                input.focus();
+            }
+            closeCategorySuggestions();
+        });
+        document.addEventListener("click", (event) => {
+            if (!event.target.closest?.(".kg-category-name-field")) closeCategorySuggestions();
+        });
+        document.addEventListener("keydown", (event) => {
+            if (event.key === "Escape") closeCategorySuggestions();
+        });
 
         document.getElementById("fDepartment")?.addEventListener("change", async function() {
             await loadPositionsForDepartment(this.value);
@@ -868,16 +900,116 @@ const API_BASE = "/api/v1/kpi";
     function handleEvalTypeChange(selectEl) {
         const catBlock = selectEl.closest('.cat-block');
         const metricsSection = catBlock.querySelector('.metrics-section');
+        const directionField = catBlock.querySelector('.kg-direction-field');
         if(selectEl.value === 'TARGET') {
             metricsSection.classList.add('hidden');
+            directionField?.classList.remove('hidden');
         } else {
             metricsSection.classList.remove('hidden');
+            directionField?.classList.add('hidden');
         }
+    }
+
+    // Target direction for the Builder. Stored direction wins; otherwise
+    // infer from the category's first metric (COUNT -> LOWER, anything
+    // else -> HIGHER), mirroring the engine's legacy inference. New
+    // categories default to HIGHER. The original stored value rides on
+    // the select's data-original so save can tell "unchanged" from
+    // "user picked this".
+    function inferTargetDirection(catData) {
+        const stored = catData && (catData.direction === 'HIGHER' || catData.direction === 'LOWER')
+            ? catData.direction
+            : null;
+        if (stored) return stored;
+        const firstMetric = catData && Array.isArray(catData.deductions) ? catData.deductions[0] : null;
+        const measureType = String(firstMetric && firstMetric.measure_type ? firstMetric.measure_type : '').toLowerCase();
+        return measureType === 'count' ? 'LOWER' : 'HIGHER';
     }
 
     function isSystemTimelinessCategoryName(name) {
         const normalized = (name || '').trim().toLowerCase();
         return normalized === 'အချိန်မှီမတင်ပြခြင်း' || normalized.includes('အချိန်မှီ') || normalized.includes('နောက်ကျ') || normalized.includes('late submission') || normalized.includes('late');
+    }
+
+    // Category-name suggestions for the Formula Builder. The engine only
+    // standardizes case/whitespace (see engine_helpers.standardize_key),
+    // so a differently-worded name never matches the Excel header: a
+    // TARGET category scores 0, a DEDUCTION never deducts. Clicking a
+    // suggestion fills the EXACT name, so no typo can creep in.
+    // Source: the existing categories endpoint (names already in the
+    // system) + seed canonical names. Timeliness names are excluded:
+    // that row is system-fixed readonly. Free text still works; the
+    // save-time check below only warns, never blocks.
+    const SEED_CANONICAL_CATEGORIES = [
+        'Attendance, Punctuality & Support',
+        'Attendance, Punctuality & Flexibility',
+    ];
+    let categorySuggestions = null;
+    let categorySuggestionsFromServer = false;
+    let categorySuggestionsLoading = false;
+
+    function standardizeCategoryName(name) {
+        return String(name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    }
+
+    function mergeCategorySuggestions(listed) {
+        const seen = new Set();
+        const merged = [];
+        [...listed, ...SEED_CANONICAL_CATEGORIES].forEach((name) => {
+            const clean = String(name || '').trim();
+            if (!clean || isSystemTimelinessCategoryName(clean)) return;
+            const key = standardizeCategoryName(clean);
+            if (seen.has(key)) return;
+            seen.add(key);
+            merged.push(clean);
+        });
+        return merged;
+    }
+
+    async function loadCategorySuggestions() {
+        if (categorySuggestions !== null || categorySuggestionsLoading) return;
+        categorySuggestionsLoading = true;
+        try {
+            const res = await fetch(`${API_BASE}/categories/available`);
+            if (res.ok) {
+                const data = await res.json();
+                categorySuggestionsFromServer = true;
+                categorySuggestions = mergeCategorySuggestions(
+                    Array.isArray(data.categories) ? data.categories : [],
+                );
+            } else {
+                categorySuggestions = mergeCategorySuggestions([]);
+            }
+        } catch (error) {
+            categorySuggestions = mergeCategorySuggestions([]);
+        } finally {
+            categorySuggestionsLoading = false;
+        }
+    }
+
+    function closeCategorySuggestions() {
+        document.querySelectorAll('.kg-category-suggest').forEach((el) => el.remove());
+    }
+
+    function renderCategorySuggestions(input) {
+        closeCategorySuggestions();
+        if (!categorySuggestions || input.readOnly || input.disabled) return;
+        const typed = standardizeCategoryName(input.value);
+        const matches = categorySuggestions.filter((name) => {
+            const key = standardizeCategoryName(name);
+            if (typed && key === typed) return false;
+            return !typed || key.includes(typed);
+        }).slice(0, 8);
+        if (!matches.length) return;
+        const field = input.closest('.kg-category-name-field');
+        if (!field) return;
+        const box = document.createElement('div');
+        box.className = 'kg-category-suggest';
+        box.setAttribute('role', 'listbox');
+        box.innerHTML = matches.map((name) =>
+            `<button type="button" class="kg-suggest-chip" role="option" data-suggest-name="${escapeHTML(name)}">${escapeHTML(name)}</button>`,
+        ).join('');
+        field.appendChild(box);
     }
 
     function addCategory(catData = null) {
@@ -897,6 +1029,24 @@ const API_BASE = "/api/v1/kpi";
         const nameInputHtml = isTimeliness
             ? `<input type="text" id="cat_name_${cId}" readonly disabled class="cat-name w-full bg-emerald-50 border border-emerald-200 p-3 sm:p-4 rounded-xl text-xs sm:text-sm font-bold text-emerald-900 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 focus:outline-none transition-all shadow-inner cursor-not-allowed kg-control" placeholder="System-defined timeliness category" value="အချိန်မှီမတင်ပြခြင်း">`
             : `<input type="text" id="cat_name_${cId}" class="cat-name w-full bg-slate-50 border border-slate-200 p-3 sm:p-4 rounded-xl text-xs sm:text-sm font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none transition-all shadow-inner kg-control" placeholder="e.g. Sales Performance" value="${nameVal}">`;
+        const nameHintHtml = isTimeliness
+            ? ''
+            : `<p class="kg-category-hint">Excel ခေါင်းစဉ်နဲ့ အတိအကျ တူရမယ် (အကြီး/အသေး + space ကွာတာ ရတယ်)</p>`;
+        // Direction selector: TARGET only (DEDUCTION ignores direction).
+        // data-original holds the stored direction, or "" when the
+        // category has none (legacy or brand-new).
+        const storedDirection = catData && (catData.direction === 'HIGHER' || catData.direction === 'LOWER')
+            ? catData.direction
+            : '';
+        const directionVal = inferTargetDirection(catData);
+        const directionFieldHtml = `
+            <div class="kg-direction-field mb-5 sm:mb-7 ${typeVal === 'TARGET' ? '' : 'hidden'}">
+                <label for="cat_direction_${cId}" class="block text-[10px] sm:text-xs font-black text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-widest">Target direction</label>
+                <select id="cat_direction_${cId}" data-original="${storedDirection}" class="cat-direction w-full bg-slate-50 border border-slate-200 p-3 sm:p-4 rounded-xl text-xs sm:text-sm font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none transition-all shadow-inner cursor-pointer appearance-none kg-control">
+                    <option value="HIGHER" ${directionVal === 'HIGHER' ? 'selected' : ''}>Higher is better</option>
+                    <option value="LOWER" ${directionVal === 'LOWER' ? 'selected' : ''}>Lower is better</option>
+                </select>
+            </div>`;
 
         const html = `
             <div id="${cId}" class="cat-block bg-white border border-slate-200 rounded-2xl sm:rounded-3xl p-4 sm:p-7 shadow-sm relative transition-all hover:border-blue-300 animate-fade-in-up kg-category-card">
@@ -904,6 +1054,7 @@ const API_BASE = "/api/v1/kpi";
                     <div class="md:col-span-2 kg-category-name-field">
                         <label for="cat_name_${cId}" class="block text-[10px] sm:text-xs font-black text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-widest">Category Name <span class="text-red-500">*</span></label>
                         ${nameInputHtml}
+                        ${nameHintHtml}
                     </div>
 
                     <div class="md:col-span-2 kg-category-type-field">
@@ -923,6 +1074,8 @@ const API_BASE = "/api/v1/kpi";
                     </div>
                     ${removeButtonHtml}
                 </div>
+
+                ${directionFieldHtml}
 
                 <div class="metrics-section bg-slate-50/50 rounded-2xl p-4 sm:p-6 border border-slate-100 ${typeVal === 'TARGET' ? 'hidden' : ''} kg-metrics">
                     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 sm:mb-5 border-b border-slate-200/60 pb-3 sm:pb-4 gap-3 sm:gap-0 kg-subsection-heading">
@@ -1150,13 +1303,27 @@ const API_BASE = "/api/v1/kpi";
                 if(rules.length > 0) { deductions.push({ name: dName, measure_type: dType, rules: rules }); }
             });
 
-            payload.categories.push({
+            const categoryPayload = {
                 name: cName,
                 weight: cWeight,
                 max_score: 5.0,
                 evaluation_type: cEvalType,
                 deductions: deductions
-            });
+            };
+            if (cEvalType === 'TARGET') {
+                const dirSelect = cat.querySelector(".cat-direction");
+                const dirValue = dirSelect ? dirSelect.value : 'HIGHER';
+                const dirOriginal = dirSelect ? (dirSelect.dataset.original || '') : '';
+                // Omit only when a stored direction exists and the user
+                // left it unchanged: the backend restores it by name.
+                // Otherwise send the displayed direction. Omitting an
+                // old legacy category would let the backend default it
+                // to HIGHER on update and flip COUNT-inferred scores.
+                if (!(dirOriginal && dirValue === dirOriginal)) {
+                    categoryPayload.direction = dirValue;
+                }
+            }
+            payload.categories.push(categoryPayload);
         });
 
         if(validationError) return showToast(validationError, "error");
@@ -1195,6 +1362,22 @@ const API_BASE = "/api/v1/kpi";
         // current links untouched instead of replacing them.
         if (!formulaPeriodsLoadFailed) {
             payload.period_ids = selectedFormulaPeriodIds();
+        }
+
+        // Soft warning only, never a block: a name that matches neither
+        // the suggestion list nor any known category will not match the
+        // Excel header at calculation time (the engine standardizes
+        // case/whitespace only, not wording). Warn only when the server
+        // list actually loaded, so a failed fetch never false-alarms.
+        await loadCategorySuggestions();
+        if (categorySuggestionsFromServer && Array.isArray(categorySuggestions)) {
+            const knownKeys = new Set(categorySuggestions.map(standardizeCategoryName));
+            const unknownNames = [...new Set(payload.categories
+                .map((cat) => String(cat.name || '').trim())
+                .filter((name) => name && !isSystemTimelinessCategoryName(name) && !knownKeys.has(standardizeCategoryName(name))))];
+            if (unknownNames.length) {
+                showToast(`Excel ခေါင်းစဉ်နဲ့ အတိအကျ တိုက်စစ်ပါ: ${unknownNames.join(', ')}`, 'warning');
+            }
         }
 
         const fId = document.getElementById("fId").value;
@@ -1495,6 +1678,7 @@ const API_BASE = "/api/v1/kpi";
         freezeRecord,
         handleEvalTypeChange,
         handleMetricTypeChange,
+        inferTargetDirection,
         isSystemTimelinessCategoryName,
         loadAssignmentOptions,
         loadAssignmentPositions,
