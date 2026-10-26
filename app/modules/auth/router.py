@@ -328,10 +328,17 @@ async def get_current_user_context(db: AsyncSession = Depends(get_db), current_u
     pos_id = str(user.position_id) if user.position_id else None
     pos_name = user.position.name if user.position else 'No Position'
 
+    from app.modules.auth import sa_mfa
+
     return {
         "user_id": str(user.id),
         "full_name": f"{user.first_name} {user.last_name}".strip(),
         "role": role_value,
+        # SA MFA flags: setup_required = TOTP not enrolled yet (the
+        # web tier redirects an SA to enrollment on this flag);
+        # single_sa_warning = only one active SA exists.
+        "mfa_setup_required": await sa_mfa.mfa_setup_required(db, user),
+        "single_sa_warning": await sa_mfa.single_sa_warning(db, user),
         "permissions": sorted(
             code for code, allowed in get_permission_map(user).items() if allowed
         ),
@@ -388,6 +395,7 @@ async def login(request: Request, response: Response, payload: LoginRequest, db:
     auth_result = await AuthService.authenticate_user(
         db, payload.email, payload.password, client_ip, user_agent,
         remember_me=payload.remember_me,
+        totp_code=payload.totp_code,
     )
     secure_cookie = cookie_secure_for_request(request)
     response.set_cookie(

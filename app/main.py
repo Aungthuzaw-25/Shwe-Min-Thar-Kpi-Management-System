@@ -34,6 +34,7 @@ from app.modules.auth.profile_router import account_router
 # Backend API Routers (DDD Modules)
 from app.modules.auth.profile_router import router as auth_profile_router
 from app.modules.auth.router import router as auth_router
+from app.modules.auth.sa_mfa_router import router as sa_mfa_router
 from app.modules.departments.router import router as dept_router
 from app.modules.kpi import upload_router
 from app.modules.kpi.action_plan_router import router as action_plan_router
@@ -422,6 +423,11 @@ class CSRFMiddleware(BaseHTTPMiddleware):
             exempt_login = request.url.path in {
                 "/api/v1/auth/login",
                 "/api/v1/auth/swagger-login",
+                # SA TOTP recovery + phone-lost request are public
+                # entry points (no session exists yet to CSRF with),
+                # like /login; the peer-approve actions stay protected.
+                "/api/v1/auth/sa-mfa/recover",
+                "/api/v1/auth/sa-mfa/reset-requests",
             }
             if (
                 cookie_authenticated
@@ -493,6 +499,7 @@ app.mount("/static", CachedStaticFiles(directory="static"), name="static")
 # 🔌 6. BACKEND API ROUTERS (Domain-Driven Design)
 # ==============================================================================
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["Authentication"])
+app.include_router(sa_mfa_router, prefix="/api/v1/auth", tags=["Authentication"])
 app.include_router(auth_profile_router, prefix="/api/v1/auth", tags=["Account Profile"])
 app.include_router(account_router, prefix="/api/v1/account", tags=["Account"])
 app.include_router(dept_router, prefix="/api/v1/departments", tags=["Departments"])

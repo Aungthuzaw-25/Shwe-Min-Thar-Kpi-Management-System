@@ -9,6 +9,10 @@ class LoginRequest(BaseModel):
     email: str
     password: str
     remember_me: bool = False
+    # SA second factor: the current 6-digit authenticator code.
+    # Required only for Super Admins with a confirmed TOTP
+    # enrollment; ignored for everyone else.
+    totp_code: str | None = None
 
 
 class TokenResponse(BaseModel):

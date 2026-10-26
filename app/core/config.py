@@ -30,6 +30,14 @@ class Settings(BaseSettings):
         ),
     )
     REFRESH_TOKEN_EXPIRE_DAYS: int
+    # SA TOTP (Google Authenticator) secret encryption key — a
+    # Fernet key (generate with: python -c "from cryptography.fernet
+    # import Fernet; print(Fernet.generate_key().decode())").
+    # If unset, MFA setup/verification fail closed (503). This key
+    # is NOT the JWT secret: losing it means every SA must
+    # re-enroll via the peer-reset flow, so back it up with the
+    # other production secrets.
+    TOTP_ENCRYPTION_KEY: str | None = None
     DATABASE_SSL_REQUIRED: bool = True
     # Per-statement ceiling for asyncpg (seconds). One statement may
     # never run longer than this, so a runaway query cannot hold a
