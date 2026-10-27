@@ -24,8 +24,8 @@ external Neon database configured by `.env`.
 ```powershell
 Copy-Item .env.qa.example .env.qa
 # Replace the local-only placeholder values in .env.qa.
-$env:QA_POSTGRES_PASSWORD = "local-only-password"
-$env:QA_MINIO_ROOT_PASSWORD = "local-only-storage-password"
+$env:QA_POSTGRES_PASSWORD = "CHANGE_ME_QA_ONLY"
+$env:QA_MINIO_ROOT_PASSWORD = "CHANGE_ME_QA_ONLY"
 docker volume create kpi_management_system_postgres_qa_data
 docker volume create kpi_management_system_redis_qa_data
 docker volume create kpi_management_system_minio_qa_data
@@ -48,7 +48,7 @@ category rules, and KPI assignments. Tasks and event rows are intentionally
 created by the real workflows in Phase 3.4.3 rather than fabricated here.
 
 ```powershell
-$env:QA_SEED_PASSWORD = "local-only-user-password"
+$env:QA_SEED_PASSWORD = "CHANGE_ME_QA_ONLY"
 docker compose --env-file .env.qa -f docker-compose.qa.yml exec -T api-qa `
   python -m app.database.qa_seed
 ```

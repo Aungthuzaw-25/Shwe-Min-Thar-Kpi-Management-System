@@ -112,7 +112,7 @@ before invoking pytest. In PowerShell:
 ```powershell
 $env:ENV = "development"
 $env:DATABASE_URL = "sqlite+aiosqlite:///:memory:"
-$env:JWT_SECRET_KEY = "local-only-test-secret"
+$env:JWT_SECRET_KEY = "CHANGE_ME_GENERATE_A_LONG_RANDOM_VALUE"
 $env:USE_S3 = "false"
 python -m pytest tests --ignore=tests/test_ui_dashboard.py --cov=app --cov-report=term-missing -q
 ```

@@ -7,6 +7,9 @@ def _isolated_settings_kwargs():
     return {
         "PROJECT_NAME": "KPI",
         "VERSION": "test",
+        # Explicit so isolated tests never depend on the OS environment
+        # for the now-required ENV field (see test_env_is_required_field).
+        "ENV": "development",
         "ALLOWED_ORIGINS": "https://app.example.com",
         "DATABASE_URL": "sqlite+aiosqlite:///:memory:",
         "REFRESH_TOKEN_EXPIRE_DAYS": 7,
@@ -74,6 +77,62 @@ def test_missing_production_jwt_secret_fails_closed():
             ALLOWED_ORIGINS="https://app.example.com",
             REFRESH_TOKEN_EXPIRE_DAYS=7,
         )
+
+
+def test_env_is_required_field():
+    # No code default may silently skip the production validator when
+    # ENV is forgotten (e.g. on a hosting dashboard).
+    assert Settings.model_fields["ENV"].is_required()
+
+
+def test_missing_env_fails_fast(monkeypatch):
+    monkeypatch.delenv("ENV", raising=False)
+    settings_kwargs = _isolated_settings_kwargs()
+    settings_kwargs.pop("ENV")
+
+    with pytest.raises(ValueError, match="ENV"):
+        Settings(_env_file=None, **settings_kwargs)
+
+
+def _production_settings_kwargs():
+    from cryptography.fernet import Fernet
+
+    return {
+        "PROJECT_NAME": "KPI",
+        "VERSION": "test",
+        "ENV": "production",
+        "JWT_SECRET_KEY": "a" * 64,
+        "DATABASE_URL": "postgresql+asyncpg://user:password@remote.example.com:5432/neondb",
+        "DATABASE_SSL_REQUIRED": True,
+        "USE_S3": True,
+        "S3_ENDPOINT": "https://storage.example.com",
+        "S3_ACCESS_KEY": "access",
+        "S3_SECRET_KEY": "secret",
+        "ALLOWED_ORIGINS": "https://app.example.com",
+        "REFRESH_TOKEN_EXPIRE_DAYS": 7,
+        "TOTP_ENCRYPTION_KEY": Fernet.generate_key().decode(),
+    }
+
+
+def test_production_missing_totp_key_fails_fast():
+    settings_kwargs = _production_settings_kwargs()
+    settings_kwargs.pop("TOTP_ENCRYPTION_KEY")
+
+    with pytest.raises(ValueError, match="TOTP_ENCRYPTION_KEY"):
+        Settings(_env_file=None, **settings_kwargs)
+
+
+def test_production_invalid_totp_key_fails_fast():
+    settings_kwargs = _production_settings_kwargs()
+    settings_kwargs["TOTP_ENCRYPTION_KEY"] = "not-a-fernet-key"
+
+    with pytest.raises(ValueError, match="TOTP_ENCRYPTION_KEY"):
+        Settings(_env_file=None, **settings_kwargs)
+
+
+def test_production_valid_totp_key_passes_startup_validation():
+    configured = Settings(_env_file=None, **_production_settings_kwargs())
+    assert configured.TOTP_ENCRYPTION_KEY
 
 
 def test_allowed_origins_is_required_field():

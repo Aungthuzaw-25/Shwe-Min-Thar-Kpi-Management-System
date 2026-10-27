@@ -1,3 +1,4 @@
+import base64
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -7,13 +8,32 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 ASYNC_POSTGRES_SCHEME = "postgresql+asyncpg://"
 JWT_SIGNING_ALGORITHMS = frozenset({"HS256"})
 
+
+def _is_valid_fernet_key(value: str) -> bool:
+    """Fernet keys are 44 urlsafe-base64 chars encoding exactly 32 bytes.
+
+    This is the same shape check Fernet itself performs; the cryptography
+    library remains the authority at MFA use time (sa_mfa._fernet).
+    """
+    if len(value) != 44:
+        return False
+    try:
+        raw = base64.urlsafe_b64decode(value.encode("ascii"))
+    except Exception:
+        return False
+    return len(raw) == 32
+
 class Settings(BaseSettings):
     PROJECT_NAME: str
     VERSION: str
     
-    # 🌟 ADDED: Explicit Environment Variable for main.py CORS Security check
-    ENV: str = "development"
-    
+    # No default on purpose, like ALLOWED_ORIGINS: the environment must
+    # declare itself. If ENV is forgotten, the app refuses to start
+    # instead of silently skipping the production validator below.
+    # Development copies .env.example (ENV=development); Docker sets
+    # ENV=production in the image; Railway prod must set ENV=production.
+    ENV: str
+
     DATABASE_URL: str
     JWT_SECRET_KEY: str = Field(
         validation_alias=AliasChoices("JWT_SECRET_KEY", "SECRET_KEY")
@@ -65,7 +85,6 @@ class Settings(BaseSettings):
     REDIS_URL: str | None = None
     OAUTH_ENABLED: bool = False
     APP_BASE_URL: str | None = None
-    OAUTH_PUBLIC_BASE_URL: str | None = None
     OAUTH_STATE_TTL_SECONDS: int = 600
     GOOGLE_OIDC_ENABLED: bool = False
     GOOGLE_CLIENT_ID: str | None = None
@@ -210,6 +229,23 @@ class Settings(BaseSettings):
             storage_scheme = urlparse(self.S3_ENDPOINT or "").scheme.lower()
             if storage_scheme != "https":
                 raise ValueError("S3_ENDPOINT must use HTTPS in production.")
+        # Last on purpose: earlier production checks must keep failing with
+        # their own message first (existing tests pin that order). A missing
+        # or malformed TOTP key must also fail at startup — otherwise prod
+        # would deploy fine and SA Authenticator MFA would only 503 at the
+        # first SA login/enrollment attempt.
+        totp_key = (self.TOTP_ENCRYPTION_KEY or "").strip()
+        if not totp_key:
+            raise ValueError(
+                "TOTP_ENCRYPTION_KEY must be set in production: SA Authenticator "
+                "MFA cannot be set up or verified without it."
+            )
+        if not _is_valid_fernet_key(totp_key):
+            raise ValueError(
+                "TOTP_ENCRYPTION_KEY must be a valid Fernet key in production "
+                "(generate with: python -c \"from cryptography.fernet import "
+                "Fernet; print(Fernet.generate_key().decode())\")."
+            )
 
     def _validate_qa_database(self) -> None:
         database = urlparse(self.DATABASE_URL)
