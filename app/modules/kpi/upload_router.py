@@ -43,6 +43,7 @@ from app.core.timezone import as_application_time
 from app.database.connection import get_db
 from app.modules.departments.models import UserDepartment
 from app.modules.kpi.engine import KPICalculationEngine, any_formula_applies_to_period
+from app.modules.kpi.overachievement import flush_pending_notifications
 from app.modules.kpi.models import (
     KPIFormula,
     KPIPeriod,
@@ -753,6 +754,7 @@ async def upload_monthly_kpi_data(
             raise UploadValidationError("The workbook contains no valid employee rows.")
 
         period_range = _period_month_range(period)
+        pending_notifications: list = []
         for row in valid_rows:
             await KPICalculationEngine.execute_kpi_calculation(
                 db=db,
@@ -762,6 +764,7 @@ async def upload_monthly_kpi_data(
                 period_type=PeriodType.MONTHLY,
                 task_data=row.task_data,
                 commit=False,
+                pending_notifications=pending_notifications,
             )
             await db.flush()
             result = (
@@ -779,6 +782,10 @@ async def upload_monthly_kpi_data(
                     f"KPI calculation did not persist expected context for {row.email}."
                 )
         await db.commit()
+        # Notices only after the import transaction committed: a
+        # later-row failure rolls everything back, and no orphan
+        # notice may survive it (dedup would suppress the retry).
+        await flush_pending_notifications(db, pending_notifications)
         return {
             "message": "KPI data was imported and calculated successfully.",
             "processed_count": len(valid_rows),
