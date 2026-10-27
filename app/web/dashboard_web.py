@@ -140,7 +140,7 @@ async def render_admin_dashboard_view(
     if not current_user or not current_user.role:
         return RedirectResponse(url=LOGIN_REDIRECT_URL)
 
-    if not verify_role(current_user, ['Admin', 'System Admin']):
+    if not verify_role(current_user, ['Admin']):
         return RedirectResponse(url=DASHBOARD_URL)
 
     employee_context = await get_employee_context(db, current_user)
@@ -174,7 +174,7 @@ async def render_normal_dashboard_view(
     if role_name in [ROLE_SUPER_ADMIN]:
         return RedirectResponse(url="/superadmin/dashboard")
 
-    if role_name in ['Admin', 'System Admin']:
+    if role_name in ['Admin']:
         return RedirectResponse(url="/admin/dashboard")
 
     if user_level == "L0":
@@ -486,12 +486,14 @@ async def render_kpi_reports_view(
         return RedirectResponse(url=DASHBOARD_URL)
         
     return templates.TemplateResponse(
-        request=request, 
-        name="dashboard/report.njk", 
+        request=request,
+        name="dashboard/report.njk",
         context={**build_user_template_context(current_user),
             "user_role": current_user.role.name,
             "user_name": f"{current_user.first_name} {current_user.last_name}",
-            "user_email": current_user.email
+            "user_email": current_user.email,
+            # I6: the Export CSV button gates on this (Tasks pattern).
+            "permission_map": get_permission_map(current_user),
         }
     )
 

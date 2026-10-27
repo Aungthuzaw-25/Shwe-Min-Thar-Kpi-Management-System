@@ -26,7 +26,7 @@ async def notifications_page(
     context["active_page"] = "notifications"
     context["layout_template"] = (
         "layouts/employee_base.njk"
-        if current_user.role.name not in {"Super Admin", "Admin", "System Admin"}
+        if current_user.role.name not in {"Super Admin", "Admin"}
         else "layouts/base.njk"
     )
     return templates.TemplateResponse(

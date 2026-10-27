@@ -1,4 +1,7 @@
+import csv
+import io
 import logging
+import secrets
 import traceback
 
 logger = logging.getLogger(__name__)
@@ -8,8 +11,10 @@ from uuid import UUID
 from fastapi import (  # 🌟 PERFORMANCE FIX: Added Query
     APIRouter,
     Depends,
+    File,
     HTTPException,
     Query,
+    UploadFile,
 )
 from sqlalchemy import func, or_, text, update
 from sqlalchemy.exc import IntegrityError
@@ -19,7 +24,6 @@ from sqlalchemy.orm import selectinload
 
 from app.core.dependencies import (
     GLOBAL_SCOPE_ROLES,
-    RoleChecker,
     enforce_department_scope,
     enforce_permission,
     enforce_user_scope,
@@ -60,7 +64,6 @@ from app.utils.audit import log_audit_trail
 router = APIRouter()
 SUPER_ADMIN_ROLE_NAME = "Super Admin"
 SUPER_ADMIN_ROLE_NAMES = {SUPER_ADMIN_ROLE_NAME}
-admin_checker = RoleChecker([SUPER_ADMIN_ROLE_NAME, 'Admin'])
 VALID_USER_LEVELS = {'L0', 'L1', 'L2'}
 PERM_USERS_VIEW = "users.view"
 ERR_SUPER_ADMIN_NOT_FOUND = "Super Admin not found."
@@ -258,7 +261,7 @@ async def _assign_new_user_department(
 
 
 @router.post('/', dependencies=[Depends(idempotency_guard)], response_model=UserResponse, responses={400: {"description": "Bad Request"}, 403: {"description": "Forbidden"}, 404: {"description": "Not Found"}, 422: {"description": "Unprocessable Entity"}, 500: {"description": "Internal Server Error"}})
-async def create_new_user(payload: UserCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
+async def create_new_user(payload: UserCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     enforce_permission(current_user, "users.create")
     role_req = await db.execute(select(Role).where(Role.id == payload.role_id))
     target_role = role_req.scalar_one_or_none()
@@ -320,9 +323,150 @@ async def create_new_user(payload: UserCreate, db: AsyncSession = Depends(get_db
         
     db.expunge(new_user)
     complete_user = await user_repo.get_user_by_id(db, new_user.id)
-    
+
     resp_data = serialize_user_obj(complete_user).model_dump()
     return resp_data
+
+
+# ======================================================================
+# Bulk user import (CSV) — KPI-upload pattern: valid rows are created,
+# invalid rows are reported per row, nothing is all-or-nothing.
+# Columns: email, first_name, last_name, role, department,
+# user_level, password (optional). Role/department match by NAME.
+# ======================================================================
+BULK_IMPORT_MAX_ROWS = 1000
+BULK_IMPORT_REQUIRED_COLUMNS = ("email", "first_name", "last_name", "role")
+
+
+@router.post('/bulk-import', responses={400: {"description": "Bad Request"}, 403: {"description": "Forbidden"}, 422: {"description": "Unprocessable Entity"}})
+async def bulk_import_users(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    enforce_permission(current_user, "users.create")
+    if not file.filename or not file.filename.lower().endswith(".csv"):
+        raise HTTPException(status_code=422, detail="A .csv file is required.")
+    try:
+        text = (await file.read()).decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=422, detail="CSV must be UTF-8 encoded.")
+    reader = csv.DictReader(io.StringIO(text))
+    if not reader.fieldnames:
+        raise HTTPException(status_code=422, detail="CSV has no header row.")
+    header_map = {(name or "").strip().lower(): name for name in reader.fieldnames}
+    missing = [c for c in BULK_IMPORT_REQUIRED_COLUMNS if c not in header_map]
+    if missing:
+        raise HTTPException(status_code=422, detail=f"Missing CSV columns: {', '.join(missing)}.")
+    rows = list(reader)
+    if len(rows) > BULK_IMPORT_MAX_ROWS:
+        raise HTTPException(status_code=422, detail=f"At most {BULK_IMPORT_MAX_ROWS} rows per import.")
+
+    roles = (await db.execute(select(Role))).scalars().all()
+    roles_by_name = {role.name.strip().lower(): role for role in roles}
+    departments = (await db.execute(
+        select(Department).where(Department.is_deleted == False)
+    )).scalars().all()
+    departments_by_name = {dept.name.strip().lower(): dept for dept in departments}
+    policy = await get_password_policy(db)
+    is_super_admin = current_user.role and current_user.role.name == SUPER_ADMIN_ROLE_NAME
+
+    results: list[dict] = []
+    seen_emails: set[str] = set()
+    created = 0
+    for index, raw_row in enumerate(rows, start=2):  # row 1 is the header
+        row = {
+            (key or "").strip().lower(): (value.strip() if isinstance(value, str) else value)
+            for key, value in raw_row.items()
+            if key is not None
+        }
+        email = row.get("email") or ""
+        try:
+            if not email or "@" not in email or "." not in email.split("@")[-1]:
+                raise HTTPException(status_code=422, detail="Invalid email address.")
+            if email.lower() in seen_emails:
+                raise HTTPException(status_code=422, detail="Duplicate email within the file.")
+            seen_emails.add(email.lower())
+            first_name = row.get("first_name") or ""
+            last_name = row.get("last_name") or ""
+            if not first_name or not last_name:
+                raise HTTPException(status_code=422, detail="first_name and last_name are required.")
+            role_name = row.get("role") or ""
+            target_role = roles_by_name.get(role_name.strip().lower())
+            if not target_role:
+                raise HTTPException(status_code=422, detail=f"Unknown role: {role_name}.")
+            if target_role.name == SUPER_ADMIN_ROLE_NAME:
+                raise HTTPException(status_code=403, detail="Super Admin accounts cannot be bulk-imported.")
+            if not is_super_admin and target_role.name == "Admin":
+                raise HTTPException(status_code=403, detail="Only Super Admins can manage administrative accounts.")
+            dept_name = row.get("department") or ""
+            dept = None
+            if dept_name:
+                dept = departments_by_name.get(dept_name.strip().lower())
+                if not dept:
+                    raise HTTPException(status_code=422, detail=f"Unknown department: {dept_name}.")
+                await enforce_department_scope(db, current_user, dept.id)
+            level_raw = row.get("user_level") or ""
+            if level_raw and not dept:
+                raise HTTPException(status_code=422, detail="user_level requires a department.")
+            user_level = normalize_user_level(level_raw or "L2")
+            await _ensure_user_email_available(db, email)
+            provided_password = row.get("password") or ""
+            password_generated = False
+            if provided_password:
+                try:
+                    validate_password_strength(provided_password, **policy)
+                except ValueError as e:
+                    raise HTTPException(status_code=422, detail=str(e))
+            else:
+                provided_password = secrets.token_urlsafe(24)
+                password_generated = True
+            new_user = await user_repo.create_user(db, {
+                "first_name": first_name,
+                "last_name": last_name,
+                "email": email,
+                "role_id": target_role.id,
+                "hashed_password": await get_password_hash_async(provided_password),
+                "local_password_enabled": True,
+                "must_change_password": True,
+                "is_active": True,
+            }, commit=False)
+            await password_repo.add_password_history(db, new_user.id, new_user.hashed_password, commit=False)
+            await _assign_new_user_department(db, new_user, dept.id if dept else None, user_level)
+            record_activity(
+                db,
+                actor_id=current_user.id,
+                action="USER_CREATED",
+                entity_type="user",
+                entity_id=new_user.id,
+                description=f"Created user {first_name} {last_name} via bulk import".strip(),
+            )
+            if target_role.name == "Admin":
+                await stage_super_admin_notice(
+                    db,
+                    actor_id=current_user.id,
+                    title="Administrative account created",
+                    message=f"{current_user.first_name} {current_user.last_name} created "
+                    f"Admin account {email} via bulk import.",
+                )
+            await db.commit()
+            created += 1
+            results.append({"row": index, "email": email, "status": "created",
+                            "password_generated": password_generated})
+        except HTTPException as e:
+            await db.rollback()
+            results.append({"row": index, "email": email, "status": "error",
+                            "error": e.detail if isinstance(e.detail, str) else "Invalid row."})
+        except Exception:
+            await db.rollback()
+            results.append({"row": index, "email": email, "status": "error",
+                            "error": "Database transaction failed."})
+    return {
+        "total_rows": len(rows),
+        "created": created,
+        "errors": len(rows) - created,
+        "results": results,
+    }
 
 
 @router.get('/super-admins', response_model=list[UserResponse], responses={403: {"description": "Forbidden"}})
@@ -644,7 +788,7 @@ async def delete_super_admin(
 
 
 @router.get('/roles/list', responses={403: {"description": "Forbidden"}})
-async def get_roles_list(db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
+async def get_roles_list(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     enforce_permission(current_user, PERM_USERS_VIEW)
     stmt = select(Role)
     result = await db.execute(stmt)
@@ -661,15 +805,34 @@ async def get_deleted_users(
     skip: int = Query(0, ge=0), 
     limit: int = Query(100, gt=0, le=500),
     db: AsyncSession = Depends(get_db), 
-    current_user: User = Depends(admin_checker)
+    current_user: User = Depends(get_current_user)
 ):
+    enforce_permission(current_user, PERM_USERS_VIEW)
     try:
         stmt = user_repo.get_user_base_query() if hasattr(user_repo, "get_user_base_query") else select(User).options(
             selectinload(User.role),
             selectinload(User.user_departments).selectinload(UserDepartment.department)
         )
-        stmt = stmt.where(User.is_deleted == True).offset(skip).limit(limit)
-        
+        stmt = stmt.where(User.is_deleted == True)
+        # D4, mirrored from get_users: non-SA/HR callers see only
+        # trashed users from their own departments (deleted
+        # memberships excluded on both sides). The SA-accounts
+        # filter below is unchanged.
+        if not current_user.role or current_user.role.name not in GLOBAL_SCOPE_ROLES:
+            stmt = stmt.where(
+                User.id.in_(
+                    select(UserDepartment.user_id).where(
+                        UserDepartment.department_id.in_(
+                            select(UserDepartment.department_id).where(
+                                UserDepartment.user_id == current_user.id,
+                                UserDepartment.is_deleted.is_(False),
+                            )
+                        ),
+                        UserDepartment.is_deleted.is_(False),
+                    )
+                )
+            )
+        stmt = stmt.offset(skip).limit(limit)
         result = await db.execute(stmt)
         users = result.scalars().all()
         
@@ -688,7 +851,7 @@ async def get_users(
     skip: int = Query(0, ge=0), 
     limit: int = Query(100, gt=0, le=500),
     db: AsyncSession = Depends(get_db), 
-    current_user: User = Depends(admin_checker)
+    current_user: User = Depends(get_current_user)
 ):
     enforce_permission(current_user, PERM_USERS_VIEW)
     stmt = user_repo.get_user_base_query() if hasattr(user_repo, "get_user_base_query") else select(User).options(
@@ -698,15 +861,23 @@ async def get_users(
     stmt = stmt.where(User.is_deleted == False)
     if is_active is not None:
         stmt = stmt.where(User.is_active == is_active)
+    # D4: the list is department-scoped exactly like the profile
+    # view (SA/HR global, everyone else only their own departments).
+    # The audit's "unscoped list" premise was wrong — this block
+    # already existed; the fix here is only consistency: deleted
+    # memberships no longer count for visibility, matching
+    # _scope_permission_users in the permission router.
     if not current_user.role or current_user.role.name not in GLOBAL_SCOPE_ROLES:
         stmt = stmt.where(
             User.id.in_(
                 select(UserDepartment.user_id).where(
                     UserDepartment.department_id.in_(
                         select(UserDepartment.department_id).where(
-                            UserDepartment.user_id == current_user.id
+                            UserDepartment.user_id == current_user.id,
+                            UserDepartment.is_deleted.is_(False),
                         )
-                    )
+                    ),
+                    UserDepartment.is_deleted.is_(False),
                 )
             )
         )
@@ -851,7 +1022,7 @@ async def _update_existing_user_membership(
 
 
 @router.put('/{user_id}', response_model=UserResponse, responses={400: {"description": "Bad Request"}, 403: {"description": "Forbidden"}, 404: {"description": "Not Found"}, 422: {"description": "Unprocessable Entity"}, 500: {"description": "Internal Server Error"}})
-async def update_existing_user(user_id: UUID, payload: UserUpdate, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
+async def update_existing_user(user_id: UUID, payload: UserUpdate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     enforce_permission(current_user, "users.edit")
     await enforce_user_scope(db, current_user, user_id)
     stmt = select(User).options(selectinload(User.role)).where(User.id == user_id)
@@ -915,7 +1086,7 @@ async def update_existing_user(user_id: UUID, payload: UserUpdate, db: AsyncSess
     return serialize_user_obj(refreshed_user)
 
 @router.post('/{user_id}/offboard', responses={400: {"description": "Bad Request"}, 403: {"description": "Forbidden"}, 404: {"description": "Not Found"}})
-async def offboard_user(user_id: UUID, payload: UserOffboardRequest, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
+async def offboard_user(user_id: UUID, payload: UserOffboardRequest, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Formal departure flow (retention design, 2026-10-23).
 
     RESIGNED / TERMINATED: lifecycle status + leaving date are set,
@@ -993,7 +1164,7 @@ async def offboard_user(user_id: UUID, payload: UserOffboardRequest, db: AsyncSe
     return {'message': 'Employee offboarded: login is disabled, the account is in the trash, and all KPI records and tasks are kept.'}
 
 @router.delete('/{user_id}', responses={403: {"description": "Forbidden"}, 404: {"description": "Not Found"}, 400: {"description": "Bad Request"}})
-async def delete_existing_user(user_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
+async def delete_existing_user(user_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     enforce_permission(current_user, "users.delete")
     await enforce_user_scope(db, current_user, user_id)
     stmt = select(User).options(selectinload(User.role)).where(User.id == user_id)
@@ -1230,7 +1401,7 @@ async def permanent_delete_user(user_id: UUID, db: AsyncSession = Depends(get_db
     return {'message': 'Account permanently deleted. KPI records, tasks and audit history were kept.'}
 
 @router.put('/{user_id}/reset-password', responses={400: {"description": "Bad Request"}, 403: {"description": "Forbidden"}, 404: {"description": "Not Found"}})
-async def reset_user_password(user_id: UUID, payload: PasswordResetAdmin, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
+async def reset_user_password(user_id: UUID, payload: PasswordResetAdmin, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     enforce_permission(current_user, "users.password_reset")
     stmt = select(User).options(selectinload(User.role)).where(User.id == user_id)
     await enforce_user_scope(db, current_user, user_id)
@@ -1348,12 +1519,14 @@ async def set_user_leave(user_id: UUID, payload: UserLeaveRequest, db: AsyncSess
 async def get_user_process_tracking(
     user_id: UUID, 
     db: AsyncSession = Depends(get_db), 
-    current_user: User = Depends(admin_checker)
+    current_user: User = Depends(get_current_user)
 ):
     user_check = await db.get(User, user_id)
     if not user_check:
         raise HTTPException(status_code=404, detail=ERR_USER_NOT_FOUND)
 
+    enforce_permission(current_user, PERM_USERS_VIEW)
+    await enforce_user_scope(db, current_user, user_id)
     metrics_stmt = (
         select(Task.status, func.count(Task.id))
         .where(Task.owner_id == user_id)

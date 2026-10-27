@@ -9,13 +9,15 @@ from fastapi import (  # 🌟 FIX: Added Query for Pagination
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
-# 🌟 RequireRole အစား RoleChecker သို့ ပြောင်းထားပါသည်
+# E3 (roles audit): assignment is gated by kpi.create OR department
+# headship (require_kpi_manager) — the old RoleChecker named a
+# "Department Head" role that never exists.
 from app.core.dependencies import (
-    RoleChecker,
     enforce_department_scope,
     enforce_permission,
     enforce_user_scope,
     get_current_user,
+    require_kpi_manager,
 )
 from app.database.connection import get_db
 from app.modules.kpi import assignment_service
@@ -25,28 +27,25 @@ from app.modules.users.models import User
 
 router = APIRouter(prefix="/assignments", tags=["KPI Assignments"])
 
-# 🌟 Admin, HR နှင့် ဌာနမှူးများမှ Assignment လုပ်ခွင့်ရှိသည်
-assigner_role = RoleChecker(["Super Admin", "Admin", "HR", "Department Head"])
-
-@router.post("/assign", status_code=status.HTTP_201_CREATED, dependencies=[Depends(assigner_role)])
+@router.post("/assign", status_code=status.HTTP_201_CREATED)
 async def assign_single_kpi(
     payload: KPIAssignmentCreate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """ဝန်ထမ်းတစ်ဦးချင်းစီအတွက် KPI သတ်မှတ်ပေးရန်"""
-    enforce_permission(current_user, "kpi.create")
+    await require_kpi_manager(db, current_user, payload.department_id, "kpi.create")
     await enforce_department_scope(db, current_user, payload.department_id)
     return await assignment_service.assign_kpi_to_user(db, payload.model_dump(), current_user.id)
 
-@router.post("/bulk-assign", status_code=status.HTTP_201_CREATED, dependencies=[Depends(assigner_role)])
+@router.post("/bulk-assign", status_code=status.HTTP_201_CREATED)
 async def bulk_assign_kpi(
     payload: KPIBulkAssignmentCreate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """ဝန်ထမ်းများစွာအတွက် KPI တစ်ပြိုင်နက် သတ်မှတ်ပေးရန်"""
-    enforce_permission(current_user, "kpi.create")
+    await require_kpi_manager(db, current_user, payload.department_id, "kpi.create")
     await enforce_department_scope(db, current_user, payload.department_id)
     return await assignment_service.bulk_assign_kpi(db, payload.model_dump(), current_user.id)
 

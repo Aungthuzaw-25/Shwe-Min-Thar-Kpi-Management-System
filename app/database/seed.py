@@ -96,19 +96,22 @@ def resolve_test_account(name: str) -> tuple[str, str] | None:
         return None
     return email, password
 
+# D6: dormant keys removed from the catalog (verified unenforced
+# anywhere: no enforce_permission call references them). KEPT
+# deliberately: kpi.delete (wired by the E-fix to formula delete)
+# and system.audit.view (wired by the E-fix to KPI audit-logs) —
+# removing those two now would break live gates, so they are no
+# longer dormant and no longer D6 candidates.
 PERMISSION_CATALOG = [
     (USERS_VIEW_PERMISSION, "View users"), ("users.create", "Create users"), ("users.edit", "Edit users"),
-    ("users.delete", "Delete users"), ("users.activate", "Activate users"), ("users.deactivate", "Deactivate users"),
+    ("users.delete", "Delete users"),
     ("users.password_reset", "Reset user passwords"),
     ("tasks.view", "View tasks"), ("tasks.create", "Create tasks"), ("tasks.edit", "Edit tasks"),
-    ("tasks.delete", "Delete tasks"), ("tasks.submit", "Submit tasks"), ("tasks.resubmit", "Resubmit tasks"), ("tasks.approve", "Approve tasks"),
+    ("tasks.delete", "Delete tasks"), ("tasks.submit", "Submit tasks"), ("tasks.approve", "Approve tasks"),
     ("tasks.reject", "Reject tasks"), ("tasks.return", "Return tasks"),
     (KPI_VIEW_PERMISSION, "View KPIs"), ("kpi.create", "Create KPIs"), ("kpi.edit", "Edit KPIs"),
-    ("kpi.delete", "Delete KPIs"), ("kpi.assign", "Assign KPIs"), ("kpi.calculate", "Calculate KPIs"),
-    ("kpi.rule.view", "View KPI rules"), ("kpi.rule.create", "Create KPI rules"),
-    ("kpi.rule.edit", "Edit KPI rules"), ("kpi.rule.delete", "Delete KPI rules"),
-    (REPORT_VIEW_PERMISSION, "View reports"), ("report.create", "Create reports"), ("report.export", "Export reports"),
-    ("report.view_all", "View other users' reports"),
+    ("kpi.delete", "Delete KPIs"), ("kpi.calculate", "Calculate KPIs"),
+    (REPORT_VIEW_PERMISSION, "View reports"), ("report.export", "Export reports"),
     (DEPARTMENT_VIEW_PERMISSION, "View departments"), ("department.create", "Create departments"),
     ("department.edit", "Edit departments"), ("department.delete", "Delete departments"),
     ("system.settings.view", "View settings"), ("system.settings.edit", "Edit settings"),
@@ -120,15 +123,17 @@ ROLE_DEFAULTS = {
     SUPER_ADMIN_ROLE: {code for code, _ in PERMISSION_CATALOG},
     "Admin": {code for code, _ in PERMISSION_CATALOG}
     - {"system.settings.edit", "system.audit.view"},
+    # D5: HR no longer holds system.permissions.manage by default
+    # (least privilege; a specific HR user can still receive it via
+    # an individual override). D6: dormant keys dropped here too.
     "HR": {
-        USERS_VIEW_PERMISSION, "users.create", "users.edit", "users.activate",
-        "users.deactivate", "users.password_reset", DEPARTMENT_VIEW_PERMISSION,
-        KPI_VIEW_PERMISSION, REPORT_VIEW_PERMISSION, "report.view_all",
-        "system.permissions.manage",
+        USERS_VIEW_PERMISSION, "users.create", "users.edit",
+        "users.password_reset", DEPARTMENT_VIEW_PERMISSION,
+        KPI_VIEW_PERMISSION, REPORT_VIEW_PERMISSION,
     },
     DEPARTMENT_USER_ROLE: {
         USERS_VIEW_PERMISSION, "tasks.view", "tasks.create", "tasks.edit",
-        "tasks.delete", "tasks.submit", "tasks.resubmit",
+        "tasks.delete", "tasks.submit",
         "tasks.approve", "tasks.reject", "tasks.return",
         KPI_VIEW_PERMISSION, REPORT_VIEW_PERMISSION, DEPARTMENT_VIEW_PERMISSION,
     },

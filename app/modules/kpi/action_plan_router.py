@@ -13,11 +13,13 @@ from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 
 from app.core.dependencies import (
-    RoleChecker,
     enforce_permission,
     enforce_user_scope,
     get_current_user,
+    has_effective_permission,
+    is_department_head,
 )
+from app.core.exceptions import PermissionDeniedException
 from app.core.idempotency import idempotency_guard
 from app.database.connection import get_db
 from app.modules.departments.models import UserDepartment
@@ -34,8 +36,8 @@ from app.modules.users.models import User
 router = APIRouter(prefix="/action-plans", tags=["KPI Action Plans"])
 KPI_RECORD_NOT_FOUND = "KPI Record not found."
 
-# Manager များ၊ HR နှင့် Admin များသာ Review လုပ်ခွင့်ရှိသည်
-reviewer_role = RoleChecker(["Super Admin", "Admin", "HR", "Department Head"])
+# E3: review is gated in-body (kpi.edit OR dept head of the plan
+# owner's department) — the old RoleChecker named a dead role.
 
 
 async def _enforce_kpi_record_scope(
@@ -115,9 +117,11 @@ async def get_all_action_plans(
     skip: int = Query(0, ge=0), 
     limit: int = Query(100, gt=0, le=500), 
     db: AsyncSession = Depends(get_db), 
-    current_user: User = Depends(reviewer_role)
+    current_user: User = Depends(get_current_user)
 ):
     """System အတွင်းရှိ Action Plan အားလုံးကို ကြည့်ရှုရန် (Manager/Admin View)"""
+    # E3: the old reviewer_role gate named a dead role; kpi.view +
+    # the department scoping below is the real gate now.
     enforce_permission(current_user, "kpi.view")
     stmt = select(ActionPlan).where(ActionPlan.is_deleted.is_(False))
     if current_user.role.name not in {"Super Admin", "HR"}:
@@ -173,7 +177,6 @@ async def get_action_plan(
 
 @router.put(
     "/{plan_id}/review",
-    dependencies=[Depends(reviewer_role)],
     responses={
         400: {"description": "Invalid action plan status transition"},
         403: {"description": "Not authorized to review this action plan"},
@@ -188,14 +191,33 @@ async def review_action_plan(
     current_user: User = Depends(get_current_user)
 ):
     """Manager သို့မဟုတ် Admin မှ တင်ပြလာသော Action Plan အား Approve/Reject လုပ်ရန်"""
-    enforce_permission(current_user, "kpi.edit")
+    # E3: kpi.edit holders pass as before; a department head of the
+    # plan owner's department also passes (head_id or L1) even
+    # without the key. Ordering preserves the old 403-before-404
+    # for unprivileged callers (a missing plan cannot qualify
+    # anyone as a dept head, so it denies rather than leaking).
     plan = (await db.execute(
         select(ActionPlan).options(selectinload(ActionPlan.record)).where(
             ActionPlan.id == plan_id, ActionPlan.is_deleted == False
         )
     )).scalars().first()
     if not plan:
+        enforce_permission(current_user, "kpi.edit")
         raise HTTPException(status_code=404, detail="Action Plan not found.")
+    if not has_effective_permission(current_user, "kpi.edit"):
+        owner_depts = (await db.execute(
+            select(UserDepartment.department_id).where(
+                UserDepartment.user_id == plan.user_id,
+                UserDepartment.is_deleted.is_(False),
+            )
+        )).scalars().all()
+        if not any(
+            await is_department_head(db, current_user.id, dept_id)
+            for dept_id in owner_depts
+        ):
+            raise PermissionDeniedException(
+                detail="Access denied for this department's manager action."
+            )
     await enforce_user_scope(db, current_user, plan.user_id)
     if plan.record and plan.record.period and plan.record.period.status in {
         KPIPeriodStatus.FINALIZED, KPIPeriodStatus.LOCKED, KPIPeriodStatus.CANCELLED
