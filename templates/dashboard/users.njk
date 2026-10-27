@@ -1017,6 +1017,24 @@
         }
     }
 
+    // Error toast for delete/restore/permanent-delete: read the body as
+    // text first, because a proxy/server failure (502 HTML, empty body)
+    // is not JSON — res.json() would throw and the real reason would be
+    // misreported as a network error. A server answer is shown as-is;
+    // "Network error" is reserved for fetch itself throwing.
+    async function readServerError(res) {
+        try {
+            const text = await res.text();
+            if (text) {
+                try {
+                    const err = JSON.parse(text);
+                    if (err && err.detail) return `Error: ${err.detail}`;
+                } catch (e) { /* not JSON — fall through to status */ }
+            }
+        } catch (e) { /* unreadable body — fall through to status */ }
+        return `Server error (${res.status})`;
+    }
+
     async function deleteUser(id) {
         if (!(await window.appConfirm("Are you sure you want to disable and move this user to trash?", { title: "Disable user?" }))) return;
         if (pendingUserMutations.has(id)) return;
@@ -1025,8 +1043,8 @@
             const res = await fetch(`/api/v1/users/${id}`, { method: 'DELETE' });
             if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
             
-            if (res.ok) { showToast("User disabled and moved to trash.", "success"); await loadUsers(); } 
-            else { const err = await res.json(); showToast(`Error: ${err.detail}`, "error"); }
+            if (res.ok) { showToast("User disabled and moved to trash.", "success"); await loadUsers(); }
+            else { showToast(await readServerError(res), "error"); }
         } catch (err) { showToast("Network error while deleting user.", "error"); }
         finally { pendingUserMutations.delete(id); }
     }
@@ -1037,8 +1055,8 @@
             const res = await fetch(`/api/v1/users/${id}/restore`, { method: 'POST', headers: { 'Content-Type': 'application/json' }});
             if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
             
-            if (res.ok) { showToast("User restored and activated successfully.", "success"); await loadDeletedUsers(); } 
-            else { const err = await res.json(); showToast(`Error: ${err.detail}`, "error"); }
+            if (res.ok) { showToast("User restored and activated successfully.", "success"); await loadDeletedUsers(); }
+            else { showToast(await readServerError(res), "error"); }
         } catch (err) { showToast("Network error while restoring user.", "error"); }
     }
 
@@ -1048,8 +1066,8 @@
             const res = await fetch(`/api/v1/users/${id}/permanent`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }});
             if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
             
-            if (res.ok) { showToast("User permanently deleted from database.", "success"); await loadDeletedUsers(); } 
-            else { const err = await res.json(); showToast(`Error: ${err.detail}`, "error"); }
+            if (res.ok) { showToast("User permanently deleted from database.", "success"); await loadDeletedUsers(); }
+            else { showToast(await readServerError(res), "error"); }
         } catch (err) { showToast("Network error while permanently deleting user.", "error"); }
     }
 
