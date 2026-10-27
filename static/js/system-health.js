@@ -195,12 +195,12 @@
                 showError('You do not have access to system health.');
                 return;
             }
-            if (!response.ok) throw new Error('Health request failed');
+            if (!response.ok) throw new Error(await window.readServerError(response));
             var data = await response.json();
             clearError();
             render(data);
         } catch (error) {
-            showError('Could not reach the health service. The last shown status is kept, and the next check runs in 15 seconds.');
+            showError(window.displayErrorText ? window.displayErrorText(error) : 'Could not reach the health service. The last shown status is kept, and the next check runs in 15 seconds.');
         }
     }
 

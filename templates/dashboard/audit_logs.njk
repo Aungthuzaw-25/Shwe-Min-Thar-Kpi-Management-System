@@ -280,8 +280,8 @@
             document.getElementById("visibleCount").textContent = "—";
             document.getElementById("latestActivity").textContent = "Unavailable";
             document.getElementById("logsStatus").className = "border-b border-red-100 bg-red-50 px-4 py-2.5 text-xs font-semibold text-red-700 sm:px-6";
-            document.getElementById("logsStatus").textContent = "Unable to load audit records. Please try again.";
-            tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-16 text-center"><p class="text-sm font-bold text-red-700">Audit logs are unavailable</p><p class="mt-1 text-xs text-slate-500">Your session may have expired or you may not have permission to view this page.</p></td></tr>';
+            document.getElementById("logsStatus").textContent = window.displayErrorText ? window.displayErrorText(error) : "Unable to load audit records.";
+            tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-16 text-center"><p class="text-sm font-bold text-red-700">Audit logs are unavailable</p><p class="mt-1 text-xs text-slate-500">' + window.escapeHTML(window.displayErrorText ? window.displayErrorText(error) : "Unable to load audit records.") + '</p></td></tr>';
             console.error(error);
         } finally {
             button.disabled = false;

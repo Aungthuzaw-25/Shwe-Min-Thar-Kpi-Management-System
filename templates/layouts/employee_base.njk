@@ -393,7 +393,8 @@
             try {
                 const response = await fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' });
                 if (!response.ok) {
-                    throw new Error(`Logout failed with status ${response.status}`);
+                    window.showToast(await window.readServerError(response), 'error');
+                    return;
                 }
                 localStorage.removeItem('user');
                 if (window.kpiClearFormDrafts) { try { window.kpiClearFormDrafts(); } catch (e) {} } // Drafts must not survive logout
@@ -464,13 +465,13 @@
                     fetch(`${NOTIF_API_BASE}?limit=15`),
                     fetch(`${NOTIF_API_BASE}/unread-count`)
                 ]);
-                if (!res.ok) throw new Error(`Notifications request failed (${res.status})`);
+                if (!res.ok) throw new Error(await window.readServerError(res));
                 const notifications = await res.json();
                 const unreadCount = countResponse.ok ? (await countResponse.json()).count : 0;
                 renderNotifications(notifications, unreadCount);
             } catch (err) {
                 const listContainer = document.getElementById("notifList");
-                if (listContainer) listContainer.innerHTML = '<div class="p-6 text-center text-red-600 text-xs font-medium">Unable to load notifications. <button type="button" class="underline font-bold" onclick="fetchNotifications()">Retry</button></div>';
+                if (listContainer) listContainer.innerHTML = '<div class="p-6 text-center text-red-600 text-xs font-medium">' + window.escapeHTML(window.displayErrorText ? window.displayErrorText(err) : "Unable to load notifications.") + ' <button type="button" class="underline font-bold" onclick="fetchNotifications()">Retry</button></div>';
             }
         }
 

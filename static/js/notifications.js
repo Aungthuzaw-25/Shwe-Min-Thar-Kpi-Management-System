@@ -1,5 +1,9 @@
 (function () {
     let modalId = 0;
+    // User-safe guardrail: a reason that looks like a stack trace, SQL or
+    // server internals is never shown to the user — the status is shown
+    // instead. Shared by showToast and readServerError below.
+    const technicalPattern = /(traceback|stack trace|sqlalchemy|asyncpg|postgres|database error|internal server error|exception|syntax error|select |insert |update |delete from)/i;
     const icons = {
         success: "✓",
         error: "!",
@@ -23,9 +27,8 @@
         const toast = document.createElement("div");
         const kind = ["success", "error", "warning", "info"].includes(type) ? type : "info";
         const rawMessage = String(message || "");
-        const technical = /(traceback|stack trace|sqlalchemy|asyncpg|postgres|database error|internal server error|exception|syntax error|select |insert |update |delete from)/i;
-        if (kind === "error" && technical.test(rawMessage)) {
-            message = "Something went wrong. Please try again.";
+        if (kind === "error" && technicalPattern.test(rawMessage)) {
+            message = "Server error. Please try again.";
         }
         toast.className = `app-toast app-toast-${kind}`;
         toast.setAttribute("role", kind === "error" ? "alert" : "status");
@@ -388,4 +391,51 @@
     window.appPrompt = appPrompt;
     window.appDialog = appDialog;
     window.viewNotificationDetail = viewNotificationDetail;
+
+    // Exact-reason error helpers (project-wide standard): a failed request
+    // shows the server's own reason when it is user-safe, the HTTP status
+    // when the body is unusable or unsafe, and a network wording only when
+    // the request itself never reached the server. Never surfaces stack
+    // traces, SQL or internal paths (see technicalPattern above).
+    async function readServerError(response) {
+        const status = response ? response.status : 0;
+        let text = "";
+        try { text = await response.text(); } catch (_) { text = ""; }
+        if (text) {
+            try {
+                const parsed = JSON.parse(text);
+                const detail = parsed && parsed.detail;
+                if (typeof detail === "string" && detail && !technicalPattern.test(detail)) {
+                    return `Error: ${detail}`;
+                }
+                if (detail && typeof detail.message === "string" && detail.message && !technicalPattern.test(detail.message)) {
+                    return `Error: ${detail.message}`;
+                }
+                if (detail && Array.isArray(detail.errors)) {
+                    const messages = detail.errors.filter(m => typeof m === "string" && m && !technicalPattern.test(m));
+                    if (messages.length) return `Error: ${messages.join("; ")}`;
+                }
+                if (typeof parsed === "string" && parsed && !technicalPattern.test(parsed)) {
+                    return `Error: ${parsed}`;
+                }
+            } catch (_) { /* not JSON — fall through to the status */ }
+        }
+        return `Server error (${status})`;
+    }
+
+    function displayErrorText(error) {
+        const message = error && error.message ? String(error.message) : "";
+        if (/Failed to fetch|NetworkError|Load failed|The operation was aborted|Network request failed/i.test(message)) {
+            return "Network error. Please try again.";
+        }
+        return message || "Server error. Please try again.";
+    }
+
+    function isUnsafeErrorText(text) {
+        return technicalPattern.test(String(text || ""));
+    }
+
+    window.readServerError = readServerError;
+    window.displayErrorText = displayErrorText;
+    window.isUnsafeErrorText = isUnsafeErrorText;
 })();

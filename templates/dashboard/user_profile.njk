@@ -149,7 +149,7 @@
                 return;
             }
 
-            if(!response.ok) throw new Error("Failed to load user profile");
+            if(!response.ok) throw new Error(await window.readServerError(response));
             
             const user = await response.json();
             const fullName = `${user.first_name} ${user.last_name}`;
@@ -221,7 +221,8 @@
 
         } catch (error) {
             console.error(error);
-            document.getElementById("profileDeptList").innerHTML = `<tr><td colspan="3" class="p-8 sm:p-12 text-center text-red-500 font-bold text-xs sm:text-sm">Error loading user profile data.</td></tr>`;
+            const reason = window.displayErrorText ? window.displayErrorText(error) : "Error loading user profile data.";
+            document.getElementById("profileDeptList").innerHTML = `<tr><td colspan="3" class="p-8 sm:p-12 text-center text-red-500 font-bold text-xs sm:text-sm">${escapeHTML(reason)}</td></tr>`;
             document.getElementById("profileNameTitle").innerText = "Profile Unavailable";
         }
     });

@@ -229,7 +229,7 @@
                 showToast(`Data aggregation executed for selected period.`, "success");
             } else if (res.status === 409) {
                 showToast("Calculation still running — wait a moment and check before retrying.", "error");
-            } else { showToast("Engine recalculation failed.", "error"); }
+            } else { showToast(await window.readServerError(res), "error"); }
         } catch (err) { showToast("Connection failed — the calculation may not have run. Check, then retry (retrying is safe).", "error"); }
     }
 
@@ -294,8 +294,9 @@
             if (res.ok) {
                 currentPeriods = collected;
                 renderTable();
-            } else { 
-                tbody.innerHTML = '<tr><td colspan="6" class="p-10 sm:p-16 text-left sm:text-center text-red-500 font-bold bg-red-50/50">Failed to load system data. <button type="button" onclick="fetchPeriods()" class="ml-3 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50">Retry</button></td></tr>'; 
+            } else {
+                const reason = await window.readServerError(res);
+                tbody.innerHTML = `<tr><td colspan="6" class="p-10 sm:p-16 text-left sm:text-center text-red-500 font-bold bg-red-50/50">${window.escapeHTML(reason)} <button type="button" onclick="fetchPeriods()" class="ml-3 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50">Retry</button></td></tr>`;
             }
         } catch (error) { 
             document.getElementById('periodsTableBody').innerHTML = '<tr><td colspan="6" class="p-10 sm:p-16 text-left sm:text-center text-red-500 font-bold bg-red-50/50">Network connection interrupted. <button type="button" onclick="fetchPeriods()" class="ml-3 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50">Retry</button></td></tr>'; 
@@ -410,8 +411,7 @@
                 }
                 fetchPeriods();
             } else {
-                const err = await res.json(); 
-                showToast(err.detail || "Validation failed.", "error");
+                showToast(await window.readServerError(res), "error");
             }
         } catch (error) { showToast("System connectivity error.", "error"); }
         finally { btn.innerHTML = "Deploy Cycle"; btn.disabled = false; }
@@ -446,10 +446,9 @@
             if (res.ok) { 
                 showToast(`Cycle status successfully locked to ${newStatus}.`, "success"); 
                 fetchPeriods(); 
-            } else { 
-                const err = await res.json(); 
-                showToast(err.detail || "Status update rejected by policy.", "error"); 
-                selectElement.value = ""; 
+            } else {
+                showToast(await window.readServerError(res), "error");
+                selectElement.value = "";
             }
         } catch (error) { 
             showToast("System connectivity error.", "error"); 
@@ -469,8 +468,7 @@
                 showToast("Draft period successfully deleted.", "success");
                 fetchPeriods(); 
             } else {
-                const err = await res.json();
-                showToast(err.detail || "Cannot delete this period.", "error");
+                showToast(await window.readServerError(res), "error");
             }
         } catch (error) {
             showToast("System connectivity error.", "error");

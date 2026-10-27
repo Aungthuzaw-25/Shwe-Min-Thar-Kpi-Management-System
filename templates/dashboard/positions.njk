@@ -256,7 +256,7 @@
                 closeModal();
                 if (document.getElementById('deptFilter').value === payload.department_id) fetchPositions();
             } else {
-                const err = await res.json(); showToast(err.detail || "လုပ်ဆောင်မှု မအောင်မြင်ပါ", "error");
+                showToast(await window.readServerError(res), "error");
             }
         } catch (error) { showToast("ကွန်ရက်ချိတ်ဆက်မှု အမှားအယွင်း", "error"); }
     }
@@ -270,7 +270,7 @@
 
             if (res.ok || res.status === 204) {
                 showToast("ဖျက်သိမ်းခြင်း အောင်မြင်ပါသည်။"); fetchPositions();
-            } else { const err = await res.json(); showToast(err.detail || "ပယ်ဖျက်၍ မရပါ", "error"); }
+            } else { showToast(await window.readServerError(res), "error"); }
         } catch (error) { showToast("ကွန်ရက်ချိတ်ဆက်မှု အမှားအယွင်း", "error"); }
     }
 

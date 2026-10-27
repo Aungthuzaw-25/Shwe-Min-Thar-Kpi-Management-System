@@ -591,8 +591,15 @@
                         }
                     }
                 } else {
-                    const errorData = await response.json();
-                    if (response.status === 403 && errorData.detail?.code === 'ACCOUNT_LOCKED') {
+                    // Text-first read: a non-JSON error body (e.g. a 502 HTML
+                    // page) must show its status, not fall into the catch
+                    // below and masquerade as a network error.
+                    const errorText = await response.text().catch(() => "");
+                    let errorData = null;
+                    try { errorData = errorText ? JSON.parse(errorText) : {}; } catch (_) { errorData = null; }
+                    if (errorData === null) {
+                        window.showToast(`Server error (${response.status})`, 'error');
+                    } else if (response.status === 403 && errorData.detail?.code === 'ACCOUNT_LOCKED') {
                         showLoginLockout(errorData.detail);
                     } else {
                         const detail = errorData.detail;

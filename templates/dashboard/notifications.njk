@@ -54,7 +54,7 @@ async function loadNotificationHistory(page = 1) {
             window.location.href = "/auth/login";
             return;
         }
-        if (!response.ok) throw new Error("Unable to load notifications");
+        if (!response.ok) throw new Error(await window.readServerError(response));
         const items = await response.json();
         const unread = unreadResponse.ok ? (await unreadResponse.json()).count : 0;
         document.getElementById("unreadSummary").textContent = `${unread} unread`;
@@ -81,13 +81,14 @@ async function loadNotificationHistory(page = 1) {
                 </div>
             </button>`).join("");
     } catch (error) {
-        container.innerHTML = '<div class="p-10 text-center text-rose-500 text-sm">Unable to load notifications. Please try again. <button type="button" onclick="loadNotificationHistory(currentPage)" class="ml-3 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50">Retry</button></div>';
+        const reason = window.displayErrorText ? window.displayErrorText(error) : "Unable to load notifications.";
+        container.innerHTML = '<div class="p-10 text-center text-rose-500 text-sm">' + escapeHTML(reason) + ' <button type="button" onclick="loadNotificationHistory(currentPage)" class="ml-3 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50">Retry</button></div>';
     }
 }
 async function markAllNotificationsRead() {
     const response = await fetch("/api/v1/notifications/read-all", {method: "PUT"});
     if (!response.ok) {
-        showToast("Unable to update notifications.", "error");
+        showToast(await window.readServerError(response), "error");
         return;
     }
     await loadNotificationHistory(currentPage);
