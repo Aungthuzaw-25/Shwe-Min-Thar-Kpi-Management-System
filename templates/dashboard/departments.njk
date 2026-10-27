@@ -310,15 +310,16 @@
                 return;
             }
             
-            if (!response.ok) throw new Error("Failed to fetch departments");
+            if (!response.ok) throw new Error(await window.readServerError(response));
             
             allFetchedDepartments = await response.json();
             renderDepartments();
-        } catch (error) { 
-            console.error(error); 
+        } catch (error) {
+            console.error(error);
             // Persistent error state (not just a toast): an empty table
             // would read as "there are no departments".
-            document.getElementById("departmentTableBody").innerHTML = '<tr><td colspan="5" class="p-10 text-left sm:text-center text-red-500 font-bold">Failed to load departments. <button type="button" onclick="fetchDepartments()" class="ml-3 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50">Retry</button></td></tr>';
+            const reason = window.displayErrorText ? window.displayErrorText(error) : "Failed to load departments.";
+            document.getElementById("departmentTableBody").innerHTML = `<tr><td colspan="5" class="p-10 text-left sm:text-center text-red-500 font-bold">${escapeHTML(reason)} <button type="button" onclick="fetchDepartments()" class="ml-3 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50">Retry</button></td></tr>`;
         } finally {
             toggleLoader('tableLoader', false);
         }
@@ -452,7 +453,7 @@
         try {
             const response = await fetch(`${API_BASE_URL}/${deptId}`, { method: "DELETE" });
             if (response.ok) { window.showToast("Department moved to trash.", "success"); await fetchDepartments(); }
-            else { window.showToast(`Unable to delete the department (HTTP ${response.status}).`, "error"); }
+            else { window.showToast(await window.readServerError(response), "error"); }
         } catch (error) { console.error(error); window.showToast("Network error while deleting the department.", "error"); }
         finally { toggleLoader('tableLoader', false); }
     }
@@ -463,7 +464,7 @@
         try {
             const response = await fetch(`${API_BASE_URL}/${deptId}/restore`, { method: "POST" });
             if (response.ok) { window.showToast("Department restored.", "success"); await fetchDepartments(); }
-            else { window.showToast(`Unable to restore the department (HTTP ${response.status}).`, "error"); }
+            else { window.showToast(await window.readServerError(response), "error"); }
         } catch (error) { console.error(error); window.showToast("Network error while restoring the department.", "error"); }
         finally { toggleLoader('tableLoader', false); }
     }
@@ -474,7 +475,7 @@
         try {
             const response = await fetch(`${API_BASE_URL}/${deptId}/permanent`, { method: "DELETE" });
             if (response.ok) { window.showToast("Department permanently deleted.", "success"); await fetchDepartments(); }
-            else { window.showToast(`Unable to permanently delete the department (HTTP ${response.status}).`, "error"); }
+            else { window.showToast(await window.readServerError(response), "error"); }
         } catch (error) { console.error(error); window.showToast("Network error while permanently deleting the department.", "error"); }
         finally { toggleLoader('tableLoader', false); }
     }
@@ -499,7 +500,7 @@
         toggleLoader('userListLoader', true);
         try {
             const response = await fetch(USER_API_URL);
-            if (!response.ok) throw new Error("Failed to load active users.");
+            if (!response.ok) throw new Error(await window.readServerError(response));
             const allUsers = await response.json();
             departmentAvailableUsers = allUsers;
             
@@ -604,11 +605,12 @@
                 });
                 tbody.appendChild(tr);
             });
-        } catch (error) { 
-            console.error("Error refreshing users:", error); 
+        } catch (error) {
+            console.error("Error refreshing users:", error);
+            const reason = window.displayErrorText ? window.displayErrorText(error) : "Failed to load department members.";
             const tbody = document.getElementById("deptUsersList");
-            tbody.innerHTML = `<tr><td colspan="3" class="text-red-500 text-center py-10 font-bold bg-red-50 text-sm">An error occurred. Please try again.</td></tr>`;
-            showToast("Failed to load department members.", "error"); 
+            tbody.innerHTML = `<tr><td colspan="3" class="text-red-500 text-center py-10 font-bold bg-red-50 text-sm">${escapeHTML(reason)}</td></tr>`;
+            showToast(reason, "error");
         } finally { 
             toggleLoader('userListLoader', false); 
         }
@@ -632,9 +634,9 @@
                 fetchDepartments();
                 showToast("User assigned successfully.", "success");
             } else {
-                window.showToast("Unable to assign the employee.", "error");
+                window.showToast(await window.readServerError(response), "error");
             }
-        } catch (error) { console.error(error); }
+        } catch (error) { console.error(error); window.showToast("Network error while assigning the employee.", "error"); }
         finally { setButtonLoading('assignUserBtn', false, "+ Assign User"); }
     }
 
@@ -683,7 +685,8 @@
             btn.onclick = submitTransfer;
             
             try {
-                const response = await fetch(API_BASE_URL); 
+                const response = await fetch(API_BASE_URL);
+                if (!response.ok) throw new Error(await window.readServerError(response));
                 const depts = await response.json();
                 const sel = document.getElementById("actionSelectValue");
                 const defaultOption = document.createElement("option");
@@ -698,7 +701,7 @@
                         sel.appendChild(option);
                     }
                 });
-            } catch(e) { console.error(e); }
+            } catch(e) { console.error(e); window.showToast(window.displayErrorText ? window.displayErrorText(e) : "Network error while loading departments.", "error"); }
         }
 
         document.getElementById("actionModal").classList.remove("hidden");
@@ -723,9 +726,9 @@
                 fetchDepartments();
                 showToast("Level changed successfully.", "success");
             } else {
-                window.showToast("Unable to remove the employee.", "error");
+                window.showToast(await window.readServerError(response), "error");
             }
-        } catch(e) { console.error(e); }
+        } catch(e) { console.error(e); window.showToast("Network error while removing the employee.", "error"); }
         finally { setButtonLoading('actionBtn', false, "Confirm"); }
     }
 
@@ -748,9 +751,9 @@
                 fetchDepartments();
                 showToast("Transferred successfully.", "success");
             } else {
-                window.showToast("Unable to transfer the employee.", "error");
+                window.showToast(await window.readServerError(response), "error");
             }
-        } catch(e) { console.error(e); }
+        } catch(e) { console.error(e); window.showToast("Network error while transferring the employee.", "error"); }
         finally { setButtonLoading('actionBtn', false, "Confirm"); }
     }
 

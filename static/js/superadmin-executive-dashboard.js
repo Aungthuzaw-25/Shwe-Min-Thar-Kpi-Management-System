@@ -77,7 +77,12 @@
     try {
       const response = await fetch(url, { ...options, signal: controller.signal });
       if (!response.ok) {
-        const error = new Error(requestFailureMessage(response.status, failureMessage));
+        let reason = '';
+        try { reason = await readServerErrorLocal(response); } catch (_) { reason = ''; }
+        const message = (response.status === 401 || response.status === 403)
+          ? requestFailureMessage(response.status, failureMessage)
+          : (reason || requestFailureMessage(response.status, failureMessage));
+        const error = new Error(message);
         error.status = response.status;
         throw error;
       }
@@ -98,6 +103,46 @@
     if (status === 403) return 'Your account does not have permission to view this dashboard data.';
     if (status >= 500) return 'The dashboard service is temporarily unavailable. Try again shortly.';
     return fallback;
+  }
+
+  // Local copy of the shared exact-reason helpers: this standalone page
+  // does not load notifications.js, so it cannot use window.readServerError.
+  // Same contract — server detail when user-safe, HTTP status otherwise,
+  // never stack traces, SQL or internal paths.
+  const technicalPatternLocal = /(traceback|stack trace|sqlalchemy|asyncpg|postgres|database error|internal server error|exception|syntax error|select |insert |update |delete from)/i;
+
+  async function readServerErrorLocal(response) {
+    const status = response ? response.status : 0;
+    let text = '';
+    try { text = await response.text(); } catch (_) { text = ''; }
+    if (text) {
+      try {
+        const parsed = JSON.parse(text);
+        const detail = parsed && parsed.detail;
+        if (typeof detail === 'string' && detail && !technicalPatternLocal.test(detail)) {
+          return `Error: ${detail}`;
+        }
+        if (detail && typeof detail.message === 'string' && detail.message && !technicalPatternLocal.test(detail.message)) {
+          return `Error: ${detail.message}`;
+        }
+        if (detail && Array.isArray(detail.errors)) {
+          const messages = detail.errors.filter(m => typeof m === 'string' && m && !technicalPatternLocal.test(m));
+          if (messages.length) return `Error: ${messages.join('; ')}`;
+        }
+        if (typeof parsed === 'string' && parsed && !technicalPatternLocal.test(parsed)) {
+          return `Error: ${parsed}`;
+        }
+      } catch (_) { /* not JSON — fall through to the status */ }
+    }
+    return `Server error (${status})`;
+  }
+
+  function displayErrorTextLocal(error) {
+    const message = error && error.message ? String(error.message) : '';
+    if (/Failed to fetch|NetworkError|Load failed|The operation was aborted|Network request failed/i.test(message)) {
+      return 'Network error. Please try again.';
+    }
+    return message || 'Server error. Please try again.';
   }
 
   function formatTime(value) {
@@ -1020,7 +1065,7 @@
         <tbody>${employeeRows}</tbody></table>` : listEmpty('No KPI results are available for the selected date range.');
     } catch (error) {
       if (error.name === 'AbortError') return;
-      target.innerHTML = listEmpty('Employee results could not be loaded. Try refreshing the dashboard.');
+      target.innerHTML = listEmpty(escapeHTML(displayErrorTextLocal(error)));
       meta.textContent = 'Results unavailable';
     } finally {
       if (signal) signal.removeEventListener('abort', abortWithDashboard);
@@ -1137,7 +1182,7 @@
         ${history}`;
     } catch (error) {
       if (error.name === 'AbortError') return;
-      target.innerHTML = listEmpty('Employee KPI details could not be loaded in this authorized scope.');
+      target.innerHTML = listEmpty(escapeHTML(displayErrorTextLocal(error)));
     } finally {
       if (activeDetailRequest === controller) activeDetailRequest = null;
     }
@@ -1259,19 +1304,19 @@
 
   function runEmployeeResultsLoad() {
     const signal = activeRequest ? activeRequest.signal : undefined;
-    loadEmployeeResults(currentDateRange, signal).catch(() => {
+    loadEmployeeResults(currentDateRange, signal).catch((error) => {
       document.getElementById('employeeResults').innerHTML =
-        listEmpty('Employee results could not be loaded. Try refreshing the dashboard.');
+        listEmpty(escapeHTML(displayErrorTextLocal(error)));
       document.getElementById('employeePageMeta').textContent = 'Results unavailable';
     });
   }
 
   function runEmployeeDetailLoad(userId) {
     if (!selectedPeriodId) return;
-    loadEmployeeDetail(userId, selectedPeriodId).catch(() => {
+    loadEmployeeDetail(userId, selectedPeriodId).catch((error) => {
       const target = document.getElementById('employeeDetail');
       target.hidden = false;
-      target.innerHTML = listEmpty('Employee KPI details could not be loaded in this authorized scope.');
+      target.innerHTML = listEmpty(escapeHTML(displayErrorTextLocal(error)));
     });
   }
 

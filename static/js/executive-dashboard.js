@@ -463,7 +463,7 @@
         signal: controller.signal,
         credentials: 'same-origin'
       });
-      if (!response.ok) throw new Error('Employee results could not be loaded.');
+      if (!response.ok) throw new Error(await window.readServerError(response));
       const page = await response.json();
       employeeTotal = page.total;
       meta.textContent = page.total
@@ -475,7 +475,7 @@
       target.innerHTML = renderEmployeeResultTable(page.items);
     } catch (error) {
       if (error.name === 'AbortError') return;
-      target.innerHTML = listEmpty('Employee results could not be loaded. Try refreshing the dashboard.');
+      target.innerHTML = listEmpty(escapeHTML(window.displayErrorText ? window.displayErrorText(error) : 'Employee results could not be loaded.'));
       meta.textContent = 'Results unavailable';
     } finally {
       signal?.removeEventListener('abort', abortWithDashboard);
@@ -556,7 +556,7 @@
         `/api/v1/dashboard/executive/employees/${encodeURIComponent(userId)}?${params}`,
         { credentials: 'same-origin', signal: controller.signal }
       );
-      if (!response.ok) throw new Error('Employee KPI details could not be loaded.');
+      if (!response.ok) throw new Error(await window.readServerError(response));
       const detail = await response.json();
       // Best-effort: a failed records fetch hides the badges only,
       // never the detail itself.
@@ -600,7 +600,7 @@
         ${historyMarkup}`;
     } catch (error) {
       if (error.name === 'AbortError') return;
-      target.innerHTML = listEmpty('Employee KPI details could not be loaded in this authorized scope.');
+      target.innerHTML = listEmpty(escapeHTML(window.displayErrorText ? window.displayErrorText(error) : 'Employee KPI details could not be loaded.'));
     } finally {
       if (activeDetailRequest === controller) activeDetailRequest = null;
     }
@@ -621,7 +621,7 @@
         signal: controller.signal,
         credentials: 'same-origin'
       });
-      if (!executiveResponse.ok) throw new Error('Executive KPI data could not be loaded.');
+      if (!executiveResponse.ok) throw new Error(await window.readServerError(executiveResponse));
       const intelligence = await executiveResponse.json();
       if (sequence !== requestSequence) return;
       const selectedPeriod = renderAvailablePeriods(intelligence);
@@ -629,8 +629,8 @@
       const summaryPromise = fetchWithTimeout(
         `/api/v1/dashboard/summary?period_type=${encodeURIComponent(periodType)}`,
         { signal: controller.signal, credentials: 'same-origin' }
-      ).then(response => {
-        if (!response.ok) throw new Error('Dashboard operational data could not be loaded.');
+      ).then(async response => {
+        if (!response.ok) throw new Error(await window.readServerError(response));
         return response.json();
       });
       employeeOffset = 0;
@@ -665,6 +665,9 @@
       if (error.name === 'AbortError') return;
       if (sequence !== requestSequence) return;
       errorPanel.hidden = false;
+      const reason = window.displayErrorText ? window.displayErrorText(error) : 'Dashboard data could not be loaded.';
+      const errorMessage = document.getElementById('dashboardErrorMessage');
+      if (errorMessage) errorMessage.textContent = reason;
       updated.textContent = 'Update failed';
     } finally {
       if (sequence === requestSequence) {
@@ -683,9 +686,9 @@
   }
 
   function runEmployeeResultsLoad() {
-    loadEmployeeResults(period.value, activeRequest?.signal).catch(() => {
+    loadEmployeeResults(period.value, activeRequest?.signal).catch((error) => {
       document.getElementById('employeeResults').innerHTML =
-        listEmpty('Employee results could not be loaded. Try refreshing the dashboard.');
+        listEmpty(escapeHTML(window.displayErrorText ? window.displayErrorText(error) : 'Employee results could not be loaded.'));
       document.getElementById('employeePageMeta').textContent = 'Results unavailable';
     });
   }

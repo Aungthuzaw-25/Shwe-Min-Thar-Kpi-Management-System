@@ -83,8 +83,10 @@
     footer.classList.add('hidden');
   }
 
-  function showError() {
+  function showError(message = 'Failed to load results.') {
     emptyBox.classList.add('hidden');
+    const errorText = document.getElementById('deptKpiErrorText');
+    if (errorText) errorText.textContent = message;
     errorBox.classList.remove('hidden');
     tableWrap.classList.add('hidden');
     footer.classList.add('hidden');
@@ -155,7 +157,7 @@
         showEmpty('No results for this department in the selected period.');
         return;
       }
-      if (!response.ok) throw new Error('Failed to load results');
+      if (!response.ok) throw new Error(await window.readServerError(response));
       const page = await response.json();
       const items = Array.isArray(page.items) ? page.items : [];
       total = Number.isFinite(Number(page.total)) ? Number(page.total) : items.length;
@@ -167,11 +169,7 @@
       }
       renderRows();
     } catch (error) {
-      if (error && error.name === 'AbortError') {
-        showError();
-      } else {
-        showError();
-      }
+      showError(window.displayErrorText ? window.displayErrorText(error) : 'Failed to load results.');
     } finally {
       loading = false;
     }
@@ -188,13 +186,13 @@
         window.location.href = '/auth/login';
         return;
       }
-      if (!deptResponse.ok) throw new Error('Failed to load departments');
+      if (!deptResponse.ok) throw new Error(await window.readServerError(deptResponse));
       const departments = await deptResponse.json();
       const deptList = Array.isArray(departments) ? departments : [];
       deptList.sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
       deptSelect.innerHTML = '<option value="">Select a department…</option>'
         + deptList.map((dept) => `<option value="${escapeHTML(dept.id)}">${escapeHTML(dept.name)}</option>`).join('');
-      if (!overviewResponse.ok) throw new Error('Failed to load periods');
+      if (!overviewResponse.ok) throw new Error(await window.readServerError(overviewResponse));
       const overview = await overviewResponse.json();
       const periods = Array.isArray(overview.periods) ? overview.periods : [];
       if (!periods.length) {
@@ -213,7 +211,7 @@
         ? String(selectedId)
         : String(periods[0].id);
     } catch (error) {
-      selectorError.textContent = 'Could not load departments or periods. Refresh the page to try again.';
+      selectorError.textContent = window.displayErrorText ? window.displayErrorText(error) : 'Could not load departments or periods.';
       selectorError.classList.remove('hidden');
       deptSelect.innerHTML = '<option value="">Departments unavailable</option>';
       periodSelect.innerHTML = '<option value="">Periods unavailable</option>';

@@ -167,7 +167,7 @@ async function loadSuperAdmins() {
     try {
         const response = await fetchWithTimeout('/api/v1/users/super-admins', { credentials: 'same-origin' });
         if (!response.ok) {
-            throw new Error('Unable to load Super Admin list.');
+            throw new Error(await window.readServerError(response));
         }
         const users = await response.json();
         if (!users.length) {

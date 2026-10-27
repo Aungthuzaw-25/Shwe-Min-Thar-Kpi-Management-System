@@ -17,10 +17,10 @@ export function sendErrorPage(response, status) {
   response.status(status).type("html").send(
     "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\">"
     + "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
-    + "<title>Temporarily unavailable</title>"
+    + "<title>Server error (" + status + ")</title>"
     + "<main style=\"max-width:32rem;margin:12vh auto;padding:2rem;"
     + "font:16px/1.5 system-ui,sans-serif;color:#171717\">"
-    + "<h1>Something went wrong on our side</h1>"
+    + "<h1>Server error (" + status + ")</h1>"
     + "<p>The application service is temporarily unavailable. "
     + "Please wait a moment and try again.</p>"
     + "<p style=\"margin-top:1.5rem\">"

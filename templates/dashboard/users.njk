@@ -518,6 +518,8 @@
             if (deptRes.ok) {
                 const depts = await deptRes.json();
                 document.getElementById('userDepartment').innerHTML = '<option value="">-- Select Department --</option>' + depts.map(d => `<option value="${d.id}">${escapeHTML(d.name)}</option>`).join('');
+            } else {
+                showToast(await window.readServerError(deptRes), "error");
             }
         } catch (err) {
             showToast("Failed to load roles and departments data.", "error");
@@ -548,7 +550,7 @@
                     posSelect.value = selectedPositionId;
                 }
             } else {
-                console.error("Failed to load positions", await res.text());
+                showToast(await window.readServerError(res), "error");
             }
         } catch (err) {
             showToast("Failed to load positions for this department.", "error");
@@ -565,9 +567,9 @@
                 populateUserFilterRoles();
                 renderUsersTable();
             } else {
-                const detail = await res.text();
-                document.getElementById('usersTableBody').innerHTML = `<tr><td colspan="6" class="px-6 py-12 text-center text-red-500 font-bold bg-white text-xs sm:text-sm">Failed to load active users (HTTP ${res.status}).</td></tr>`;
-                console.error('Failed to load active users', { status: res.status, api: '/api/v1/users/?is_active=true', detail });
+                const reason = await window.readServerError(res);
+                document.getElementById('usersTableBody').innerHTML = `<tr><td colspan="6" class="px-6 py-12 text-center text-red-500 font-bold bg-white text-xs sm:text-sm">${escapeHTML(reason)}</td></tr>`;
+                console.error('Failed to load active users', { status: res.status, api: '/api/v1/users/?is_active=true' });
             }
         } catch (error) {
             document.getElementById('usersTableBody').innerHTML = `<tr><td colspan="6" class="px-6 py-12 text-center text-red-500 font-bold bg-white text-xs sm:text-sm">Network Error. Please check your connection.</td></tr>`;
@@ -584,7 +586,8 @@
                 populateUserFilterRoles();
                 renderUsersTable();
             } else {
-                document.getElementById('usersTableBody').innerHTML = `<tr><td colspan="6" class="px-6 py-12 text-center text-red-500 font-bold bg-white text-xs sm:text-sm">Failed to load deleted users.</td></tr>`;
+                const reason = await window.readServerError(res);
+                document.getElementById('usersTableBody').innerHTML = `<tr><td colspan="6" class="px-6 py-12 text-center text-red-500 font-bold bg-white text-xs sm:text-sm">${escapeHTML(reason)}</td></tr>`;
             }
         } catch (error) {
             document.getElementById('usersTableBody').innerHTML = `<tr><td colspan="6" class="px-6 py-12 text-center text-red-500 font-bold bg-white text-xs sm:text-sm">Network Error.</td></tr>`;
@@ -1006,8 +1009,7 @@
                 showToast("Still saving — wait a moment and check the list before retrying.", "error");
             } else {
                 if (!isEdit && res.status === 422) SubmitKey.clear('user-create');
-                const err = await res.json();
-                showToast(`Error: ${err.detail || 'Validation failed'}`, "error");
+                showToast(await window.readServerError(res), "error");
             }
         } catch (error) {
             showToast("Connection failed — the user may not have been saved. Check the list, then retry (retrying is safe).", "error");
@@ -1081,8 +1083,7 @@
                 showToast(`Password reset successful!\nNew Password: ${newPassword}`, "success");
                 closeResetModal();
             } else {
-                const err = await res.json();
-                showToast(`Error: ${err.detail}`, "error");
+                showToast(await window.readServerError(res), "error");
             }
         } catch (err) { showToast("Network error while resetting password.", "error"); }
     }
