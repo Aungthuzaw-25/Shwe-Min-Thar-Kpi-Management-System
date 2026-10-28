@@ -47,7 +47,7 @@ describe('Department KPI page', () => {
     expect(overviewAt).toBeGreaterThan(-1);
     expect(deptAt).toBeGreaterThan(-1);
     expect(overviewAt).toBeLessThan(deptAt);
-    expect(base).toContain('#employeeResultsSection');
+    expect(base).toContain('/superadmin/employee-kpi-results');
     expect(base).toContain('#employeeResultsPanel');
     expect(base).toContain("active_page == 'department_kpi'");
   });
