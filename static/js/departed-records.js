@@ -1,5 +1,6 @@
-// Departed Employee Records — hub (users page), download grants
-// (permissions page) and the SA dashboard year board.
+// Departed Employee Records — hub (users page), downloads + year
+// locks (reports page), download grants (permissions page) and the
+// SA dashboard year board.
 //
 // API contract: Backend Stage 2 (feat/kpi-retention-stage2).
 //  GET  /api/v1/system/departed-identities (+ /{id}, /{id}/tasks, /{id}/relink)
@@ -102,7 +103,7 @@
             }).join('');
         }
         html += '<h4 class="text-sm font-extrabold text-slate-900 mt-6 mb-3">Accounts in trash (soft-deleted)</h4>';
-        html += '<p class="text-[11px] sm:text-xs text-slate-500 font-medium mb-3">These accounts still exist. Same-year returnees come back with Restore below — their records reconnect automatically. Permanent removal is gated by the year-end lock (see below).</p>';
+        html += '<p class="text-[11px] sm:text-xs text-slate-500 font-medium mb-3">These accounts still exist. Same-year returnees come back with Restore below — their records reconnect automatically. Permanent removal is gated by the year-end lock below.</p>';
         if (!soft.length) {
             html += '<p class="text-xs sm:text-sm text-slate-500 font-medium">Trash is empty.</p>';
         } else {
@@ -401,7 +402,12 @@
     // ------------------------------------------------------------------
 
     function initDepartedHub() {
-        const hub = document.getElementById('depHub');
+        // The SA hub lives on the Users page (depHub: list + links)
+        // and on the Reports page (depReportsHub: downloads + year
+        // locks, no departed list). Either id wires the download
+        // form and the year locks; the departed list only loads
+        // where its container exists.
+        const hub = document.getElementById('depHub') || document.getElementById('depReportsHub');
         if (hub) {
             const yearSelect = document.getElementById('depYear');
             if (yearSelect) fillYearSelect(yearSelect, 5);
@@ -422,13 +428,15 @@
             const backupBtn = document.getElementById('depBackupBtn');
             if (backupBtn) backupBtn.addEventListener('click', confirmBackup);
             const trashBtn = document.getElementById('depGoTrash');
-            if (trashBtn) trashBtn.addEventListener('click', function () {
+            // A plain link (Reports page trash link) navigates on its
+            // own; only the Users-page button needs the tab switch.
+            if (trashBtn && trashBtn.tagName !== 'A') trashBtn.addEventListener('click', function () {
                 if (typeof window.switchTab === 'function') window.switchTab('deleted');
                 document.getElementById('usersTableBody').scrollIntoView({ block: 'start' });
             });
-            renderDownloadForm(null);
-            loadDepartedList();
-            loadYearStatus();
+            if (document.getElementById('depScope')) renderDownloadForm(null);
+            if (document.getElementById('depDepartedList')) loadDepartedList();
+            if (lockYear) loadYearStatus();
         }
         // Non-SA viewers: the download block only appears when the
         // viewer actually holds a grant (see the gating note above).
