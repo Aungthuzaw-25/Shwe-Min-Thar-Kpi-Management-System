@@ -12,7 +12,7 @@ from app.core import security
 from app.core.exceptions import PermissionDeniedException
 from app.database.connection import get_db
 from app.modules.auth.models import AuthSession, TokenBlacklist
-from app.modules.departments.models import UserDepartment
+from app.modules.departments.models import Department, UserDepartment
 
 # 🌟 FIX: Permission များကို တစ်ပါတည်း ဆွဲထုတ်ရန် Role ကိုပါ Import လုပ်ပါသည်
 from app.modules.users.models import Role, User, UserPermissionOverride
@@ -38,8 +38,54 @@ async def get_authorized_department_ids(
     return {str(department_id) for department_id in rows.scalars().all()}
 
 
+async def is_department_head(
+    db: AsyncSession, user_id, department_id
+) -> bool:
+    """E3 fix (roles audit): a department head is the department's
+    named head (``Department.head_id``) or an L1 member of that
+    department. The old guards checked for a role literally named
+    "Department Head" — a role that never exists — so every real
+    dept head got 403. This helper is the single definition used
+    by all dept-head gates."""
+    dept = (await db.execute(
+        select(Department).where(Department.id == department_id)
+    )).scalars().first()
+    if dept is not None and str(dept.head_id) == str(user_id):
+        return True
+    level = (await db.execute(
+        select(UserDepartment.user_level).where(
+            UserDepartment.user_id == user_id,
+            UserDepartment.department_id == department_id,
+            UserDepartment.is_deleted.is_(False),
+        )
+    )).scalars().first()
+    return level == "L1"
+
+
+async def require_kpi_manager(
+    db: AsyncSession, current_user: User, department_id, permission_code: str
+) -> None:
+    """E3 fix: allow a manager action if the caller holds
+    ``permission_code`` OR is a department head of ``department_id``.
+    This realizes the code comments ("Admin, HR and dept heads may
+    assign") without changing role defaults: HR still needs the
+    permission key itself, dept heads qualify by headship."""
+    if has_effective_permission(current_user, permission_code):
+        return
+    if await is_department_head(db, current_user.id, department_id):
+        return
+    raise PermissionDeniedException(
+        detail="Access denied for this department's manager action."
+    )
+
+
 async def enforce_user_scope(db: AsyncSession, current_user: User, target_user_id) -> None:
-    """Allow self access, shared-department access, or explicitly global roles."""
+    """Allow self access, shared-department access, or explicitly global roles.
+
+    E3 fix: cross-user access inside a shared department is allowed
+    for Admins (as before) and now also for department heads of a
+    shared department (head_id or L1) — the old "Department Head"
+    role name never matched a real user."""
     if current_user.role and current_user.role.name in GLOBAL_SCOPE_ROLES:
         return
     if str(current_user.id) == str(target_user_id):
@@ -59,14 +105,20 @@ async def enforce_user_scope(db: AsyncSession, current_user: User, target_user_i
         )
     )
     target_departments = {str(department_id) for department_id in target_rows.scalars().all()}
-    if (
-        not current_user.role
-        or current_user.role.name not in {"Admin", "Department Head"}
-        or not current_departments.intersection(target_departments)
-    ):
+    shared = current_departments.intersection(target_departments)
+    if not shared:
         raise PermissionDeniedException(
             detail="Access denied for this user's organizational scope."
         )
+    if current_user.role and current_user.role.name == "Admin":
+        return
+    for department_id in shared:
+        # shared holds str ids; the UUID columns need real UUIDs.
+        if await is_department_head(db, current_user.id, UUID(department_id)):
+            return
+    raise PermissionDeniedException(
+        detail="Access denied for this user's organizational scope."
+    )
 
 
 async def enforce_department_scope(

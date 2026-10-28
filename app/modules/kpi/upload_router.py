@@ -35,14 +35,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.dependencies import (
-    RoleChecker,
     enforce_permission,
     get_authorized_department_ids,
+    get_current_user,
 )
 from app.core.timezone import as_application_time
 from app.database.connection import get_db
 from app.modules.departments.models import UserDepartment
 from app.modules.kpi.engine import KPICalculationEngine, any_formula_applies_to_period
+from app.modules.kpi.overachievement import flush_pending_notifications
 from app.modules.kpi.models import (
     KPIFormula,
     KPIPeriod,
@@ -64,7 +65,6 @@ from app.modules.users.models import User
 logger = logging.getLogger(__name__)
 limiter = Limiter(key_func=get_remote_address)
 router = APIRouter(prefix="/kpi-uploads", tags=["KPI Excel Uploads"])
-admin_hr_checker = RoleChecker(["Super Admin", "Admin", "HR"])
 
 MAX_FILE_SIZE = 5 * 1024 * 1024
 ALLOWED_EXTENSIONS = {".csv", ".xlsx"}
@@ -608,7 +608,7 @@ def _user_metadata(user: User, department_ids: set[str] | None) -> dict[str, str
 
 async def list_import_periods(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(admin_hr_checker),
+    current_user: User = Depends(get_current_user),
 ):
     enforce_permission(current_user, "kpi.create")
     periods = (
@@ -637,7 +637,7 @@ async def list_import_periods(
 async def get_import_periods(
     request: Request,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(admin_hr_checker),
+    current_user: User = Depends(get_current_user),
 ):
     return await list_import_periods(db, current_user)
 
@@ -648,7 +648,7 @@ async def export_kpi_template(
     request: Request,
     period_id: UUID = Query(...),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(admin_hr_checker),
+    current_user: User = Depends(get_current_user),
 ):
     enforce_permission(current_user, "report.export")
     try:
@@ -737,7 +737,7 @@ async def upload_monthly_kpi_data(
     period_id: Annotated[UUID | None, Form()] = None,
     target_month: Annotated[str | None, Form()] = None,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(admin_hr_checker),
+    current_user: User = Depends(get_current_user),
 ):
     enforce_permission(current_user, "kpi.create")
     try:
@@ -754,6 +754,7 @@ async def upload_monthly_kpi_data(
             raise UploadValidationError("The workbook contains no valid employee rows.")
 
         period_range = _period_month_range(period)
+        pending_notifications: list = []
         for row in valid_rows:
             await KPICalculationEngine.execute_kpi_calculation(
                 db=db,
@@ -763,6 +764,7 @@ async def upload_monthly_kpi_data(
                 period_type=PeriodType.MONTHLY,
                 task_data=row.task_data,
                 commit=False,
+                pending_notifications=pending_notifications,
             )
             await db.flush()
             result = (
@@ -780,6 +782,10 @@ async def upload_monthly_kpi_data(
                     f"KPI calculation did not persist expected context for {row.email}."
                 )
         await db.commit()
+        # Notices only after the import transaction committed: a
+        # later-row failure rolls everything back, and no orphan
+        # notice may survive it (dedup would suppress the retry).
+        await flush_pending_notifications(db, pending_notifications)
         return {
             "message": "KPI data was imported and calculated successfully.",
             "processed_count": len(valid_rows),

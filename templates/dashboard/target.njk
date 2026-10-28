@@ -231,7 +231,8 @@
                 renderTargets();
                 updateStats();
             } else {
-                tbody.innerHTML = `<tr><td colspan="6" class="p-10 text-left sm:text-center text-red-500 font-bold">Failed to load targets. <button type="button" onclick="fetchTargets()" class="ml-3 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50">Retry</button></td></tr>`;
+                const reason = await window.readServerError(res);
+                tbody.innerHTML = `<tr><td colspan="6" class="p-10 text-left sm:text-center text-red-500 font-bold">${escapeHTML(reason)} <button type="button" onclick="fetchTargets()" class="ml-3 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50">Retry</button></td></tr>`;
             }
         } catch (error) {
             tbody.innerHTML = `<tr><td colspan="6" class="p-10 text-left sm:text-center text-red-500 font-bold">Network connection error. <button type="button" onclick="fetchTargets()" class="ml-3 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50">Retry</button></td></tr>`;
@@ -343,8 +344,7 @@
                 showToast("Still saving — wait a moment and check the list before retrying.", "error");
             } else {
                 if (res.status === 422) SubmitKey.clear('target-create');
-                const err = await res.json();
-                showToast(err.detail || "Failed to create target.", "error");
+                showToast(await window.readServerError(res), "error");
             }
         } catch(error) {
             showToast("Connection failed — the target may not have been saved. Check the list, then retry (retrying is safe).", "error");
@@ -366,8 +366,7 @@
                 showToast("Target deleted successfully.", "success");
                 fetchTargets();
             } else {
-                const err = await res.json();
-                showToast(err.detail || "Cannot delete target.", "error");
+                showToast(await window.readServerError(res), "error");
             }
         } catch(e) {
             showToast("Network error.", "error");

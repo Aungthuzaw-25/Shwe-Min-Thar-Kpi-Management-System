@@ -695,7 +695,7 @@
             }
         } catch (error) {
             console.error("Error loading task categories:", error);
-            select.innerHTML = '<option value="">Error loading categories</option>';
+            select.innerHTML = '<option value="">' + escapeHTML(window.displayErrorText ? window.displayErrorText(error) : "Error loading categories") + '</option>';
         }
     }
 
@@ -717,7 +717,7 @@
             users.forEach(u => select.innerHTML += `<option value="${u.id}">${escapeHTML(u.first_name)} ${escapeHTML(u.last_name)} (${escapeHTML(u.email)})</option>`);
         } catch (error) {
             console.error("Error loading task assignees:", error);
-            select.innerHTML = '<option value="">-- No Subordinates Available --</option>';
+            select.innerHTML = '<option value="">' + escapeHTML(window.displayErrorText ? window.displayErrorText(error) : "Error loading assignees") + '</option>';
         }
     }
 
@@ -742,10 +742,10 @@
                 catSelect.innerHTML = '<option value="">-- Select Category --</option>';
                 categories.forEach(category => catSelect.innerHTML += `<option value="${escapeHTML(category)}">${escapeHTML(category)}</option>`);
             } else {
-                catSelect.innerHTML = '<option value="">No Active Categories Found</option>';
+                catSelect.innerHTML = '<option value="">' + escapeHTML(await window.readServerError(res)) + '</option>';
             }
-        } catch(e) { 
-            catSelect.innerHTML = '<option value="">Error Loading Categories</option>'; 
+        } catch(e) {
+            catSelect.innerHTML = '<option value="">' + escapeHTML(window.displayErrorText ? window.displayErrorText(e) : "Error Loading Categories") + '</option>';
         }
     }
 
@@ -853,8 +853,7 @@
                 showToast("Still saving — wait a moment and check the list before retrying.", "error");
             } else {
                 if (res.status === 422) SubmitKey.clear('task-bulk-create');
-                const err = await res.json();
-                showToast(err.detail || "Failed to assign task.", "error");
+                showToast(await window.readServerError(res), "error");
             }
         } catch(err) {
             showToast("Connection failed — the assignment may not have been saved. Check the list, then retry (retrying is safe).", "error");
@@ -876,7 +875,7 @@
                 window.location.href = '/auth/login';
                 return;
             }
-            if (!res.ok) throw new Error("Failed to load tasks");
+            if (!res.ok) throw new Error(await window.readServerError(res));
             
             const data = await res.json();
             myTasksList = Array.isArray(data) ? data : []; 
@@ -916,7 +915,7 @@
             
         } catch (err) {
             console.error("Error loading tasks:", err);
-            showTaskLoadError("Unable to load tasks. Check your connection and try again.");
+            showTaskLoadError(window.displayErrorText ? window.displayErrorText(err) : "Unable to load tasks.");
         }
     }
 
@@ -1335,7 +1334,7 @@
                 showToast("File removed successfully.", "success");
                 await loadMyTasks(); 
                 openDraftUploadModal(taskId); 
-            } else { showToast("Failed to remove file.", "error"); }
+            } else { showToast(await window.readServerError(res), "error"); }
         } catch(e) { showToast("Network error.", "error"); }
     }
 
@@ -1424,7 +1423,7 @@
                 showToast("Task resigned to original creator successfully.", "success");
                 closeModals(); loadMyTasks(); switchTab('resign-tab');
             } else {
-                const err = await res.json(); showToast(err.detail || "Failed to resign task.", "error");
+                showToast(await window.readServerError(res), "error");
             }
         } catch(e) { showToast("Network error.", "error"); }
         finally { btn.innerHTML = originalText; btn.disabled = false; }
@@ -1502,8 +1501,7 @@
             if (res.status === 403) { showToast("Permission Denied: this task action is not available.", "error"); return; }
             
             if(!res.ok) {
-                const err = await res.json();
-                throw new Error(err.detail || "Failed to create new version");
+                throw new Error(await window.readServerError(res));
             }
             
             const newV2Task = await res.json();
@@ -1529,11 +1527,12 @@
                     showToast("Task successfully updated to Version 2 and submitted.", "success");
                     closeModals(); loadMyTasks(); switchTab('review-tab');
                 } else {
-                    showToast("V2 Evidence uploaded, but submission to Manager failed.", "error");
-                    closeModals(); loadMyTasks(); switchTab('drafts-tab'); 
+                    showToast(await window.readServerError(submitRes), "error");
+                    closeModals(); loadMyTasks(); switchTab('drafts-tab');
                 }
             } else {
-                showToast("V2 created, but some files failed to upload.", "error");
+                const failed = results.filter(r => !r.ok).map(r => r.status).join(', ');
+                showToast(`V2 created, but some files failed to upload (HTTP ${failed}).`, "error");
                 closeModals(); loadMyTasks(); switchTab('drafts-tab');
             }
         } catch(e) { showToast(e.message || "System error during resubmission.", "error"); } 
@@ -1595,7 +1594,7 @@
                 showToast("Tasks routed for approval successfully.", "success");
                 closeModals(); loadMyTasks(); switchTab('review-tab');
             } else {
-                const err = await res.json(); showToast(err.detail || "Submission failed.", "error");
+                showToast(await window.readServerError(res), "error");
             }
         } catch(e) { showToast("Connection failed — the submission may not have been saved. Check the review list, then retry (retrying is safe).", "error"); }
         finally { btn.innerHTML = originalText; btn.disabled = false; }
@@ -1616,10 +1615,10 @@
 
 {% if user_level in ['L1', 'L0', 'Level 1', 'Level 0'] %}
 <script>
-    function showQueueLoadError() {
+    function showQueueLoadError(message = "Unable to load the approval queue.") {
         const container = document.getElementById("queueCardsContainer");
         if (container) {
-            container.innerHTML = `<div class="col-span-full p-10 sm:p-16 text-center text-red-500 bg-white rounded-3xl border border-dashed border-red-200"><p class="text-base sm:text-lg font-black">Unable to load the approval queue.</p><p class="text-xs sm:text-sm mt-1">Check your connection and try again.</p><button type="button" onclick="loadApprovalQueue()" class="mt-4 rounded-lg border border-slate-300 bg-white px-4 py-2 font-bold text-slate-700 hover:bg-slate-50">Retry</button></div>`;
+            container.innerHTML = `<div class="col-span-full p-10 sm:p-16 text-center text-red-500 bg-white rounded-3xl border border-dashed border-red-200"><p class="text-base sm:text-lg font-black">${escapeHTML(message)}</p><button type="button" onclick="loadApprovalQueue()" class="mt-4 rounded-lg border border-slate-300 bg-white px-4 py-2 font-bold text-slate-700 hover:bg-slate-50">Retry</button></div>`;
         }
     }
 
@@ -1657,9 +1656,9 @@
                     </div>
                 `).join('');
             } else {
-                showQueueLoadError();
+                showQueueLoadError(await window.readServerError(res));
             }
-        } catch(e) { showQueueLoadError(); }
+        } catch(e) { showQueueLoadError(window.displayErrorText ? window.displayErrorText(e) : "Unable to load the approval queue."); }
     }
 
     async function openReviewModal(batchId, submitterIdentity) {
@@ -1792,10 +1791,7 @@
             if(res.ok) { 
                 showToast(`Marked as ${action}.`, "success"); closeModals(); loadApprovalQueue(); loadMyTasks(); switchTab('approvals-tab'); 
             } else {
-                const errData = await res.json();
-                let errorMsg = "Review failed. Please check inputs.";
-                if (errData.detail) errorMsg = typeof errData.detail === 'string' ? errData.detail : JSON.stringify(errData.detail);
-                showToast(errorMsg, "error");
+                showToast(await window.readServerError(res), "error");
             }
         } catch(e) { 
             showToast("Network Error: Could not reach server.", "error"); 

@@ -38,9 +38,12 @@ describe("full data export button (System Settings > Maintenance)", () => {
     expect(template).toContain("label.textContent = 'Download Full Export';");
   });
 
-  it("never shows a raw error: failures get the plain toast", () => {
-    const occurrences = template.match(/The export could not be created\. Please try again\./g) || [];
-    expect(occurrences.length).toBe(2); // HTTP failure + network failure paths
+  it("shows the exact reason: server failures get the server reason, network failures get the network wording", () => {
+    const fnStart = template.indexOf("async function downloadFullExport");
+    const fnBody = template.slice(fnStart, template.indexOf("async function", fnStart + 10) === -1 ? undefined : template.indexOf("async function", fnStart + 10));
+    expect(fnBody).toContain("showToast(await window.readServerError(res), \"error\");");
+    expect(fnBody).toContain("Network error while downloading the full export.");
+    expect(fnBody).not.toContain("The export could not be created. Please try again.");
     expect(template).toContain('if (res.status === 401 || res.status === 403) { window.location.href = \'/auth/login\'; return; }');
   });
 

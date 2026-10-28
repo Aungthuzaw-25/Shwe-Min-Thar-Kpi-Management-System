@@ -212,8 +212,7 @@
                 closeModal(); 
                 fetchActionPlans();
             } else {
-                const err = await res.json(); 
-                showToast(err.detail || "သိမ်းဆည်းမှု မအောင်မြင်ပါ", "error");
+                showToast(await window.readServerError(res), "error");
             }
         } catch (error) { 
             showToast("ကွန်ရက်ချိတ်ဆက်မှု အမှားအယွင်း", "error"); 

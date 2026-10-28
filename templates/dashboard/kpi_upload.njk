@@ -172,9 +172,7 @@
             try {
                 payload = await response.json();
             } catch (error) {
-                return response.status >= 500
-                    ? "The server could not complete the request. Please try again later."
-                    : "The request could not be completed. Please reload the page and try again.";
+                return `Server error (${response.status})`;
             }
         }
 
@@ -191,10 +189,7 @@
         if (response.status === 400) {
             return "The selected evaluation period is unavailable or is not a complete calendar month.";
         }
-        if (response.status >= 500) {
-            return "The server could not complete the request. Please try again later.";
-        }
-        return "The request could not be completed. Please reload the page and try again.";
+        return `Server error (${response.status})`;
     }
 
     async function loadPeriods() {

@@ -10,7 +10,7 @@ export function registerActivityRoutes(app) {
         return response.redirect(307, "/auth/login");
       }
       context.active_page = "notifications";
-      context.layout_template = ["Super Admin", "Admin", "System Admin"]
+      context.layout_template = ["Super Admin", "Admin"]
         .includes(context.user_role)
         ? "layouts/base.njk"
         : "layouts/employee_base.njk";

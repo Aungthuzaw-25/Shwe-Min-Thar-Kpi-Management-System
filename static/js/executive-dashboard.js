@@ -463,7 +463,7 @@
         signal: controller.signal,
         credentials: 'same-origin'
       });
-      if (!response.ok) throw new Error('Employee results could not be loaded.');
+      if (!response.ok) throw new Error(await window.readServerError(response));
       const page = await response.json();
       employeeTotal = page.total;
       meta.textContent = page.total
@@ -475,7 +475,7 @@
       target.innerHTML = renderEmployeeResultTable(page.items);
     } catch (error) {
       if (error.name === 'AbortError') return;
-      target.innerHTML = listEmpty('Employee results could not be loaded. Try refreshing the dashboard.');
+      target.innerHTML = listEmpty(escapeHTML(window.displayErrorText ? window.displayErrorText(error) : 'Employee results could not be loaded.'));
       meta.textContent = 'Results unavailable';
     } finally {
       signal?.removeEventListener('abort', abortWithDashboard);
@@ -501,6 +501,48 @@
       <tbody>${rows}</tbody></table>`;
   }
 
+  // Over-achievement badges (info only — never touches score/grade).
+  // Source: KPIRecordResponse.exceeded_categories from the monthly
+  // records endpoint, matched to the detail period by date range.
+  // Shown only to Super Admin / Admin (the notification audience).
+  function formatExceededPct(pct) {
+    const num = Number(pct);
+    if (!Number.isFinite(num)) return '';
+    return String(Math.round(num * 100) / 100);
+  }
+
+  function renderExceededBadges(records, period) {
+    if (!['SUPER ADMIN', 'ADMIN'].includes(role)) return '';
+    if (!Array.isArray(records) || !period) return '';
+    const start = new Date(period.start_date).getTime();
+    const end = new Date(period.end_date).getTime();
+    if (!Number.isFinite(start) || !Number.isFinite(end)) return '';
+    const byCategory = new Map();
+    records.forEach(record => {
+      const recordStart = new Date(record.period_start).getTime();
+      const recordEnd = new Date(record.period_end).getTime();
+      if (!(recordStart >= start && recordEnd <= end)) return;
+      (record.exceeded_categories || []).forEach(entry => {
+        if (!entry || entry.exceeded !== true) return;
+        const prev = byCategory.get(entry.category);
+        const pct = Number(entry.exceeded_pct);
+        if (!prev || (Number.isFinite(pct) && pct > prev.pct)) {
+          byCategory.set(entry.category, { name: entry.category, direction: entry.direction, pct });
+        }
+      });
+    });
+    if (!byCategory.size) return '';
+    const badges = [...byCategory.values()].map(cat => {
+      const pctText = formatExceededPct(cat.pct);
+      const overText = pctText
+        ? (cat.direction === 'LOWER' ? `target အောက် ${pctText}% သာတယ်` : `target ထက် ${pctText}% ကျော်`)
+        : (cat.direction === 'LOWER' ? 'target အောက် သာတယ်' : 'target ထက် ကျော်');
+      return `<span class="exec-exceeded-badge">${escapeHTML(cat.name)} · ${escapeHTML(overText)}</span>`;
+    }).join('');
+    return `<div class="exec-exceeded"><div class="exec-exceeded-badges">${badges}</div>`
+      + `<p class="exec-exceeded-note">score ထဲမှာ ပိုတာ မပါဘူး — bonus SA/Admin ဆုံးဖြတ်ချက်</p></div>`;
+  }
+
   async function loadEmployeeDetail(userId, periodId) {
     const target = document.getElementById('employeeDetail');
     if (activeDetailRequest) activeDetailRequest.abort();
@@ -514,8 +556,22 @@
         `/api/v1/dashboard/executive/employees/${encodeURIComponent(userId)}?${params}`,
         { credentials: 'same-origin', signal: controller.signal }
       );
-      if (!response.ok) throw new Error('Employee KPI details could not be loaded.');
+      if (!response.ok) throw new Error(await window.readServerError(response));
       const detail = await response.json();
+      // Best-effort: a failed records fetch hides the badges only,
+      // never the detail itself.
+      let exceededHtml = '';
+      try {
+        const recordsResponse = await fetchWithTimeout(
+          `/api/v1/kpi/records/monthly/${encodeURIComponent(userId)}`,
+          { credentials: 'same-origin', signal: controller.signal }
+        );
+        if (recordsResponse.ok) {
+          exceededHtml = renderExceededBadges(await recordsResponse.json(), detail.period);
+        }
+      } catch (error) {
+        if (error.name !== 'AbortError') exceededHtml = '';
+      }
       const renderHistoryItem = item => {
         const changedAt = escapeHTML(formatTime(item.changed_at));
         const percentage = Number(item.percentage).toFixed(2);
@@ -537,13 +593,14 @@
           <div><dt>Weighted score</dt><dd>${Number(detail.weighted_score).toFixed(2)}</dd></div>
           <div><dt>Formula</dt><dd>${escapeHTML(detail.formula_name || 'Unavailable')}</dd></div>
         </dl>
+        ${exceededHtml}
         <p class="executive-detail-note">Category results unavailable: ${escapeHTML(detail.category_intelligence.reason)}</p>
         <p class="executive-detail-note">Target results unavailable: ${escapeHTML(detail.target_intelligence.reason)}</p>
         <h4>Persisted KPI history</h4>
         ${historyMarkup}`;
     } catch (error) {
       if (error.name === 'AbortError') return;
-      target.innerHTML = listEmpty('Employee KPI details could not be loaded in this authorized scope.');
+      target.innerHTML = listEmpty(escapeHTML(window.displayErrorText ? window.displayErrorText(error) : 'Employee KPI details could not be loaded.'));
     } finally {
       if (activeDetailRequest === controller) activeDetailRequest = null;
     }
@@ -564,7 +621,7 @@
         signal: controller.signal,
         credentials: 'same-origin'
       });
-      if (!executiveResponse.ok) throw new Error('Executive KPI data could not be loaded.');
+      if (!executiveResponse.ok) throw new Error(await window.readServerError(executiveResponse));
       const intelligence = await executiveResponse.json();
       if (sequence !== requestSequence) return;
       const selectedPeriod = renderAvailablePeriods(intelligence);
@@ -572,8 +629,8 @@
       const summaryPromise = fetchWithTimeout(
         `/api/v1/dashboard/summary?period_type=${encodeURIComponent(periodType)}`,
         { signal: controller.signal, credentials: 'same-origin' }
-      ).then(response => {
-        if (!response.ok) throw new Error('Dashboard operational data could not be loaded.');
+      ).then(async response => {
+        if (!response.ok) throw new Error(await window.readServerError(response));
         return response.json();
       });
       employeeOffset = 0;
@@ -608,6 +665,9 @@
       if (error.name === 'AbortError') return;
       if (sequence !== requestSequence) return;
       errorPanel.hidden = false;
+      const reason = window.displayErrorText ? window.displayErrorText(error) : 'Dashboard data could not be loaded.';
+      const errorMessage = document.getElementById('dashboardErrorMessage');
+      if (errorMessage) errorMessage.textContent = reason;
       updated.textContent = 'Update failed';
     } finally {
       if (sequence === requestSequence) {
@@ -626,9 +686,9 @@
   }
 
   function runEmployeeResultsLoad() {
-    loadEmployeeResults(period.value, activeRequest?.signal).catch(() => {
+    loadEmployeeResults(period.value, activeRequest?.signal).catch((error) => {
       document.getElementById('employeeResults').innerHTML =
-        listEmpty('Employee results could not be loaded. Try refreshing the dashboard.');
+        listEmpty(escapeHTML(window.displayErrorText ? window.displayErrorText(error) : 'Employee results could not be loaded.'));
       document.getElementById('employeePageMeta').textContent = 'Results unavailable';
     });
   }

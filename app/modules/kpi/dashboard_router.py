@@ -7,7 +7,7 @@ from sqlalchemy import false, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.cache import cached_json
-from app.core.dependencies import enforce_permission, get_current_user
+from app.core.dependencies import RoleChecker, enforce_permission, get_current_user
 from app.core.timezone import APPLICATION_TIMEZONE  # 🌟 Added for Timezone Conversion
 from app.database.connection import get_db
 from app.modules.departments.models import Department, UserDepartment
@@ -31,8 +31,10 @@ from app.modules.notifications.models import Notification
 from app.modules.tasks.models.task import Task, TaskStatus
 from app.modules.users.models import Position, User
 
-# 🌟 လုံခြုံရေးအတွက် Role Checker ကို Import လုပ်ခြင်း
-from app.modules.users.router import admin_checker
+# Dashboard routes are intentionally untouched by the E2 conversion
+# (D3 payload question is still pending), so this module keeps its
+# own SA+Admin checker instead of importing it from users.router.
+admin_checker = RoleChecker(["Super Admin", "Admin"])
 
 DEPARTMENT_NOT_FOUND_DETAIL = "Department not found."
 

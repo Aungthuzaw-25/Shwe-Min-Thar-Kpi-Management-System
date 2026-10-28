@@ -136,7 +136,8 @@
                 </tr>`).join('');
         } catch (error) {
             console.error('System log loading failed:', error);
-            body.innerHTML = '<tr><td colspan="5" class="p-10 text-center text-red-500 font-bold">Unable to load system logs.</td></tr>';
+            const reason = window.displayErrorText ? window.displayErrorText(error) : "Unable to load system logs.";
+            body.innerHTML = `<tr><td colspan="5" class="p-10 text-center text-red-500 font-bold">${escapeHTML(reason)}</td></tr>`;
         }
     }
 
@@ -146,7 +147,7 @@
             headers: { 'Accept': 'application/json' }
         });
         if (!response.ok) {
-            showToast(response.status === 404 ? 'System log not found.' : 'Unable to load system log detail.', 'error');
+            showToast(response.status === 404 ? 'System log not found.' : await window.readServerError(response), 'error');
             return;
         }
         const log = await response.json();

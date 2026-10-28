@@ -35,7 +35,7 @@ function backendFor(role, level = "L2") {
 
 const pages = [
   ["/superadmin/dashboard", ["Super Admin"]],
-  ["/admin/dashboard", ["Admin", "System Admin"]],
+  ["/admin/dashboard", ["Admin"]],
   ["/profile", null],
   ["/superadmin/users", ["Super Admin", "Admin"]],
   ["/superadmin/super-admins", ["Super Admin"]],
@@ -57,7 +57,7 @@ const pages = [
   ["/tasks", null],
   ["/notifications", null],
 ];
-const roleNames = ["Super Admin", "Admin", "System Admin", "HR", "Department User"];
+const roleNames = ["Super Admin", "Admin", "HR", "Department User"];
 const pageRoleCases = pages.flatMap(([path, allowedRoles]) => (
   roleNames.map((role) => [path, role, !allowedRoles || allowedRoles.includes(role)])
 ));

@@ -18,7 +18,12 @@ try:
 except ImportError:  # pragma: no cover - environment may not include libmagic.
     magic = None
 
-from app.core.dependencies import GLOBAL_SCOPE_ROLES, enforce_permission, get_current_user
+from app.core.dependencies import (
+    GLOBAL_SCOPE_ROLES,
+    enforce_permission,
+    get_current_user,
+    is_department_head,
+)
 from app.core.idempotency import idempotency_guard
 from app.core.timezone import APPLICATION_TIMEZONE
 from app.database.connection import get_db
@@ -63,7 +68,6 @@ SUPER_ADMIN_ROLE_NAME = "Super Admin"
 LEVEL_ONE_ROLE_NAME = "Level 1"
 LEVEL_ZERO_ROLE_NAME = "Level 0"
 ERR_TASK_NOT_FOUND = "Task not found."
-ROLE_DEPARTMENT_HEAD = "Department Head"
 EXT_DOCX = ".docx"
 EXT_XLSX = ".xlsx"
 MIME_JPEG = "image/jpeg"
@@ -106,16 +110,32 @@ async def _authorized_task(
             UserDepartment.is_deleted.is_(False),
         )
     )
-    current_departments = {str(value) for value in current_links.scalars().all()}
-    allowed_department_roles = {"Admin", ROLE_DEPARTMENT_HEAD}
-    if allow_workflow_scope:
-        allowed_department_roles.add("Department User")
+    current_link_ids = list(current_links.scalars().all())
+    current_departments = {str(value) for value in current_link_ids}
+    shared_departments = owner_departments.intersection(current_departments)
     if (
         current_user.role
-        and current_user.role.name in allowed_department_roles
-        and owner_departments.intersection(current_departments)
+        and current_user.role.name == "Admin"
+        and shared_departments
     ):
         return task
+    if (
+        allow_workflow_scope
+        and current_user.role
+        and current_user.role.name == "Department User"
+        and shared_departments
+    ):
+        return task
+    # E3: a real department head (Department.head_id or L1 member,
+    # deleted memberships excluded by the helper) may read a
+    # subordinate's task outside workflow scope. The old check for
+    # a role literally named "Department Head" matched no real
+    # user, so real heads got 404 here.
+    for dept_id in current_link_ids:
+        if str(dept_id) in owner_departments and await is_department_head(
+            db, current_user.id, dept_id
+        ):
+            return task
     raise HTTPException(status_code=404, detail=ERR_TASK_NOT_FOUND)
 
 
@@ -362,34 +382,30 @@ async def get_batch_deductions(
     if not target_user:
         raise HTTPException(status_code=404, detail="Batch submitter not found.")
 
-    allowed_roles = {SUPER_ADMIN_ROLE_NAME, "Admin", "HR", ROLE_DEPARTMENT_HEAD}
     role_name = current_user.role.name if current_user.role else ""
-    if target_user.id != current_user.id and role_name not in allowed_roles:
-        raise HTTPException(status_code=403, detail="Not authorized to view batch deductions.")
-
     ud_stmt = select(UserDepartment).where(
         UserDepartment.user_id == target_user.id,
         UserDepartment.is_deleted.is_(False),
     )
     ud = (await db.execute(ud_stmt)).scalars().first()
+    # E3: a real department head (head_id or L1 of the target's own
+    # department, deleted memberships excluded by the helper) may
+    # view a subordinate's deductions. The old role-name gate
+    # admitted a role that never exists, so the department-scope
+    # check below it was dead code; the helper IS the scope check
+    # (a membership-only check would wrongly block head_id-only
+    # heads, who hold no membership row in that department).
+    if (
+        target_user.id != current_user.id
+        and role_name not in {SUPER_ADMIN_ROLE_NAME, "Admin", "HR"}
+        and (
+            ud is None
+            or not await is_department_head(db, current_user.id, ud.department_id)
+        )
+    ):
+        raise HTTPException(status_code=403, detail="Not authorized to view batch deductions.")
     if not ud:
         return {"deductions": []}
-    if role_name == ROLE_DEPARTMENT_HEAD and target_user.id != current_user.id:
-        caller_departments = set(
-            (
-                await db.execute(
-                    select(UserDepartment.department_id).where(
-                        UserDepartment.user_id == current_user.id,
-                        UserDepartment.is_deleted.is_(False),
-                    )
-                )
-            ).scalars().all()
-        )
-        if ud.department_id not in caller_departments:
-            raise HTTPException(
-                status_code=403,
-                detail="Department Heads can only view deductions for their department.",
-            )
 
     pos_obj = await db.get(Position, target_user.position_id) if target_user.position_id else None
     user_pos_name = pos_obj.name.strip().lower() if pos_obj and pos_obj.name else ""

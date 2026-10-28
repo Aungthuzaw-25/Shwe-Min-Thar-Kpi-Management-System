@@ -8,7 +8,6 @@ from fastapi import HTTPException
 
 from app.background_jobs import reminders
 from app.modules.kpi import engine as kpi_engine
-from app.modules.kpi import router as kpi_router
 from app.modules.kpi import service as kpi_service
 from app.modules.system import router as system_router
 from app.modules.tasks import router as tasks_router
@@ -132,12 +131,18 @@ async def test_formula_engine_prefers_position_id_and_keeps_name_fallback():
 
 
 def test_global_kpi_setting_is_super_admin_only():
+    # E2: the route's gate moved from the deleted kpi_router
+    # allow_super_admins role helper to the system.settings.edit
+    # permission key. Default Admins still cannot edit global
+    # settings (they do not hold the key); Super Admins bypass.
+    from app.core.dependencies import enforce_permission
+
     admin = _user("Admin")
     with pytest.raises(HTTPException) as denied:
-        kpi_router.allow_super_admins(admin)
+        enforce_permission(admin, "system.settings.edit")
     assert denied.value.status_code == 403
     super_admin = _user("Super Admin")
-    assert kpi_router.allow_super_admins(super_admin).role.name == "Super Admin"
+    enforce_permission(super_admin, "system.settings.edit")
 
 
 @pytest.mark.asyncio

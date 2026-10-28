@@ -72,6 +72,38 @@ async def _assert_can_manage_target(
         )
 
 
+async def _assert_can_read_target(
+    db: AsyncSession, current_user: User, target_user_id: UUID
+):
+    """E4 fix (roles audit): the two permission READ endpoints carried
+    only admin_only, so any permission-manager could read ANY user's
+    overrides/effective matrix. Reads now use the same department
+    scope as mutations — with one deliberate difference: reading
+    your OWN matrix is allowed (mutations forbid it, reads must
+    not). Super Admins read everyone."""
+    if current_user.role and current_user.role.name == SUPER_ADMIN_ROLE:
+        return
+    if target_user_id == current_user.id:
+        return
+    admin_depts = (await db.execute(
+        select(UserDepartment.department_id).where(
+            UserDepartment.user_id == current_user.id,
+            UserDepartment.is_deleted == False,
+        )
+    )).scalars().all()
+    target_depts = (await db.execute(
+        select(UserDepartment.department_id).where(
+            UserDepartment.user_id == target_user_id,
+            UserDepartment.is_deleted == False,
+        )
+    )).scalars().all()
+    if not set(target_depts) & set(admin_depts):
+        raise HTTPException(
+            status_code=403,
+            detail="You can only view users within your own department.",
+        )
+
+
 def _role_permission_codes(current_user: User) -> set[str]:
     codes = {
         permission.code
@@ -344,7 +376,12 @@ async def list_permission_users(
 # 4. User overrides (single)
 # =====================================================================
 @router.get("/user/{user_id}", response_model=list[UserPermissionOverrideResponse], dependencies=[Depends(admin_only)])
-async def get_user_overrides(user_id: UUID, db: AsyncSession = Depends(get_db)):
+async def get_user_overrides(
+    user_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    await _assert_can_read_target(db, current_user, user_id)
     rows = (await db.execute(
         select(UserPermissionOverride, Permission)
         .join(Permission, Permission.id == UserPermissionOverride.permission_id)
@@ -391,7 +428,10 @@ async def set_user_override(
     await bump_user_permissions_version(user_id)
     await log_audit_trail(db, current_user.id, "UPDATE_USER_PERMISSION", "users", str(user_id),
                           old, {"permission_code": payload.permission_code, "allowed": payload.allowed, "scope": payload.scope})
-    return await get_user_overrides(user_id, db)
+    # E4: get_user_overrides now takes the caller for its read-scope
+    # check; the mutation already scoped this target, so pass it
+    # through instead of re-checking.
+    return await get_user_overrides(user_id, db, current_user)
 
 
 @router.delete(
@@ -436,8 +476,10 @@ async def get_user_effective_permissions(
     user_id: UUID,
     response: Response,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Return the effective permission matrix for a user, merging role and overrides."""
+    await _assert_can_read_target(db, current_user, user_id)
     response.headers["Cache-Control"] = "no-store"
     data = await permission_repo.get_user_effective_permissions(db, user_id)
     if data is None:

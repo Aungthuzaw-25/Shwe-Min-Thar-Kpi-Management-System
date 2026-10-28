@@ -247,6 +247,43 @@ async def list_grants(
     ]
 
 
+@router.get("/report-downloads/my-grants")
+async def my_grants(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """The caller's own active report-download grants (read-only).
+
+    Deliberately NOT Super-Admin-only and NOT a catalog permission
+    (Amendment #8: download grants live outside the permission
+    matrix). A user sees only their own rows; another user's grants
+    are never returned here — the SA-only list endpoint is the
+    management view. Super Admins need no grant, so they get [].
+    The rows come from the same ``active_grants`` query the download
+    gate uses, so this list and the gate can never disagree: a
+    revoked or deleted grant is never listed, and no grant means [].
+    """
+    grants = await rs.active_grants(db, current_user.id)
+    dept_ids = [g.department_id for g in grants if g.department_id]
+    names: dict = {}
+    if dept_ids:
+        rows = (
+            await db.execute(select(Department).where(Department.id.in_(dept_ids)))
+        ).scalars().all()
+        names = {d.id: d.name for d in rows}
+    ordered = sorted(grants, key=lambda g: g.created_at or datetime.min)
+    return [
+        {
+            "id": str(g.id),
+            "scope_type": g.scope_type,
+            "department_id": str(g.department_id) if g.department_id else None,
+            "department_name": names.get(g.department_id) if g.department_id else None,
+            "granted_at": g.created_at,
+        }
+        for g in ordered
+    ]
+
+
 @router.post("/report-downloads/grants", status_code=201)
 async def create_grant(
     payload: GrantCreate,

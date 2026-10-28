@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
-from app.core.dependencies import RoleChecker, enforce_permission, get_current_user
+from app.core.dependencies import enforce_permission, get_current_user
 from app.core.timezone import APPLICATION_TIMEZONE
 from app.database.connection import get_db
 from app.modules.kpi import period_service
@@ -17,13 +17,11 @@ from app.modules.users.models import User
 router = APIRouter(prefix="/periods", tags=["KPI Periods"])
 
 # 🌟 Security: Restrict access to HR and Admins
-admin_only = RoleChecker(["Super Admin", "Admin", "HR"])
 
 @router.post(
     "/",
     response_model=KPIPeriodResponse,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(admin_only)],
     responses={
         400: {"description": "Invalid period dates"},
         500: {"description": "Database error"},
@@ -91,7 +89,6 @@ async def get_kpi_periods(
 @router.put(
     "/{period_id}/status",
     response_model=KPIPeriodResponse,
-    dependencies=[Depends(admin_only)],
     responses={
         400: {"description": "Invalid period status transition"},
         404: {"description": "KPI period not found"},
@@ -121,7 +118,6 @@ async def update_period_status(
 @router.delete(
     "/{period_id}",
     status_code=status.HTTP_200_OK,
-    dependencies=[Depends(admin_only)],
     responses={
         400: {"description": "Only draft periods can be deleted"},
         404: {"description": "KPI period not found"},

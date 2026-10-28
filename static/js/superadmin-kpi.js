@@ -137,7 +137,7 @@ const API_BASE = "/api/v1/kpi";
             } catch (error) {
                 console.error("Failed to load task categories:", error);
                 categorySelect.innerHTML = '<option value="">Error loading categories</option>';
-                showToast("Failed to load task categories for the selected employees.", "error");
+                showToast(window.displayErrorText ? window.displayErrorText(error) : "Failed to load task categories for the selected employees.", "error");
             }
         });
 
@@ -259,7 +259,8 @@ const API_BASE = "/api/v1/kpi";
                 return;
             }
             if (![deptRes, userRes].every(res => res.ok)) {
-                throw new Error("Failed to load assignment options.");
+                const failed = [deptRes, userRes].find(res => !res.ok);
+                throw new Error(await window.readServerError(failed));
             }
 
             const [departments, users] = await Promise.all([deptRes.json(), userRes.json()]);
@@ -272,7 +273,7 @@ const API_BASE = "/api/v1/kpi";
             assignmentUsers = users.filter(user => !user.is_deleted && user.is_active);
         } catch (error) {
             console.error("Assignment options failed:", error);
-            showToast("Failed to load task assignment options.", "error");
+            showToast(window.displayErrorText ? window.displayErrorText(error) : "Failed to load task assignment options.", "error");
         }
     }
 
@@ -287,14 +288,14 @@ const API_BASE = "/api/v1/kpi";
                 window.location.href = '/auth/login';
                 return;
             }
-            if (!response.ok) throw new Error("Position lookup failed.");
+            if (!response.ok) throw new Error(await window.readServerError(response));
             const positions = await response.json();
             positionSelect.innerHTML += positions.map(position =>
                 `<option value="${escapeHTML(position.id)}">${escapeHTML(position.name)}</option>`
             ).join("");
         } catch (error) {
             console.error("Assignment positions failed:", error);
-            showToast("Failed to load positions.", "error");
+            showToast(window.displayErrorText ? window.displayErrorText(error) : "Failed to load positions.", "error");
         }
     }
 
@@ -1659,7 +1660,7 @@ const API_BASE = "/api/v1/kpi";
             if (res.ok) {
                 showToast("Tracking configuration applied.", "success");
             } else {
-                showToast("Failed to save configuration.", "error");
+                showToast(await window.readServerError(res), "error");
                 loadDepartmentSettings();
             }
         } catch (err) {

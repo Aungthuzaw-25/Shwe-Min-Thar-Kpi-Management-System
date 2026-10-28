@@ -194,7 +194,8 @@ async def test_explicit_calculation_role_and_permission_denials_have_no_side_eff
     denied_admin_db = Database(
         SimpleNamespace(id=record_id, is_deleted=False, user_id=admin_without_permission.id)
     )
-    kpi_router.allow_admins(admin_without_permission)
+    # E2: the deleted allow_admins role helper is gone; the endpoint's
+    # own kpi.calculate permission gate denies before any side effect.
     with pytest.raises(HTTPException) as admin_denied:
         await kpi_router.calculate_kpi_record_explicitly(
             payload, denied_admin_db, admin_without_permission
@@ -214,11 +215,15 @@ async def test_explicit_calculation_role_and_permission_denials_have_no_side_eff
     department_db = Database(
         SimpleNamespace(id=record_id, is_deleted=False, user_id=department_user.id)
     )
-    with pytest.raises(HTTPException) as department_denied:
-        kpi_router.allow_admins(department_user)
-    assert department_denied.value.status_code == 403
-    assert department_db.get_calls == 0
-    assert calculation_calls == []
+    # E2 + D1: a Department User holding kpi.calculate is NO LONGER
+    # blocked by the old SA+Admin role gate — the catalog key is the
+    # gate now, so the calculation runs (self-scope passes).
+    response = await kpi_router.calculate_kpi_record_explicitly(
+        payload, department_db, department_user
+    )
+    assert response["record_id"] == str(record_id)
+    assert department_db.get_calls == 1
+    assert len(calculation_calls) == 1
 
     admin_with_permission = SimpleNamespace(
         id=uuid4(),
@@ -231,14 +236,13 @@ async def test_explicit_calculation_role_and_permission_denials_have_no_side_eff
     authorized_db = Database(
         SimpleNamespace(id=record_id, is_deleted=False, user_id=admin_with_permission.id)
     )
-    kpi_router.allow_admins(admin_with_permission)
     response = await kpi_router.calculate_kpi_record_explicitly(
         payload, authorized_db, admin_with_permission
     )
 
     assert response["record_id"] == str(record_id)
     assert authorized_db.get_calls == 1
-    assert len(calculation_calls) == 1
+    assert len(calculation_calls) == 2
 
 
 @pytest.mark.asyncio

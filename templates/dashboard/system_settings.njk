@@ -821,7 +821,8 @@
             });
         } catch (error) {
             console.error('Unable to load locked accounts:', error);
-            body.innerHTML = '<tr><td colspan="6" class="px-4 py-6 text-center text-red-700">Unable to load locked accounts.</td></tr>';
+            const reason = window.displayErrorText ? window.displayErrorText(error) : "Unable to load locked accounts.";
+            body.innerHTML = `<tr><td colspan="6" class="px-4 py-6 text-center text-red-700">${escapeHTML(reason)}</td></tr>`;
         }
     }
 
@@ -1009,9 +1010,11 @@
                         if (retentionSelect) retentionSelect.value = String(loadedAuditRetentionYears);
                     }
                 });
+            } else {
+                showToast(await window.readServerError(res), "error");
             }
-        } catch (e) { 
-            console.error("Error loading settings:", e); 
+        } catch (e) {
+            console.error("Error loading settings:", e);
             showToast("Failed to connect to server to fetch settings.", "error");
         }
     }
@@ -1048,12 +1051,13 @@
                     detail = error.detail || detail;
                 } catch (_) {}
                 console.error(`Failed to save ${key}:`, res.status, detail);
+                const safeDetail = typeof detail === "string" && detail !== `HTTP ${res.status}` && !(window.isUnsafeErrorText && window.isUnsafeErrorText(detail)) ? detail : null;
                 if (res.status === 422 || res.status === 400) {
-                    showToast("Please check the settings values and try again.", "error");
+                    showToast(safeDetail || "Please check the settings values and try again.", "error");
                 } else if (res.status === 404) {
                     showToast(`The ${key} settings endpoint was not found.`, "error");
                 } else if (res.status >= 500) {
-                    showToast("The server could not save the settings. Please try again.", "error");
+                    showToast(safeDetail ? `Server error (${res.status}): ${safeDetail}` : `Server error (${res.status}). Please try again.`, "error");
                 }
             }
             return res.ok;
@@ -1120,7 +1124,7 @@
                 showToast("Some settings failed to save. Check your permissions and field values.", "error");
             }
         } catch(e) {
-            showToast("Network error. Failed to save settings.", "error");
+            showToast(window.displayErrorText ? window.displayErrorText(e) : "Network error. Failed to save settings.", "error");
         } finally {
             btn.innerHTML = originalHtml;
             btn.disabled = false;
@@ -1137,8 +1141,7 @@
             if(res.ok) {
                 showToast("System cache cleared successfully.", "success");
             } else {
-                const err = await res.json();
-                showToast(err.detail || "Failed to clear cache.", "error");
+                showToast(await window.readServerError(res), "error");
             }
         } catch (e) {
             showToast("Network error while clearing cache.", "error");
@@ -1172,7 +1175,7 @@
                 window.URL.revokeObjectURL(url);
                 showToast("Settings backup downloaded successfully.", "success");
             } else {
-                showToast("Failed to generate settings backup from server.", "error");
+                showToast(await window.readServerError(res), "error");
             }
         } catch(e) {
             showToast("Network error while downloading settings backup.", "error");
@@ -1209,10 +1212,10 @@
                 window.URL.revokeObjectURL(url);
                 showToast("Full export downloaded successfully.", "success");
             } else {
-                showToast("The export could not be created. Please try again.", "error");
+                showToast(await window.readServerError(res), "error");
             }
         } catch(e) {
-            showToast("The export could not be created. Please try again.", "error");
+            showToast("Network error while downloading the full export.", "error");
         } finally {
             btn.disabled = false;
             label.textContent = 'Download Full Export';

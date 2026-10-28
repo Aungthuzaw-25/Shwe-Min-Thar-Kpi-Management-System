@@ -9,7 +9,6 @@ from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 
 from app.core.dependencies import (
-    RoleChecker,
     enforce_department_scope,
     enforce_permission,
     enforce_user_scope,
@@ -33,7 +32,6 @@ from app.modules.users.models import Position, User
 
 router = APIRouter()
 
-admin_checker = RoleChecker(['Super Admin', 'Admin'])
 DEPARTMENT_VIEW_PERMISSION = "department.view"
 PERM_DEPARTMENT_EDIT = "department.edit"
 DEPARTMENT_NOT_FOUND = "Department not found."
@@ -58,7 +56,7 @@ class DepartmentPriorityRequest(BaseModel):
         422: {"description": "Invalid department data"},
     },
 )
-async def create_department(payload: DepartmentCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
+async def create_department(payload: DepartmentCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     enforce_permission(current_user, "department.create")
     existing_dept = await department_repo.get_department_by_name(db, payload.name)
     if existing_dept:
@@ -140,7 +138,7 @@ async def get_department_positions(
         422: {"description": "Invalid department data"},
     },
 )
-async def update_department(dept_id: UUID, payload: DepartmentUpdate, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
+async def update_department(dept_id: UUID, payload: DepartmentUpdate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     enforce_permission(current_user, PERM_DEPARTMENT_EDIT)
     await enforce_department_scope(db, current_user, dept_id)
     dept = await department_repo.get_department_by_id(db, dept_id)
@@ -171,7 +169,7 @@ async def update_department_priority(
     dept_id: UUID,
     payload: DepartmentPriorityRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(admin_checker),
+    current_user: User = Depends(get_current_user),
 ):
     enforce_permission(current_user, PERM_DEPARTMENT_EDIT)
     await enforce_department_scope(db, current_user, dept_id)
@@ -189,7 +187,7 @@ async def update_department_priority(
     "/{dept_id}",
     responses={404: {"description": "Department not found"}, 400: {"description": "Bad Request"}},
 )
-async def delete_department(dept_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
+async def delete_department(dept_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     enforce_permission(current_user, "department.delete")
     await enforce_department_scope(db, current_user, dept_id)
     dept = await department_repo.get_department_by_id(db, dept_id)
@@ -215,7 +213,7 @@ async def delete_department(dept_id: UUID, db: AsyncSession = Depends(get_db), c
         404: {"description": "Department not found"},
     },
 )
-async def restore_department(dept_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
+async def restore_department(dept_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     enforce_permission(current_user, PERM_DEPARTMENT_EDIT)
     await enforce_department_scope(db, current_user, dept_id)
     dept = await department_repo.get_department_any(db, dept_id)
@@ -234,7 +232,7 @@ async def restore_department(dept_id: UUID, db: AsyncSession = Depends(get_db), 
         500: {"description": "Permanent deletion failed"},
     400: {"description": "Bad Request"}},
 )
-async def permanent_delete_department(dept_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
+async def permanent_delete_department(dept_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     enforce_permission(current_user, "department.delete")
     await enforce_department_scope(db, current_user, dept_id)
     dept = await department_repo.get_department_any(db, dept_id)
@@ -274,7 +272,7 @@ async def assign_user_to_department(
     dept_id: UUID,
     payload: AssignUserRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(admin_checker)
+    current_user: User = Depends(get_current_user)
 ):
     enforce_permission(current_user, PERM_DEPARTMENT_EDIT)
     await enforce_department_scope(db, current_user, dept_id)
@@ -325,6 +323,7 @@ async def get_department_users(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    enforce_permission(current_user, DEPARTMENT_VIEW_PERMISSION)
     await enforce_department_scope(db, current_user, dept_id)
     dept = await department_repo.get_department_by_id(db, dept_id)
     if not dept: raise HTTPException(status_code=404, detail=DEPARTMENT_NOT_FOUND)
@@ -359,7 +358,8 @@ async def get_department_users(
         500: {"description": "Database transaction failed"},
     },
 )
-async def remove_user_from_department(dept_id: UUID, user_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
+async def remove_user_from_department(dept_id: UUID, user_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    enforce_permission(current_user, PERM_DEPARTMENT_EDIT)
     await enforce_department_scope(db, current_user, dept_id)
     ud = (await db.execute(select(UserDepartment).where(UserDepartment.department_id == dept_id, UserDepartment.user_id == user_id))).scalars().first()
     if not ud: raise HTTPException(status_code=404, detail="User is not found in this department.")
@@ -386,7 +386,8 @@ async def remove_user_from_department(dept_id: UUID, user_id: UUID, db: AsyncSes
         500: {"description": "Database transaction failed"},
     },
 )
-async def change_user_level(dept_id: UUID, user_id: UUID, payload: ChangeLevelRequest, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
+async def change_user_level(dept_id: UUID, user_id: UUID, payload: ChangeLevelRequest, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    enforce_permission(current_user, PERM_DEPARTMENT_EDIT)
     await enforce_department_scope(db, current_user, dept_id)
     ud = (await db.execute(select(UserDepartment).where(UserDepartment.department_id == dept_id, UserDepartment.user_id == user_id))).scalars().first()
     if not ud: raise HTTPException(status_code=404, detail="User is not found in this department.")
@@ -427,7 +428,8 @@ async def change_user_level(dept_id: UUID, user_id: UUID, payload: ChangeLevelRe
         500: {"description": "Database transaction failed"},
     },
 )
-async def transfer_user(payload: TransferUserRequest, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_checker)):
+async def transfer_user(payload: TransferUserRequest, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    enforce_permission(current_user, PERM_DEPARTMENT_EDIT)
     await enforce_department_scope(db, current_user, payload.old_department_id)
     await enforce_department_scope(db, current_user, payload.new_department_id)
     old_ud = (await db.execute(select(UserDepartment).where(UserDepartment.department_id == payload.old_department_id, UserDepartment.user_id == payload.user_id))).scalars().first()
@@ -577,8 +579,9 @@ async def _get_department_progress_trend(db: AsyncSession, dept_id: UUID):
 async def get_department_process_tracking(
     dept_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(admin_checker)
+    current_user: User = Depends(get_current_user)
 ):
+    enforce_permission(current_user, DEPARTMENT_VIEW_PERMISSION)
     await enforce_department_scope(db, current_user, dept_id)
     """ဌာနတစ်ခုလုံး၏ Process များ၊ တစ်ဆို့နေမှုများနှင့် Activity Timeline ကို Tracking လိုက်ရန်"""
 

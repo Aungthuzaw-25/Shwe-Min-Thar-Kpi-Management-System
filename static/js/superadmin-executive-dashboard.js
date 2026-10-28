@@ -77,7 +77,12 @@
     try {
       const response = await fetch(url, { ...options, signal: controller.signal });
       if (!response.ok) {
-        const error = new Error(requestFailureMessage(response.status, failureMessage));
+        let reason = '';
+        try { reason = await readServerErrorLocal(response); } catch (_) { reason = ''; }
+        const message = (response.status === 401 || response.status === 403)
+          ? requestFailureMessage(response.status, failureMessage)
+          : (reason || requestFailureMessage(response.status, failureMessage));
+        const error = new Error(message);
         error.status = response.status;
         throw error;
       }
@@ -98,6 +103,46 @@
     if (status === 403) return 'Your account does not have permission to view this dashboard data.';
     if (status >= 500) return 'The dashboard service is temporarily unavailable. Try again shortly.';
     return fallback;
+  }
+
+  // Local copy of the shared exact-reason helpers: this standalone page
+  // does not load notifications.js, so it cannot use window.readServerError.
+  // Same contract — server detail when user-safe, HTTP status otherwise,
+  // never stack traces, SQL or internal paths.
+  const technicalPatternLocal = /(traceback|stack trace|sqlalchemy|asyncpg|postgres|database error|internal server error|exception|syntax error|select |insert |update |delete from)/i;
+
+  async function readServerErrorLocal(response) {
+    const status = response ? response.status : 0;
+    let text = '';
+    try { text = await response.text(); } catch (_) { text = ''; }
+    if (text) {
+      try {
+        const parsed = JSON.parse(text);
+        const detail = parsed && parsed.detail;
+        if (typeof detail === 'string' && detail && !technicalPatternLocal.test(detail)) {
+          return `Error: ${detail}`;
+        }
+        if (detail && typeof detail.message === 'string' && detail.message && !technicalPatternLocal.test(detail.message)) {
+          return `Error: ${detail.message}`;
+        }
+        if (detail && Array.isArray(detail.errors)) {
+          const messages = detail.errors.filter(m => typeof m === 'string' && m && !technicalPatternLocal.test(m));
+          if (messages.length) return `Error: ${messages.join('; ')}`;
+        }
+        if (typeof parsed === 'string' && parsed && !technicalPatternLocal.test(parsed)) {
+          return `Error: ${parsed}`;
+        }
+      } catch (_) { /* not JSON — fall through to the status */ }
+    }
+    return `Server error (${status})`;
+  }
+
+  function displayErrorTextLocal(error) {
+    const message = error && error.message ? String(error.message) : '';
+    if (/Failed to fetch|NetworkError|Load failed|The operation was aborted|Network request failed/i.test(message)) {
+      return 'Network error. Please try again.';
+    }
+    return message || 'Server error. Please try again.';
   }
 
   function formatTime(value) {
@@ -1020,7 +1065,7 @@
         <tbody>${employeeRows}</tbody></table>` : listEmpty('No KPI results are available for the selected date range.');
     } catch (error) {
       if (error.name === 'AbortError') return;
-      target.innerHTML = listEmpty('Employee results could not be loaded. Try refreshing the dashboard.');
+      target.innerHTML = listEmpty(escapeHTML(displayErrorTextLocal(error)));
       meta.textContent = 'Results unavailable';
     } finally {
       if (signal) signal.removeEventListener('abort', abortWithDashboard);
@@ -1049,6 +1094,48 @@
     }
   }
 
+  // Over-achievement badges (info only — never touches score/grade).
+  // Source: KPIRecordResponse.exceeded_categories from the monthly
+  // records endpoint, matched to the detail period by date range.
+  // Shown only to Super Admin / Admin (the notification audience).
+  function formatExceededPct(pct) {
+    const num = Number(pct);
+    if (!Number.isFinite(num)) return '';
+    return String(Math.round(num * 100) / 100);
+  }
+
+  function renderExceededBadges(records, period) {
+    if (!['SUPER ADMIN', 'ADMIN'].includes(role)) return '';
+    if (!Array.isArray(records) || !period) return '';
+    const start = new Date(period.start_date).getTime();
+    const end = new Date(period.end_date).getTime();
+    if (!Number.isFinite(start) || !Number.isFinite(end)) return '';
+    const byCategory = new Map();
+    records.forEach(record => {
+      const recordStart = new Date(record.period_start).getTime();
+      const recordEnd = new Date(record.period_end).getTime();
+      if (!(recordStart >= start && recordEnd <= end)) return;
+      (record.exceeded_categories || []).forEach(entry => {
+        if (!entry || entry.exceeded !== true) return;
+        const prev = byCategory.get(entry.category);
+        const pct = Number(entry.exceeded_pct);
+        if (!prev || (Number.isFinite(pct) && pct > prev.pct)) {
+          byCategory.set(entry.category, { name: entry.category, direction: entry.direction, pct });
+        }
+      });
+    });
+    if (!byCategory.size) return '';
+    const badges = [...byCategory.values()].map(cat => {
+      const pctText = formatExceededPct(cat.pct);
+      const overText = pctText
+        ? (cat.direction === 'LOWER' ? `target အောက် ${pctText}% သာတယ်` : `target ထက် ${pctText}% ကျော်`)
+        : (cat.direction === 'LOWER' ? 'target အောက် သာတယ်' : 'target ထက် ကျော်');
+      return `<span class="exec-exceeded-badge">${escapeHTML(cat.name)} · ${escapeHTML(overText)}</span>`;
+    }).join('');
+    return `<div class="exec-exceeded"><div class="exec-exceeded-badges">${badges}</div>`
+      + `<p class="exec-exceeded-note">score ထဲမှာ ပိုတာ မပါဘူး — bonus SA/Admin ဆုံးဖြတ်ချက်</p></div>`;
+  }
+
   async function loadEmployeeDetail(userId, periodId) {
     const target = document.getElementById('employeeDetail');
     if (activeDetailRequest) activeDetailRequest.abort();
@@ -1063,6 +1150,19 @@
         { credentials: 'same-origin', signal: controller.signal },
         'Employee KPI details could not be loaded.'
       );
+      // Best-effort: a failed records fetch hides the badges only,
+      // never the detail itself.
+      let exceededHtml = '';
+      try {
+        const records = await fetchJsonWithTimeout(
+          `/api/v1/kpi/records/monthly/${encodeURIComponent(userId)}`,
+          { credentials: 'same-origin', signal: controller.signal },
+          'Monthly KPI records could not be loaded.'
+        );
+        exceededHtml = renderExceededBadges(records, detail.period);
+      } catch (error) {
+        if (error.name !== 'AbortError') exceededHtml = '';
+      }
       const history = renderEmployeeHistory(detail.history);
       target.innerHTML = `<h3>${escapeHTML(detail.employee_name)} · ${escapeHTML(detail.period.label)}</h3>
         <dl class="exec-detail-grid">
@@ -1075,13 +1175,14 @@
           <div><dt>Weighted score</dt><dd>${Number(detail.weighted_score).toFixed(2)}</dd></div>
           <div><dt>Formula</dt><dd>${escapeHTML(detail.formula_name || 'Unavailable')}</dd></div>
         </dl>
+        ${exceededHtml}
         <p class="exec-detail-note">Category results unavailable: ${escapeHTML(detail.category_intelligence.reason)}</p>
         <p class="exec-detail-note">Target results unavailable: ${escapeHTML(detail.target_intelligence.reason)}</p>
         <h4>Persisted KPI history</h4>
         ${history}`;
     } catch (error) {
       if (error.name === 'AbortError') return;
-      target.innerHTML = listEmpty('Employee KPI details could not be loaded in this authorized scope.');
+      target.innerHTML = listEmpty(escapeHTML(displayErrorTextLocal(error)));
     } finally {
       if (activeDetailRequest === controller) activeDetailRequest = null;
     }
@@ -1203,19 +1304,19 @@
 
   function runEmployeeResultsLoad() {
     const signal = activeRequest ? activeRequest.signal : undefined;
-    loadEmployeeResults(currentDateRange, signal).catch(() => {
+    loadEmployeeResults(currentDateRange, signal).catch((error) => {
       document.getElementById('employeeResults').innerHTML =
-        listEmpty('Employee results could not be loaded. Try refreshing the dashboard.');
+        listEmpty(escapeHTML(displayErrorTextLocal(error)));
       document.getElementById('employeePageMeta').textContent = 'Results unavailable';
     });
   }
 
   function runEmployeeDetailLoad(userId) {
     if (!selectedPeriodId) return;
-    loadEmployeeDetail(userId, selectedPeriodId).catch(() => {
+    loadEmployeeDetail(userId, selectedPeriodId).catch((error) => {
       const target = document.getElementById('employeeDetail');
       target.hidden = false;
-      target.innerHTML = listEmpty('Employee KPI details could not be loaded in this authorized scope.');
+      target.innerHTML = listEmpty(escapeHTML(displayErrorTextLocal(error)));
     });
   }
 
