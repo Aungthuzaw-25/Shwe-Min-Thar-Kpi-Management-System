@@ -65,12 +65,15 @@
           <div class="kp-photo-row acct-photo-row">
             <div class="kp-photo-avatar" data-avatar-preview>{{ avatar(account_profile, 96) }}</div>
             <div class="kp-photo-content">
+              <label class="du-dropzone" id="acct-avatar-dropzone" for="acct-avatar-file">
+                <span class="du-dropzone__icon">
+                  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6 text-blue-600"><path d="M12 16V4m-4 4 4-4 4 4"></path><path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"></path></svg>
+                </span>
+                <span class="du-dropzone__title">Drop your file here</span>
+                <span class="du-dropzone__hint">or click to browse</span>
+              </label>
+              <input class="acct-input" id="acct-avatar-file" type="file" accept="image/jpeg,image/png,image/webp" hidden>
               <div class="kp-photo-actions acct-photo-actions">
-                <label class="kp-button acct-button acct-button--secondary" for="acct-avatar-file">
-                  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4m-4 4 4-4 4 4"></path><path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"></path></svg>
-                  Upload photo
-                </label>
-                <input class="acct-input" id="acct-avatar-file" type="file" accept="image/jpeg,image/png,image/webp" hidden>
                 {% if account_profile.avatar_url %}
                 <button class="kp-button acct-button acct-button--text" data-avatar-remove type="button">Remove photo</button>
                 {% else %}

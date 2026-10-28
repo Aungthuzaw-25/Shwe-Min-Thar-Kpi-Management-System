@@ -177,6 +177,21 @@
     banner("profile", "");
     updateSaveState();
   });
+  // Avatar drop zone: dropping a file hands it to the existing hidden
+  // input, so the change handler above (validation + preview + the
+  // "ready to upload" progress line) runs unchanged.
+  const avatarDropzone = root.querySelector("#acct-avatar-dropzone");
+  if (avatarDropzone) {
+    avatarDropzone.addEventListener("dragover", (event) => { event.preventDefault(); avatarDropzone.classList.add("is-dragover"); });
+    avatarDropzone.addEventListener("dragleave", () => avatarDropzone.classList.remove("is-dragover"));
+    avatarDropzone.addEventListener("drop", (event) => {
+      event.preventDefault();
+      avatarDropzone.classList.remove("is-dragover");
+      if (!event.dataTransfer.files.length) return;
+      avatarInput.files = event.dataTransfer.files;
+      avatarInput.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+  }
 
   function ensureAvatarImage(avatar) {
     let image = avatar.querySelector(".kpi-avatar__image");
