@@ -4,6 +4,7 @@
 {% block title %}System Settings - Enterprise KPI Platform{% endblock %}
 
 {% block content %}
+<link rel="stylesheet" href="/static/css/download-upload-style.css">
 <style>
     @keyframes fadeInUp {
         from { opacity: 0; transform: translateY(10px); }
@@ -112,12 +113,17 @@
                                 <img id="tm_logo_preview" src="{{ brand.logo_url or '/static/image/smt-logo.jpg' }}" alt="Company logo preview" class="w-20 h-20 rounded-2xl object-cover border border-gray-200 bg-slate-50 shadow-sm">
                                 <div class="space-y-2">
                                     <p id="tm_logo_state" class="text-xs font-semibold text-slate-500">{% if brand.has_custom_logo %}Custom logo{% else %}Default logo{% endif %}</p>
+                                    <label for="tm_logo_file" class="du-dropzone" id="tm_logo_dropzone">
+                                        <span class="du-dropzone__icon">
+                                            <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                                        </span>
+                                        <span class="du-dropzone__title">Drop your file here</span>
+                                        <span class="du-dropzone__hint">JPEG, PNG or WebP, up to 2 MB · Click to browse</span>
+                                    </label>
+                                    <input type="file" id="tm_logo_file" accept="image/jpeg,image/png,image/webp" class="hidden">
                                     <div class="flex flex-wrap gap-2">
-                                        <label for="tm_logo_file" class="cursor-pointer rounded-lg bg-blue-950 px-3 py-2 text-xs font-bold text-white hover:bg-blue-900">Upload new logo</label>
-                                        <input type="file" id="tm_logo_file" accept="image/jpeg,image/png,image/webp" class="hidden">
                                         <button type="button" id="tm_logo_delete" onclick="deleteTrademarkLogo()" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50{% if not brand.has_custom_logo %} hidden{% endif %}">Use default logo</button>
                                     </div>
-                                    <p class="text-[11px] text-slate-400">JPEG, PNG or WebP, up to 2 MB.</p>
                                 </div>
                             </div>
                         </div>
@@ -326,7 +332,7 @@
                             <h4 class="font-extrabold text-slate-800 text-sm sm:text-base">Settings Backup</h4>
                             <p class="text-xs sm:text-sm text-slate-500 mt-1">Download a JSON backup of the system settings only. User accounts, KPI data and other records are not included.</p>
                         </div>
-                        <button type="button" onclick="downloadBackup()" class="w-full md:w-auto justify-center bg-blue-950 text-white hover:bg-blue-900 px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold shadow-sm transition-colors whitespace-nowrap flex items-center">
+                        <button type="button" onclick="downloadBackup()" class="w-full md:w-auto justify-center bg-blue-950 text-white hover:bg-blue-900 px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold shadow-sm transition-colors whitespace-nowrap flex items-center btn-glass-download">
                             <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                             Download Settings Backup
                         </button>
@@ -338,7 +344,7 @@
                             <h4 class="font-extrabold text-slate-800 text-sm sm:text-base">Full Data Export</h4>
                             <p class="text-xs sm:text-sm text-slate-500 mt-1">One ZIP file with all company data tables (35 of 38). Login/session and password data is never included. Files stored in file storage are not included.</p>
                         </div>
-                        <button type="button" id="fullExportBtn" onclick="downloadFullExport()" class="w-full md:w-auto justify-center bg-blue-950 text-white hover:bg-blue-900 px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold shadow-sm transition-colors whitespace-nowrap flex items-center disabled:opacity-60 disabled:cursor-wait">
+                        <button type="button" id="fullExportBtn" onclick="downloadFullExport()" class="w-full md:w-auto justify-center bg-blue-950 text-white hover:bg-blue-900 px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold shadow-sm transition-colors whitespace-nowrap flex items-center disabled:opacity-60 disabled:cursor-wait btn-glass-download">
                             <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                             <span id="fullExportBtnLabel">Download Full Export</span>
                         </button>
@@ -944,6 +950,8 @@
         const file = event.target.files && event.target.files[0];
         event.target.value = '';
         if (!file) return;
+        const logoState = document.getElementById('tm_logo_state');
+        if (logoState) logoState.textContent = 'Uploading…';
         const form = new FormData();
         form.append('file', file);
         try {
@@ -967,6 +975,23 @@
             showToast(error.message || 'Failed to upload the logo.', 'error');
         }
     });
+    // Logo drop zone: dropping a file hands it to the existing hidden
+    // input, so the change handler above (validation + upload + status)
+    // runs unchanged. Click-to-browse works via the label's for attribute.
+    const logoDropzone = document.getElementById('tm_logo_dropzone');
+    const logoInput = document.getElementById('tm_logo_file');
+    if (logoDropzone && logoInput) {
+        logoDropzone.addEventListener('dragover', (e) => { e.preventDefault(); logoDropzone.classList.add('is-dragover'); });
+        logoDropzone.addEventListener('dragleave', () => logoDropzone.classList.remove('is-dragover'));
+        logoDropzone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            logoDropzone.classList.remove('is-dragover');
+            if (!e.dataTransfer.files.length) return;
+            logoInput.files = e.dataTransfer.files;
+            logoInput.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+    }
+
     ['tm_company_name', 'tm_company_tagline'].forEach((id) => {
         const input = document.getElementById(id);
         const counter = document.getElementById(id === 'tm_company_name' ? 'tm_name_count' : 'tm_tagline_count');
