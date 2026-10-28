@@ -262,51 +262,37 @@ async def ensure_roles_and_permissions(db):
 
 
 async def _ensure_super_admin(db, role_id):
-    """Create the first Super Admin without changing an existing account."""
-    existing_super_admin = (
-        await db.execute(
-            select(User)
-            .join(Role, User.role_id == Role.id)
-            .where(Role.name == SUPER_ADMIN_ROLE)
-            .limit(1)
+    """Create the first Super Admin without changing an existing account.
+
+    Single path: the bootstrap module owns every SA-creation rule
+    (BOOTSTRAP_* only, password strength, must_change_password=True,
+    email collision -> RuntimeError, BOOTSTRAP_SUPER_ADMIN audit row,
+    SA-exists guard). The old seed-local block read SEED_* first,
+    skipped the strength check, and created accounts that never had
+    to change their password. ``role_id`` is kept for the caller's
+    shape; the helper resolves the ensured role itself. Unconfigured
+    (both BOOTSTRAP vars absent) is NOT an error: the seed continues
+    without an SA, loudly, so a deploy never fails for a missing
+    bootstrap credential -- and never silently invents an SA either.
+    """
+    # Local import: bootstrap.py imports ensure_roles_and_permissions
+    # from this module at its top level.
+    from app.database.bootstrap import (
+        _configured_bootstrap_values,
+        _ensure_initial_super_admin,
+        _validate_bootstrap_configuration,
+    )
+
+    email, password = _configured_bootstrap_values()
+    if not email and not password:
+        print(
+            "WARNING: BOOTSTRAP_SUPERADMIN_EMAIL and "
+            "BOOTSTRAP_SUPERADMIN_PASSWORD are not configured; "
+            "continuing without creating a Super Admin account."
         )
-    ).scalar_one_or_none()
-    if existing_super_admin:
-        print("Super Admin already exists; preserving its credential and account state.")
         return False
-
-    sa_email = (
-        os.getenv("SEED_SUPERADMIN_EMAIL")
-        or getattr(settings, "SEED_SUPERADMIN_EMAIL", None)
-        or os.getenv("BOOTSTRAP_SUPERADMIN_EMAIL")
-        or getattr(settings, "BOOTSTRAP_SUPERADMIN_EMAIL", None)
-        or ""
-    ).strip()
-    bootstrap_password = resolve_seed_password(
-        "SEED_SUPERADMIN_PASSWORD",
-        "SEED_SUPER_ADMIN_PASSWORD",
-        "BOOTSTRAP_SUPERADMIN_PASSWORD",
-    )
-    if not sa_email or not bootstrap_password:
-        raise RuntimeError(
-            "Super Admin is missing. Set SEED_SUPERADMIN_EMAIL and "
-            "SEED_SUPERADMIN_PASSWORD before running the explicit seed."
-        )
-
-    db.add(
-        User(
-            email=sa_email,
-            first_name="System",
-            last_name=SUPER_ADMIN_ROLE,
-            hashed_password=await get_password_hash_async(bootstrap_password),
-            role_id=role_id,
-            is_active=True,
-            must_change_password=False,
-        )
-    )
-    await db.commit()
-    print("Super Admin created.")
-    return True
+    email, password = _validate_bootstrap_configuration(email, password)
+    return await _ensure_initial_super_admin(db, email, password)
 
 
 async def _seed_departments(db):
@@ -937,8 +923,22 @@ async def _run_seed():
         )
 
 
+def assert_prod_seed_allowed() -> None:
+    """Prod guard for the seed entry point: in production the seed
+    runs only when the operator explicitly allows it. Env vars are
+    read first (they are what settings loads from); settings.ENV is
+    the fallback for processes whose env was fixed at import."""
+    env = (os.getenv("ENV") or getattr(settings, "ENV", "") or "").strip().lower()
+    if env == "production" and os.getenv("ALLOW_PROD_SEED", "").strip().lower() != "true":
+        raise RuntimeError(
+            "Refusing to run the database seed in production. "
+            "Set ALLOW_PROD_SEED=true explicitly to allow it."
+        )
+
+
 async def run_seed():
     """Run the complete seed safely when multiple workers start together."""
+    assert_prod_seed_allowed()
     async with AsyncSessionLocal() as lock_db:
         is_postgresql = lock_db.get_bind().dialect.name == "postgresql"
         if is_postgresql:

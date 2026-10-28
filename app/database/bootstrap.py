@@ -26,24 +26,13 @@ email_adapter = TypeAdapter(EmailStr)
 
 
 def _configured_bootstrap_values() -> tuple[str, str]:
+    """BOOTSTRAP_* only. The old SEED_* fallback is removed on
+    purpose: there is exactly one SA-creation path, and legacy
+    SEED credentials must never silently create a Super Admin."""
     email = (os.getenv("BOOTSTRAP_SUPERADMIN_EMAIL")
              or getattr(settings, "BOOTSTRAP_SUPERADMIN_EMAIL", None) or "").strip()
     password = (os.getenv("BOOTSTRAP_SUPERADMIN_PASSWORD")
                 or getattr(settings, "BOOTSTRAP_SUPERADMIN_PASSWORD", None) or "").strip()
-    if email and password:
-        return email, password
-
-    seed_email = (os.getenv("SEED_SUPERADMIN_EMAIL")
-                  or getattr(settings, "SEED_SUPERADMIN_EMAIL", None) or "").strip()
-    seed_password = (
-        os.getenv("SEED_SUPERADMIN_PASSWORD")
-        or os.getenv("SEED_SUPER_ADMIN_PASSWORD")
-        or getattr(settings, "SEED_SUPERADMIN_PASSWORD", None)
-        or getattr(settings, "SEED_SUPER_ADMIN_PASSWORD", None)
-        or ""
-    ).strip()
-    if seed_email and seed_password:
-        return seed_email, seed_password
     return email, password
 
 
