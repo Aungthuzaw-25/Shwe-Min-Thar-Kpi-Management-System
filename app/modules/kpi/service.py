@@ -11,6 +11,11 @@ from app.database.connection import AsyncSessionLocal
 from app.modules.kpi import repo as kpi_repo
 from app.modules.kpi.engine import KPICalculationEngine, calculate_custom_period_kpi
 from app.modules.kpi.engine_helpers import standardize_key
+from app.modules.kpi.formula_periods import (
+    expand_month_range,
+    resolve_period_refs,
+    scored_unlink_blocks,
+)
 
 # Models and utilities
 from app.modules.kpi.models import (
@@ -49,7 +54,7 @@ def _category_name(category) -> str:
 
 async def _sync_formula_categories(db: AsyncSession, categories) -> None:
     """Upsert formula category names into the shared task category lookup."""
-    names = {_category_name(category) for category in categories}
+    names = {_category_name(category) for category in (categories or [])}
     names.discard("")
     if not names:
         return
@@ -132,9 +137,11 @@ async def update_kpi_level_setting(db: AsyncSession, level_name: str, setting_in
 # ==============================================================================
 
 async def set_formula_period_links(
-    db: AsyncSession, formula: KPIFormula, period_ids
+    db: AsyncSession, formula: KPIFormula, period_ids, *, allow_scored_unlink: bool = False
 ) -> list:
-    """Make ``period_ids`` the formula's exact CURRENT link set.
+    """Make ``period_ids`` (already-resolved period UUIDs — resolve
+    month references with ``resolve_period_refs`` first) the
+    formula's exact CURRENT link set.
 
     Rows are never deleted: links leaving the set flip to
     ``is_current=False`` (history — the formula was linked once, so
@@ -142,6 +149,12 @@ async def set_formula_period_links(
     set are created or reactivated. Unknown/deleted periods are a
     clear 422 (e.g. extending to a next period that does not exist
     yet: create it first).
+
+    Unlink-block: a link leaving the set while its period already
+    has scores for this formula blocks the WHOLE request (422
+    naming each blocked period and its record count, nothing
+    changed). ``allow_scored_unlink`` exists only for close, which
+    historicizes every link by design (scores are expected there).
     """
     wanted = list(dict.fromkeys(period_ids or []))
     if wanted:
@@ -172,6 +185,25 @@ async def set_formula_period_links(
     ).scalars().all()
     wanted_set = set(wanted)
     known = {link.period_id for link in links}
+    if not allow_scored_unlink:
+        leaving = [
+            link.period_id
+            for link in links
+            if link.is_current and link.period_id not in wanted_set
+        ]
+        blocked = await scored_unlink_blocks(db, formula, leaving)
+        if blocked:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "Cannot unlink period(s) with existing scores: "
+                    + ", ".join(
+                        f"{item['period_label']} ({item['record_count']} records)"
+                        for item in blocked
+                    )
+                    + ". Nothing was changed."
+                ),
+            )
     for link in links:
         link.is_current = link.period_id in wanted_set
     for pid in wanted:
@@ -196,9 +228,59 @@ async def current_period_ids(db: AsyncSession, formula_id) -> list:
     ).scalars().all()
     return [link.period_id for link in links]
 
-async def create_kpi_formula(db: AsyncSession, formula_in: KPIFormulaCreate):
+async def _resolve_save_periods(db, formula_in, *, can_create_periods: bool):
+    """Expand a save's period inputs to resolved period UUIDs.
+
+    ``period_ids`` entries are existing period ids or ``YYYY-MM``
+    months; ``period_month_range`` expands to one month each. Returns
+    (resolved_ids, links_expressed) — links_expressed is True when
+    the caller said anything about periods at all (even an explicit
+    empty list), so callers can tell "leave links as-is" apart from
+    "replace links with this set".
+    """
+    refs = list(getattr(formula_in, "period_ids", None) or [])
+    month_range = getattr(formula_in, "period_month_range", None)
+    if month_range is not None:
+        refs.extend(
+            f"{year:04d}-{month:02d}"
+            for year, month in expand_month_range(
+                month_range.start_month, month_range.end_month
+            )
+        )
+    resolved = await resolve_period_refs(
+        db, refs, can_create_periods=can_create_periods
+    )
+    links_expressed = (
+        getattr(formula_in, "period_ids", None) is not None
+        or month_range is not None
+    )
+    return resolved, links_expressed
+
+
+async def create_kpi_formula(
+    db: AsyncSession, formula_in: KPIFormulaCreate, *, can_create_periods: bool = False
+):
     """KPI Formula အသစ်ဖန်တီးမည် (Region, Position, Categories များပါဝင်သည်)"""
-    
+
+    # Periods resolve first, so a bad reference fails before any row
+    # exists; period creation + linking then commit with the formula
+    # in the caller's single transaction.
+    resolved, links_expressed = await _resolve_save_periods(
+        db, formula_in, can_create_periods=can_create_periods
+    )
+    # Periods win over Effective Month: with links, the month is
+    # ignored (NULL). With neither links nor a month, the formula
+    # would silently apply to every period — reject that instead.
+    effective_month = None if resolved else (formula_in.effective_month or None)
+    if not resolved and not effective_month:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "A new formula needs at least one period or an effective "
+                "month. Without either it would silently apply to every period."
+            ),
+        )
+
     # Payload မှ categories များကို dictionary format သို့ ပြောင်းလဲခြင်း
     categories_data = [cat.model_dump() for cat in formula_in.categories]
     position = await _resolve_formula_position(
@@ -218,15 +300,15 @@ async def create_kpi_formula(db: AsyncSession, formula_in: KPIFormulaCreate):
         is_active=formula_in.is_active,
         status=FormulaStatus.DRAFT,
         version=1,
-        effective_month=formula_in.effective_month
+        effective_month=effective_month
     )
     db.add(new_formula)
 
     # 🌟 Transaction Integrity: Commit မလုပ်သေးဘဲ Formula ID ရယူရန် flush အသုံးပြုသည်
     await db.flush()
 
-    if getattr(formula_in, "period_ids", None) is not None:
-        await set_formula_period_links(db, new_formula, formula_in.period_ids)
+    if links_expressed:
+        await set_formula_period_links(db, new_formula, resolved)
 
     await _sync_formula_categories(db, formula_in.categories)
 
@@ -332,6 +414,13 @@ async def _create_new_formula_version(
         version=formula.version + 1,            # 🌟 Version 1 ဆင့်တက်မည်
         status=FormulaStatus.DRAFT,             # 🌟 DRAFT သို့ ပြန်ရောက်မည်
         parent_formula_id=formula.id,           # 🌟 မူရင်း Formula ကို မှတ်သားထားမည်
+        # Month inheritance: an explicit month in the payload wins,
+        # otherwise the old version's month carries over (previously
+        # the new version always got NULL here - one half of the
+        # link-less + month-less gap).
+        effective_month=update_data.get(
+            "effective_month", formula.effective_month
+        ),
     )
     db.add(new_formula)
     await db.flush()
@@ -348,7 +437,9 @@ async def _create_new_formula_version(
     return new_formula
 
 
-async def update_kpi_formula(db: AsyncSession, formula_id: UUID, formula_in: KPIFormulaUpdate):
+async def update_kpi_formula(
+    db: AsyncSession, formula_id: UUID, formula_in: KPIFormulaUpdate, *, can_create_periods: bool = False
+):
     """ရှိပြီးသား Formula အား ပြင်ဆင်မည် (🌟 Versioning & Auto Splitting Logic ပါဝင်သည်)"""
     stmt = select(KPIFormula).where(KPIFormula.id == formula_id)
     result = await db.execute(stmt)
@@ -368,7 +459,17 @@ async def update_kpi_formula(db: AsyncSession, formula_id: UUID, formula_in: KPI
     period_ids_set = "period_ids" in getattr(
         formula_in, "model_fields_set", set()
     )
-    period_ids = update_data.pop("period_ids", None)
+    month_range_set = "period_month_range" in getattr(
+        formula_in, "model_fields_set", set()
+    )
+    links_expressed = period_ids_set or month_range_set
+    update_data.pop("period_ids", None)
+    update_data.pop("period_month_range", None)
+    resolved: list = []
+    if links_expressed:
+        resolved, _ = await _resolve_save_periods(
+            db, formula_in, can_create_periods=can_create_periods
+        )
     if "position_id" in update_data:
         position = await _resolve_formula_position(
             db, formula.department_id, update_data["position_id"]
@@ -377,11 +478,48 @@ async def update_kpi_formula(db: AsyncSession, formula_id: UUID, formula_in: KPI
 
     # 🌟 Formula သည် ACTIVE, APPROVED သို့မဟုတ် ARCHIVED ဖြစ်နေလျှင် အသစ် (Version အသစ်) အဖြစ် DRAFT ပြန်လုပ်မည်
     if formula.status in [FormulaStatus.ACTIVE, FormulaStatus.APPROVED, FormulaStatus.ARCHIVED]:
+        if links_expressed and not resolved:
+            # An explicitly emptied link set on a new version would
+            # silently apply everywhere (the new version starts with
+            # no links of its own).
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "An updated version needs at least one period. "
+                    "Clearing every link would leave it applying to every period."
+                ),
+            )
+        inherited: list = []
+        if not links_expressed:
+            # A name/category-only edit must not mint a link-less,
+            # month-less draft: inherit the old version's current
+            # links (its month rides along via the version builder).
+            # If the old version has neither, there is nothing safe
+            # to inherit — refuse instead of minting another
+            # applies-everywhere draft.
+            inherited = await current_period_ids(db, formula.id)
+            new_month = update_data.get(
+                "effective_month", formula.effective_month
+            )
+            if not inherited and not new_month:
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        "This formula has no periods and no effective month. "
+                        "Link at least one period (or set an effective month) "
+                        "before saving, or the new version would apply to "
+                        "every period."
+                    ),
+                )
         new_formula = await _create_new_formula_version(db, formula, update_data, formula_in)
-        if period_ids_set:
+        if links_expressed:
             # Links belong to the version the update produced (the
             # addressed record keeps its own links untouched).
-            await set_formula_period_links(db, new_formula, period_ids)
+            await set_formula_period_links(db, new_formula, resolved)
+            await db.commit()
+            await db.refresh(new_formula)
+        elif inherited:
+            await set_formula_period_links(db, new_formula, inherited)
             await db.commit()
             await db.refresh(new_formula)
         return new_formula
@@ -401,8 +539,8 @@ async def update_kpi_formula(db: AsyncSession, formula_id: UUID, formula_in: KPI
     for field, value in update_data.items():
         setattr(formula, field, value)
 
-    if period_ids_set:
-        await set_formula_period_links(db, formula, period_ids)
+    if links_expressed:
+        await set_formula_period_links(db, formula, resolved)
 
     await db.commit()
     await db.refresh(formula)
