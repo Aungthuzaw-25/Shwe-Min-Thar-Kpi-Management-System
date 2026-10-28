@@ -1,0 +1,62 @@
+/* Sidebar submenu panels — image-1 light-panel aesthetic.
+   Floating white card beside the sidebar (never inline rows, never
+   role-colored): soft rounded corners, soft shadow, airy spacing,
+   children as plain section rows. Positioned by sidebar-panels.js
+   (fixed, appended to <body> so no transformed sidebar ancestor
+   traps it). Loaded by layouts/base.njk for Super Admin + Admin. */
+
+.sidebar-panel {
+  position: fixed;
+  z-index: 40;
+  width: 260px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.18);
+  padding: 12px;
+}
+
+.sidebar-panel[hidden] {
+  display: none;
+}
+
+.sidebar-panel__title {
+  margin: 0;
+  padding: 6px 12px 10px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.sidebar-panel__row {
+  display: block;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e293b;
+  text-decoration: none;
+  transition: background-color 0.15s ease;
+}
+
+.sidebar-panel__row:hover {
+  background: #f1f5f9;
+}
+
+.sidebar-panel__row--active {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+/* Chevron on panel parents: rotates while its panel is open. */
+.sidebar-panel__chev {
+  margin-left: auto;
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
+.sidebar-panel-open .sidebar-panel__chev {
+  transform: rotate(180deg);
+}
