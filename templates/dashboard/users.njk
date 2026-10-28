@@ -456,7 +456,13 @@
     document.addEventListener('DOMContentLoaded', () => {
         void (async () => {
             await fetchDropdownData();
-            await loadUsers();
+            // Sidebar panel deep link: ?tab=deleted opens the trash tab.
+            const initialTab = new URLSearchParams(window.location.search).get('tab');
+            if (initialTab === 'deleted') {
+                await switchTab('deleted');
+            } else {
+                await loadUsers();
+            }
 
             document.getElementById('searchInput').addEventListener('input', function(e) {
                 searchTerm = e.target.value;

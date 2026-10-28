@@ -53,6 +53,11 @@ const API_BASE = "/api/v1/kpi";
         tabActions.forEach(([buttonId, panelId]) => {
             document.getElementById(buttonId)?.addEventListener("click", () => switchTab(panelId));
         });
+
+        // Sidebar panel deep link: ?tab=records|settings|assignments.
+        const initialTab = new URLSearchParams(window.location.search).get('tab');
+        const initialPanels = { records: 'records-tab', settings: 'settings-tab', assignments: 'assignments-tab' };
+        if (initialPanels[initialTab]) switchTab(initialPanels[initialTab]);
         document.getElementById("createFormulaButton")?.addEventListener("click", openFormulasModal);
 
         // Category-name suggestions: rows are built dynamically, so wire

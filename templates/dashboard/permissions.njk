@@ -349,6 +349,14 @@ document.querySelectorAll(".tab-btn").forEach(btn => btn.onclick = () => {
     if (btn.dataset.tab === "audit") loadAudit(true);
 });
 
+// Sidebar panel deep link: ?tab=roles|users|audit opens that tab on load.
+(function () {
+    const initialTab = new URLSearchParams(window.location.search).get('tab');
+    if (!['roles', 'users', 'audit'].includes(initialTab)) return;
+    const button = document.querySelector(`.tab-btn[data-tab="${initialTab}"]`);
+    if (button) button.click();
+})();
+
 // =====================================================================
 // TAB 1: ROLE PERMISSION MATRIX
 // =====================================================================

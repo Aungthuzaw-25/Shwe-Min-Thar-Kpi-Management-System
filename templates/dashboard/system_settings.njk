@@ -728,6 +728,13 @@
         if (saveAllButton) saveAllButton.classList.toggle('hidden', tabId === 'user-security');
     }
 
+    // Sidebar panel deep link: ?tab=general|security|maintenance.
+    (function () {
+        const initialTab = new URLSearchParams(window.location.search).get('tab');
+        if (!['general', 'security', 'maintenance'].includes(initialTab)) return;
+        switchSettingTab(initialTab);
+    })();
+
     async function userSecurityRequest(path, method = 'GET', body = null) {
         const options = { method, headers: {} };
         if (body !== null) {

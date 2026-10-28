@@ -759,7 +759,15 @@
 
     // Init
     document.getElementById("searchInput").addEventListener("input", renderDepartments);
-    document.addEventListener("DOMContentLoaded", fetchDepartments);
+    document.addEventListener("DOMContentLoaded", () => {
+        // Sidebar panel deep link: ?tab=deleted opens the trash tab.
+        const initialTab = new URLSearchParams(window.location.search).get('tab');
+        if (initialTab === 'deleted') {
+            switchTab('deleted');
+        } else {
+            fetchDepartments();
+        }
+    });
     document.getElementById("userSelect")?.addEventListener("change", (event) => {
         const user = departmentAvailableUsers.find((item) => String(item.id) === event.target.value);
         const preview = document.getElementById("userSelectAvatar");
