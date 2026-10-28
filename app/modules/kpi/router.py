@@ -17,6 +17,7 @@ from app.core.dependencies import (
     enforce_user_scope,
     get_authorized_department_ids,
     get_current_user,
+    has_effective_permission,
 )
 from app.core.timezone import APPLICATION_TIMEZONE
 from app.core.idempotency import idempotency_guard
@@ -27,6 +28,11 @@ from app.modules.kpi import category_service as kpi_category_service
 from app.modules.kpi import period_service
 from app.modules.kpi import repo as kpi_repo
 from app.modules.kpi import service as kpi_service
+from app.modules.kpi.formula_periods import (
+    expand_month_range,
+    find_overlap_warnings,
+    resolve_period_refs,
+)
 from app.modules.kpi.engine import (
     KPICalculationContext,
     KPICalculationEngine,
@@ -249,10 +255,34 @@ async def _authorized_active_user_ids(
 
 
 
-async def _formula_response(db: AsyncSession, formula):
+async def _resolve_payload_periods(db, payload, *, can_create_periods: bool):
+    """Resolve a save payload's period inputs (ids + YYYY-MM months
+    + custom range) to existing period ids."""
+    refs = list(payload.period_ids or [])
+    month_range = getattr(payload, "period_month_range", None)
+    if month_range is not None:
+        refs.extend(
+            f"{year:04d}-{month:02d}"
+            for year, month in expand_month_range(
+                month_range.start_month, month_range.end_month
+            )
+        )
+    return await resolve_period_refs(
+        db, refs, can_create_periods=can_create_periods
+    )
+
+
+async def _save_warnings(db, formula):
+    """Overlap warnings for a just-saved formula's current links."""
+    current = await kpi_service.current_period_ids(db, formula.id)
+    return await find_overlap_warnings(db, formula, current)
+
+
+async def _formula_response(db: AsyncSession, formula, warnings=None):
     """Attach the lifecycle fields (current period_ids, is_closed,
     and the one-word label closed | linked | unlinked | legacy) to
-    the formula object; the response model serializes them."""
+    the formula object; the response model serializes them. Save
+    endpoints pass overlap warnings; reads default to none."""
     from app.modules.kpi.engine import formula_period_links
 
     formula_id = getattr(formula, "id", None)
@@ -264,6 +294,7 @@ async def _formula_response(db: AsyncSession, formula):
     current = [link.period_id for link in links if link.is_current]
     closed_at = getattr(formula, "closed_at", None)
     formula.period_ids = current
+    formula.warnings = warnings or []
     formula.is_closed = closed_at is not None
     formula.lifecycle_status = (
         "closed" if closed_at is not None
@@ -286,8 +317,13 @@ async def create_kpi_formula(
     enforce_permission(current_user, "kpi.create")
     await enforce_department_scope(db, current_user, payload.department_id)
     try:
-        created = await kpi_service.create_kpi_formula(db, payload)
-        return await _formula_response(db, created)
+        # kpi.create is already enforced above, so auto-creating a
+        # missing month here is always permitted for this caller.
+        created = await kpi_service.create_kpi_formula(
+            db, payload, can_create_periods=True
+        )
+        warnings = await _save_warnings(db, created)
+        return await _formula_response(db, created, warnings=warnings)
     except SQLAlchemyError as e:
         await db.rollback()
         logger.exception(f"Error creating formula: {str(e)}", exc_info=True)
@@ -303,8 +339,14 @@ async def edit_kpi_formula(
     enforce_permission(current_user, PERM_KPI_EDIT)
     await _load_formula_in_scope(db, current_user, formula_id)
     try:
-        updated = await kpi_service.update_kpi_formula(db, formula_id, payload)
-        return await _formula_response(db, updated)
+        # Auto-creating a missing month needs kpi.create separately;
+        # without it the resolver reports the missing months instead.
+        can_create = has_effective_permission(current_user, "kpi.create")
+        updated = await kpi_service.update_kpi_formula(
+            db, formula_id, payload, can_create_periods=can_create
+        )
+        warnings = await _save_warnings(db, updated)
+        return await _formula_response(db, updated, warnings=warnings)
     except SQLAlchemyError as e:
         await db.rollback()
         logger.exception(f"Error updating formula {formula_id}: {str(e)}", exc_info=True)
@@ -414,15 +456,20 @@ async def set_formula_periods(
     formula = await _load_formula_in_scope(db, current_user, formula_id)
     if not formula:
         raise HTTPException(status_code=404, detail=ERR_FORMULA_NOT_FOUND)
-    await kpi_service.set_formula_period_links(db, formula, payload.period_ids)
+    can_create = has_effective_permission(current_user, "kpi.create")
+    resolved = await _resolve_payload_periods(
+        db, payload, can_create_periods=can_create
+    )
+    await kpi_service.set_formula_period_links(db, formula, resolved)
     db.add(AuditLog(
         user_id=current_user.id, action="FORMULA_PERIODS_UPDATED",
         table_name="kpi_formulas", record_id=str(formula.id),
-        new_value={"period_ids": [str(pid) for pid in payload.period_ids]},
+        new_value={"period_ids": [str(pid) for pid in resolved]},
     ))
     await db.commit()
     await db.refresh(formula)
-    return await _formula_response(db, formula)
+    warnings = await _save_warnings(db, formula)
+    return await _formula_response(db, formula, warnings=warnings)
 
 
 @router.post('/formulas/{formula_id}/close', response_model=KPIFormulaResponse, responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
@@ -441,7 +488,11 @@ async def close_kpi_formula(
     if formula.closed_at is not None:
         raise HTTPException(status_code=400, detail="This formula is already closed.")
     formula.closed_at = datetime.now(UTC)
-    await kpi_service.set_formula_period_links(db, formula, [])
+    # Close historicizes every link by design; scored periods are
+    # expected here, so the unlink-block does not apply.
+    await kpi_service.set_formula_period_links(
+        db, formula, [], allow_scored_unlink=True
+    )
     db.add(AuditLog(
         user_id=current_user.id, action="FORMULA_CLOSED",
         table_name="kpi_formulas", record_id=str(formula.id),
@@ -468,21 +519,26 @@ async def revive_kpi_formula(
         raise HTTPException(status_code=404, detail=ERR_FORMULA_NOT_FOUND)
     if formula.closed_at is None:
         raise HTTPException(status_code=400, detail="This formula is not closed, so it cannot be revived.")
-    if not payload.period_ids:
+    can_create = has_effective_permission(current_user, "kpi.create")
+    resolved = await _resolve_payload_periods(
+        db, payload, can_create_periods=can_create
+    )
+    if not resolved:
         raise HTTPException(
             status_code=422,
             detail="Reviving a formula requires linking at least one period. Choose the period(s) it applies to.",
         )
-    await kpi_service.set_formula_period_links(db, formula, payload.period_ids)
+    await kpi_service.set_formula_period_links(db, formula, resolved)
     formula.closed_at = None
     db.add(AuditLog(
         user_id=current_user.id, action="FORMULA_REVIVED",
         table_name="kpi_formulas", record_id=str(formula.id),
-        new_value={"period_ids": [str(pid) for pid in payload.period_ids]},
+        new_value={"period_ids": [str(pid) for pid in resolved]},
     ))
     await db.commit()
     await db.refresh(formula)
-    return await _formula_response(db, formula)
+    warnings = await _save_warnings(db, formula)
+    return await _formula_response(db, formula, warnings=warnings)
 
 
 @router.delete('/formulas/{formula_id}', status_code=status.HTTP_204_NO_CONTENT, responses={404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})

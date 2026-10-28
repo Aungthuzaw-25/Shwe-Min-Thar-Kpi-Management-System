@@ -205,6 +205,14 @@ class KPICategoryConfig(BaseModel):
 
     deductions: list[KPIDeductionItem] | None = []
 
+class PeriodMonthRange(BaseModel):
+    """Custom range: one period per month, start through end
+    inclusive (Oct–Dec = 3 periods). Months are YYYY-MM."""
+
+    start_month: str = Field(..., pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
+    end_month: str = Field(..., pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
+
+
 class KPIFormulaCreate(BaseModel):
     name: str = Field(..., max_length=100)
     description: str | None = None
@@ -225,9 +233,14 @@ class KPIFormulaCreate(BaseModel):
     expression: str | None = None  # New optional expression field
     # Periods this formula applies to (explicit links). On create:
     # links are made current. Omit on update to leave links as-is.
-    period_ids: list[UUID] | None = Field(
+    # Each entry is an existing period id, or a YYYY-MM month that is
+    # found-or-created (auto-create needs kpi.create, else a 422
+    # naming the missing months).
+    period_ids: list[UUID | str] | None = Field(
         None, description="Periods this formula applies to (explicit links)"
     )
+    # Custom range: expands to one period per month, inclusive.
+    period_month_range: PeriodMonthRange | None = None
 
     @model_validator(mode='after')
     def validate_formula_rules(self):
@@ -255,7 +268,8 @@ class KPIFormulaUpdate(BaseModel):
     effective_month: str | None = None
     # Present (even as []) = replace the current period links with
     # exactly this set; absent = leave links untouched.
-    period_ids: list[UUID] | None = None
+    period_ids: list[UUID | str] | None = None
+    period_month_range: PeriodMonthRange | None = None
 
     @model_validator(mode='after')
     def validate_formula_rules(self):
@@ -283,22 +297,27 @@ class KPIFormulaResponse(KPIFormulaCreate):
     closed_at: datetime | None = None
     is_closed: bool = False
     lifecycle_status: str = "legacy"
+    # Save-time overlap warnings (never blocking): other ACTIVE
+    # formulas sharing a linked period and audience. Empty on reads.
+    warnings: list[dict] = []
 
     model_config = ConfigDict(from_attributes=True)
 
 
 class FormulaPeriodsUpdate(BaseModel):
-    period_ids: list[UUID] = Field(
+    period_ids: list[UUID | str] = Field(
         ..., description="The exact set of periods this formula applies to now"
     )
+    period_month_range: PeriodMonthRange | None = None
 
 
 class FormulaReviveRequest(BaseModel):
     # Validated in the endpoint: a revived formula MUST link at
     # least one period (clear business message, not a bare 422).
-    period_ids: list[UUID] = Field(
+    period_ids: list[UUID | str] = Field(
         ..., description="Periods to link when reviving (at least one)"
     )
+    period_month_range: PeriodMonthRange | None = None
 
 # ---------------------------------------------------------
 # 3. KPI Records

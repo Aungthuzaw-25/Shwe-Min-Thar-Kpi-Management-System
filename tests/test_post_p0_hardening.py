@@ -78,7 +78,9 @@ async def test_formula_creation_persists_authoritative_position_and_rejects_cros
         categories=[],
         scope="DEPARTMENT",
         is_active=True,
-        effective_month=None,
+        # Legacy month path: the test pins position canonicalization,
+        # and new creates need a period or a month (else 422).
+        effective_month="2026-10",
     )
 
     monkeypatch.setattr(

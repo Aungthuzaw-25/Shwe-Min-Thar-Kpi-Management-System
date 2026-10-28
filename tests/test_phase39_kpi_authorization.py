@@ -81,7 +81,7 @@ async def test_formula_create_and_update_use_authoritative_department_scope(monk
         if _user.role.name == "Admin" and department_id == department_b:
             raise HTTPException(status_code=403, detail="Access denied")
 
-    async def create(_db, payload):
+    async def create(_db, payload, **_kwargs):
         created.append(payload)
         return payload
 
@@ -89,17 +89,22 @@ async def test_formula_create_and_update_use_authoritative_department_scope(monk
         assert requested_formula_id == formula_id
         await scope(_db, _user, department_b)
 
-    async def update(_db, _formula_id, payload):
+    async def update(_db, _formula_id, payload, **_kwargs):
         updated.append(payload)
         return payload
 
     monkeypatch.setattr(kpi_router, "enforce_permission", lambda *_: None)
+    # The test pins department scoping, not permission evaluation;
+    # the router's kpi.create probe for month auto-create is stubbed.
+    monkeypatch.setattr(
+        kpi_router, "has_effective_permission", lambda *_a, **_k: False
+    )
     monkeypatch.setattr(kpi_router, "enforce_department_scope", scope)
     monkeypatch.setattr(kpi_router.kpi_service, "create_kpi_formula", create)
     monkeypatch.setattr(kpi_router, "_load_formula_in_scope", load)
     monkeypatch.setattr(kpi_router.kpi_service, "update_kpi_formula", update)
 
-    payload = SimpleNamespace(department_id=department_a)
+    payload = SimpleNamespace(id=formula_id, department_id=department_a)
     db = _Session()
     assert await kpi_router.create_kpi_formula(payload, db, admin) is payload
     assert created == [payload]
@@ -120,7 +125,7 @@ async def test_formula_create_and_update_use_authoritative_department_scope(monk
     assert calls == [department_a, department_b, department_b]
 
     super_admin = _user("Super Admin")
-    super_payload = SimpleNamespace(department_id=department_b)
+    super_payload = SimpleNamespace(id=formula_id, department_id=department_b)
     assert await kpi_router.create_kpi_formula(super_payload, _Session(), super_admin) is super_payload
     assert await kpi_router.edit_kpi_formula(formula_id, super_payload, _Session(), super_admin) is super_payload
     assert created[-1] is super_payload
