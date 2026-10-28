@@ -50,7 +50,12 @@ describe('Users delete/restore/permanent-delete error toasts', () => {
     expect(users).toContain('This will permanently delete the user and cannot be undone.');
   });
 
-  it('leaves the out-of-scope save/reset error paths untouched', () => {
-    expect(users).toContain("err.detail || 'Validation failed'");
+  it('save/reset error paths use the shared helper (error-reason branch owns them)', () => {
+    // Since main merged the project-wide error-reason work, save/reset
+    // no longer use the old `err.detail || 'Validation failed'` pattern:
+    // they read the reason through the shared window.readServerError.
+    expect(users).not.toContain("err.detail || 'Validation failed'");
+    expect(fnBody('saveUser')).toContain('window.readServerError(res)');
+    expect(fnBody('confirmResetPassword')).toContain('window.readServerError(res)');
   });
 });

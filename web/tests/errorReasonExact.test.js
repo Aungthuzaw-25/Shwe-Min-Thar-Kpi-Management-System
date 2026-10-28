@@ -127,9 +127,11 @@ describe("exact-reason wiring (static pins)", () => {
     expect(upload).toContain("Server error (${response.status})");
   });
 
-  it("the in-flight users delete/restore/permanent lines are untouched (toast-fix branch owns them)", () => {
+  it("the users delete/restore/permanent lines use the toast branch's local helper (toast-fix branch owns them)", () => {
     const users = readRepo("templates/dashboard/users.njk");
-    const owned = users.match(/else \{ const err = await res\.json\(\); showToast\(`Error: \$\{err\.detail\}`, "error"\); \}/g) || [];
+    // The toast branch has landed: the three delete lines no longer use
+    // the old res.json() pattern — they read through the local helper.
+    const owned = users.match(/else \{ showToast\(await readServerError\(res\), "error"\); \}/g) || [];
     expect(owned.length).toBe(3);
   });
 });
