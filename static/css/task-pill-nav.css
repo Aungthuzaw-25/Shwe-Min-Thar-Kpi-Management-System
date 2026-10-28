@@ -1,0 +1,35 @@
+/* Task section nav as a floating pill bar — tasks page ONLY.
+   Scoped to .et-page .et-tabs so no other page's tabs change.
+   Container: fully rounded white card with a soft shadow; inactive
+   tabs are grey text; the active tab is a raised inner pill (white,
+   shadow, dark text). Tab behavior is untouched — switchTab still
+   toggles .active/.is-active, this file only restyles those states.
+   Mobile keeps horizontal scroll (overflow-x auto, hidden scrollbar
+   comes from et-tasks.css). Loaded by dashboard/tasks.njk only. */
+
+.et-page .et-tabs {
+  background: #ffffff;
+  border-radius: 999px;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.1);
+  padding: 6px;
+}
+
+.et-page .et-tabs .et-tab {
+  border-radius: 999px;
+  background: transparent;
+  color: #64748b;
+}
+
+.et-page .et-tabs .et-tab:hover {
+  background: #f1f5f9;
+  color: #1e293b;
+}
+
+.et-page .et-tabs .et-tab.active,
+.et-page .et-tabs .et-tab.is-active {
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.14), inset 0 0 0 1px rgba(226, 232, 240, 0.9);
+  /* Text color stays theme-controlled (role-themes sets the active tab
+     color per role family — dark navy for employees, etc.). This file
+     owns the pill shape and shadow only, so it never fights the theme. */
+}
