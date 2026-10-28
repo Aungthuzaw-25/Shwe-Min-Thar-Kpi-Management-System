@@ -132,63 +132,6 @@
     </div>
 </div>
 
-<!-- DEPARTED EMPLOYEE RECORDS HUB -->
-{% if user_role == "Super Admin" %}
-<section id="depHub" data-sa="1" class="mx-4 sm:mx-6 md:mx-8 mb-6 sm:mb-8 bg-slate-50/80 border border-slate-200 rounded-3xl p-4 sm:p-6 md:p-8 shadow-sm">
-    <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-3 mb-5">
-        <div>
-            <h2 class="text-xl sm:text-2xl font-extrabold text-blue-950 tracking-tight">Departed Employee Records</h2>
-            <p class="text-xs sm:text-sm text-slate-500 mt-1 font-medium">Everything about employees who left: their kept records, report downloads, year-end status, and Relink. Records, tasks and audit history are never removed — only the account row goes.</p>
-        </div>
-        <div class="flex flex-col gap-2 shrink-0">
-            <a href="/superadmin/permissions#download-permission-section" class="px-4 py-2 rounded-xl bg-white border border-slate-200 text-xs sm:text-sm font-bold text-blue-900 hover:bg-blue-50 shadow-sm text-center">Download permission စီမံရန် →</a>
-            <a href="/system-settings" class="px-4 py-2 rounded-xl bg-white border border-slate-200 text-xs sm:text-sm font-bold text-blue-900 hover:bg-blue-50 shadow-sm text-center">Audit retention ဆက်တင် →</a>
-        </div>
-    </div>
-
-    <div class="bg-white border border-slate-200 rounded-3xl p-4 sm:p-6 mb-5">
-        <h3 class="text-base sm:text-lg font-extrabold text-blue-950 mb-4">Departed list</h3>
-        <div id="depDepartedList">
-            <p class="text-xs sm:text-sm text-slate-500 font-medium">Loading departed list…</p>
-        </div>
-    </div>
-
-    <div class="bg-white border border-slate-200 rounded-3xl p-4 sm:p-6 mb-5">
-        <h3 class="text-base sm:text-lg font-extrabold text-blue-950 mb-4">Report downloads</h3>
-        {% include "dashboard/departed_download_form.njk" %}
-    </div>
-
-    <div class="bg-white border border-slate-200 rounded-3xl p-4 sm:p-6 mb-5">
-        <h3 class="text-base sm:text-lg font-extrabold text-blue-950 mb-1">Per-year status &amp; year-end removal</h3>
-        <p class="text-xs sm:text-sm text-slate-500 font-medium mb-4">Permanent removal unlocks only when the leaving year has ended AND the company-wide full-year report was downloaded AND the backup was confirmed.</p>
-        <div class="flex flex-wrap items-center gap-3 mb-4">
-            <label for="depLockYear" class="text-[11px] sm:text-xs font-bold text-slate-700 uppercase tracking-wide">Year</label>
-            <select id="depLockYear" class="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-semibold"></select>
-            <button type="button" id="depLockRefresh" class="px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-xs sm:text-sm font-bold text-slate-700 hover:bg-slate-50">Refresh</button>
-            <button type="button" id="depBackupBtn" class="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs sm:text-sm font-bold shadow-sm">Confirm backup done</button>
-        </div>
-        <div id="depLockGates" class="space-y-1.5 mb-3">
-            <p class="text-xs sm:text-sm text-slate-500 font-medium">Loading year status…</p>
-        </div>
-        <div id="depLockBanner" class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs sm:text-sm font-bold text-slate-600">Loading…</div>
-        <p id="depReminderLine" class="text-[11px] sm:text-xs text-slate-500 font-medium mt-3"></p>
-        <button type="button" id="depGoTrash" class="mt-4 px-4 py-2 rounded-xl bg-white border border-slate-200 text-xs sm:text-sm font-bold text-blue-900 hover:bg-blue-50">Go to Deleted Users (Trash) →</button>
-    </div>
-
-    <div id="depRelinkPanel" class="hidden bg-white border border-slate-200 rounded-3xl p-4 sm:p-6 mb-5"></div>
-
-    <div class="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs sm:text-sm font-medium text-blue-900 leading-relaxed">
-        <span class="font-extrabold">Restore (same-year returnees):</span> use Restore in the Deleted Users (Trash) tab — the account returns to ACTIVE and its records reconnect automatically. The department-head role and old sessions are NOT restored.
-    </div>
-</section>
-{% else %}
-<div id="depDownloadBlock" class="hidden mx-4 sm:mx-6 md:mx-8 mb-6 sm:mb-8 bg-white border border-slate-200 rounded-3xl p-4 sm:p-6 md:p-8 shadow-sm">
-    <h2 class="text-xl sm:text-2xl font-extrabold text-blue-950 tracking-tight mb-1">Report downloads</h2>
-    <p class="text-xs sm:text-sm text-slate-500 font-medium mb-4">Your download grant decides what you can download — nothing else does.</p>
-    {% include "dashboard/departed_download_form.njk" %}
-</div>
-{% endif %}
-
 <!-- OFFBOARD MODAL -->
 <div id="offboardModal" class="fixed inset-0 z-[70] hidden flex items-center justify-center bg-slate-900/60 backdrop-blur-sm transition-opacity opacity-0 p-2 sm:p-4">
     <div class="bg-white rounded-3xl shadow-2xl w-full max-w-lg mx-auto overflow-hidden flex flex-col max-h-[95vh] sm:max-h-[90vh]">

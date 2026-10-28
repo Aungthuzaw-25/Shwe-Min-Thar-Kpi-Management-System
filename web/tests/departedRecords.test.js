@@ -8,6 +8,7 @@ const repoRoot = path.resolve(webDirectory, "../..");
 const read = (relative) => fs.readFileSync(path.join(repoRoot, relative), "utf8");
 
 const users = read("templates/dashboard/users.njk");
+const reports = read("templates/dashboard/report.njk");
 const permissions = read("templates/dashboard/permissions.njk");
 const execBoard = read("templates/dashboard/superadmin_executive_dashboard.njk");
 const form = read("templates/dashboard/departed_download_form.njk");
@@ -15,16 +16,51 @@ const script = read("static/js/departed-records.js");
 const css = read("static/css/departed-records.css");
 
 describe("departed employee records hub", () => {
-  it("the hub is a Super-Admin-only section in User Management", () => {
-    expect(users).toContain('{% if user_role == "Super Admin" %}');
-    expect(users).toContain('id="depHub"');
-    expect(users).toContain("Departed Employee Records");
-    expect(users).toContain('id="depDepartedList"');
-    expect(users).toContain('id="depLockYear"');
-    expect(users).toContain('id="depRelinkPanel"');
-    expect(users).toContain('id="depDownloadBlock"');
-    expect(users).toContain('href="/superadmin/permissions#download-permission-section"');
-    expect(users).toContain('href="/system-settings"');
+  it("User Management holds active + deleted users only — no departed hub", () => {
+    // Expanded scope (Zenn): the WHOLE hub moved to Reports. Users
+    // keeps its Active / Deleted (Trash) tabs and the offboard
+    // modal; nothing departed-specific remains in the template.
+    expect(users).toContain('id="activeTabBtn"');
+    expect(users).toContain('id="deletedTabBtn"');
+    expect(users).toContain('id="offboardModal"');
+    expect(users).not.toContain('id="depHub"');
+    expect(users).not.toContain('id="depReportsHub"');
+    expect(users).not.toContain('id="depDepartedList"');
+    expect(users).not.toContain('id="depRelinkPanel"');
+    expect(users).not.toContain("Departed Employee Records");
+    expect(users).not.toContain('id="depLockYear"');
+    expect(users).not.toContain('id="depDownloadBlock"');
+    expect(users).not.toContain('id="depGoTrash"');
+    expect(users).not.toContain("departed_download_form");
+  });
+
+  it("the whole departed feature lives on Reports as one SA section + grantee block", () => {
+    expect(reports).toContain('{% if user_role == "Super Admin" %}');
+    expect(reports).toContain('id="depReportsHub"');
+    expect(reports).toContain("Departed employee records");
+    expect(reports).toContain('id="depDepartedList"');
+    expect(reports).toContain('id="depRelinkPanel"');
+    expect(reports).toContain("Report downloads");
+    expect(reports).toContain("Per-year status");
+    expect(reports).toContain('id="depLockYear"');
+    expect(reports).toContain('id="depLockRefresh"');
+    expect(reports).toContain('id="depBackupBtn"');
+    expect(reports).toContain('id="depLockGates"');
+    expect(reports).toContain('id="depLockBanner"');
+    expect(reports).toContain('id="depDownloadBlock"');
+    expect(reports).toContain("departed_download_form");
+    expect(reports).toContain("departed-records.js");
+    expect(reports).toContain("departed-records.css");
+    expect(reports).toContain('href="/superadmin/permissions#download-permission-section"');
+    expect(reports).toContain('href="/system-settings"');
+    // Trash link retargeted to the Users trash tab (no in-page tab
+    // switch on Reports); the script leaves anchors alone.
+    expect(reports).toContain('href="/superadmin/users?tab=deleted"');
+    expect(script).toContain("getElementById('depReportsHub')");
+    expect(script).toContain("trashBtn.tagName !== 'A'");
+    expect(script).toContain("if (document.getElementById('depScope')) renderDownloadForm(null)");
+    expect(script).toContain("if (document.getElementById('depDepartedList')) loadDepartedList()");
+    expect(script).toContain("if (lockYear) loadYearStatus()");
   });
 
   it("the offboard modal captures type, leaving date and reason", () => {
@@ -93,7 +129,7 @@ describe("SA dashboard year board", () => {
   });
 
   it("no new inline style attributes were added to the touched pages", () => {
-    for (const template of [users, permissions, execBoard, form]) {
+    for (const template of [users, reports, permissions, execBoard, form]) {
       expect(template.match(/<[^>]+style="/g) || []).toHaveLength(0);
     }
   });
