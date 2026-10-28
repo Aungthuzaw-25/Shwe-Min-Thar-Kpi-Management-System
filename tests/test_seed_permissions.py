@@ -3,7 +3,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
-from app.database.seed import PERMISSION_CATALOG, _ensure_super_admin, _seed_permissions
+from app.database.seed import PERMISSION_CATALOG, _seed_permissions
 from app.modules.users.router import ensure_user_deletion_allowed
 
 
@@ -51,28 +51,10 @@ class _FakeSession:
         self.commits += 1
 
 
-@pytest.mark.asyncio
-async def test_super_admin_seed_is_create_only(monkeypatch):
-    monkeypatch.setenv("SEED_SUPERADMIN_EMAIL", "superadmin@example.com")
-    monkeypatch.setenv("SEED_SUPERADMIN_PASSWORD", "initial-only")
-    db = _FakeSession(existing=None)
-
-    created = await _ensure_super_admin(db, "role-id")
-
-    assert created is True
-    assert len(db.added) == 1
-    assert db.added[0].email == "superadmin@example.com"
-    first_hash = db.added[0].hashed_password
-
-    existing_db = _FakeSession(existing=db.added[0])
-    monkeypatch.delenv("SEED_SUPERADMIN_PASSWORD")
-    monkeypatch.delenv("SEED_SUPER_ADMIN_PASSWORD", raising=False)
-    created_again = await _ensure_super_admin(existing_db, "role-id")
-
-    assert created_again is False
-    assert existing_db.added == []
-    assert db.added[0].hashed_password == first_hash
-
+# NOTE: the old fake-session SA test lived here. Its setup (SEED_*
+# vars + a weak password) is exactly the gap the bootstrap
+# unification closes, so its coverage moved to
+# tests/test_bootstrap_sa.py under the new BOOTSTRAP-only contract.
 
 @pytest.mark.asyncio
 async def test_permission_seed_reuses_existing_rows_and_adds_only_missing_rows():

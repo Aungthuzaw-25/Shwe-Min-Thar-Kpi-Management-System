@@ -87,7 +87,9 @@ fi
 # ==========================================
 # 3. Idempotent Initial Data
 # ==========================================
-if [[ "${SKIP_DATABASE_SEED:-false}" == "true" ]]; then
+if [[ "${ENV:-}" == "production" && "${ALLOW_PROD_SEED:-}" != "true" ]]; then
+    echo "⛔ Step 3: Database seed refused in production (ALLOW_PROD_SEED is not 'true'). Skipping seed; the seed itself also refuses a direct production run without that flag."
+elif [[ "${SKIP_DATABASE_SEED:-false}" == "true" ]]; then
     echo "⏭️  Step 3: Database seed disabled for this environment."
 else
     echo "🌱 Step 3: Running idempotent database initialization..."
