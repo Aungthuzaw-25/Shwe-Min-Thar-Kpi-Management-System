@@ -32,11 +32,13 @@
         </div>
     </header>
 
-    <!-- MAIN CONTENT GRID -->
-    <div class="grid grid-cols-1 xl:grid-cols-12 gap-6 sm:gap-8 flex-1 animate-fade-in-up csp-delay-2">
-        
-        <!-- LEFT PANEL: MANUAL RECALCULATION ENGINE -->
-        <div class="xl:col-span-4 flex flex-col gap-6">
+    <!-- MAIN CONTENT GRID: stacked — the table needs full width so the
+         Action column never overflows (previously the 4/12 + 8/12 split
+         squeezed the 800px table past the card edge) -->
+    <div class="grid grid-cols-1 gap-6 sm:gap-8 flex-1 animate-fade-in-up csp-delay-2">
+
+        <!-- TOP PANEL: MANUAL RECALCULATION ENGINE -->
+        <div class="flex flex-col gap-6 min-w-0">
             <div id="manualEnginePanel" class="glass-panel rounded-3xl p-5 sm:p-8 ring-1 ring-slate-200/60 relative overflow-hidden group">
                 <div class="absolute -right-6 -top-6 w-32 h-32 bg-blue-50 rounded-full opacity-50 blur-2xl group-hover:bg-blue-100 transition-colors duration-700"></div>
                 
@@ -50,13 +52,19 @@
                     <p class="text-xs sm:text-sm text-slate-500 mb-6 sm:mb-8 leading-relaxed font-medium">Force the system to re-aggregate and calculate KPIs for a specific historical date range.</p>
                     
                     <div class="bg-slate-50 p-5 sm:p-6 rounded-2xl ring-1 ring-slate-200/60 shadow-inner flex flex-col gap-4 sm:gap-5">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
                         <div>
                             <label for="cycleStartDate" class="block text-[10px] sm:text-[11px] font-black text-slate-500 mb-2 uppercase tracking-widest">Start Boundary <span class="text-red-500">*</span></label>
                             <input type="datetime-local" id="cycleStartDate" class="w-full bg-white border border-slate-300 p-3 sm:p-3.5 rounded-xl text-sm font-bold text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all shadow-sm cursor-pointer">
+                            <p class="text-[11px] sm:text-xs text-slate-500 font-medium mt-2">Day / Month / Year, hour:minute — e.g. 28/10/2026 14:30</p>
+                            <p class="text-[11px] sm:text-xs font-bold text-blue-900 mt-1" id="cycleStartPreview"></p>
                         </div>
                         <div>
                             <label for="cycleEndDate" class="block text-[10px] sm:text-[11px] font-black text-slate-500 mb-2 uppercase tracking-widest">End Boundary <span class="text-red-500">*</span></label>
                             <input type="datetime-local" id="cycleEndDate" class="w-full bg-white border border-slate-300 p-3 sm:p-3.5 rounded-xl text-sm font-bold text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all shadow-sm cursor-pointer">
+                            <p class="text-[11px] sm:text-xs text-slate-500 font-medium mt-2">Day / Month / Year, hour:minute — e.g. 31/10/2026 23:59</p>
+                            <p class="text-[11px] sm:text-xs font-bold text-blue-900 mt-1" id="cycleEndPreview"></p>
+                        </div>
                         </div>
                         <button onclick="triggerCustomKpiCalculation()" class="w-full bg-slate-900 hover:bg-blue-700 text-white px-5 sm:px-6 py-3 sm:py-4 rounded-xl text-xs sm:text-sm font-black tracking-wide shadow-md transition-all active:scale-95 flex justify-center items-center gap-2 mt-2">
                             Execute Recalculation
@@ -74,14 +82,19 @@
             </div>
         </div>
 
-        <!-- RIGHT PANEL: KPI PERIODS TABLE -->
-        <div class="xl:col-span-8 flex flex-col">
+        <!-- BOTTOM PANEL: KPI PERIODS TABLE -->
+        <div class="flex flex-col min-w-0">
             <div id="evaluationPeriodsPanel" class="glass-panel rounded-3xl ring-1 ring-slate-200/60 flex flex-col flex-1 overflow-hidden w-full">
                 
                 <div class="p-5 sm:p-6 md:p-8 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white shrink-0 gap-4">
                     <div>
                         <h3 class="text-lg sm:text-xl font-black text-slate-900 tracking-tight">Evaluation Periods</h3>
                         <p class="text-xs sm:text-sm text-slate-500 mt-1 font-medium">Manage active and historical reporting cycles.</p>
+                        <div class="text-[11px] sm:text-xs text-slate-500 mt-2 leading-relaxed space-y-0.5">
+                            <p><strong class="text-slate-700">Open</strong> — the period is active; records can still be added or edited.</p>
+                            <p><strong class="text-slate-700">Finalized</strong> — results are confirmed; records can no longer be edited.</p>
+                            <p><strong class="text-slate-700">Locked</strong> — the period is fully locked; records can no longer be edited.</p>
+                        </div>
                     </div>
                     <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
                         <div class="flex items-center gap-2">
@@ -351,9 +364,9 @@
                     <div class="relative inline-block w-36 sm:w-48">
                         <select data-period-id="${escapeHTML(period.id)}" data-current-status="${escapeHTML(period.status)}" class="status-select w-full bg-white border border-slate-200 rounded-xl px-3 sm:px-4 py-2 sm:py-3 text-[10px] sm:text-xs font-black uppercase tracking-wider text-slate-700 hover:bg-slate-50 hover:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 shadow-sm cursor-pointer transition-all text-ellipsis">
                             <option value="" disabled selected>Change Status</option>
-                            <option value="OPEN" ${period.status === 'OPEN' ? 'disabled' : ''}>Activate (OPEN)</option>
-                            <option value="FINALIZED" ${period.status === 'FINALIZED' ? 'disabled' : ''}>Conclude (FINALIZED)</option>
-                            <option value="LOCKED" ${period.status === 'LOCKED' ? 'disabled' : ''}>Secure (LOCKED)</option>
+                            <option value="OPEN" ${period.status === 'OPEN' ? 'disabled' : ''}>Open period</option>
+                            <option value="FINALIZED" ${period.status === 'FINALIZED' ? 'disabled' : ''}>Finalize results</option>
+                            <option value="LOCKED" ${period.status === 'LOCKED' ? 'disabled' : ''}>Lock period</option>
                         </select>
                     </div>
                     
@@ -443,8 +456,8 @@
             // 🌟 SECURITY FIX: Handle 401/403
             if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }
             
-            if (res.ok) { 
-                showToast(`Cycle status successfully locked to ${newStatus}.`, "success"); 
+            if (res.ok) {
+                showToast(`Cycle status successfully changed to ${newStatus}.`, "success"); 
                 fetchPeriods(); 
             } else {
                 showToast(await window.readServerError(res), "error");
@@ -476,6 +489,41 @@
     }
 
     document.addEventListener("DOMContentLoaded", fetchPeriods);
+
+    // Manual Engine date previews (periods UI polish): datetime-local
+    // inputs render in the browser's locale (US mm/dd/yyyy on Zenn's
+    // machine), so each field shows its chosen value back in the same
+    // Yangon day-first style the table uses ("23 Oct 2026"). Display
+    // only — the submitted values are untouched.
+    function formatBoundaryPreview(value) {
+        if (!value) return '';
+        const parts = value.split('T');
+        if (parts.length !== 2) return '';
+        const dateParts = parts[0].split('-').map(Number);
+        const timeParts = parts[1].split(':').map(Number);
+        if (dateParts.length !== 3 || timeParts.length < 2) return '';
+        const [year, month, day] = dateParts;
+        const [hour, minute] = timeParts;
+        if (![year, month, day, hour, minute].every(Number.isFinite)) return '';
+        return new Intl.DateTimeFormat('en-GB', {
+            day: '2-digit', month: 'short', year: 'numeric',
+            hour: 'numeric', minute: '2-digit'
+        }).format(new Date(year, month - 1, day, hour, minute));
+    }
+    document.addEventListener('DOMContentLoaded', () => {
+        [['cycleStartDate', 'cycleStartPreview'], ['cycleEndDate', 'cycleEndPreview']].forEach(([inputId, previewId]) => {
+            const input = document.getElementById(inputId);
+            const preview = document.getElementById(previewId);
+            if (!input || !preview) return;
+            const update = () => {
+                const text = formatBoundaryPreview(input.value);
+                preview.textContent = text ? `Selected: ${text}` : '';
+            };
+            input.addEventListener('input', update);
+            input.addEventListener('change', update);
+            update();
+        });
+    });
 </script>
 <script>
     // Draft safety: autosave the KPI period form on this device.

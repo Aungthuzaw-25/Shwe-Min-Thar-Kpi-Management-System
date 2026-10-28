@@ -187,6 +187,15 @@
         if (detail && detail.code === 'processing_error' && typeof detail.message === 'string') {
             return detail.message;
         }
+        // Same rule for the other error paths on this page: a plain
+        // string detail, or an object carrying a message, is the exact
+        // reason — show it instead of a fixed sentence or "Server error".
+        if (typeof detail === 'string' && detail.trim()) {
+            return detail;
+        }
+        if (detail && typeof detail.message === 'string' && detail.message.trim()) {
+            return detail.message;
+        }
         if (response.status === 400) {
             return "The selected evaluation period is unavailable or is not a complete calendar month.";
         }
@@ -348,6 +357,21 @@
 
     loadPeriods();
 
+    // Upload-failure reason (periods UI polish): show the server's exact
+    // detail instead of the generic sentence — e.g. a period with no
+    // formula must surface "No KPI formula applies to this period yet…"
+    // verbatim. Falls back to the generic sentence only when the server
+    // sent no usable detail.
+    function submitDetailMessage(detail) {
+        if (typeof detail === 'string' && detail.trim()) return detail;
+        if (Array.isArray(detail)) {
+            const messages = detail.map(item => typeof item === 'string' ? item : (item && item.msg)).filter(Boolean);
+            if (messages.length) return messages.join(' ');
+        }
+        if (detail && typeof detail.message === 'string' && detail.message.trim()) return detail.message;
+        return null;
+    }
+
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
         if (!selectedFile || !periodSelect.value) return;
@@ -419,7 +443,7 @@
                         </div>
                         <div class="w-full min-w-0">
                             <h3 class="text-lg sm:text-xl font-black text-red-900 tracking-tight">Upload Failed</h3>
-                            <p class="text-xs sm:text-sm text-red-700 font-semibold mt-1">${detail && detail.code === 'validation_error' ? 'Correct the listed workbook issues and upload again.' : 'The server could not process this file. Please try again.'}</p>
+                            <p class="text-xs sm:text-sm text-red-700 font-semibold mt-1">${detail && detail.code === 'validation_error' ? 'Correct the listed workbook issues and upload again.' : escapeHTML(submitDetailMessage(detail) || 'The server could not process this file. Please try again.')}</p>
                             ${errorHtml}
                         </div>
                     </div>
