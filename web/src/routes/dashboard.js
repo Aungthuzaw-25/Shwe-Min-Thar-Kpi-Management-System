@@ -113,6 +113,9 @@ export function registerDashboardRoutes(app) {
   registerPage(app, "/superadmin/department-kpi", "dashboard/department_kpi.njk", {
     allowedRoles: roles.adminTools,
   });
+  registerPage(app, "/superadmin/employee-kpi-results", "dashboard/employee_kpi_results.njk", {
+    allowedRoles: roles.superAdmin,
+  });
   registerPage(app, "/superadmin/kpi-upload", "dashboard/kpi_upload.njk", {
     allowedRoles: roles.kpiUpload,
   });

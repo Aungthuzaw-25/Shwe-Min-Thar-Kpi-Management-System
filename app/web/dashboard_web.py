@@ -426,6 +426,27 @@ async def render_department_kpi_view(
         }
     )
 
+
+@router.get("/superadmin/employee-kpi-results", include_in_schema=False)
+async def render_employee_kpi_results_view(
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    if not current_user or not current_user.role:
+        return RedirectResponse(url=LOGIN_REDIRECT_URL)
+    if not verify_role(current_user, [ROLE_SUPER_ADMIN]):
+        return RedirectResponse(url=DASHBOARD_URL)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="dashboard/employee_kpi_results.njk",
+        context={**build_user_template_context(current_user),
+            "user_role": current_user.role.name,
+            "user_name": f"{current_user.first_name} {current_user.last_name}",
+            "user_email": current_user.email
+        }
+    )
+
 # ==============================================================
 # KPI Data Import Web Route (Excel Upload) 
 # ==============================================================

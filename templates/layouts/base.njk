@@ -105,7 +105,7 @@
             </a>
             <!-- Dashboard submenu -->
             <div class="pl-11 pr-2 pb-1 space-y-1">
-                <a href="{% if user_role == 'Super Admin' %}/superadmin/dashboard#employeeResultsSection{% else %}/admin/dashboard#employeeResultsPanel{% endif %}" class="{% if active_page == 'dashboard' %}sidebar-item-active{% else %}sidebar-item text-slate-300{% endif %} flex items-center px-4 py-2 rounded-xl text-sm font-semibold transition-colors">Employee KPI Results · Overview</a>
+                <a href="{% if user_role == 'Super Admin' %}/superadmin/employee-kpi-results{% else %}/admin/dashboard#employeeResultsPanel{% endif %}" class="{% if active_page == 'dashboard' or active_page == 'employee_kpi_results' %}sidebar-item-active{% else %}sidebar-item text-slate-300{% endif %} flex items-center px-4 py-2 rounded-xl text-sm font-semibold transition-colors">Employee KPI Results · Overview</a>
                 <a href="/superadmin/department-kpi" class="{% if active_page == 'department_kpi' %}sidebar-item-active{% else %}sidebar-item text-slate-300{% endif %} flex items-center px-4 py-2 rounded-xl text-sm font-semibold transition-colors">Department KPI</a>
             </div>
             

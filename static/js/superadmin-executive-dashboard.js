@@ -19,25 +19,18 @@
   const trendDepartmentFilter = document.getElementById('dashboardTrendDepartment');
   const trendDepartmentField = document.getElementById('dashboardTrendDepartmentField');
   const filterError = document.getElementById('dashboardFilterError');
-  let selectedPeriodId = null;
   let currentDateRange = null;
   const refreshButton = document.getElementById('dashboardRefresh');
   const retryButton = document.getElementById('dashboardRetry');
   const errorPanel = document.getElementById('dashboardError');
   const updated = document.getElementById('dashboardUpdated');
   const dataQualityBadge = document.getElementById('dataQualityBadge');
-  const employeeResultsPanel = document.getElementById('employeeResultsPanel');
-  const employeePageSize = 25;
   const dashboardRequestTimeoutMs = 20000;
   let trendChart = null;
   let requestSequence = 0;
   let activeRequest = null;
-  let activeDetailRequest = null;
-  let activeEmployeeRequest = null;
   let activeMonthlyAverageRequest = null;
   let monthlyAverageRequestSequence = 0;
-  let employeeOffset = 0;
-  let employeeTotal = 0;
 
   const role = String(context.role || '').toUpperCase();
   const normalizedRole = role.replace(/[-_]/g, ' ').trim();
@@ -285,10 +278,6 @@
   }
 
   function setLoading() {
-    if (activeEmployeeRequest) activeEmployeeRequest.abort();
-    activeEmployeeRequest = null;
-    if (activeDetailRequest) activeDetailRequest.abort();
-    activeDetailRequest = null;
     root.classList.add('exec-is-loading');
     errorPanel.hidden = true;
     updated.textContent = 'Loading…';
@@ -305,8 +294,6 @@
     document.getElementById('kpiStatusDistribution').innerHTML = loadingSkeleton(4);
     document.getElementById('executiveSignals').innerHTML = loadingSkeleton(2);
     document.getElementById('executiveAttentionAreas').innerHTML = loadingSkeleton(2);
-    document.getElementById('employeeResults').innerHTML = loadingSkeleton(4);
-    document.getElementById('employeeDetail').hidden = true;
     document.getElementById('activitySummary').textContent = '';
     document.getElementById('dashboardAlerts').innerHTML = loadingSkeleton(2);
     document.getElementById('dashboardActivity').innerHTML = loadingSkeleton(3);
@@ -346,7 +333,6 @@
       'kpiStatusDistribution',
       'executiveSignals',
       'executiveAttentionAreas',
-      'employeeResults',
       'dashboardAlerts',
       'dashboardActivity',
       'dashboardNotifications'
@@ -358,9 +344,6 @@
     document.getElementById('dataQualityBadge').textContent = 'KPI data: unavailable';
     document.getElementById('dataQualityDetails').hidden = true;
     document.getElementById('dataQualityDetails').textContent = '';
-    document.getElementById('employeePageMeta').textContent = 'Results unavailable';
-    document.getElementById('employeePrevious').disabled = true;
-    document.getElementById('employeeNext').disabled = true;
     document.getElementById('activitySummary').textContent = 'Unavailable';
   }
 
@@ -1009,194 +992,12 @@
   function renderAvailablePeriods(overview) {
     const options = overview.periods || [];
     updateYearOptions(options);
-    selectedPeriodId = overview.selected_period?.id || null;
     if (!options.length) {
       root.classList.add('exec-no-period');
       return null;
     }
     root.classList.remove('exec-no-period');
     return overview.selected_period || null;
-  }
-
-  async function loadEmployeeResults(dateRange, signal) {
-    const target = document.getElementById('employeeResults');
-    const meta = document.getElementById('employeePageMeta');
-    if (isPersonal) {
-      employeeResultsPanel.hidden = true;
-      return;
-    }
-    employeeResultsPanel.hidden = false;
-    if (!dateRange) {
-      target.innerHTML = listEmpty('Apply a date range to view authorized employee results.');
-      meta.textContent = '';
-      employeeTotal = 0;
-      document.getElementById('employeePrevious').disabled = true;
-      document.getElementById('employeeNext').disabled = true;
-      return;
-    }
-    if (activeEmployeeRequest) activeEmployeeRequest.abort();
-    const controller = new AbortController();
-    activeEmployeeRequest = controller;
-    const abortWithDashboard = () => controller.abort();
-    if (signal) signal.addEventListener('abort', abortWithDashboard, { once: true });
-    const params = appendDepartmentFilter(new URLSearchParams({
-      period_start: dateRange.start,
-      period_end: dateRange.end,
-      offset: String(employeeOffset),
-      limit: String(employeePageSize)
-    }));
-    try {
-      const page = await fetchJsonWithTimeout(
-        `/api/v1/dashboard/executive/employees?${params}`,
-        { signal: controller.signal, credentials: 'same-origin' },
-        'Employee results could not be loaded.'
-      );
-      employeeTotal = page.total;
-      meta.textContent = page.total
-        ? `${employeeOffset + 1}–${Math.min(employeeOffset + page.items.length, page.total)} of ${page.total}`
-        : 'No finalized employee results in the selected range';
-      document.getElementById('employeePrevious').disabled = employeeOffset === 0;
-      document.getElementById('employeeNext').disabled =
-        employeeOffset + page.items.length >= employeeTotal;
-      const employeeRows = page.items.map(renderEmployeeResultRow).join('');
-      target.innerHTML = page.items.length ? `<table class="exec-table">
-        <caption class="exec-sr-only">Authorized employees ranked by average KPI score across the selected date range</caption>
-        <thead><tr><th>Employee</th><th>Department</th><th>Range average</th><th>Latest status</th><th>Approval</th></tr></thead>
-        <tbody>${employeeRows}</tbody></table>` : listEmpty('No KPI results are available for the selected date range.');
-    } catch (error) {
-      if (error.name === 'AbortError') return;
-      target.innerHTML = listEmpty(escapeHTML(displayErrorTextLocal(error)));
-      meta.textContent = 'Results unavailable';
-    } finally {
-      if (signal) signal.removeEventListener('abort', abortWithDashboard);
-      if (activeEmployeeRequest === controller) activeEmployeeRequest = null;
-    }
-
-    function renderEmployeeResultRow(item) {
-      const status = String(item.status || 'Unavailable');
-      const percentage = Number.isFinite(Number(item.percentage))
-        ? `${Number(item.percentage).toFixed(2)}%`
-        : '—';
-      const statusClass = {
-        APPROVED: 'exec-status-pill-ok',
-        PENDING: 'exec-status-pill-warn',
-        REJECTED: 'exec-status-pill-bad',
-        DRAFT: 'exec-status-pill-neutral'
-      }[status.toUpperCase()] || 'exec-status-pill-neutral';
-      return `<tr>
-        <td><span class="inline-flex items-center gap-2">${window.kpiAvatarMarkup(item, 32)}<strong>${escapeHTML(item.employee_name)}</strong></span>
-          <button type="button" class="exec-link-button" data-user-id="${escapeHTML(item.user_id)}">View details</button></td>
-        <td>${escapeHTML(item.department_name || '—')}</td>
-        <td>${percentage}</td>
-        <td><span class="exec-status-pill ${statusClass}">${escapeHTML(status)}</span></td>
-        <td>Not available</td>
-      </tr>`;
-    }
-  }
-
-  // Over-achievement badges (info only — never touches score/grade).
-  // Source: KPIRecordResponse.exceeded_categories from the monthly
-  // records endpoint, matched to the detail period by date range.
-  // Shown only to Super Admin / Admin (the notification audience).
-  function formatExceededPct(pct) {
-    const num = Number(pct);
-    if (!Number.isFinite(num)) return '';
-    return String(Math.round(num * 100) / 100);
-  }
-
-  function renderExceededBadges(records, period) {
-    if (!['SUPER ADMIN', 'ADMIN'].includes(role)) return '';
-    if (!Array.isArray(records) || !period) return '';
-    const start = new Date(period.start_date).getTime();
-    const end = new Date(period.end_date).getTime();
-    if (!Number.isFinite(start) || !Number.isFinite(end)) return '';
-    const byCategory = new Map();
-    records.forEach(record => {
-      const recordStart = new Date(record.period_start).getTime();
-      const recordEnd = new Date(record.period_end).getTime();
-      if (!(recordStart >= start && recordEnd <= end)) return;
-      (record.exceeded_categories || []).forEach(entry => {
-        if (!entry || entry.exceeded !== true) return;
-        const prev = byCategory.get(entry.category);
-        const pct = Number(entry.exceeded_pct);
-        if (!prev || (Number.isFinite(pct) && pct > prev.pct)) {
-          byCategory.set(entry.category, { name: entry.category, direction: entry.direction, pct });
-        }
-      });
-    });
-    if (!byCategory.size) return '';
-    const badges = [...byCategory.values()].map(cat => {
-      const pctText = formatExceededPct(cat.pct);
-      const overText = pctText
-        ? (cat.direction === 'LOWER' ? `target အောက် ${pctText}% သာတယ်` : `target ထက် ${pctText}% ကျော်`)
-        : (cat.direction === 'LOWER' ? 'target အောက် သာတယ်' : 'target ထက် ကျော်');
-      return `<span class="exec-exceeded-badge">${escapeHTML(cat.name)} · ${escapeHTML(overText)}</span>`;
-    }).join('');
-    return `<div class="exec-exceeded"><div class="exec-exceeded-badges">${badges}</div>`
-      + `<p class="exec-exceeded-note">score ထဲမှာ ပိုတာ မပါဘူး — bonus SA/Admin ဆုံးဖြတ်ချက်</p></div>`;
-  }
-
-  async function loadEmployeeDetail(userId, periodId) {
-    const target = document.getElementById('employeeDetail');
-    if (activeDetailRequest) activeDetailRequest.abort();
-    const controller = new AbortController();
-    activeDetailRequest = controller;
-    target.hidden = false;
-    target.innerHTML = listEmpty('Loading employee KPI details…');
-    try {
-      const params = appendDepartmentFilter(new URLSearchParams({ period_id: periodId }));
-      const detail = await fetchJsonWithTimeout(
-        `/api/v1/dashboard/executive/employees/${encodeURIComponent(userId)}?${params}`,
-        { credentials: 'same-origin', signal: controller.signal },
-        'Employee KPI details could not be loaded.'
-      );
-      // Best-effort: a failed records fetch hides the badges only,
-      // never the detail itself.
-      let exceededHtml = '';
-      try {
-        const records = await fetchJsonWithTimeout(
-          `/api/v1/kpi/records/monthly/${encodeURIComponent(userId)}`,
-          { credentials: 'same-origin', signal: controller.signal },
-          'Monthly KPI records could not be loaded.'
-        );
-        exceededHtml = renderExceededBadges(records, detail.period);
-      } catch (error) {
-        if (error.name !== 'AbortError') exceededHtml = '';
-      }
-      const history = renderEmployeeHistory(detail.history);
-      target.innerHTML = `<h3>${escapeHTML(detail.employee_name)} · ${escapeHTML(detail.period.label)}</h3>
-        <dl class="exec-detail-grid">
-          <div><dt>Department</dt><dd>${escapeHTML(detail.department_name || 'Unavailable')}</dd></div>
-          <div><dt>Position</dt><dd>${escapeHTML(detail.position_name || 'Unavailable')}</dd></div>
-          <div><dt>Level</dt><dd>${escapeHTML(detail.level || 'Unavailable')}</dd></div>
-          <div><dt>Percentage</dt><dd>${Number(detail.percentage).toFixed(2)}%</dd></div>
-          <div><dt>Status</dt><dd>${escapeHTML(detail.status)}</dd></div>
-          <div><dt>Raw score</dt><dd>${Number(detail.raw_score).toFixed(2)}</dd></div>
-          <div><dt>Weighted score</dt><dd>${Number(detail.weighted_score).toFixed(2)}</dd></div>
-          <div><dt>Formula</dt><dd>${escapeHTML(detail.formula_name || 'Unavailable')}</dd></div>
-        </dl>
-        ${exceededHtml}
-        <p class="exec-detail-note">Category results unavailable: ${escapeHTML(detail.category_intelligence.reason)}</p>
-        <p class="exec-detail-note">Target results unavailable: ${escapeHTML(detail.target_intelligence.reason)}</p>
-        <h4>Persisted KPI history</h4>
-        ${history}`;
-    } catch (error) {
-      if (error.name === 'AbortError') return;
-      target.innerHTML = listEmpty(escapeHTML(displayErrorTextLocal(error)));
-    } finally {
-      if (activeDetailRequest === controller) activeDetailRequest = null;
-    }
-
-    function renderEmployeeHistory(history) {
-      if (!history?.length) {
-        return listEmpty('No KPI history is available for this result.');
-      }
-      const items = history.map(item => `<li>
-        ${escapeHTML(formatTime(item.changed_at))} · ${Number(item.percentage).toFixed(2)}% ·
-        ${escapeHTML(item.status)} · ${escapeHTML(item.reason)}
-      </li>`).join('');
-      return `<ol>${items}</ol>`;
-    }
   }
 
   async function loadDashboard() {
@@ -1231,8 +1032,6 @@
         { signal: controller.signal, credentials: 'same-origin' },
         'Executive KPI data could not be loaded.'
       );
-      employeeOffset = 0;
-      const employeeResultsPromise = loadEmployeeResults(dateRange, controller.signal);
       let intelligence;
       try {
         intelligence = await executivePromise;
@@ -1242,10 +1041,7 @@
       }
       if (sequence !== requestSequence) return;
       const selectedPeriod = renderAvailablePeriods(intelligence);
-      const [summaryPayload] = await Promise.all([
-        summaryPromise,
-        employeeResultsPromise
-      ]);
+      const summaryPayload = await summaryPromise;
       if (sequence !== requestSequence) return;
       if (summaryError?.status === 401 || summaryError?.status === 403) {
         throw summaryError;
@@ -1302,39 +1098,6 @@
     });
   }
 
-  function runEmployeeResultsLoad() {
-    const signal = activeRequest ? activeRequest.signal : undefined;
-    loadEmployeeResults(currentDateRange, signal).catch((error) => {
-      document.getElementById('employeeResults').innerHTML =
-        listEmpty(escapeHTML(displayErrorTextLocal(error)));
-      document.getElementById('employeePageMeta').textContent = 'Results unavailable';
-    });
-  }
-
-  function runEmployeeDetailLoad(userId) {
-    if (!selectedPeriodId) return;
-    loadEmployeeDetail(userId, selectedPeriodId).catch((error) => {
-      const target = document.getElementById('employeeDetail');
-      target.hidden = false;
-      target.innerHTML = listEmpty(escapeHTML(displayErrorTextLocal(error)));
-    });
-  }
-
-  document.getElementById('employeePrevious').addEventListener('click', () => {
-    employeeOffset = Math.max(employeeOffset - employeePageSize, 0);
-    runEmployeeResultsLoad();
-  });
-  document.getElementById('employeeNext').addEventListener('click', () => {
-    if (employeeOffset + employeePageSize >= employeeTotal) return;
-    employeeOffset += employeePageSize;
-    runEmployeeResultsLoad();
-  });
-  document.getElementById('employeeResults').addEventListener('click', event => {
-    const button = event.target instanceof Element
-      ? event.target.closest('button[data-user-id]')
-      : null;
-    if (button) runEmployeeDetailLoad(button.dataset.userId);
-  });
   refreshButton.addEventListener('click', runDashboardLoad);
   retryButton.addEventListener('click', runDashboardLoad);
   setupDateFilters();

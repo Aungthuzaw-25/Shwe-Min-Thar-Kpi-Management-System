@@ -4,14 +4,16 @@ import path from 'node:path';
 
 const root = path.resolve(import.meta.dirname, '..', '..');
 const sharedJs = readFileSync(path.join(root, 'static/js/executive-dashboard.js'), 'utf8');
-const saJs = readFileSync(path.join(root, 'static/js/superadmin-executive-dashboard.js'), 'utf8');
+// The SA detail moved to its own page (employee-kpi-split): the badge code
+// lives in the standalone page script now, not the SA dashboard script.
+const saJs = readFileSync(path.join(root, 'static/js/employee-kpi-results.js'), 'utf8');
 const sharedCss = readFileSync(path.join(root, 'static/css/executive-dashboard.css'), 'utf8');
 const saCss = readFileSync(path.join(root, 'static/css/kd-superadmin-dashboard.css'), 'utf8');
 
 describe('Over-achievement badge', () => {
   it.each([
     ['shared dashboard', sharedJs],
-    ['superadmin dashboard', saJs],
+    ['employee KPI results page', saJs],
   ])('%s renders exceeded badges in the employee detail', (name, js) => {
     expect(js).toContain('renderExceededBadges');
     expect(js).toContain('/api/v1/kpi/records/monthly/');
@@ -26,7 +28,7 @@ describe('Over-achievement badge', () => {
 
   it.each([
     ['shared dashboard', sharedJs],
-    ['superadmin dashboard', saJs],
+    ['employee KPI results page', saJs],
   ])('%s shows badges to Super Admin / Admin only', (name, js) => {
     const fnAt = js.indexOf('function renderExceededBadges');
     const fn = js.slice(fnAt, js.indexOf('async function loadEmployeeDetail', fnAt));

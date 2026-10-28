@@ -1,0 +1,50 @@
+{% extends "layouts/base.njk" %}
+{% set active_page = "employee_kpi_results" %}
+
+{% block title %}Employee KPI Results - KPI Platform{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="/static/css/avatar.css">
+<link rel="stylesheet" href="/static/css/kd-superadmin-dashboard.css?v=20261019-4">
+<script src="/static/js/avatar-renderer.js"></script>
+<script src="/static/js/avatar.js"></script>
+
+<div class="kd-page exec-dashboard">
+  <div class="kd-container">
+    <header class="kd-hero exec-header">
+      <div>
+        <p class="kd-eyebrow">Dashboard</p>
+        <h1 class="kd-title">Employee KPI Results</h1>
+        <p class="kd-subtitle">Authorized employee KPI results, averaged across <span id="employeeRangeLabel">…</span>.</p>
+      </div>
+    </header>
+
+    <section id="employeeResultsSection" class="kd-grid kd-employee-grid" aria-label="Employee KPI results · Overview">
+      <section id="employeeResultsPanel" class="kd-card kd-analysis-card exec-card exec-panel" aria-labelledby="employeeResultsHeading">
+        <div class="kd-card-heading exec-section-heading">
+          <div><p class="kd-eyebrow">Authorized employee scope</p><h2 id="employeeResultsHeading" class="kd-card-title">Employee KPI results · Overview</h2>
+            <p class="kd-caption">Overview — Scores are averaged across the selected range; details show the latest result.</p>
+            <span id="employeePageMeta" class="kd-caption"></span></div>
+          <div class="kd-pagination exec-pagination">
+            <button id="employeePrevious" class="kd-button exec-button" type="button" disabled>Previous</button>
+            <button id="employeeNext" class="kd-button exec-button" type="button" disabled>Next</button>
+          </div>
+        </div>
+        <div id="employeeResults" class="kd-table-wrap exec-table-wrap" aria-live="polite"></div>
+        <div id="employeeDetail" class="kd-employee-detail exec-employee-detail" role="region" aria-live="polite" hidden></div>
+      </section>
+    </section>
+  </div>
+</div>
+
+<script>
+  window.KPI_EXECUTIVE_CONTEXT = {
+    role: {{ user_role | default("") | tojson }},
+    level: {{ user_level | default("") | tojson }},
+  };
+</script>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/employee-kpi-results.js" defer></script>
+{% endblock %}
