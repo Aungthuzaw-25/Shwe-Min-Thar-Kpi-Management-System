@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from app.core.dependencies import enforce_permission, get_current_user
-from app.core.timezone import APPLICATION_TIMEZONE
+from app.core.timezone import APPLICATION_TIMEZONE, as_application_time
 from app.database.connection import get_db
 from app.modules.kpi import period_service
 from app.modules.kpi.models import KPIPeriod, KPIPeriodStatus
@@ -18,12 +18,30 @@ router = APIRouter(prefix="/periods", tags=["KPI Periods"])
 
 # 🌟 Security: Restrict access to HR and Admins
 
+
+def _human_range(start: datetime, end_exclusive: datetime) -> str:
+    """Stored [start, end_exclusive) -> human Yangon range.
+
+    End display is the exclusive bound minus one Yangon day:
+    [Oct 1, Nov 1) -> "1 Oct 2026 – 31 Oct 2026". Midnight
+    bounds survive the naive-as-UTC policy (a +6:30 shift never
+    crosses a midnight date boundary).
+    """
+    start_local = as_application_time(start)
+    end_local = as_application_time(end_exclusive) - timedelta(days=1)
+    return (
+        f"{start_local.strftime('%d %b %Y')} – "
+        f"{end_local.strftime('%d %b %Y')}"
+    )
+
+
 @router.post(
     "/",
     response_model=KPIPeriodResponse,
     status_code=status.HTTP_201_CREATED,
     responses={
         400: {"description": "Invalid period dates"},
+        422: {"description": "Overlapping period"},
         500: {"description": "Database error"},
     },
 )
@@ -41,7 +59,42 @@ async def create_kpi_period(payload: KPIPeriodCreate, db: AsyncSession = Depends
 
     if data["start_date"] >= data["end_date"]:
         raise HTTPException(status_code=400, detail="Start date must be before end date.")
-        
+
+    # Overlap block: on the NORMALIZED values about to be inserted,
+    # never on raw input. [ns, ne) overlaps [es, ee) iff
+    # ns < ee AND es < ne — touching (ns == ee or ne == es) is
+    # allowed by construction. Block set = the engine's lookup
+    # set (is_deleted False, status != CANCELLED, INCLUDING
+    # DRAFT — the engine counts DRAFT, so a DRAFT overlap breaks
+    # calculation like an OPEN one; dates are immutable after
+    # create, so no later status change can ever form an
+    # overlap). CANCELLED is excluded here AND filtered from
+    # the engine lookup, so a cancelled range is dead
+    # everywhere. Whole-request 422 naming every overlapping
+    # period; nothing is inserted (the raise precedes the add).
+    overlapping = (
+        await db.execute(
+            select(KPIPeriod)
+            .where(
+                KPIPeriod.is_deleted == False,
+                KPIPeriod.status != KPIPeriodStatus.CANCELLED,
+                KPIPeriod.start_date < data["end_date"],
+                KPIPeriod.end_date > data["start_date"],
+            )
+            .order_by(KPIPeriod.start_date, KPIPeriod.id)
+        )
+    ).scalars().all()
+    if overlapping:
+        named = "; ".join(
+            f"{period.label} "
+            f"({_human_range(period.start_date, period.end_date)})"
+            for period in overlapping
+        )
+        raise HTTPException(
+            status_code=422,
+            detail=f"Period overlaps existing period(s): {named}.",
+        )
+
     try:
         new_period = KPIPeriod(**data)
         db.add(new_period)

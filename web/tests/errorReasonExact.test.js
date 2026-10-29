@@ -44,6 +44,16 @@ describe("readServerError (shared exact-reason helper)", () => {
     ).resolves.toBe("Error: Department name already exists.");
   });
 
+  it("shows the period-overlap 422 detail verbatim, naming every overlapping period", async () => {
+    // Backend shape (period_router.py): ONE string detail, label + Yangon
+    // human range per overlapping period, semicolon-separated. The Create
+    // modal shows this via readServerError, so the pin lives here.
+    const detail = "Period overlaps existing period(s): October 2026 (01 Oct 2026 – 31 Oct 2026); Q4 2026 (01 Oct 2026 – 31 Dec 2026).";
+    await expect(
+      helpers.readServerError(fakeResponse(422, JSON.stringify({ detail }))),
+    ).resolves.toBe(`Error: ${detail}`);
+  });
+
   it("shows the status for a non-JSON body (e.g. a 502 HTML page)", async () => {
     await expect(
       helpers.readServerError(fakeResponse(502, "<html><body>Bad Gateway</body></html>")),

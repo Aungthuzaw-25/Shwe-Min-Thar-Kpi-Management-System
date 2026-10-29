@@ -122,7 +122,20 @@ async def find_period_for_month(
     db: AsyncSession, year: int, month: int
 ) -> KPIPeriod | None:
     """The period for a Yangon month: exact-month match wins a tie,
-    otherwise the earliest created candidate wins."""
+    otherwise the earliest created candidate wins.
+
+    Second step (paired with the create-time overlap block):
+    a period COVERING the month's first day — e.g. a Sep 15–
+    Nov 15 span covering October, which starts in no month it
+    covers. Without this step, find_or_create would insert a
+    duplicate October that overlaps the span (the endpoint
+    block cannot cover auto-create, which bypasses the
+    endpoint). Reusing the covering period is correct: the
+    engine already resolves the month's dates to it, so a
+    duplicate would break calculation, and failing the save
+    would break a formula whose month IS covered. Create only
+    when neither step matches.
+    """
     month_start, next_month_start = month_bounds(year, month)
     candidates = (
         await db.execute(
@@ -134,6 +147,17 @@ async def find_period_for_month(
             )
         )
     ).scalars().all()
+    if not candidates:
+        candidates = (
+            await db.execute(
+                select(KPIPeriod).where(
+                    KPIPeriod.is_deleted.is_(False),
+                    KPIPeriod.status != KPIPeriodStatus.CANCELLED,
+                    KPIPeriod.start_date <= month_start,
+                    KPIPeriod.end_date > month_start,
+                )
+            )
+        ).scalars().all()
     if not candidates:
         return None
 
