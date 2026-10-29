@@ -4,6 +4,7 @@
 {% block title %}KPI Cycles & Execution | Enterprise Dashboard{% endblock %}
 
 {% block content %}
+<link rel="stylesheet" href="/static/css/period-calendar.css">
 <style>
     @keyframes fadeInUp { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
     .animate-fade-in-up { animation: fadeInUp 0.5s ease-out forwards; }
@@ -164,6 +165,7 @@
                     <input type="date" id="endDate" required class="w-full bg-white border border-slate-300 rounded-xl p-3.5 sm:p-4 text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 shadow-sm transition-all cursor-pointer">
                 </div>
             </div>
+            <p class="text-[11px] sm:text-xs font-bold text-blue-900 mb-6 sm:mb-8" id="periodRangePreview"></p>
             <div class="flex flex-col-reverse sm:flex-row justify-end gap-3">
                 <button type="button" onclick="closeModal()" class="w-full sm:w-auto px-6 py-3 bg-white border border-slate-200 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-50 transition-colors shadow-sm">Cancel</button>
                 <button type="submit" id="savePeriodBtn" class="w-full sm:w-auto px-8 py-3 bg-blue-700 text-white rounded-xl text-sm font-bold hover:bg-blue-800 shadow-md transition-all active:scale-95 flex justify-center items-center">Deploy Cycle</button>
@@ -201,6 +203,7 @@
     }
 
     function openModal() {
+        if (window.PeriodCalendar) window.PeriodCalendar.close();
         document.getElementById('periodForm').reset();
         const modal = document.getElementById('periodModal');
         const content = document.getElementById('periodModalContent');
@@ -217,6 +220,7 @@
         modal.classList.add('opacity-0');
         content.classList.remove('scale-100');
         content.classList.add('scale-95');
+        if (window.PeriodCalendar) window.PeriodCalendar.close();
         setTimeout(() => modal.classList.add('hidden'), 300);
     }
 
@@ -531,6 +535,29 @@
         if (!window.FormDraft) return;
         var periodFormEl = document.getElementById('periodForm');
         if (periodFormEl) window.__periodDraft = FormDraft.attach(periodFormEl, { key: 'period-form' });
+    });
+</script>
+<script src="/static/js/period-calendar.js" defer></script>
+<script>
+    // Calendar picker wiring (period-calendar.js) on this page's four date
+    // fields only. Create start/end open FULLSCREEN: the icon hides
+    // everything else and shows only the picker; a pick only highlights
+    // it; Done writes that one field and returns to the modal; Cancel /
+    // X / Escape write nothing. Manual Engine cycle fields keep the old
+    // anchored popup (pick writes immediately, with the time row). The
+    // preview line is display only (see period-calendar.js). Submit
+    // payloads and validation are unchanged.
+    document.addEventListener('DOMContentLoaded', function () {
+        if (!window.PeriodCalendar) return;
+        window.PeriodCalendar.init({
+            singles: [
+                { id: 'cycleStartDate', isDateTime: true },
+                { id: 'cycleEndDate', isDateTime: true },
+                { id: 'startDate', isDateTime: false, fullscreen: true },
+                { id: 'endDate', isDateTime: false, fullscreen: true },
+            ],
+            preview: { startId: 'startDate', endId: 'endDate', previewId: 'periodRangePreview', formId: 'periodForm' },
+        });
     });
 </script>
 {% endblock %}
