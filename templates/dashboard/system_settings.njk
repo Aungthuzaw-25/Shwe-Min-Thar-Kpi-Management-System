@@ -1,5 +1,9 @@
 {% extends "layouts/base.njk" %}
 {% set active_page = "settings" %}
+{# Split views: the route resolves settings_view (?view= wins, legacy
+   ?tab= maps identically, direct/unknown → general). The template
+   whitelists again so a bad value can never render a blank page. #}
+{% set settings_view = settings_view if settings_view in ['general', 'email', 'security', 'maintenance', 'user-security'] else 'general' %}
 
 {% block title %}System Settings - Enterprise KPI Platform{% endblock %}
 
@@ -30,49 +34,24 @@
                 <p class="text-xs sm:text-sm text-slate-500 mt-1">Configure global platform preferences, security, and integrations.</p>
             </div>
         </div>
+        {% if settings_view != 'user-security' %}
         <div class="flex items-center gap-3 w-full md:w-auto mt-2 md:mt-0">
             <button onclick="saveAllSettings()" id="saveSettingsBtn" class="w-full md:w-auto justify-center bg-blue-950 hover:bg-blue-900 text-white px-5 sm:px-6 py-2.5 sm:py-3 rounded-xl text-xs sm:text-sm font-bold flex items-center shadow-md transition-all duration-300 transform hover:-translate-y-0.5">
                 <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
                 Save All Changes
             </button>
         </div>
+        {% endif %}
     </header>
 
     <!-- SETTINGS LAYOUT (Sidebar + Content) -->
     <div class="flex flex-col lg:flex-row gap-6 sm:gap-8 flex-1 min-h-0 animate-fade-in-up csp-delay-2">
         
-        <!-- SIDEBAR TABS -->
-        <div class="lg:w-64 shrink-0 overflow-x-auto lg:overflow-visible no-scrollbar pb-2 lg:pb-0">
-            <div class="flex flex-row lg:flex-col gap-2 p-1 lg:p-0">
-                <button onclick="switchSettingTab('general')" id="tab-general" class="setting-tab-btn active-tab w-auto lg:w-full text-left px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center shrink-0 whitespace-nowrap">
-                    <svg class="w-4 h-4 sm:w-5 sm:h-5 mr-2 sm:mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>
-                    General Info
-                </button>
-                <button onclick="switchSettingTab('email')" id="tab-email" class="setting-tab-btn text-slate-500 hover:bg-slate-100 w-auto lg:w-full text-left px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center shrink-0 whitespace-nowrap">
-                    <svg class="w-4 h-4 sm:w-5 sm:h-5 mr-2 sm:mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
-                    Email Configuration
-                </button>
-                <button onclick="switchSettingTab('security')" id="tab-security" class="setting-tab-btn text-slate-500 hover:bg-slate-100 w-auto lg:w-full text-left px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center shrink-0 whitespace-nowrap">
-                    <svg class="w-4 h-4 sm:w-5 sm:h-5 mr-2 sm:mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
-                    Security Policy
-                </button>
-                <button onclick="switchSettingTab('maintenance')" id="tab-maintenance" class="setting-tab-btn text-slate-500 hover:bg-slate-100 w-auto lg:w-full text-left px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center shrink-0 whitespace-nowrap">
-                    <svg class="w-4 h-4 sm:w-5 sm:h-5 mr-2 sm:mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"></path></svg>
-                    Maintenance
-                </button>
-                {% if user_role == "Super Admin" %}
-                <button onclick="switchSettingTab('user-security')" id="tab-user-security" class="setting-tab-btn text-slate-500 hover:bg-slate-100 w-auto lg:w-full text-left px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center shrink-0 whitespace-nowrap">
-                    <svg class="w-4 h-4 sm:w-5 sm:h-5 mr-2 sm:mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7l8-4zm-3 9l2 2 4-4"></path></svg>
-                    User Settings
-                </button>
-                {% endif %}
-            </div>
-        </div>
-
         <!-- CONTENT AREA -->
         <div class="flex-1 bg-white rounded-3xl shadow-sm border border-gray-100 p-5 sm:p-8 min-h-0 overflow-y-auto custom-scrollbar">
             <form id="settingsForm">
                 
+                {% if settings_view == 'general' %}
                 <!-- 1. GENERAL SETTINGS -->
                 <div id="content-general" class="setting-content space-y-6">
                     <h3 class="text-base sm:text-lg font-extrabold text-blue-950 border-b border-gray-100 pb-3 mb-4 sm:mb-6">Company & Localization</h3>
@@ -146,8 +125,10 @@
                     </div>
                 </div>
 
+                {% endif %}
+                {% if settings_view == 'email' %}
                 <!-- 2. EMAIL CONFIGURATION -->
-                <div id="content-email" class="setting-content space-y-6 hidden">
+                <div id="content-email" class="setting-content space-y-6">
                     <div class="flex items-center justify-between border-b border-gray-100 pb-3">
                         <h3 class="text-base font-extrabold text-blue-950">Configured Email Providers</h3>
                     </div>
@@ -214,8 +195,10 @@
 
                 </div>
 
+                {% endif %}
+                {% if settings_view == 'security' %}
                 <!-- 3. SECURITY POLICY -->
-                <div id="content-security" class="setting-content space-y-6 hidden">
+                <div id="content-security" class="setting-content space-y-6">
                     <h3 class="text-base sm:text-lg font-extrabold text-blue-950 border-b border-gray-100 pb-3 mb-4 sm:mb-6">Security & Password Policy</h3>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
                         <div class="space-y-4 sm:space-y-6">
@@ -242,8 +225,10 @@
                     </div>
                 </div>
 
+                {% endif %}
+                {% if settings_view == 'user-security' %}
                 {% if user_role == "Super Admin" %}
-                <div id="content-user-security" class="setting-content space-y-6 hidden">
+                <div id="content-user-security" class="setting-content space-y-6">
                     <div>
                         <h3 class="text-base sm:text-lg font-extrabold text-blue-950">User Lockout Settings</h3>
                         <p class="mt-1 text-xs sm:text-sm text-slate-500">Configure failed-login limits and review accounts that are currently locked.</p>
@@ -298,8 +283,10 @@
                 </div>
                 {% endif %}
 
+                {% endif %}
+                {% if settings_view == 'maintenance' %}
                 <!-- 4. MAINTENANCE -->
-                <div id="content-maintenance" class="setting-content space-y-6 hidden">
+                <div id="content-maintenance" class="setting-content space-y-6">
                     <h3 class="text-base sm:text-lg font-extrabold text-blue-950 border-b border-gray-100 pb-3 mb-4 sm:mb-6">System Maintenance</h3>
 
                     {% if user_role == "Super Admin" %}
@@ -352,6 +339,7 @@
                     {% endif %}
                 </div>
 
+                {% endif %}
             </form>
         </div>
     </div>
@@ -370,19 +358,27 @@
             .replaceAll("'", "&#039;");
     }
 
-    const activeTabStyle = "setting-tab-btn active-tab w-auto lg:w-full text-left px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center shrink-0 bg-blue-950 text-white shadow-md whitespace-nowrap";
-    const inactiveTabStyle = "setting-tab-btn text-slate-500 hover:bg-slate-100 w-auto lg:w-full text-left px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center shrink-0 whitespace-nowrap";
     let emailProviderDefinitions = [];
     let configuredEmailProviders = [];
     let activeEmailProvider = null;
     let editingEmailProvider = null;
 
+    // Split views: only the current view's loads run, so hidden
+    // sections' fetches never fire. Trademark lives on General only.
+    const SETTINGS_VIEW = {{ settings_view | tojson }};
     document.addEventListener("DOMContentLoaded", () => {
-        document.getElementById('tab-general').className = activeTabStyle;
-        loadEmailProviders();
-        loadSettings();
-        loadTrademark();
-        if (document.getElementById('content-user-security')) {
+        // Canonical URL (?tab= -> ?view=, unknown -> ?view=general).
+        // Guarded: a replaceState failure must never block the load.
+        try {
+            const canonical = `/system-settings?view=${SETTINGS_VIEW}`;
+            if (window.location.search !== `?view=${SETTINGS_VIEW}`) {
+                window.history.replaceState(null, '', canonical);
+            }
+        } catch (_) { /* keep the page usable */ }
+        if (SETTINGS_VIEW === 'email') {
+            loadEmailProviders();
+        } else if (SETTINGS_VIEW === 'user-security') {
+            if (document.getElementById('content-user-security')) {
             loadUserSecuritySettings();
             loadLockedUsers();
             document.getElementById('superadminLockoutEnabled').addEventListener('change', async (event) => {
@@ -397,6 +393,10 @@
                 toggle.checked = false;
                 if (!(await saveUserSecuritySettings())) toggle.checked = true;
             });
+            }
+        } else {
+            loadSettings();
+            if (SETTINGS_VIEW === 'general') loadTrademark();
         }
     });
 
@@ -719,28 +719,6 @@
         }
     }
 
-    function switchSettingTab(tabId) {
-        document.querySelectorAll('.setting-content').forEach(el => {
-            el.classList.add('hidden');
-        });
-        
-        document.querySelectorAll('.setting-tab-btn').forEach(el => {
-            el.className = inactiveTabStyle;
-        });
-
-        document.getElementById(`content-${tabId}`).classList.remove('hidden');
-        document.getElementById(`tab-${tabId}`).className = activeTabStyle;
-        const saveAllButton = document.getElementById('saveSettingsBtn');
-        if (saveAllButton) saveAllButton.classList.toggle('hidden', tabId === 'user-security');
-    }
-
-    // Sidebar panel deep link: ?tab=general|security|maintenance.
-    (function () {
-        const initialTab = new URLSearchParams(window.location.search).get('tab');
-        if (!['general', 'security', 'maintenance'].includes(initialTab)) return;
-        switchSettingTab(initialTab);
-    })();
-
     async function userSecurityRequest(path, method = 'GET', body = null) {
         const options = { method, headers: {} };
         if (body !== null) {
@@ -933,8 +911,9 @@
         try {
             const brand = await brandingRequest('', 'PUT', { company_name: name, company_tagline: tagline });
             applyTrademark(brand);
-            // The General tab edits the same company name — keep it in sync.
-            document.getElementById('set_company_name').value = brand.company_name || '';
+            // The General view edits the same company name — keep it in sync.
+            const generalName = document.getElementById('set_company_name');
+            if (generalName) generalName.value = brand.company_name || '';
             trademarkStatus('Saved. The new name and tagline now show across the app.');
             showToast('Company trademark saved.', 'success');
         } catch (error) {
@@ -953,7 +932,8 @@
         }
     }
 
-    document.getElementById('tm_logo_file').addEventListener('change', async (event) => {
+    const tmLogoFile = document.getElementById('tm_logo_file');
+    if (tmLogoFile) { tmLogoFile.addEventListener('change', async (event) => {
         const file = event.target.files && event.target.files[0];
         event.target.value = '';
         if (!file) return;
@@ -982,6 +962,7 @@
             showToast(error.message || 'Failed to upload the logo.', 'error');
         }
     });
+    }
     // Logo drop zone: dropping a file hands it to the existing hidden
     // input, so the change handler above (validation + upload + status)
     // runs unchanged. Click-to-browse works via the label's for attribute.
@@ -1001,6 +982,7 @@
 
     ['tm_company_name', 'tm_company_tagline'].forEach((id) => {
         const input = document.getElementById(id);
+        if (!input) return;
         const counter = document.getElementById(id === 'tm_company_name' ? 'tm_name_count' : 'tm_tagline_count');
         input.addEventListener('input', () => { counter.textContent = input.value.length; });
         input.addEventListener('keydown', (event) => {
@@ -1022,19 +1004,22 @@
             if (res.ok) {
                 const settingsArray = await res.json();
                 
+                // Split views: fill only the fields on this view.
+                const setField = (id, value) => { const el = document.getElementById(id); if (el) el.value = value; };
+                const setCheck = (id, checked) => { const el = document.getElementById(id); if (el) el.checked = checked; };
                 settingsArray.forEach(setting => {
                     const data = setting.value || {};
-                    
+
                     if (setting.key === 'general') {
-                        if(data.company_name) document.getElementById('set_company_name').value = data.company_name;
-                        if(data.timezone) document.getElementById('set_timezone').value = data.timezone;
-                        if(data.date_format) document.getElementById('set_date_format').value = data.date_format;
+                        if(data.company_name) setField('set_company_name', data.company_name);
+                        if(data.timezone) setField('set_timezone', data.timezone);
+                        if(data.date_format) setField('set_date_format', data.date_format);
                     } else if (setting.key === 'security') {
-                        if(data.minimum_password_length || data.min_length) document.getElementById('set_pwd_length').value = data.minimum_password_length || data.min_length;
-                        if(data.require_complexity !== undefined) document.getElementById('set_pwd_complex').checked = data.require_complexity;
-                        if(data.password_expiry !== undefined) document.getElementById('set_pwd_expire').checked = data.password_expiry;
-                        else if(data.force_password_change_days !== undefined) document.getElementById('set_pwd_expire').checked = Number(data.force_password_change_days) > 0;
-                        if(data.session_timeout) document.getElementById('set_session_timeout').value = data.session_timeout;
+                        if(data.minimum_password_length || data.min_length) setField('set_pwd_length', data.minimum_password_length || data.min_length);
+                        if(data.require_complexity !== undefined) setCheck('set_pwd_complex', data.require_complexity);
+                        if(data.password_expiry !== undefined) setCheck('set_pwd_expire', data.password_expiry);
+                        else if(data.force_password_change_days !== undefined) setCheck('set_pwd_expire', Number(data.force_password_change_days) > 0);
+                        if(data.session_timeout) setField('set_session_timeout', data.session_timeout);
                     } else if (setting.key === 'audit_retention_years') {
                         const years = Number(data.retention_years);
                         loadedAuditRetentionYears = [0, 1, 2, 5].includes(years) ? years : 0;
@@ -1105,24 +1090,34 @@
         btn.innerHTML = `<span class="app-spinner"></span>Saving...`;
         btn.disabled = true;
 
-        const generalVal = {
-            company_name: document.getElementById('set_company_name').value,
+        // Split views: save only the keys whose fields are on this
+        // view. On the Email view nothing is saveable here (providers
+        // save through their own flows) — say so, never throw.
+        const generalEl = document.getElementById('set_company_name');
+        const generalVal = generalEl ? {
+            company_name: generalEl.value,
             timezone: document.getElementById('set_timezone').value,
             date_format: document.getElementById('set_date_format').value
-        };
-
-        const securityVal = {
-            minimum_password_length: Number(document.getElementById('set_pwd_length').value),
-            min_length: Number(document.getElementById('set_pwd_length').value),
+        } : null;
+        const securityEl = document.getElementById('set_pwd_length');
+        const securityVal = securityEl ? {
+            minimum_password_length: Number(securityEl.value),
+            min_length: Number(securityEl.value),
             require_complexity: document.getElementById('set_pwd_complex').checked,
             password_expiry: document.getElementById('set_pwd_expire').checked,
             force_password_change_days: document.getElementById('set_pwd_expire').checked ? 90 : 0,
             session_timeout: Number(document.getElementById('set_session_timeout').value)
-        };
+        } : null;
         const retentionSelect = document.getElementById('set_audit_retention_years');
         const auditRetentionVal = retentionSelect
             ? { retention_years: Number(retentionSelect.value) }
             : null;
+        if (!generalVal && !securityVal && !auditRetentionVal) {
+            showToast('Nothing to save on this page.', 'error');
+            btn.innerHTML = originalHtml;
+            btn.disabled = false;
+            return;
+        }
 
         // Switching away from Forever turns automatic deletion ON: warn
         // clearly and ask first. Declining cancels the whole save.
@@ -1141,8 +1136,8 @@
         }
 
         try {
-            const p1 = upsertSetting('general', generalVal);
-            const p2 = upsertSetting('security', securityVal);
+            const p1 = generalVal ? upsertSetting('general', generalVal) : Promise.resolve(true);
+            const p2 = securityVal ? upsertSetting('security', securityVal) : Promise.resolve(true);
             const p3 = auditRetentionVal
                 ? upsertSetting('audit_retention_years', auditRetentionVal)
                 : Promise.resolve(true);

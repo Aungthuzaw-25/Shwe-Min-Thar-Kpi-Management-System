@@ -80,7 +80,10 @@ describe('Upload drop zones', () => {
     expect(settings).toContain('JPEG, PNG or WebP, up to 2 MB · Click to browse');
     expect(settings).toContain("logoDropzone.addEventListener('drop'");
     expect(settings).toContain("logoState.textContent = 'Uploading…'");
-    expect(settings).toContain("document.getElementById('tm_logo_file').addEventListener('change'");
+    // Split views: the logo input exists only on the General view, so
+    // the change handler attaches behind a guard — same handler, same id.
+    expect(settings).toContain("document.getElementById('tm_logo_file')");
+    expect(settings).toContain("tmLogoFile.addEventListener('change'");
   });
 
   it('gives the avatar a drop zone reusing its existing change handler', () => {

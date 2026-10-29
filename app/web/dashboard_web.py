@@ -600,14 +600,22 @@ async def system_settings_page(
         
     if not verify_role(current_user, [ROLE_SUPER_ADMIN]):
         return RedirectResponse(url=DASHBOARD_URL)
-        
+
+    # Split views: ?view= wins, legacy ?tab= maps identically
+    # (all 5 values); direct / unknown → general, never blank.
+    _settings_views = {"general", "email", "security", "maintenance", "user-security"}
+    _view = request.query_params.get("view") or request.query_params.get("tab")
+    if _view not in _settings_views:
+        _view = "general"
+
     return templates.TemplateResponse(
-        request=request, 
-        name="dashboard/system_settings.njk", 
+        request=request,
+        name="dashboard/system_settings.njk",
         context={**build_user_template_context(current_user),
             "user_role": current_user.role.name,
             "user_name": f"{current_user.first_name} {current_user.last_name}",
-            "user_email": current_user.email
+            "user_email": current_user.email,
+            "settings_view": _view,
         }
     )
 

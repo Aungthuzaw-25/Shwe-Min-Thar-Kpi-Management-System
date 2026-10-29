@@ -42,6 +42,16 @@ function registerPage(app, path, template, { allowedRoles, employee = false, ext
   }));
 }
 
+const SETTINGS_VIEWS = ["general", "email", "security", "maintenance", "user-security"];
+
+// System Settings split: ?view= wins, legacy ?tab= maps identically,
+// anything else → general (never blank).
+function resolveSettingsView(query = {}) {
+  if (SETTINGS_VIEWS.includes(query.view)) return query.view;
+  if (SETTINGS_VIEWS.includes(query.tab)) return query.tab;
+  return "general";
+}
+
 export function registerDashboardRoutes(app) {
   registerPage(app, "/superadmin/dashboard", "dashboard/superadmin.njk", {
     allowedRoles: roles.superAdmin,
@@ -134,6 +144,10 @@ export function registerDashboardRoutes(app) {
   registerPage(app, "/action-plans", "dashboard/action_plans.njk");
   registerPage(app, "/system-settings", "dashboard/system_settings.njk", {
     allowedRoles: roles.superAdminTools,
+    // Split views: ?view= wins; legacy ?tab= maps to the same view
+    // (all 5 values — main's ?tab= handler ignored email/user-security).
+    // Direct / unknown → general, never blank.
+    extras: (base, request) => ({ settings_view: resolveSettingsView(request.query) }),
   });
   registerPage(app, "/superadmin/audit-logs", "dashboard/audit_logs.njk", {
     allowedRoles: roles.superAdminTools,
