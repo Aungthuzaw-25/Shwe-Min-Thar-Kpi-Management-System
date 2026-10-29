@@ -99,6 +99,7 @@
         .toast-exit { animation: fadeOut 0.3s ease-out forwards; }
     </style>
     <link rel="stylesheet" href="/static/css/login-form-glass.css?v=20261021-2">
+    <link rel="stylesheet" href="/static/css/otp-input.css">
 </head>
 <body class="flex flex-col min-h-screen antialiased bg-kpi-cream m-0 p-0 relative">
     <!-- Global loading overlay: frosted glass + ring (design-system.css .app-loader) -->
@@ -202,7 +203,7 @@
                 <form id="loginForm" class="space-y-4 sm:space-y-5">
                     
                     <!-- Email Field -->
-                    <div>
+                    <div data-login-step="password">
                         <label for="email" class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Email address</label>
                         <div class="relative">
                             <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -215,7 +216,7 @@
                     </div>
 
                     <!-- Password Field -->
-                    <div>
+                    <div data-login-step="password">
                         <label for="password" class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Password</label>
                         <div class="relative">
                             <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -234,13 +235,27 @@
                     </div>
 
                     <!-- Remember Me & Forgot Password -->
-                    <div class="flex items-center justify-between">
+                    <div data-login-step="password" class="flex items-center justify-between">
                         <div class="flex items-center">
                             <input id="remember-me" type="checkbox" class="h-3 w-3 sm:h-4 sm:w-4 text-red-800 focus:ring-red-800 border-gray-300 rounded">
                             <label for="remember-me" class="ml-2 block text-xs sm:text-sm text-gray-900 font-medium">Remember me</label>
                         </div>
                         <div class="text-xs sm:text-sm">
                             <button type="button" onclick="openForgotPasswordModal()" class="font-medium text-red-800 hover:text-red-700">Forgot password?</button>
+                        </div>
+                    </div>
+
+                    <!-- Authenticator code step: shown only after the
+                         backend answers MFA_REQUIRED (password already
+                         accepted). The password fields above stay filled
+                         but hidden; the code is submitted together with
+                         the same email + password. -->
+                    <div data-login-step="otp" class="hidden space-y-3">
+                        <label class="block text-xs sm:text-sm font-semibold text-gray-700 mb-1">Authenticator code</label>
+                        <p class="text-xs sm:text-sm text-gray-500">Enter the 6-digit code from your authenticator app.</p>
+                        <div id="otpBoxes" class="otp-boxes" role="group" aria-label="Authenticator code"></div>
+                        <div>
+                            <button type="button" id="otpBackBtn" class="text-xs sm:text-sm font-medium text-red-800 hover:text-red-700">Use a different account</button>
                         </div>
                     </div>
 
@@ -316,6 +331,7 @@
     <script src="/static/js/csp-event-bridge.js"></script>
     <script src="/static/js/csrf.js"></script>
     <script src="/static/js/notifications.js"></script>
+    <script src="/static/js/otp-input.js"></script>
     <script>
     // Offline: arriving at the login page must leave no previous user's
     // cached pages/data behind (covers logout and session-expiry paths).
@@ -542,6 +558,33 @@
             }
         });
 
+        // Authenticator (TOTP) second step. The backend checks the
+        // password first: only an enrolled Super Admin whose password
+        // was accepted gets MFA_REQUIRED, and only then is this step
+        // shown. The code is submitted together with the SAME email +
+        // password — no backend change, no new endpoint, no new param
+        // beyond the totp_code the JSON login already accepts.
+        const otpBoxesEl = document.getElementById('otpBoxes');
+        const otp = window.OtpInput ? window.OtpInput.create(otpBoxesEl) : null;
+        let otpStep = false;
+        function setLoginStep(showOtp) {
+            otpStep = showOtp;
+            document.querySelectorAll('[data-login-step="password"]').forEach((el) => {
+                el.classList.toggle('hidden', showOtp);
+            });
+            document.querySelectorAll('[data-login-step="otp"]').forEach((el) => {
+                el.classList.toggle('hidden', !showOtp);
+            });
+            document.getElementById('loginSubmitBtn').innerText = showOtp ? 'Verify code' : 'Sign in';
+            if (showOtp && otp) {
+                otp.clear();
+                otp.focus();
+            } else if (otp) {
+                otp.clear();
+            }
+        }
+        document.getElementById('otpBackBtn').addEventListener('click', () => setLoginStep(false));
+
         document.getElementById('loginForm').addEventListener('submit', async (e) => {
             e.preventDefault();
 
@@ -549,20 +592,37 @@
             const password = document.getElementById('password').value;
             const rememberMe = document.getElementById('remember-me').checked;
             const submitBtn = document.getElementById('loginSubmitBtn');
-            const originalText = submitBtn.innerText;
             document.getElementById('loginLockoutAlert').classList.add('hidden');
-            
+
+            // On the code step, an incomplete code never reaches the
+            // backend: focus the first empty box instead.
+            let totpCode = null;
+            if (otpStep) {
+                if (!otp) {
+                    window.showToast('Authenticator input failed to load. Please reload the page.', 'error');
+                    return;
+                }
+                totpCode = otp.getValue();
+                if (totpCode.length !== 6) {
+                    const empty = otp.boxes.find((box) => !box.value) || otp.boxes[0];
+                    empty.focus();
+                    return;
+                }
+            }
+
             submitBtn.innerHTML = `<span class="app-spinner"></span>Signing in...`;
             submitBtn.disabled = true;
-            
+
             try {
+                const body = { email, password, remember_me: rememberMe };
+                if (totpCode) body.totp_code = totpCode;
                 const response = await fetch('/api/v1/auth/login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     credentials: 'same-origin',
-                    body: JSON.stringify({ email, password, remember_me: rememberMe })
+                    body: JSON.stringify(body)
                 });
-                
+
                 if (response.ok) {
                     const data = await response.json();
 
@@ -582,11 +642,11 @@
                         } else {
                             const userRole = data.access_token ? JSON.parse(atob(data.access_token.split('.')[1])).role : '';
                             const roleLower = userRole.toLowerCase();
-                            
+
                             if (roleLower === 'super admin' || roleLower === 'admin') {
                                 window.location.href = '/superadmin/dashboard';
                             } else {
-                                window.location.href = '/dashboard'; 
+                                window.location.href = '/dashboard';
                             }
                         }
                     }
@@ -599,6 +659,23 @@
                     try { errorData = errorText ? JSON.parse(errorText) : {}; } catch (_) { errorData = null; }
                     if (errorData === null) {
                         window.showToast(`Server error (${response.status})`, 'error');
+                    } else if (errorData.detail?.code === 'MFA_REQUIRED') {
+                        // Password accepted, code required: show the OTP
+                        // step. The backend message is the step's helper
+                        // text already, so no toast is needed here.
+                        setLoginStep(true);
+                    } else if (errorData.detail?.code === 'MFA_INVALID') {
+                        // Wrong, frozen, or replayed code: plain message,
+                        // boxes cleared for a fresh retry, stay on step.
+                        window.showToast(errorData.detail.message || 'Invalid authenticator code.', 'error');
+                        if (otpStep && otp) {
+                            otp.clear();
+                            otp.focus();
+                        }
+                    } else if (errorData.detail?.code === 'MFA_UNAVAILABLE') {
+                        // Config problem on the server (fail-closed 503):
+                        // plain message, stay on the step for a retry.
+                        window.showToast(errorData.detail.message || 'Authenticator verification is not available right now.', 'error');
                     } else if (response.status === 403 && errorData.detail?.code === 'ACCOUNT_LOCKED') {
                         showLoginLockout(errorData.detail);
                     } else {
@@ -610,7 +687,10 @@
                 console.error("Network error:", error);
                 window.showToast("A network error occurred. Please try again.", "error");
             } finally {
-                submitBtn.innerText = originalText;
+                // Step-aware (not originalText): a password submit that
+                // lands on MFA_REQUIRED enters the OTP step mid-handler,
+                // and the button must stay 'Verify code' afterwards.
+                submitBtn.innerText = otpStep ? 'Verify code' : 'Sign in';
                 submitBtn.disabled = false;
             }
         });
