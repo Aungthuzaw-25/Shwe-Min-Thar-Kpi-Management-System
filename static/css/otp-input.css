@@ -1,0 +1,35 @@
+/* 6-box OTP input. Plain CSS on purpose: Tailwind never generates
+   classes used only in JS-built markup. Red focus ring matches the
+   login page's login-red branding. */
+.otp-boxes {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+}
+.otp-box {
+  width: 2.75rem;
+  height: 3.25rem;
+  text-align: center;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #111827;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 0.5rem;
+  padding: 0;
+}
+.otp-box:focus {
+  outline: none;
+  border-color: #991b1b;
+  box-shadow: 0 0 0 3px rgba(153, 27, 27, 0.15);
+}
+@media (max-width: 380px) {
+  .otp-box {
+    width: 2.4rem;
+    height: 3rem;
+    font-size: 1.1rem;
+  }
+  .otp-boxes {
+    gap: 0.375rem;
+  }
+}
