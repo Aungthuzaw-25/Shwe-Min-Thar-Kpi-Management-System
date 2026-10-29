@@ -48,6 +48,8 @@ from app.modules.auth.oidc import (
 from app.modules.auth.schemas import (
     ChangePasswordRequest,
     LoginRequest,
+    MySessionListResponse,
+    MySessionRow,
     RefreshTokenRequest,
     TokenResponse,
     UnlockRequestCreate,
@@ -380,6 +382,162 @@ async def get_current_user_accounts(
             for row in rows
         },
     }
+
+
+def _parse_device_label(user_agent: str | None) -> str:
+    """Browser + OS label from a UA string; 'Unknown device' fallback.
+
+    Parsed at read time (a stored label would go stale as UA
+    versions change). Order matters: Edge/Opera UAs also contain
+    'Chrome/', and Chrome UAs also contain 'Safari/'.
+    """
+    if not user_agent:
+        return "Unknown device"
+    ua = user_agent
+    if "Edg/" in ua or "EdgA/" in ua or "EdgiOS/" in ua:
+        browser = "Edge"
+    elif "OPR/" in ua or "Opera" in ua:
+        browser = "Opera"
+    elif "CriOS/" in ua or "Chrome/" in ua:
+        browser = "Chrome"
+    elif "FxiOS/" in ua or "Firefox/" in ua:
+        browser = "Firefox"
+    elif "Safari/" in ua:
+        browser = "Safari"
+    else:
+        browser = None
+    if "Windows" in ua:
+        os_name = "Windows"
+    elif "iPhone" in ua or "iPad" in ua:
+        os_name = "iOS"
+    elif "Mac OS X" in ua or "Macintosh" in ua:
+        os_name = "macOS"
+    elif "Android" in ua:
+        os_name = "Android"
+    elif "Linux" in ua:
+        os_name = "Linux"
+    else:
+        os_name = None
+    if browser and os_name:
+        return f"{browser} on {os_name}"
+    return browser or os_name or "Unknown device"
+
+
+def _request_access_session_id(request: Request) -> UUID | None:
+    """sid of the request's access token (header, then cookie).
+
+    Mirrors the token resolution get_current_user already performed
+    for this request, so a decode failure here is defensive only:
+    it means the current row cannot be marked, never a 401 — the
+    caller is already authenticated.
+    """
+    token = None
+    auth_header = request.headers.get("authorization")
+    if auth_header and auth_header.startswith(BEARER_PREFIX):
+        token = auth_header[len(BEARER_PREFIX):].strip()
+    if not token:
+        cookie_token = request.cookies.get(ACCESS_TOKEN_KEY, "")
+        token = cookie_token.removeprefix(BEARER_PREFIX).strip() or None
+    if not token:
+        return None
+    try:
+        payload = security.decode_token(token, "access", require_session=True)
+        return UUID(payload["sid"])
+    except (JWTError, KeyError, TypeError, ValueError):
+        return None
+
+
+@router.get("/me/sessions", response_model=MySessionListResponse)
+async def list_my_sessions(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """List the caller's OWN active sessions, current first.
+
+    Active = revoked_at IS NULL AND expires_at > now (the presence
+    definition, served by idx_auth_sessions_active_user). No new
+    permission: /me routes carry none, and these are the caller's
+    own rows. Never returns token material, raw UA, or device_id.
+    """
+    now = datetime.now(UTC).replace(tzinfo=None)
+    rows = (
+        await db.execute(
+            select(AuthSession)
+            .where(
+                AuthSession.user_id == current_user.id,
+                AuthSession.revoked_at.is_(None),
+                AuthSession.expires_at > now,
+            )
+            .order_by(AuthSession.last_used_at.desc())
+        )
+    ).scalars().all()
+    current_session_id = _request_access_session_id(request)
+    sessions = [
+        MySessionRow(
+            id=row.id,
+            device_label=_parse_device_label(row.user_agent),
+            last_used_at=row.last_used_at,
+            expires_at=row.expires_at,
+            remember_me=bool(row.remember_me),
+            is_current=(
+                current_session_id is not None
+                and row.id == current_session_id
+            ),
+            ip_address=row.ip_address,
+        )
+        for row in rows
+    ]
+    # Stable sort: current first, the rest keep last_used_at desc.
+    sessions.sort(key=lambda s: not s.is_current)
+    return MySessionListResponse(sessions=sessions)
+
+
+@router.delete("/me/sessions/{session_id}")
+async def revoke_my_session(
+    request: Request,
+    session_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Revoke ONE own session (e.g. a lost device).
+
+    Lookup is own + active only, so another user's id, an
+    already-revoked id, an expired id, and a nonexistent id all
+    return the same 404 — indistinguishable, no existence leak.
+    Revoking the current session is 400: that is logout, which
+    already exists. No token blacklisting: the session-row check
+    in get_current_user already 401s a revoked session's access
+    token at once, and its refresh fails at once.
+    """
+    now = datetime.now(UTC).replace(tzinfo=None)
+    row = (
+        await db.execute(
+            select(AuthSession).where(
+                AuthSession.id == session_id,
+                AuthSession.user_id == current_user.id,
+                AuthSession.revoked_at.is_(None),
+                AuthSession.expires_at > now,
+            )
+        )
+    ).scalars().first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Session not found.")
+    if _request_access_session_id(request) == session_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot revoke the current session — use logout instead.",
+        )
+    AuthService._audit_session_revocation(
+        db,
+        current_user,
+        row,
+        "user_revoked_session",
+        request.client.host if request.client else None,
+        now,
+    )
+    await db.commit()
+    return {"message": "Session revoked."}
 
 
 # ==============================================================================

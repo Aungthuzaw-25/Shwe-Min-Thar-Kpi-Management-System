@@ -59,6 +59,18 @@ describe("account profile page", () => {
     expect(response.text).toContain("kpi-avatar--128");
   });
 
+  it("renders the Active sessions card skeleton in the Security section", async () => {
+    const response = await request(createApp({ backend: accountBackend() }))
+      .get("/account/profile")
+      .set("Cookie", "access_token=qa-token");
+
+    expect(response.status).toBe(200);
+    expect(response.text).toContain("Active sessions");
+    expect(response.text).toContain("sign-in sessions, not devices");
+    expect(response.text).toContain("account-sessions.js");
+    expect(response.text).toContain("data-sessions-list");
+  });
+
   it("loads profile context and profile data concurrently", async () => {
     const backend = accountBackend();
     const get = backend.get;
