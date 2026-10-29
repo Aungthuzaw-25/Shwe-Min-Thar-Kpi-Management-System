@@ -463,6 +463,17 @@ html.app-loading .app-loader {
   pointer-events: auto;
   transition: opacity 0.45s ease 0.1s, visibility 0s;
 }
+/* Click-triggered cover: instant and near-opaque, so the old page
+   never lingers visibly behind the overlay while the next page
+   loads. The incoming page is a fresh document, so its normal
+   0.45s fade-out above is untouched. */
+html.app-loading-instant .app-loader {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  background: rgba(248, 251, 252, 0.92);
+  transition: none;
+}
 .app-loader__card {
   display: flex;
   flex-direction: column;
