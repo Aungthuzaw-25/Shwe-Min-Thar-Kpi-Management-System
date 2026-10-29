@@ -110,6 +110,10 @@
                 <a class="sidebar-panel__row{% if active_page == 'dashboard' or active_page == 'employee_kpi_results' %} sidebar-panel__row--active{% endif %}" href="{% if user_role == 'Super Admin' %}/superadmin/employee-kpi-results{% else %}/admin/dashboard#employeeResultsPanel{% endif %}" role="menuitem">Employee KPI Results · Overview</a>
                 <a class="sidebar-panel__row{% if active_page == 'department_kpi' %} sidebar-panel__row--active{% endif %}" href="/superadmin/department-kpi" role="menuitem">Department KPI</a>
             </div>
+            <!-- What's New: single top-level entry, all roles (NOT a submenu child) -->
+            <a href="/whats-new" class="{% if active_page == 'whats_new' %}sidebar-item-active{% else %}sidebar-item text-slate-300{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
+                <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"></path></svg> What's New
+            </a>
             
             <div class="nav-group-label">Organization</div>
             <!-- Users -->

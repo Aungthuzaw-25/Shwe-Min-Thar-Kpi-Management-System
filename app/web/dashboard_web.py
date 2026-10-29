@@ -588,6 +588,37 @@ async def action_plans_page(
     )
 
 # ==============================================================
+# What's New Web Route (role-neutral top-level page)
+# ==============================================================
+@router.get("/whats-new", include_in_schema=False)
+async def whats_new_page(
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    if not current_user or not current_user.role:
+        return RedirectResponse(url=LOGIN_REDIRECT_URL)
+
+    # Layout follows the notifications precedent: base.njk for SA/Admin,
+    # employee_base.njk otherwise. permission_map gates the SA manage UI
+    # (system.settings.edit); the API enforces every mutation regardless.
+    return templates.TemplateResponse(
+        request=request,
+        name="dashboard/whats_new_page.njk",
+        context={**build_user_template_context(current_user),
+            "user_role": current_user.role.name,
+            "user_name": f"{current_user.first_name} {current_user.last_name}",
+            "user_email": current_user.email,
+            "permission_map": get_permission_map(current_user),
+            "active_page": "whats_new",
+            "layout_template": (
+                "layouts/employee_base.njk"
+                if current_user.role.name not in {"Super Admin", "Admin"}
+                else "layouts/base.njk"
+            ),
+        }
+    )
+
+# ==============================================================
 # System Settings Web Route
 # ==============================================================
 @router.get("/system-settings", include_in_schema=False)

@@ -122,10 +122,14 @@ describe("U3 — permissions page locks the Admin role for non-SA viewers", () =
 });
 
 describe("What's new panel", () => {
-  it("lists recent user-visible features with dates", () => {
+  it("is a DB-driven teaser (latest 3 + See all), never static entries", () => {
+    // The retired static list must not live alongside the DB teaser.
     for (const item of ["Formula period links", "Form drafts save automatically", "KPI periods by year", "System logs in plain language", "Audit log retention setting", "Offline mode (read-only)"]) {
-      expect(whatsNew).toContain(item);
+      expect(whatsNew).not.toContain(item);
     }
+    expect(whatsNew).toContain('href="/whats-new"');
+    expect(whatsNew).toContain('See all');
+    expect(whatsNew).toContain('data-wn-teaser-list');
   });
 
   it("appears on the SA dashboard and on the shared executive content", () => {
