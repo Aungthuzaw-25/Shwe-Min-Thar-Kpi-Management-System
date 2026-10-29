@@ -72,4 +72,18 @@ describe('users page format', () => {
     expect(notifications).toContain('app-toast-action');
     expect(notifications).toContain('options.actions');
   });
+
+  it('keeps the loading row a real table cell so it centers across all 6 columns', () => {
+    // Regression: flex classes on the <td> turned it into a flex
+    // container, so colspan stopped spanning and the row sat left.
+    // The centering lives on an inner div now, not the cell itself.
+    const textAt = users.indexOf('Loading user data...');
+    const tdAt = users.lastIndexOf('<td', textAt);
+    const tag = users.slice(tdAt, users.indexOf('>', tdAt) + 1);
+    expect(tag).toContain('colspan="6"');
+    expect(tag).toContain('text-center');
+    expect(tag).not.toContain('flex');
+    expect(users.slice(tdAt, textAt)).toContain('flex flex-col items-center justify-center');
+    expect(users).not.toMatch(/<td[^>]*\bflex\b/);
+  });
 });
