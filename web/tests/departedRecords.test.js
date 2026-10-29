@@ -18,10 +18,10 @@ const css = read("static/css/departed-records.css");
 describe("departed employee records hub", () => {
   it("User Management holds active + deleted users only — no departed hub", () => {
     // Expanded scope (Zenn): the WHOLE hub moved to Reports. Users
-    // keeps its Active / Deleted (Trash) tabs and the offboard
+    // keeps its Active / Deleted (Trash) subpages and the offboard
     // modal; nothing departed-specific remains in the template.
-    expect(users).toContain('id="activeTabBtn"');
-    expect(users).toContain('id="deletedTabBtn"');
+    expect(users).toContain('id="usersViewTitle"');
+    expect(users).toContain("USER_VIEW === 'deleted' ? loadDeletedUsers() : loadUsers();");
     expect(users).toContain('id="offboardModal"');
     expect(users).not.toContain('id="depHub"');
     expect(users).not.toContain('id="depReportsHub"');

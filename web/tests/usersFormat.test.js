@@ -87,3 +87,52 @@ describe('users page format', () => {
     expect(users).not.toMatch(/<td[^>]*\bflex\b/);
   });
 });
+
+describe('users subpages (Active / Deleted as views, not tabs)', () => {
+  it('has no tab-switching state left', () => {
+    expect(users).not.toContain('switchTab');
+    expect(users).not.toContain('currentTab');
+    expect(users).not.toContain('activeTabBtn');
+    expect(users).not.toContain('deletedTabBtn');
+    expect(users).not.toContain('refreshCurrentTab');
+    expect(users).not.toContain('resetUserTableState');
+  });
+
+  it('resolves the view from ?view=, maps legacy ?tab=, defaults to Active', () => {
+    expect(users).toContain('function resolveUserView()');
+    expect(users).toContain("params.get('view')");
+    expect(users).toContain("if (view === 'active' || view === 'deleted') return view;");
+    expect(users).toContain("if (params.get('tab') === 'deleted') return 'deleted';");
+    expect(users).toContain("return 'active';");
+    expect(users).toContain('const USER_VIEW = resolveUserView();');
+    // Canonical bookmarkable URL, via replaceState (no extra history entry).
+    expect(users).toContain("history.replaceState(null, '', '/superadmin/users?view=' + USER_VIEW);");
+    // Cosmetic only: a canonicalization failure must never block the list.
+    expect(users).toContain('Canonical URL is cosmetic');
+  });
+
+  it('loads only the current view and refreshes only the current view', () => {
+    expect(users).toContain('function loadCurrentViewUsers()');
+    expect(users).toContain("return USER_VIEW === 'deleted' ? loadDeletedUsers() : loadUsers();");
+    expect(users).toContain('await loadCurrentViewUsers();');
+    expect(users).toContain('function refreshUsersView()');
+    expect(users).toContain('Active users list refreshed.');
+    expect(users).toContain('Deleted users trash refreshed.');
+  });
+
+  it('shows a per-view heading, empty text, and row menus', () => {
+    expect(users).toContain('id="usersViewTitle"');
+    expect(users).toContain('id="usersViewSubtitle"');
+    expect(users).toContain('Deleted Users (Trash)');
+    expect(users).toContain("USER_VIEW === 'active' ? 'No active users found.' : 'No deleted users in trash.'");
+    expect(users).toContain("const isUserDeleted = USER_VIEW === 'deleted';");
+    // Sidebar child highlight follows the current view.
+    expect(users).toContain("sidebar-panel__row--active");
+    expect(users).toContain("'/superadmin/users?view=' + USER_VIEW");
+  });
+
+  it('keeps Add user on the Active view only', () => {
+    expect(users).toContain('id="addUserButton"');
+    expect(users).toContain("if (USER_VIEW === 'deleted') document.getElementById('addUserButton')?.remove();");
+  });
+});

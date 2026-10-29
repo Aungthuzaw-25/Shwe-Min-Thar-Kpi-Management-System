@@ -49,7 +49,7 @@
         <!-- Add User Button (hidden when the viewer's users.create is denied; fails open when no permission map is present) -->
         {% set canCreateUsers = permission_map['users.create'] if permission_map is defined and permission_map['users.create'] is defined else true %}
         {% if canCreateUsers %}
-        <button onclick="openUserModal()" class="w-full sm:w-auto justify-center bg-blue-950 hover:bg-blue-900 text-white px-5 py-2.5 rounded-xl text-sm font-bold flex items-center transition-all shadow-md transform hover:-translate-y-0.5 shrink-0">
+        <button id="addUserButton" onclick="openUserModal()" class="w-full sm:w-auto justify-center bg-blue-950 hover:bg-blue-900 text-white px-5 py-2.5 rounded-xl text-sm font-bold flex items-center transition-all shadow-md transform hover:-translate-y-0.5 shrink-0">
             <svg class="w-5 h-5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
             </svg>
@@ -76,19 +76,15 @@
     <button onclick="clearUserFilters()" class="px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-xs font-bold transition-colors shadow-sm">Clear filters</button>
 </div>
 
-<!-- TABS SECTION -->
+<!-- VIEW HEADING SECTION (subpages, not tabs: one view per URL) -->
 <div class="workspace-toolbar mx-4 sm:mx-6 md:mx-8 !px-3 !py-2 !items-center">
-    <div class="workspace-tabs w-full sm:w-auto">
-        <button onclick="switchTab('active')" id="activeTabBtn" class="whitespace-nowrap pb-2 sm:pb-3 text-sm font-bold text-blue-950 border-b-2 border-blue-950 transition-all duration-300">
-            Active Users
-        </button>
-        <button onclick="switchTab('deleted')" id="deletedTabBtn" class="whitespace-nowrap pb-2 sm:pb-3 text-sm font-semibold text-slate-500 hover:text-blue-950 border-b-2 border-transparent transition-all duration-300">
-            Deleted Users (Trash)
-        </button>
+    <div class="w-full sm:w-auto">
+        <h3 id="usersViewTitle" class="whitespace-nowrap pb-2 sm:pb-3 text-sm font-bold text-blue-950">Active Users</h3>
+        <p id="usersViewSubtitle" class="text-xs text-slate-500 font-medium">Team members with active accounts.</p>
     </div>
-    
+
     <div class="pb-2 sm:pb-3 w-full sm:w-auto flex justify-end">
-        <button onclick="refreshCurrentTab()" class="px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-xs font-bold flex items-center transition-colors shadow-sm focus:outline-none">
+        <button onclick="refreshUsersView()" class="px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-xs font-bold flex items-center transition-colors shadow-sm focus:outline-none">
             <svg class="w-4 h-4 mr-1.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
             </svg>
@@ -312,7 +308,54 @@
     'use strict';
 
     let allUsers = [];
-    let currentTab = 'active';
+    // Users subpages (not tabs): ONE view per URL, so only that view's
+    // loader ever runs on a page load — the old late-fetch overwrite race
+    // is impossible by construction (a view change is a navigation, not
+    // a mid-fetch switch). ?view= is canonical; legacy ?tab= maps onto
+    // the same views so old bookmarks and deep links keep working.
+    const USER_VIEWS = {
+        active: { title: 'Active Users', subtitle: 'Team members with active accounts.', titleClass: 'whitespace-nowrap pb-2 sm:pb-3 text-sm font-bold text-blue-950' },
+        deleted: { title: 'Deleted Users (Trash)', subtitle: 'Accounts moved to trash. Restore them or delete them permanently.', titleClass: 'whitespace-nowrap pb-2 sm:pb-3 text-sm font-bold text-red-700' },
+    };
+    function resolveUserView() {
+        const params = new URLSearchParams(window.location.search);
+        const view = params.get('view');
+        if (view === 'active' || view === 'deleted') return view;
+        if (params.get('tab') === 'deleted') return 'deleted';
+        return 'active';
+    }
+    const USER_VIEW = resolveUserView();
+    function canonicalizeUserViewUrl() {
+        // Bookmarkable canonical URL. replaceState adds no history entry,
+        // so back/forward between the two views still works: each view is
+        // a real navigation that re-renders this page for that view.
+        // Canonical URL is cosmetic: a failure here must never block the
+        // list load, so it is guarded and the resolved view stands.
+        try {
+            const params = new URLSearchParams(window.location.search);
+            if (params.get('view') !== USER_VIEW || params.has('tab')) {
+                history.replaceState(null, '', '/superadmin/users?view=' + USER_VIEW);
+            }
+        } catch { /* keep the resolved view; the list still loads */ }
+    }
+    function applyUserView() {
+        const meta = USER_VIEWS[USER_VIEW];
+        const title = document.getElementById('usersViewTitle');
+        if (title) { title.textContent = meta.title; title.className = meta.titleClass; }
+        const subtitle = document.getElementById('usersViewSubtitle');
+        if (subtitle) subtitle.textContent = meta.subtitle;
+        // Sidebar child highlight for the current view. The panel itself
+        // still opens/closes by its own mechanism — untouched.
+        document.querySelectorAll('#sidebar-panel-users .sidebar-panel__row').forEach((row) => {
+            row.classList.toggle('sidebar-panel__row--active', row.getAttribute('href') === '/superadmin/users?view=' + USER_VIEW);
+        });
+        // Add user lives on the Active view only: a new account is active,
+        // never trash. (The button is also template-gated by users.create.)
+        if (USER_VIEW === 'deleted') document.getElementById('addUserButton')?.remove();
+    }
+    function loadCurrentViewUsers() {
+        return USER_VIEW === 'deleted' ? loadDeletedUsers() : loadUsers();
+    }
     const pendingUserMutations = new Set();
 
     // 🌟 SECURITY FIX: Global HTML Escape Function to prevent XSS
@@ -402,13 +445,9 @@
     document.addEventListener('DOMContentLoaded', () => {
         void (async () => {
             await fetchDropdownData();
-            // Sidebar panel deep link: ?tab=deleted opens the trash tab.
-            const initialTab = new URLSearchParams(window.location.search).get('tab');
-            if (initialTab === 'deleted') {
-                await switchTab('deleted');
-            } else {
-                await loadUsers();
-            }
+            canonicalizeUserViewUrl();
+            applyUserView();
+            await loadCurrentViewUsers();
 
             document.getElementById('searchInput').addEventListener('input', function(e) {
                 searchTerm = e.target.value;
@@ -420,37 +459,12 @@
         });
     });
 
-    async function switchTab(tab) {
-        currentTab = tab;
-        const activeBtn = document.getElementById('activeTabBtn');
-        const deletedBtn = document.getElementById('deletedTabBtn');
-        resetUserTableState();
-
-        const activeStyle = "whitespace-nowrap pb-2 sm:pb-3 text-sm font-bold text-blue-950 border-b-2 border-blue-950 transition-all duration-300";
-        const inactiveStyle = "whitespace-nowrap pb-2 sm:pb-3 text-sm font-semibold text-slate-500 hover:text-blue-950 border-b-2 border-transparent transition-all duration-300";
-
-        if (tab === 'active') {
-            activeBtn.className = activeStyle;
-            deletedBtn.className = inactiveStyle;
-            await loadUsers();
-        } else {
-            deletedBtn.className = "whitespace-nowrap pb-2 sm:pb-3 text-sm font-bold text-red-700 border-b-2 border-red-700 transition-all duration-300";
-            activeBtn.className = inactiveStyle;
-            await loadDeletedUsers();
-        }
-    }
-
-    async function refreshCurrentTab() {
+    async function refreshUsersView() {
         document.getElementById('searchInput').value = '';
         searchTerm = '';
         currentPage = 1;
-        if (currentTab === 'active') {
-            await loadUsers();
-            showToast("Active users list refreshed.", "success");
-        } else {
-            await loadDeletedUsers();
-            showToast("Deleted users trash refreshed.", "success");
-        }
+        await loadCurrentViewUsers();
+        showToast(USER_VIEW === 'deleted' ? "Deleted users trash refreshed." : "Active users list refreshed.", "success");
     }
 
     async function fetchDropdownData() {
@@ -651,17 +665,6 @@
         select.value = filterRole;
     }
 
-    function resetUserTableState() {
-        searchTerm = '';
-        filterRole = '';
-        filterPresence = '';
-        currentPage = 1;
-        selectedUserIds = new Set();
-        document.getElementById('searchInput').value = '';
-        document.getElementById('userFilterRole').value = '';
-        document.getElementById('userFilterPresence').value = '';
-    }
-
     function goToUsersPage(page) {
         // The CSP event bridge only resolves quoted-string literals, so
         // page numbers arrive as strings — coerce them here.
@@ -759,7 +762,7 @@
         lastShowing = { total: visible.length, from: visible.length ? start + 1 : 0, to: start + pageUsers.length };
 
         if (!visible.length) {
-            const emptyText = currentTab === 'active' ? 'No active users found.' : 'No deleted users in trash.';
+            const emptyText = USER_VIEW === 'active' ? 'No active users found.' : 'No deleted users in trash.';
             tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-16 text-center text-slate-500 font-medium bg-white text-xs sm:text-sm">${emptyText}</td></tr>`;
             renderUsersPagination(0);
             syncUserSelectionUI();
@@ -770,7 +773,7 @@
         tbody.innerHTML = pageUsers.map((user) => {
             const roleName = user.role ? escapeHTML(user.role.name) : 'N/A';
             const isSuperAdmin = user.role && user.role.name === 'Super Admin';
-            const isUserDeleted = currentTab === 'deleted';
+            const isUserDeleted = USER_VIEW === 'deleted';
             const fullName = `${escapeHTML(user.first_name)} ${escapeHTML(user.last_name)}`;
 
             const statusLine = isUserDeleted
