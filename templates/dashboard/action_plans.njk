@@ -3,6 +3,7 @@
 {% block title %}Action Plans | KPI Dashboard{% endblock %}
 
 {% block content %}
+<link rel="stylesheet" href="/static/css/dialog.css">
 <style>
     @keyframes fadeInUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     .animate-fade-in-up { animation: fadeInUp 0.4s ease-out forwards; }
@@ -44,7 +45,7 @@
 </div>
 
 <!-- Review Modal -->
-<div id="reviewModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm transition-opacity p-4">
+<div id="reviewModal" class="hidden fixed inset-0 z-50 flex items-center justify-center app-modal-backdrop transition-opacity p-4">
     <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all flex flex-col max-h-[95vh] sm:max-h-[90vh]">
         <div class="bg-slate-50 px-5 sm:px-6 py-4 sm:py-5 border-b border-gray-100 flex justify-between items-center shrink-0">
             <h3 class="text-lg sm:text-xl font-extrabold text-blue-950">Action Plan အား သုံးသပ်ရန်</h3>
@@ -79,6 +80,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="/static/js/dialog.js"></script>
 <script>
     let currentPlans = [];
 
@@ -123,9 +125,10 @@
         document.getElementById('reviewForm').reset();
         document.getElementById('planId').value = planId;
         document.getElementById('reviewModal').classList.remove('hidden');
+        window.SharedDialog && window.SharedDialog.open(document.getElementById('reviewModal'), closeModal);
     }
 
-    function closeModal() { document.getElementById('reviewModal').classList.add('hidden'); }
+    function closeModal() { window.SharedDialog && window.SharedDialog.close(document.getElementById('reviewModal')); document.getElementById('reviewModal').classList.add('hidden'); }
 
     // ⚡ PERFORMANCE & API FIX: Added Limit/Pagination capability (Default limit applied on backend ideally)
     async function fetchActionPlans() {

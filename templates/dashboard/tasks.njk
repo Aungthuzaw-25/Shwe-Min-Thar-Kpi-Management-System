@@ -4,6 +4,7 @@
 {% block title %}Task & Evidence Management - KPI Portal{% endblock %}
 
 {% block content %}
+<link rel="stylesheet" href="/static/css/dialog.css">
 <link rel="stylesheet" href="/static/css/avatar.css">
 <link rel="stylesheet" href="/static/css/et-tasks.css?v=20261020-3">
 <link rel="stylesheet" href="/static/css/download-upload-style.css">
@@ -236,7 +237,7 @@
 <!-- ========================================================== -->
 
 <!-- MODAL 1: Personal Task Modal (No Due Date / Penalty) -->
-<div id="selfTaskModal" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm transition-opacity opacity-0 p-4 csp-modal">
+<div id="selfTaskModal" class="hidden fixed inset-0 z-[60] flex items-center justify-center app-modal-backdrop transition-opacity opacity-0 p-4 csp-modal">
     <div class="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden transform scale-95 transition-transform duration-300 flex flex-col max-h-[95vh] sm:max-h-[90vh]" id="selfTaskContent">
         <div class="px-5 sm:px-8 py-4 sm:py-5 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
             <h3 class="text-lg sm:text-xl font-black text-slate-900">Log Personal Task</h3>
@@ -276,7 +277,7 @@
 </div>
 
 <!-- MODAL 2: Manager Assignment Modal (Includes Due Date & Grace Period) -->
-<div id="assignTaskModal" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm transition-opacity opacity-0 p-4 csp-modal">
+<div id="assignTaskModal" class="hidden fixed inset-0 z-[60] flex items-center justify-center app-modal-backdrop transition-opacity opacity-0 p-4 csp-modal">
     <div class="bg-white rounded-3xl w-full max-w-xl shadow-2xl overflow-hidden transform scale-95 transition-transform duration-300 flex flex-col max-h-[95vh] sm:max-h-[90vh]" id="assignTaskContent">
         <div class="px-5 sm:px-8 py-4 sm:py-5 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
             <h3 class="text-lg sm:text-xl font-black text-slate-900">Assign Delegation Task</h3>
@@ -321,7 +322,7 @@
 </div>
 
 <!-- UPLOAD DRAFT MODAL -->
-<div id="uploadModal" class="hidden fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/70 backdrop-blur-sm transition-opacity opacity-0 p-4">
+<div id="uploadModal" class="hidden fixed inset-0 z-[70] flex items-center justify-center app-modal-backdrop transition-opacity opacity-0 p-4">
     <div class="bg-white rounded-3xl w-full max-w-xl shadow-2xl p-5 sm:p-8 transform transition-transform duration-300 scale-95 flex flex-col max-h-[95vh] sm:max-h-[90vh]" id="uploadContent">
         <div class="flex justify-between items-start mb-4 sm:mb-6 shrink-0 border-b border-slate-100 pb-3 sm:pb-4">
             <div>
@@ -354,7 +355,7 @@
 </div>
 
 <!-- L1 TO L2 RESIGN MODAL -->
-<div id="resignToL2Modal" class="hidden fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/70 backdrop-blur-sm transition-opacity opacity-0 p-4">
+<div id="resignToL2Modal" class="hidden fixed inset-0 z-[80] flex items-center justify-center app-modal-backdrop transition-opacity opacity-0 p-4">
     <div class="bg-white rounded-3xl w-full max-w-md shadow-2xl p-5 sm:p-8 transform scale-95 transition-transform duration-300 max-h-[90vh] overflow-y-auto custom-scrollbar" id="resignToL2Content">
         <h3 class="text-xl sm:text-2xl font-black text-purple-900 mb-1.5 sm:mb-2">Instruct L2 to Resubmit</h3>
         <p class="text-[10px] sm:text-xs text-slate-500 font-medium mb-4 sm:mb-6">Return this task to the original creator so they can fix the evidence.</p>
@@ -371,7 +372,7 @@
 </div>
 
 <!-- FIX & RESUBMIT (V2) MODAL -->
-<div id="resubmitModal" class="hidden fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/70 backdrop-blur-sm transition-opacity opacity-0 p-4">
+<div id="resubmitModal" class="hidden fixed inset-0 z-[70] flex items-center justify-center app-modal-backdrop transition-opacity opacity-0 p-4">
     <div class="bg-white rounded-3xl w-full max-w-xl shadow-2xl p-5 sm:p-8 transform transition-transform duration-300 scale-95 flex flex-col max-h-[95vh] sm:max-h-[90vh]" id="resubmitContent">
         <div class="flex justify-between items-start mb-4 sm:mb-6 shrink-0 border-b border-slate-100 pb-3 sm:pb-4">
             <h3 class="text-lg sm:text-2xl font-black text-slate-900">Resubmit Task (Version 2)</h3>
@@ -401,7 +402,7 @@
 </div>
 
 <!-- DETAILS MODAL -->
-<div id="detailsModal" class="hidden fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm transition-opacity opacity-0 p-4">
+<div id="detailsModal" class="hidden fixed inset-0 z-[70] flex items-center justify-center app-modal-backdrop transition-opacity opacity-0 p-4">
     <div class="bg-white rounded-3xl w-full max-w-xl shadow-2xl flex flex-col max-h-[95vh] sm:max-h-[90vh] transform transition-transform duration-300 scale-95" id="detailsContent">
         <div class="px-5 sm:px-8 py-4 sm:py-6 border-b border-slate-100 flex justify-between items-center bg-white shrink-0 rounded-t-3xl">
             <h3 class="text-lg sm:text-xl font-black text-slate-900">Task Details</h3>
@@ -414,7 +415,7 @@
 </div>
 
 <!-- SUBMIT TARGET MODAL -->
-<div id="submitTargetModal" class="hidden fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm transition-opacity opacity-0 p-4">
+<div id="submitTargetModal" class="hidden fixed inset-0 z-[80] flex items-center justify-center app-modal-backdrop transition-opacity opacity-0 p-4">
     <div class="bg-white rounded-3xl w-full max-w-md shadow-2xl p-5 sm:p-8 transform scale-95 transition-transform duration-300 max-h-[90vh] overflow-y-auto custom-scrollbar" id="submitTargetContent">
         <h3 class="text-xl sm:text-2xl font-black text-slate-900 mb-1.5 sm:mb-2">Submit to Manager</h3>
         <p class="text-[10px] sm:text-xs text-slate-500 font-medium mb-4 sm:mb-6">Choose the Supervisor or Head to review these selected tasks.</p>
@@ -433,7 +434,7 @@
 
 <!-- REVIEW MODAL -->
 {% if user_level in ['L1', 'L0', 'Level 1', 'Level 0'] %}
-<div id="reviewModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm transition-opacity opacity-0 p-2 sm:p-4">
+<div id="reviewModal" class="hidden fixed inset-0 z-50 flex items-center justify-center app-modal-backdrop transition-opacity opacity-0 p-2 sm:p-4">
     <div class="bg-white rounded-2xl w-full max-w-lg shadow-2xl p-4 sm:p-6 transform transition-all scale-95 flex flex-col max-h-[95vh] sm:max-h-[90vh]" id="reviewContent">
         <div class="shrink-0 mb-3 sm:mb-4 flex justify-between items-center">
             <h3 class="text-lg sm:text-xl font-extrabold text-blue-950">Review Submission</h3>
@@ -491,6 +492,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="/static/js/dialog.js"></script>
 <script src="/static/js/avatar-renderer.js"></script>
 <script src="/static/js/avatar.js"></script>
 <script>
@@ -501,9 +503,7 @@
     let selectedFiles = []; 
     let selectedResubmitFiles = []; 
 
-    document.addEventListener('keydown', function(event) {
-        if (event.key === "Escape") closeModals();
-    });
+    // Escape is owned by SharedDialog now (topmost modal only, cancel only).
 
     // 🌟 SECURITY FIX: Global HTML Escape Function
     function escapeHTML(str) {
@@ -600,9 +600,11 @@
         modal.classList.remove('opacity-0');
         content.classList.remove('scale-95');
         content.classList.add('scale-100');
+        window.SharedDialog && window.SharedDialog.open(modal, closeModals);
     }
 
     function closeModals() {
+        window.SharedDialog && window.SharedDialog.closeAll();
         document.querySelectorAll('.fixed.z-\\[60\\], .fixed.z-\\[70\\], .fixed.z-\\[80\\], .fixed.z-50').forEach(modal => {
             modal.classList.add('opacity-0');
             const content = modal.children[0];
@@ -1330,7 +1332,7 @@
     }
 
     async function deleteDraftEvidence(taskId, evidenceId) {
-        if(!(await window.appConfirm("Permanently remove this attached file?", { title: "Remove attachment?", confirmText: "Remove" }))) return;
+        if(!(await window.appConfirm("Permanently remove this attached file?", { title: "Remove attachment?", confirmText: "Remove", destructive: true }))) return;
         try {
             const res = await fetch(`${API_BASE}/evidence/${evidenceId}`, { method: 'DELETE' });
             // 🛡️ AUTH FIX

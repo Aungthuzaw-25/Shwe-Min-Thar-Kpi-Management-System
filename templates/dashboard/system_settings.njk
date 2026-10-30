@@ -8,6 +8,7 @@
 {% block title %}System Settings - Enterprise KPI Platform{% endblock %}
 
 {% block content %}
+<link rel="stylesheet" href="/static/css/dialog.css">
 <link rel="stylesheet" href="/static/css/download-upload-style.css">
 <style>
     @keyframes fadeInUp {
@@ -145,7 +146,7 @@
                     <button type="button" onclick="openAddEmailProvider()" class="inline-flex items-center gap-2 rounded-xl bg-blue-950 px-5 py-3 text-sm font-bold text-white shadow-sm hover:bg-blue-900">
                         <span class="text-lg leading-none">+</span> Add Email Provider
                     </button>
-                    <div id="emailProviderModal" class="fixed inset-0 z-[100] hidden items-center justify-center bg-slate-950/50 p-4" role="dialog" aria-modal="true" aria-labelledby="emailProviderModalTitle">
+                    <div id="emailProviderModal" class="fixed inset-0 z-[100] hidden items-center justify-center app-modal-backdrop p-4" role="dialog" aria-modal="true" aria-labelledby="emailProviderModalTitle">
                         <div class="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
                             <div class="flex items-start justify-between gap-4 border-b border-slate-100 pb-4">
                                 <div>
@@ -347,6 +348,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="/static/js/dialog.js"></script>
 <script>
     function escapeHTML(str) {
         if (str === null || str === undefined) return "";
@@ -493,6 +495,7 @@
         showProviderChoice();
         document.getElementById('emailProviderModal').classList.remove('hidden');
         document.getElementById('emailProviderModal').classList.add('flex');
+        window.SharedDialog && window.SharedDialog.open(document.getElementById('emailProviderModal'), closeEmailProviderModal);
     }
 
     function editEmailProvider(provider) {
@@ -597,6 +600,7 @@
     }
 
     function closeEmailProviderModal() {
+        window.SharedDialog && window.SharedDialog.close(document.getElementById('emailProviderModal'));
         const modal = document.getElementById('emailProviderModal');
         modal.classList.add('hidden');
         modal.classList.remove('flex');
@@ -1125,7 +1129,7 @@
             const years = auditRetentionVal.retention_years;
             const confirmed = await window.appConfirm(
                 `Audit records older than ${years} ${years === 1 ? 'year' : 'years'} will be deleted automatically, and deleted audit records cannot be recovered. Audit records are the history of who did what in the system — keep Forever if you need a complete history.`,
-                { title: 'Turn on audit log deletion?', confirmText: 'Turn on deletion' }
+                { title: 'Turn on audit log deletion?', confirmText: 'Turn on deletion', destructive: true }
             );
             if (!confirmed) {
                 showToast('Save cancelled. Audit logs will still be kept forever.', 'error');

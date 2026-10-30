@@ -7,6 +7,8 @@
 <link rel="stylesheet" href="/static/css/avatar.css">
 <script src="/static/js/avatar-renderer.js"></script>
 <script src="/static/js/avatar.js"></script>
+<link rel="stylesheet" href="/static/css/dialog.css">
+<script src="/static/js/dialog.js"></script>
 <div class="workspace-page min-h-full overflow-y-auto">
     <div class="app-page-header">
         <div>
@@ -35,7 +37,7 @@
     </div>
 </div>
 
-<div id="superAdminModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
+<div id="superAdminModal" class="fixed inset-0 z-50 hidden items-center justify-center app-modal-backdrop p-4">
     <div class="w-full max-w-xl rounded-3xl bg-white p-6 shadow-2xl">
         <div class="mb-5 flex items-center justify-between">
             <div>
@@ -115,12 +117,14 @@ function showToast(message, kind = 'success') {
 function openModal() {
     modal.classList.remove('hidden');
     modal.classList.add('flex');
+    window.SharedDialog && window.SharedDialog.open(modal, closeModal);
     form.reset();
     modalTitle.textContent = 'Add Super Admin';
     submitButton.textContent = 'Create Super Admin';
 }
 
 function closeModal() {
+    window.SharedDialog && window.SharedDialog.close(modal);
     modal.classList.add('hidden');
     modal.classList.remove('flex');
     form.reset();
@@ -254,7 +258,7 @@ async function toggleSuperAdmin(id) {
 }
 
 async function deleteSuperAdmin(id) {
-    if (!(await window.appConfirm('Delete this Super Admin account?', { title: 'Delete account?', confirmText: 'Delete' }))) return;
+    if (!(await window.appConfirm('Delete this Super Admin account?', { title: 'Delete account?', confirmText: 'Delete', destructive: true }))) return;
     try {
         const response = await fetch(`/api/v1/users/super-admins/${id}`, {
             method: 'DELETE',

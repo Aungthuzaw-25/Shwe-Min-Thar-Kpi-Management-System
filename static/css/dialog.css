@@ -1,0 +1,8 @@
+/* Shared dialog chrome. Form modals keep their own card layout; what is
+   shared is the backdrop (same dim + blur as the appConfirm overlay).
+   The shared confirm/prompt/message cards' close-X and destructive
+   styles live in notifications.css, which every layout already loads. */
+.app-modal-backdrop {
+  background: rgba(15, 23, 42, 0.62);
+  backdrop-filter: blur(4px);
+}

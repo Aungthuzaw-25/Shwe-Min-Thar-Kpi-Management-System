@@ -4,6 +4,7 @@
 {% block title %}Users Management - KPI Dashboard{% endblock %}
 
 {% block content %}
+<link rel="stylesheet" href="/static/css/dialog.css">
 <link rel="stylesheet" href="/static/css/avatar.css">
 <link rel="stylesheet" href="/static/css/departed-records.css">
 <link rel="stylesheet" href="/static/css/download-upload-style.css">
@@ -131,7 +132,7 @@
 </div>
 
 <!-- OFFBOARD MODAL -->
-<div id="offboardModal" class="fixed inset-0 z-[70] hidden flex items-center justify-center bg-slate-900/60 backdrop-blur-sm transition-opacity opacity-0 p-2 sm:p-4">
+<div id="offboardModal" class="fixed inset-0 z-[70] hidden flex items-center justify-center app-modal-backdrop transition-opacity opacity-0 p-2 sm:p-4">
     <div class="bg-white rounded-3xl shadow-2xl w-full max-w-lg mx-auto overflow-hidden flex flex-col max-h-[95vh] sm:max-h-[90vh]">
         <div class="px-5 sm:px-8 py-4 sm:py-5 border-b border-gray-100 flex justify-between items-center bg-slate-50 shrink-0">
             <div>
@@ -170,7 +171,7 @@
 </div>
 
 <!-- CREATE / EDIT USER MODAL -->
-<div id="userModal" class="fixed inset-0 z-[70] hidden flex items-center justify-center bg-slate-900/60 backdrop-blur-sm transition-opacity opacity-0 modal-transition p-2 sm:p-4">
+<div id="userModal" class="fixed inset-0 z-[70] hidden flex items-center justify-center app-modal-backdrop transition-opacity opacity-0 modal-transition p-2 sm:p-4">
     <div class="bg-white rounded-3xl shadow-2xl w-full max-w-2xl mx-auto overflow-hidden flex flex-col max-h-[95vh] sm:max-h-[90vh] transform scale-95 transition-transform duration-300" id="userModalContent">
         
         <div class="px-5 sm:px-8 py-4 sm:py-5 border-b border-gray-100 flex justify-between items-center bg-slate-50 shrink-0">
@@ -278,7 +279,7 @@
 </div>
 
 <!-- RESET PASSWORD MODAL -->
-<div id="resetPasswordModal" class="fixed inset-0 z-[80] hidden flex items-center justify-center bg-slate-900/60 backdrop-blur-sm transition-opacity opacity-0 modal-transition p-4">
+<div id="resetPasswordModal" class="fixed inset-0 z-[80] hidden flex items-center justify-center app-modal-backdrop transition-opacity opacity-0 modal-transition p-4">
     <div class="bg-white rounded-3xl shadow-2xl w-full max-w-sm mx-auto overflow-hidden flex flex-col transform scale-95 transition-transform duration-300" id="resetModalContent">
         <div class="px-5 sm:px-6 py-4 sm:py-5 border-b border-gray-100 flex justify-between items-center bg-amber-50">
             <h3 class="text-base sm:text-lg font-extrabold text-amber-900 flex items-center">
@@ -287,6 +288,7 @@
                 </svg>
                 Reset Password
             </h3>
+            <button type="button" onclick="closeResetModal()" aria-label="Close" class="text-slate-400 hover:text-red-500 bg-white border border-gray-200 p-1.5 sm:p-2 rounded-xl focus:outline-none transition-colors shadow-sm shrink-0 ml-2">×</button>
         </div>
         <div class="p-5 sm:p-6">
             <input type="hidden" id="resetUserId">
@@ -303,6 +305,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="/static/js/dialog.js"></script>
 <script src="/static/js/departed-records.js"></script>
 <script>
     'use strict';
@@ -401,7 +404,9 @@
             modal.classList.remove('opacity-0');
             content.classList.remove('scale-95');
             content.classList.add('scale-100');
+            window.SharedDialog && window.SharedDialog.open(modal, function () { toggleModal(modalId, contentId, false); });
         } else {
+            window.SharedDialog && window.SharedDialog.close(modal);
             modal.classList.add('opacity-0');
             content.classList.remove('scale-100');
             content.classList.add('scale-95');
@@ -993,7 +998,7 @@
     }
 
     async function deleteUser(id) {
-        if (!(await window.appConfirm("Are you sure you want to disable and move this user to trash?", { title: "Disable user?" }))) return;
+        if (!(await window.appConfirm("Are you sure you want to disable and move this user to trash?", { title: "Disable user?", destructive: true }))) return;
         if (pendingUserMutations.has(id)) return;
         pendingUserMutations.add(id);
         try {
@@ -1018,7 +1023,7 @@
     }
 
     async function permanentDeleteUser(id) {
-        if (!(await window.appConfirm("This will permanently delete the user and cannot be undone.", { title: "Delete user?", warning: "Choose Delete only if you are certain." , confirmText: "Delete" }))) return;
+        if (!(await window.appConfirm("This will permanently delete the user and cannot be undone.", { title: "Delete user?", warning: "Choose Delete only if you are certain." , confirmText: "Delete", destructive: true }))) return;
         try {
             const res = await fetch(`/api/v1/users/${id}/permanent`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }});
             if (res.status === 401 || res.status === 403) { window.location.href = '/auth/login'; return; }

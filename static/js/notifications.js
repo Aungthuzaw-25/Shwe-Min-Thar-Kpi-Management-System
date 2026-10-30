@@ -86,6 +86,7 @@
             overlay.setAttribute("aria-modal", "true");
             overlay.innerHTML = `
                 <div class="app-confirm-dialog">
+                    <button type="button" class="app-confirm-close" aria-label="Close">×</button>
                     <div class="app-confirm-icon">!</div>
                     <div class="app-confirm-content">
                         <h2>${escapeHtml(options.title || "Confirm action")}</h2>
@@ -94,12 +95,13 @@
                     </div>
                     <div class="app-confirm-actions">
                         <button type="button" class="app-confirm-cancel">${escapeHtml(options.cancelText || "Cancel")}</button>
-                        <button type="button" class="app-confirm-submit">${escapeHtml(options.confirmText || "Confirm")}</button>
+                        <button type="button" class="app-confirm-submit${options.destructive ? " app-confirm-submit--destructive" : ""}">${escapeHtml(options.confirmText || "Confirm")}</button>
                     </div>
                 </div>`;
 
             let deactivateModal = () => {};
             const finish = (value) => finishModal(overlay, deactivateModal, resolve, value);
+            overlay.querySelector(".app-confirm-close").addEventListener("click", () => finish(false));
             overlay.querySelector(".app-confirm-cancel").addEventListener("click", () => finish(false));
             overlay.querySelector(".app-confirm-submit").addEventListener("click", () => finish(true));
             overlay.addEventListener("click", (event) => {
@@ -121,6 +123,7 @@
             overlay.setAttribute("aria-modal", "true");
             overlay.innerHTML = `
                 <div class="app-confirm-dialog">
+                    <button type="button" class="app-confirm-close" aria-label="Close">×</button>
                     <div class="app-confirm-content">
                         <h2>${escapeHtml(options.title || "Additional information")}</h2>
                         <p>${escapeHtml(message)}</p>
@@ -134,7 +137,11 @@
             const input = overlay.querySelector(".app-prompt-input");
             let deactivateModal = () => {};
             const finish = (value) => finishModal(overlay, deactivateModal, resolve, value);
+            overlay.querySelector(".app-confirm-close").addEventListener("click", () => finish(null));
             overlay.querySelector(".app-confirm-cancel").addEventListener("click", () => finish(null));
+            overlay.addEventListener("click", (event) => {
+                if (event.target === overlay) finish(null);
+            });
             overlay.querySelector(".app-confirm-submit").addEventListener("click", () => finish(input.value));
             deactivateModal = activateModal(overlay, input, () => finish(null));
         });
@@ -149,6 +156,12 @@
 
             const dialog = document.createElement("div");
             dialog.className = "app-confirm-dialog app-message-dialog";
+            const closeX = document.createElement("button");
+            closeX.type = "button";
+            closeX.className = "app-confirm-close";
+            closeX.setAttribute("aria-label", "Close");
+            closeX.textContent = "×";
+            dialog.appendChild(closeX);
             const content = document.createElement("div");
             content.className = "app-confirm-content";
             const title = document.createElement("h2");
@@ -175,6 +188,7 @@
                 resolve();
             };
             close.addEventListener("click", finish);
+            closeX.addEventListener("click", finish);
             overlay.addEventListener("click", (event) => {
                 if (event.target === overlay) finish();
             });
