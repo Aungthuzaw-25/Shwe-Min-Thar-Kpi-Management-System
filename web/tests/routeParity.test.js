@@ -56,6 +56,7 @@ const pages = [
   ["/superadmin/process-tracking", ["Super Admin"]],
   ["/tasks", null],
   ["/notifications", null],
+  ["/whats-new", null],
 ];
 const roleNames = ["Super Admin", "Admin", "HR", "Department User"];
 const pageRoleCases = pages.flatMap(([path, allowedRoles]) => (

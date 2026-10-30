@@ -150,4 +150,15 @@ export function registerDashboardRoutes(app) {
     allowedRoles: roles.superAdminTools,
   });
   registerPage(app, "/tasks", "dashboard/tasks.njk", { employee: true });
+  // What's New: role-neutral top-level page (NOT under /superadmin/).
+  // No allowedRoles — every authenticated role may open it; the API
+  // filters entries by viewer family. Layout follows the notifications
+  // precedent: base.njk for SA/Admin, employee_base.njk otherwise.
+  registerPage(app, "/whats-new", "dashboard/whats_new_page.njk", {
+    extras: (base) => ({
+      layout_template: ["Super Admin", "Admin"].includes(base.context.user_role)
+        ? "layouts/base.njk"
+        : "layouts/employee_base.njk",
+    }),
+  });
 }

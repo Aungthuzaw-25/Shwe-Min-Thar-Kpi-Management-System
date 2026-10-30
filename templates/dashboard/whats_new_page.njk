@@ -1,0 +1,61 @@
+{% extends layout_template %}
+{% block title %}What's New | KPI Dashboard{% endblock %}
+{% set active_page = "whats_new" %}
+{% block content %}
+<link rel="stylesheet" href="/static/css/whats-new.css">
+<section class="wn-page" id="whatsNewPage" data-manage="{% if permission_map and permission_map['system.settings.edit'] %}true{% else %}false{% endif %}">
+    <div class="wn-page__head">
+        <h1 class="wn-page__title">What's New</h1>
+        <p class="wn-page__sub">New features and improvements, newest first.</p>
+    </div>
+
+    <p class="wn-page__status" data-wn-status role="status">Loading updates…</p>
+    <ul class="wn-list" data-wn-list hidden></ul>
+    <p class="wn-page__empty" data-wn-empty hidden>အပ်ဒိတ်အသစ် မရှိသေးပါ။</p>
+
+    {% if permission_map and permission_map['system.settings.edit'] %}
+    <section class="wn-manage" aria-label="Publish an update">
+        <h2 class="wn-manage__title">Publish an update</h2>
+        <p class="wn-manage__note">This publishes immediately — there is no draft list yet, so a saved draft that is never published cannot be found again. Fix a rejected link and retry from this same form.</p>
+        <form class="wn-form" data-wn-form novalidate>
+            <label class="wn-field">
+                <span class="wn-field__label">Title *</span>
+                <input class="wn-field__input" type="text" name="title" maxlength="200" required>
+            </label>
+            <label class="wn-field">
+                <span class="wn-field__label">What changed *</span>
+                <textarea class="wn-field__input" name="body" rows="3" required></textarea>
+            </label>
+            <label class="wn-field">
+                <span class="wn-field__label">How to use it (optional)</span>
+                <textarea class="wn-field__input" name="how_to" rows="2"></textarea>
+            </label>
+            <label class="wn-field">
+                <span class="wn-field__label">Link (optional, internal path only, e.g. /tasks)</span>
+                <input class="wn-field__input" type="text" name="link_path" maxlength="255" placeholder="/tasks">
+            </label>
+            <label class="wn-field">
+                <span class="wn-field__label">Link label (optional)</span>
+                <input class="wn-field__input" type="text" name="link_label" maxlength="100">
+            </label>
+            <label class="wn-field">
+                <span class="wn-field__label">Shown to</span>
+                <select class="wn-field__input" name="visible_to">
+                    <option value="ALL">Everyone</option>
+                    <option value="SUPER_ADMIN">Super Admins only</option>
+                    <option value="ADMIN">Admins and HR</option>
+                    <option value="EMPLOYEE">Employees</option>
+                </select>
+            </label>
+            <p class="wn-form__status" data-wn-form-status role="status" hidden></p>
+            <div class="wn-form__actions">
+                <button class="wn-btn wn-btn--primary" type="submit" data-wn-submit>Publish now</button>
+                <button class="wn-btn" type="button" data-wn-discard hidden>Discard draft</button>
+            </div>
+        </form>
+        <p class="wn-manage__foot">Published updates below can be edited, unpublished, or deleted.</p>
+    </section>
+    {% endif %}
+</section>
+<script src="/static/js/whats-new-page.js" defer></script>
+{% endblock %}

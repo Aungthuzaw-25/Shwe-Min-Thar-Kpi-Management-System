@@ -1,14 +1,16 @@
-{# What's new — static list, edited in code when a user-visible feature ships.
-   Included on every dashboard (SA, Admin, L0/L1/L2). One line per feature + date. #}
+{# What's new — dashboard teaser, driven by the what's-new API.
+   Same position as the old static list (included on the SA dashboard
+   and on the shared executive content). NEVER falls back to static
+   entries: on API error the list stays empty and "See all" still
+   works. The full list lives on /whats-new. #}
 <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-5 sm:p-6 mt-6" aria-label="What's new">
-    <h2 class="text-base sm:text-lg font-extrabold text-blue-950">What's new</h2>
+    <div class="flex items-baseline justify-between gap-4">
+        <h2 class="text-base sm:text-lg font-extrabold text-blue-950">What's new</h2>
+        <a class="text-xs sm:text-sm font-bold text-blue-700 hover:underline shrink-0" href="/whats-new">See all</a>
+    </div>
     <p class="text-xs sm:text-sm text-slate-500 mt-1">Recent improvements in this app.</p>
-    <ul class="mt-4 space-y-3 text-xs sm:text-sm text-slate-600">
-        <li class="flex gap-3"><span class="font-bold text-slate-400 whitespace-nowrap">25 Oct 2026</span><span><strong class="text-slate-800">Formula period links</strong> — formulas now apply to the periods you choose, close when their last period ends, and can be reused for a new period.</span></li>
-        <li class="flex gap-3"><span class="font-bold text-slate-400 whitespace-nowrap">24 Oct 2026</span><span><strong class="text-slate-800">Form drafts save automatically</strong> — a half-filled form is kept if you leave the page, and resubmitting can no longer create a duplicate.</span></li>
-        <li class="flex gap-3"><span class="font-bold text-slate-400 whitespace-nowrap">24 Oct 2026</span><span><strong class="text-slate-800">KPI periods by year</strong> — find cycles faster with the new year filter on the KPI periods page.</span></li>
-        <li class="flex gap-3"><span class="font-bold text-slate-400 whitespace-nowrap">24 Oct 2026</span><span><strong class="text-slate-800">System logs in plain language</strong> — every system event is now readable at a glance, with pages.</span></li>
-        <li class="flex gap-3"><span class="font-bold text-slate-400 whitespace-nowrap">24 Oct 2026</span><span><strong class="text-slate-800">Audit log retention setting</strong> <span class="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-800 border border-blue-200">Super Admin</span> — audit logs can now be kept forever or auto-deleted after 1, 2 or 5 years.</span></li>
-        <li class="flex gap-3"><span class="font-bold text-slate-400 whitespace-nowrap">23 Oct 2026</span><span><strong class="text-slate-800">Offline mode (read-only)</strong> — dashboards stay readable when the internet drops, with a clear offline banner.</span></li>
-    </ul>
+    <p class="wn-teaser__status text-xs sm:text-sm text-slate-500 mt-4" data-wn-teaser-status role="status">Loading updates…</p>
+    <ul class="mt-4 space-y-3 text-xs sm:text-sm text-slate-600" data-wn-teaser-list hidden></ul>
+    <p class="wn-teaser__empty text-xs sm:text-sm text-slate-500 mt-4" data-wn-teaser-empty hidden>အပ်ဒိတ်အသစ် မရှိသေးပါ။</p>
 </section>
+<script src="/static/js/whats-new-teaser.js" defer></script>
