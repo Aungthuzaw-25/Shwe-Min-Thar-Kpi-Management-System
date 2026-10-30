@@ -53,9 +53,13 @@ describe('Sidebar submenu panels', () => {
     expect(panel('kpis')).toContain('/superadmin/kpi?tab=assignments');
     expect(panel('kpi_periods')).toContain('/kpi-periods#evaluationPeriodsPanel');
     expect(panel('kpi_periods')).toContain('/kpi-periods#manualEnginePanel');
-    expect(panel('system_settings')).toContain('/system-settings?tab=general');
-    expect(panel('system_settings')).toContain('/system-settings?tab=security');
-    expect(panel('system_settings')).toContain('/system-settings?tab=maintenance');
+    expect(panel('system_settings')).toContain('/system-settings?view=general');
+    expect(panel('system_settings')).toContain('/system-settings?view=email');
+    expect(panel('system_settings')).toContain('/system-settings?view=security');
+    expect(panel('system_settings')).toContain('/system-settings?view=maintenance');
+    expect(panel('system_settings')).toContain('/system-settings?view=user-security');
+    // The old floating-panel labels are retired with the ?tab= rows.
+    expect(panel('system_settings')).not.toContain('?tab=');
     expect(base).toContain('href="/static/css/sidebar-panels.css"');
     expect(base).toContain('src="/static/js/sidebar-panels.js"');
   });
@@ -98,8 +102,10 @@ describe('Sidebar submenu panels', () => {
     expect(departments).toContain("switchTab('deleted')");
     expect(permissions).toContain("['roles', 'users', 'audit'].includes(initialTab)");
     expect(kpis).toContain("const initialPanels = { records: 'records-tab', settings: 'settings-tab', assignments: 'assignments-tab' }");
-    expect(settings).toContain("['general', 'security', 'maintenance'].includes(initialTab)");
-    expect(settings).toContain('switchSettingTab(initialTab)');
+    // Settings is split into views, not tabs: the ROUTE resolves ?view=
+    // (and legacy ?tab= for all 5 values) server-side; the template
+    // renders only that view. The old tab-switching code is gone.
+    expect(settings).not.toContain('switchSettingTab(initialTab)');
     expect(periods).toContain('id="manualEnginePanel"');
     expect(periods).toContain('id="evaluationPeriodsPanel"');
   });
