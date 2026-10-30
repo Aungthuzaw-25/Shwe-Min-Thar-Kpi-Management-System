@@ -757,7 +757,13 @@ class KPICalculationEngine:
         stmt_period = select(KPIPeriod).where(
             KPIPeriod.start_date <= target_date,
             KPIPeriod.end_date > target_date,
-            KPIPeriod.is_deleted == False
+            KPIPeriod.is_deleted == False,
+            # Paired with the create-time overlap block: CANCELLED
+            # is dead everywhere — it neither blocks a new period
+            # nor breaks calculation (a cancelled range cannot be
+            # deleted, so counting it would poison its dates
+            # forever). No behavior change for non-cancelled rows.
+            KPIPeriod.status != KPIPeriodStatus.CANCELLED
         ).order_by(KPIPeriod.start_date.desc(), KPIPeriod.id)
         periods = (await db.execute(stmt_period)).scalars().all()
         if len(periods) > 1:
