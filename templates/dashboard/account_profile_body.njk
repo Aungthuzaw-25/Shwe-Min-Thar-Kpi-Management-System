@@ -192,6 +192,16 @@
               <button class="kp-button acct-button acct-button--primary" type="submit" data-password-submit disabled>{{ 'Change password' if account_profile.local_password_enabled else 'Set password' }}</button>
             </div>
           </form>
+          <div class="kp-sessions acct-sessions" id="acctSessions">
+            <div class="kp-card-heading acct-card-heading">
+              <p class="kp-eyebrow acct-eyebrow">ACTIVE SESSIONS</p>
+              <h3 class="kp-card-title" id="acct-sessions-title">Active sessions</h3>
+            </div>
+            <p class="kp-helper acct-helper">This list shows sign-in sessions, not devices. One device can appear more than once — for example, if its network address changed since you signed in. Revoking a session signs that session out immediately; it does not sign you out everywhere.</p>
+            <p class="kp-helper acct-helper" data-sessions-status role="status">Loading sessions…</p>
+            <ul class="kp-session-list" data-sessions-list hidden></ul>
+            <p class="kp-helper acct-helper" data-sessions-empty hidden>No other active sessions.</p>
+          </div>
         </section>
 
         {% if account_profile.show_connected_accounts %}
@@ -238,3 +248,4 @@
 <script src="/static/js/avatar.js" defer></script>
 <script src="/static/js/account-profile.js?v=20261021-profile1" defer></script>
 <script src="/static/js/kp-profile.js?v=20261019-ui2" defer></script>
+<script src="/static/js/account-sessions.js" defer></script>

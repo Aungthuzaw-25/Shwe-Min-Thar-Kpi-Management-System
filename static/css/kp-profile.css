@@ -261,3 +261,64 @@
 
 @keyframes kp-spinner { to { transform: rotate(360deg); } }
 @keyframes kp-card-enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+/* Active sessions card (account profile, Security section). Scoped to
+   .kp-page like the rest of this file; rows reuse .kp-button and
+   .kp-status-pill from the Connected accounts rows. */
+.kp-page .kp-sessions {
+  border-top: 1px solid var(--kp-line);
+  margin-top: 24px;
+  padding-top: 20px;
+}
+
+.kp-page .kp-session-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.kp-page .kp-session-row {
+  align-items: center;
+  border-bottom: 1px solid var(--kp-line);
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 14px 0;
+}
+
+.kp-page .kp-session-row:last-child {
+  border-bottom: 0;
+}
+
+.kp-page .kp-session-top {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.kp-page .kp-session-device {
+  font-weight: 700;
+}
+
+.kp-page .kp-session-meta {
+  color: var(--kp-muted);
+  font-size: 13px;
+  margin: 4px 0 0;
+}
+
+.kp-page .kp-session-meta--sub {
+  font-size: 12px;
+}
+
+.kp-page .kp-session-row .kp-button {
+  flex-shrink: 0;
+  width: auto;
+}
+
+@media (max-width: 560px) {
+  .kp-page .kp-session-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

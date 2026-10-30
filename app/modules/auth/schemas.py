@@ -22,6 +22,26 @@ class TokenResponse(BaseModel):
     must_change_password: bool = False
     user: dict | None = None
 
+class MySessionRow(BaseModel):
+    """One OWN active session for the /me/sessions list.
+
+    Only user-meaningful fields: never a token, token hash, raw
+    user_agent, or device_id hash.
+    """
+
+    id: UUID
+    device_label: str
+    last_used_at: datetime
+    expires_at: datetime
+    remember_me: bool
+    is_current: bool
+    ip_address: str | None
+
+
+class MySessionListResponse(BaseModel):
+    sessions: list[MySessionRow]
+
+
 class RefreshTokenRequest(BaseModel):
     refresh_token: str
     
