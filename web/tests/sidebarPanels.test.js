@@ -40,8 +40,8 @@ describe('Sidebar submenu panels', () => {
       return base.slice(at, base.indexOf('</div>', at) + 6);
     };
     expect(panel('dashboard')).toContain('/superadmin/department-kpi');
-    expect(panel('users')).toContain('/superadmin/users?tab=active');
-    expect(panel('users')).toContain('/superadmin/users?tab=deleted');
+    expect(panel('users')).toContain('/superadmin/users?view=active');
+    expect(panel('users')).toContain('/superadmin/users?view=deleted');
     expect(panel('departments')).toContain('/superadmin/departments?tab=active');
     expect(panel('departments')).toContain('/superadmin/departments?tab=deleted');
     expect(panel('departments')).toContain('>Trash<');
@@ -85,9 +85,15 @@ describe('Sidebar submenu panels', () => {
     expect(js).toContain("aria-expanded");
   });
 
-  it('opens the right tab from ?tab= on each tabbed page', () => {
-    expect(users).toContain("new URLSearchParams(window.location.search).get('tab')");
-    expect(users).toContain("if (initialTab === 'deleted')");
+  it('opens the right tab from ?tab= on each tabbed page (Users uses ?view= subpages)', () => {
+    // Users split into subpages: ?view= is canonical, legacy ?tab= maps,
+    // unknown/missing view defaults to Active — never blank.
+    expect(users).toContain("params.get('view')");
+    expect(users).toContain("if (view === 'active' || view === 'deleted') return view;");
+    expect(users).toContain("if (params.get('tab') === 'deleted') return 'deleted';");
+    expect(users).toContain("return 'active';");
+    expect(users).toContain("function loadCurrentViewUsers()");
+    expect(users).toContain("return USER_VIEW === 'deleted' ? loadDeletedUsers() : loadUsers();");
     expect(departments).toContain("new URLSearchParams(window.location.search).get('tab')");
     expect(departments).toContain("switchTab('deleted')");
     expect(permissions).toContain("['roles', 'users', 'audit'].includes(initialTab)");
