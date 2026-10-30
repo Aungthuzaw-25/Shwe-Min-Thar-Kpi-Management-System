@@ -1,3 +1,4 @@
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -44,9 +45,6 @@ class TransferUserRequest(BaseModel):
     old_department_id: UUID
     new_department_id: UUID
 
-class DepartmentPriorityRequest(BaseModel):
-    priority: int
-
 @router.post(
     "/",
     response_model=DepartmentResponse,
@@ -63,7 +61,9 @@ async def create_department(payload: DepartmentCreate, db: AsyncSession = Depend
         raise HTTPException(status_code=400, detail="This department name is already in use.")
 
     try:
-        return await department_repo.create_department(db, payload.model_dump())
+        dept = await department_repo.create_department(db, payload.model_dump())
+        dept.member_count = 0  # freshly created: provably no members yet
+        return dept
     except IntegrityError:
         await db.rollback()
         raise HTTPException(status_code=400, detail="Invalid data provided for department creation.")
@@ -74,25 +74,29 @@ async def get_departments(
     is_active: bool | None = Query(True),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, gt=0, le=500),
+    sort: Literal["member_count_desc", "member_count_asc"] = "member_count_desc",
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     enforce_permission(current_user, DEPARTMENT_VIEW_PERMISSION)
-    if is_active:
-        stmt = select(Department).where(Department.is_deleted == False).order_by(Department.priority.desc(), Department.name, Department.id).offset(skip).limit(limit)
-    else:
-        stmt = select(Department).where(Department.is_deleted == True).order_by(Department.priority.desc(), Department.name, Department.id).offset(skip).limit(limit)
-    if not current_user.role or current_user.role.name not in {"Super Admin", "HR"}:
-        stmt = stmt.where(
-            Department.id.in_(
-                select(UserDepartment.department_id).where(
-                    UserDepartment.user_id == current_user.id
-                )
-            )
+    # Literal already 422s unknown values through FastAPI; this
+    # guard covers direct/programmatic callers the same way.
+    if sort not in ("member_count_desc", "member_count_asc"):
+        raise HTTPException(
+            status_code=422,
+            detail="sort must be member_count_desc or member_count_asc.",
         )
-
-    result = await db.execute(stmt)
-    return result.scalars().all()
+    scope_user_id = None
+    if not current_user.role or current_user.role.name not in {"Super Admin", "HR"}:
+        scope_user_id = current_user.id
+    return await department_repo.list_departments_with_member_counts(
+        db,
+        is_deleted=not is_active,
+        sort_desc=(sort == "member_count_desc"),
+        skip=skip,
+        limit=limit,
+        scope_user_id=scope_user_id,
+    )
 
 @router.get(
     "/{dept_id}",
@@ -105,6 +109,7 @@ async def get_department(dept_id: UUID, db: AsyncSession = Depends(get_db), curr
     dept = await department_repo.get_department_by_id(db, dept_id)
     if not dept:
         raise HTTPException(status_code=404, detail=DEPARTMENT_NOT_FOUND)
+    dept.member_count = await department_repo.count_department_members(db, dept_id)
     return dept
 
 @router.get(
@@ -152,36 +157,12 @@ async def update_department(dept_id: UUID, payload: DepartmentUpdate, db: AsyncS
 
     try:
         update_data = payload.model_dump(exclude_unset=True)
-        return await department_repo.update_department(db, dept, update_data)
+        dept = await department_repo.update_department(db, dept, update_data)
+        dept.member_count = await department_repo.count_department_members(db, dept_id)
+        return dept
     except IntegrityError:
         await db.rollback()
         raise HTTPException(status_code=400, detail="Invalid data provided for department update.")
-
-@router.patch(
-    "/{dept_id}/priority",
-    response_model=DepartmentResponse,
-    responses={
-        404: {"description": "Department not found"},
-        422: {"description": "Priority is outside the accepted range"},
-    },
-)
-async def update_department_priority(
-    dept_id: UUID,
-    payload: DepartmentPriorityRequest,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    enforce_permission(current_user, PERM_DEPARTMENT_EDIT)
-    await enforce_department_scope(db, current_user, dept_id)
-    dept = await department_repo.get_department_by_id(db, dept_id)
-    if not dept:
-        raise HTTPException(status_code=404, detail=DEPARTMENT_NOT_FOUND)
-    if payload.priority < 0 or payload.priority > 100:
-        raise HTTPException(status_code=422, detail="Priority must be between 0 and 100.")
-    dept.priority = payload.priority
-    await db.commit()
-    await db.refresh(dept)
-    return dept
 
 @router.delete(
     "/{dept_id}",

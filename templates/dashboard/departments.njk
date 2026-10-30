@@ -48,6 +48,15 @@
             <label for="searchInput" class="sr-only">Search departments</label>
             <input type="text" id="searchInput" placeholder="Search department name..." class="w-full bg-white border border-gray-200 pl-4 pr-10 py-2.5 rounded-xl text-sm focus:outline-none focus:border-blue-900 focus:ring-1 focus:ring-blue-900 transition shadow-sm">
         </div>
+
+        <!-- Sort by member count (server owns the order; changing refetches) -->
+        <div class="relative w-full xl:w-64">
+            <label for="deptSortSelect" class="sr-only">Sort departments by member count</label>
+            <select id="deptSortSelect" class="w-full bg-white border border-gray-200 pl-4 pr-10 py-2.5 rounded-xl text-sm focus:outline-none focus:border-blue-900 focus:ring-1 focus:ring-blue-900 transition shadow-sm">
+                <option value="member_count_desc">Members: Highest to lowest</option>
+                <option value="member_count_asc">Members: Lowest to highest</option>
+            </select>
+        </div>
     </div>
 
     <!-- Departments Table Card -->
@@ -67,7 +76,7 @@
                     <tr>
                         <th class="p-3 sm:p-5 w-12 sm:w-16">#</th>
                         <th class="p-3 sm:p-5">Department Name</th>
-                        <th class="p-3 sm:p-5 text-center">Priority</th>
+                        <th class="p-3 sm:p-5 text-center">Members</th>
                         <th class="p-3 sm:p-5 text-center">Head Assigned</th>
                         <th class="p-3 sm:p-5 text-right">Actions</th>
                     </tr>
@@ -91,10 +100,6 @@
         <div class="mb-6">
             <label for="deptName" class="block text-xs font-bold text-slate-700 mb-2 uppercase">Department Name <span class="text-red-500">*</span></label>
             <input type="text" id="deptName" class="w-full bg-slate-50 border border-gray-200 p-2.5 sm:p-3 rounded-xl focus:outline-none focus:bg-white focus:border-blue-900 transition text-sm font-semibold" placeholder="e.g., Human Resources">
-        </div>
-        <div class="mb-6">
-            <label for="deptPriority" class="block text-xs font-bold text-slate-700 mb-2 uppercase">Priority (0-100)</label>
-            <input type="number" id="deptPriority" min="0" max="100" value="0" class="w-full bg-slate-50 border border-gray-200 p-2.5 sm:p-3 rounded-xl text-sm font-semibold">
         </div>
         <!-- 🌟 RESPONSIVE FIX: Buttons stretch on mobile -->
         <div class="flex flex-col-reverse sm:flex-row justify-end gap-3">
@@ -301,11 +306,24 @@
         fetchDepartments();
     }
 
+    // Sort order lives on the server: 'member_count_desc' is the server
+    // default, so the default view sends no sort param at all; the flipped
+    // view sends sort=member_count_asc. The choice survives tab switches
+    // and search (search filters client-side over the fetched order).
+    let departmentSort = 'member_count_desc';
+    function buildDepartmentsUrl() {
+        const params = new URLSearchParams();
+        if (currentTab !== 'active') params.set('is_active', 'false');
+        if (departmentSort !== 'member_count_desc') params.set('sort', departmentSort);
+        const query = params.toString();
+        return query ? `${API_BASE_URL}?${query}` : API_BASE_URL;
+    }
+
     // --- Fetch & Render Departments ---
     async function fetchDepartments() {
         toggleLoader('tableLoader', true);
         try {
-            const url = currentTab === 'active' ? API_BASE_URL : `${API_BASE_URL}?is_active=false`;
+            const url = buildDepartmentsUrl();
             const response = await fetchWithTimeout(url);
             
             // 🛡️ AUTH FIX: Redirect if unauthorized
@@ -349,7 +367,10 @@
             return;
         }
 
-        filtered.sort((a, b) => (b.priority || 0) - (a.priority || 0)).forEach((dept, index) => {
+        // Rows render in the exact order the server returned (already sorted
+        // by member count). Never re-sort here: a client sort would break
+        // the server's paging order.
+        filtered.forEach((dept, index) => {
             const tr = document.createElement("tr");
             tr.className = "hover:bg-blue-50/30 group bg-white transition-colors";
             
@@ -395,7 +416,7 @@
             tr.innerHTML = `
                 <td class="p-3 sm:p-5 text-slate-500 font-semibold">${index + 1}</td>
                 <td class="p-3 sm:p-5 font-extrabold ${nameStyle} whitespace-normal min-w-[150px]">${escapeHTML(dept.name)}</td>
-                <td class="p-3 sm:p-5 text-center"><span class="rounded-lg bg-blue-50 px-2 py-1 text-xs font-extrabold text-blue-800">${Number(dept.priority || 0)}</span></td>
+                <td class="p-3 sm:p-5 text-center"><span class="rounded-lg bg-blue-50 px-2 py-1 text-xs font-extrabold text-blue-800">${Number(dept.member_count ?? 0)}</span></td>
                 <td class="p-3 sm:p-5 text-center">${headBadge}</td>
                 <td class="p-3 sm:p-5 text-right">${actionButtons}</td>
             `;
@@ -403,7 +424,7 @@
                 button.addEventListener("click", () => {
                     switch (button.dataset.departmentAction) {
                         case "members": openAssignModal(dept.id, dept.name); break;
-                        case "edit": openDepartmentModal(dept.id, dept.name, Number(dept.priority || 0)); break;
+                        case "edit": openDepartmentModal(dept.id, dept.name); break;
                         case "delete": deleteDepartment(dept.id); break;
                         case "restore": restoreDepartment(dept.id); break;
                         case "purge": hardDeleteDepartment(dept.id); break;
@@ -415,10 +436,9 @@
     }
 
     // --- Department Modals (Create/Edit) ---
-    function openDepartmentModal(id = "", name = "", priority = 0) {
+    function openDepartmentModal(id = "", name = "") {
         document.getElementById("deptId").value = id;
         document.getElementById("deptName").value = name;
-        document.getElementById("deptPriority").value = priority;
         document.getElementById("modalTitle").innerText = id ? "Edit Department" : "Create New Department";
         document.getElementById("departmentModal").classList.remove("hidden");
         window.SharedDialog && window.SharedDialog.open(document.getElementById("departmentModal"), closeDepartmentModal);
@@ -429,16 +449,14 @@
     async function saveDepartment() {
         const id = document.getElementById("deptId").value;
         const name = document.getElementById("deptName").value.trim();
-        const priority = Number(document.getElementById("deptPriority").value);
         if (!name) return window.showToast("Please enter a department name.", "warning");
-        if (!Number.isInteger(priority) || priority < 0 || priority > 100) return window.showToast("Priority must be between 0 and 100.", "warning");
-        
+
         setButtonLoading('saveDeptBtn', true);
         const method = id ? "PUT" : "POST";
         const url = id ? `${API_BASE_URL}/${id}` : API_BASE_URL;
-        
+
         try {
-            const response = await fetch(url, { method: method, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: name, priority: priority }) });
+            const response = await fetch(url, { method: method, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: name }) });
             if (response.ok) { 
                 closeDepartmentModal(); 
                 showToast("Department saved successfully.", "success");
@@ -767,6 +785,10 @@
 
     // Init
     document.getElementById("searchInput").addEventListener("input", renderDepartments);
+    document.getElementById("deptSortSelect").addEventListener("change", (event) => {
+        departmentSort = event.target.value;
+        fetchDepartments();
+    });
     document.addEventListener("DOMContentLoaded", () => {
         // Sidebar panel deep link: ?tab=deleted opens the trash tab.
         const initialTab = new URLSearchParams(window.location.search).get('tab');
