@@ -31,7 +31,11 @@ describe("permissions page polish (visual only)", () => {
     expect(template).toContain('row.dataset.pending');
     expect(template).toContain('id="saveRole"');
     expect(template).toContain('id="saveUserOverrides"');
-    expect(template).toContain('id="confirmModal"');
+    // Dialog standardization: the page's own confirm box was retired —
+    // showConfirm now delegates to the shared appConfirm (same title,
+    // body, Cancel/Confirm buttons and true/false result).
+    expect(template).toContain('return window.appConfirm(body, { title });');
+    expect(template).not.toContain('id="confirmModal"');
   });
 
   it("active tab stays ink with white text, including on hover", () => {

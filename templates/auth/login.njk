@@ -100,6 +100,7 @@
     </style>
     <link rel="stylesheet" href="/static/css/login-form-glass.css?v=20261021-2">
     <link rel="stylesheet" href="/static/css/otp-input.css">
+    <link rel="stylesheet" href="/static/css/dialog.css">
 </head>
 <body class="flex flex-col min-h-screen antialiased bg-kpi-cream m-0 p-0 relative">
     <!-- Global loading overlay: frosted glass + ring (design-system.css .app-loader) -->
@@ -308,8 +309,9 @@
     </footer>
 
     <!-- FORGOT PASSWORD MODAL -->
-    <div id="forgotPasswordModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center p-4">
+    <div id="forgotPasswordModal" class="fixed inset-0 app-modal-backdrop z-50 hidden flex items-center justify-center p-4">
         <div class="bg-white rounded-2xl max-w-md w-full p-6 sm:p-8 relative shadow-2xl">
+            <button type="button" onclick="closeForgotPasswordModal()" aria-label="Close" class="absolute top-4 right-4 text-slate-400 hover:text-red-500 text-2xl leading-none">×</button>
             <h3 class="text-xl sm:text-2xl font-bold text-red-900 mb-2">Reset Password</h3>
             <p class="text-gray-500 text-xs sm:text-sm mb-6">Enter your email address and we'll send you instructions to reset your password.</p>
             
@@ -332,6 +334,7 @@
     <script src="/static/js/csrf.js"></script>
     <script src="/static/js/notifications.js"></script>
     <script src="/static/js/otp-input.js"></script>
+    <script src="/static/js/dialog.js"></script>
     <script>
     // Offline: arriving at the login page must leave no previous user's
     // cached pages/data behind (covers logout and session-expiry paths).
@@ -400,9 +403,11 @@
 
         function openForgotPasswordModal() {
             document.getElementById('forgotPasswordModal').classList.remove('hidden');
+            window.SharedDialog && window.SharedDialog.open(document.getElementById('forgotPasswordModal'), closeForgotPasswordModal);
         }
         
         function closeForgotPasswordModal() {
+            window.SharedDialog && window.SharedDialog.close(document.getElementById('forgotPasswordModal'));
             document.getElementById('forgotPasswordModal').classList.add('hidden');
             document.getElementById('resetAlert').classList.add('hidden');
             document.getElementById('forgotPasswordForm').reset();

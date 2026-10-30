@@ -477,10 +477,12 @@
         const modal = document.getElementById('offboardModal');
         modal.classList.remove('hidden');
         modal.classList.remove('opacity-0');
+        window.SharedDialog && window.SharedDialog.open(modal, window.closeOffboardModal);
     };
 
     window.closeOffboardModal = function () {
         const modal = document.getElementById('offboardModal');
+        window.SharedDialog && window.SharedDialog.close(modal);
         modal.classList.add('opacity-0');
         setTimeout(function () { modal.classList.add('hidden'); }, 200);
     };
@@ -558,7 +560,7 @@
             }).join('');
             listBox.querySelectorAll('.dep-grant-revoke').forEach(function (btn) {
                 btn.addEventListener('click', async function () {
-                    if (!(await window.appConfirm('Revoke this download grant? The person immediately loses that download scope.', { title: 'Revoke grant?', confirmText: 'Revoke' }))) return;
+                    if (!(await window.appConfirm('Revoke this download grant? The person immediately loses that download scope.', { title: 'Revoke grant?', confirmText: 'Revoke', destructive: true }))) return;
                     try {
                         await api('/api/v1/system/report-downloads/grants/' + btn.dataset.grantId + '/revoke', { method: 'POST' });
                         toast('Grant revoked.', 'success');

@@ -4,6 +4,7 @@
 {% block title %}Positions Management | KPI Dashboard{% endblock %}
 
 {% block content %}
+<link rel="stylesheet" href="/static/css/dialog.css">
 <style>
     @keyframes fadeInUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     .animate-fade-in-up { animation: fadeInUp 0.4s ease-out forwards; }
@@ -54,7 +55,7 @@
 </div>
 
 <!-- Add/Edit Position Modal -->
-<div id="positionModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm transition-opacity p-4">
+<div id="positionModal" class="hidden fixed inset-0 z-50 flex items-center justify-center app-modal-backdrop transition-opacity p-4">
     <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all">
         <div class="bg-slate-50 px-5 sm:px-6 py-4 sm:py-5 border-b border-gray-100 flex justify-between items-center">
             <h3 class="text-lg sm:text-xl font-extrabold text-blue-950" id="modalTitle">Position အသစ်ဖန်တီးရန်</h3>
@@ -92,6 +93,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="/static/js/dialog.js"></script>
 <script>
     let allDepartments = [];
     let currentPositions = [];
@@ -205,6 +207,7 @@
         document.getElementById('positionForm').reset();
         document.getElementById('posId').value = '';
         document.getElementById('positionModal').classList.remove('hidden');
+        window.SharedDialog && window.SharedDialog.open(document.getElementById('positionModal'), closeModal);
         
         const currentFilterDept = document.getElementById('deptFilter').value;
         if(currentFilterDept) {
@@ -215,7 +218,7 @@
         }
     }
 
-    function closeModal() { document.getElementById('positionModal').classList.add('hidden'); }
+    function closeModal() { window.SharedDialog && window.SharedDialog.close(document.getElementById('positionModal')); document.getElementById('positionModal').classList.add('hidden'); }
 
     async function loadParentPositions() {
         const deptId = document.getElementById('modalDept').value;
@@ -262,7 +265,7 @@
     }
 
     async function deletePosition(posId) {
-        if(!(await window.appConfirm("ဤရာထူးကို ဖျက်ရန် သေချာပါသလား?", { title: "Delete position?", confirmText: "Delete" }))) return;
+        if(!(await window.appConfirm("ဤရာထူးကို ဖျက်ရန် သေချာပါသလား?", { title: "Delete position?", confirmText: "Delete", destructive: true }))) return;
         try {
             const res = await fetch(`/api/v1/positions/${posId}`, { method: 'DELETE' });
             // 🌟 SECURITY FIX: Handle 401/403

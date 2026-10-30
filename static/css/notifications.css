@@ -50,6 +50,7 @@
     background: rgba(15, 23, 42, .62);
 }
 .app-confirm-dialog {
+    position: relative;
     display: grid;
     grid-template-columns: auto 1fr;
     gap: 1rem;
@@ -59,6 +60,27 @@
     background: #fff;
     color: #172033;
     box-shadow: 0 24px 60px rgba(15, 23, 42, .3);
+}
+.app-confirm-close {
+    position: absolute;
+    top: .75rem;
+    right: .75rem;
+    width: 2rem;
+    height: 2rem;
+    border: 0;
+    border-radius: 999px;
+    background: #f1f5f9;
+    color: #64748b;
+    font-size: 1.1rem;
+    line-height: 1;
+    cursor: pointer;
+}
+.app-confirm-close:hover {
+    background: #e2e8f0;
+    color: #334155;
+}
+.app-confirm-submit--destructive {
+    background: #dc2626 !important;
 }
 .app-confirm-icon { display: grid; place-items: center; width: 2rem; height: 2rem; border-radius: 999px; background: #fef3c7; color: #b45309; font-weight: 800; }
 .app-confirm-content h2 { margin: 0; font-size: 1.1rem; font-weight: 800; }

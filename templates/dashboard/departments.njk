@@ -4,6 +4,7 @@
 {% block title %}Departments Management - KPI Platform{% endblock %}
 
 {% block content %}
+<link rel="stylesheet" href="/static/css/dialog.css">
 <link rel="stylesheet" href="/static/css/avatar.css">
 <script src="/static/js/avatar-renderer.js"></script>
 <script src="/static/js/avatar.js"></script>
@@ -82,8 +83,9 @@
 <!-- ========================================== -->
 <!-- 🌟 Modal: Create / Edit Department -->
 <!-- ========================================== -->
-<div id="departmentModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm transition-opacity p-4">
+<div id="departmentModal" class="hidden fixed inset-0 z-50 flex items-center justify-center app-modal-backdrop transition-opacity p-4">
     <div class="bg-white rounded-3xl p-5 sm:p-6 w-full max-w-md shadow-2xl border border-gray-100 transform transition-transform">
+        <button type="button" onclick="closeDepartmentModal()" aria-label="Close" class="float-right text-slate-400 hover:text-red-500 text-2xl leading-none">×</button>
         <h3 id="modalTitle" class="text-lg sm:text-xl font-extrabold text-blue-950 mb-5">Create New Department</h3>
         <input type="hidden" id="deptId">
         <div class="mb-6">
@@ -107,7 +109,7 @@
 <!-- ========================================== -->
 <!-- 🌟 Modal: Manage Department Members -->
 <!-- ========================================== -->
-<div id="assignUserModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-2 sm:p-4">
+<div id="assignUserModal" class="hidden fixed inset-0 z-50 flex items-center justify-center app-modal-backdrop p-2 sm:p-4">
     <div class="bg-white rounded-3xl p-4 sm:p-8 w-full max-w-4xl shadow-2xl border border-gray-100 flex flex-col max-h-[95vh] sm:max-h-[90vh]">
         
         <div class="flex justify-between items-center mb-4 sm:mb-6 shrink-0 border-b border-gray-100 pb-4">
@@ -177,8 +179,9 @@
 <!-- ========================================== -->
 <!-- 🌟 Shared Mini Modal (Level / Transfer) -->
 <!-- ========================================== -->
-<div id="actionModal" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+<div id="actionModal" class="hidden fixed inset-0 z-[60] flex items-center justify-center app-modal-backdrop p-4">
     <div class="bg-white rounded-3xl p-5 sm:p-6 w-full max-w-sm shadow-2xl border border-gray-100 transform transition-transform">
+        <button type="button" onclick="closeActionModal()" aria-label="Close" class="float-right text-slate-400 hover:text-red-500 text-2xl leading-none">×</button>
         <h3 class="text-lg sm:text-xl font-extrabold text-blue-950 mb-2" id="actionModalTitle">Action</h3>
         <p class="text-xs sm:text-sm text-slate-500 mb-5" id="actionModalDesc">Description</p>
         
@@ -201,6 +204,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="/static/js/dialog.js"></script>
 <script>
     const API_BASE_URL = "/api/v1/departments";
     const USER_API_URL = "/api/v1/users";
@@ -417,9 +421,10 @@
         document.getElementById("deptPriority").value = priority;
         document.getElementById("modalTitle").innerText = id ? "Edit Department" : "Create New Department";
         document.getElementById("departmentModal").classList.remove("hidden");
+        window.SharedDialog && window.SharedDialog.open(document.getElementById("departmentModal"), closeDepartmentModal);
     }
     
-    function closeDepartmentModal() { document.getElementById("departmentModal").classList.add("hidden"); }
+    function closeDepartmentModal() { window.SharedDialog && window.SharedDialog.close(document.getElementById("departmentModal")); document.getElementById("departmentModal").classList.add("hidden"); }
 
     async function saveDepartment() {
         const id = document.getElementById("deptId").value;
@@ -448,7 +453,7 @@
 
     // --- Delete / Restore ---
     async function deleteDepartment(deptId) {
-        if (!(await window.appConfirm("Move this department to trash?", { title: "Delete department?", confirmText: "Move to trash" }))) return;
+        if (!(await window.appConfirm("Move this department to trash?", { title: "Delete department?", confirmText: "Move to trash", destructive: true }))) return;
         toggleLoader('tableLoader', true);
         try {
             const response = await fetch(`${API_BASE_URL}/${deptId}`, { method: "DELETE" });
@@ -470,7 +475,7 @@
     }
 
     async function hardDeleteDepartment(deptId) {
-        if (!(await window.appConfirm("Permanent delete cannot be undone.", { title: "Delete department permanently?", confirmText: "Delete" }))) return;
+        if (!(await window.appConfirm("Permanent delete cannot be undone.", { title: "Delete department permanently?", confirmText: "Delete", destructive: true }))) return;
         toggleLoader('tableLoader', true);
         try {
             const response = await fetch(`${API_BASE_URL}/${deptId}/permanent`, { method: "DELETE" });
@@ -488,10 +493,12 @@
         document.getElementById("assignDeptId").value = deptId;
         document.getElementById("assignModalTitle").innerText = `${deptName} - Workspace`;
         document.getElementById("assignUserModal").classList.remove("hidden");
+        window.SharedDialog && window.SharedDialog.open(document.getElementById("assignUserModal"), closeAssignModal);
         await refreshUserList(deptId);
     }
     
     function closeAssignModal() { 
+        window.SharedDialog && window.SharedDialog.close(document.getElementById("assignUserModal"));
         document.getElementById("assignUserModal").classList.add("hidden"); 
         currentActiveDeptId = null;
     }
@@ -641,7 +648,7 @@
     }
 
     async function removeUserFromDept(deptId, userId) {
-        if(!(await window.appConfirm("Remove this user from the department?", { title: "Remove employee?", confirmText: "Remove" }))) return;
+        if(!(await window.appConfirm("Remove this user from the department?", { title: "Remove employee?", confirmText: "Remove", destructive: true }))) return;
         toggleLoader('userListLoader', true);
         try {
             const response = await fetch(`${API_BASE_URL}/${deptId}/users/${userId}`, { method: "DELETE" });
@@ -705,9 +712,10 @@
         }
 
         document.getElementById("actionModal").classList.remove("hidden");
+        window.SharedDialog && window.SharedDialog.open(document.getElementById("actionModal"), closeActionModal);
     }
 
-    function closeActionModal() { document.getElementById("actionModal").classList.add("hidden"); }
+    function closeActionModal() { window.SharedDialog && window.SharedDialog.close(document.getElementById("actionModal")); document.getElementById("actionModal").classList.add("hidden"); }
 
     async function submitChangeLevel() {
         const userId = document.getElementById("actionUserId").value;

@@ -5,6 +5,7 @@
 
 {% block content %}
 <link rel="stylesheet" href="/static/css/period-calendar.css">
+<link rel="stylesheet" href="/static/css/dialog.css">
 <style>
     @keyframes fadeInUp { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
     .animate-fade-in-up { animation: fadeInUp 0.5s ease-out forwards; }
@@ -137,7 +138,7 @@
 </div>
 
 <!-- CREATE PERIOD MODAL -->
-<div id="periodModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm transition-opacity opacity-0 p-4 csp-modal">
+<div id="periodModal" class="hidden fixed inset-0 z-50 flex items-center justify-center app-modal-backdrop transition-opacity opacity-0 p-4 csp-modal">
     <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden transform scale-95 transition-transform duration-300" id="periodModalContent">
         
         <div class="px-6 sm:px-8 py-5 sm:py-6 border-b border-slate-100 flex justify-between items-center bg-white">
@@ -176,6 +177,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="/static/js/dialog.js"></script>
 <script>
     let currentPeriods = [];
 
@@ -212,9 +214,11 @@
         modal.classList.remove('opacity-0');
         content.classList.remove('scale-95');
         content.classList.add('scale-100');
+        window.SharedDialog && window.SharedDialog.open(modal, closeModal);
     }
 
     function closeModal() { 
+        window.SharedDialog && window.SharedDialog.close(document.getElementById('periodModal'));
         const modal = document.getElementById('periodModal');
         const content = document.getElementById('periodModalContent');
         modal.classList.add('opacity-0');
@@ -474,7 +478,7 @@
     }
 
     async function deletePeriod(periodId) {
-        if(!(await window.appConfirm("This action cannot be undone.", { title: "Delete draft period?", confirmText: "Delete" }))) return;
+        if(!(await window.appConfirm("This action cannot be undone.", { title: "Delete draft period?", confirmText: "Delete", destructive: true }))) return;
         
         try {
             const res = await fetch(`/api/v1/kpi/periods/${periodId}`, { method: 'DELETE' });

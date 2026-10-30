@@ -4,6 +4,7 @@
 {% block title %}Enterprise KPI Engine - KPI Platform{% endblock %}
 
 {% block content %}
+<link rel="stylesheet" href="/static/css/dialog.css">
 <link rel="stylesheet" href="/static/css/avatar.css">
 <link rel="stylesheet" href="/static/css/superadmin-kpi-glass.css?v=20261021-2">
 <script src="/static/js/avatar-renderer.js"></script>
@@ -175,7 +176,7 @@
 </div>
 
 <!-- FORMULA CREATION/EDIT MODAL -->
-<div id="formulasModal" data-kpi-modal class="hidden fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm transition-opacity opacity-0 modal-transition p-2 sm:p-4 kg-modal kg-modal-formula" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+<div id="formulasModal" data-kpi-modal class="hidden fixed inset-0 z-[70] flex items-center justify-center app-modal-backdrop transition-opacity opacity-0 modal-transition p-2 sm:p-4 kg-modal kg-modal-formula" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
     <div class="bg-white rounded-3xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden text-slate-800 transform scale-95 transition-transform duration-300 kg-modal-panel" id="formulasModalContent">
         
         <div class="bg-slate-50 px-5 sm:px-8 py-4 sm:py-6 border-b border-gray-100 flex justify-between items-center shrink-0 kg-modal-header">
@@ -292,8 +293,9 @@
 </div>
 
 <!-- INTERVENTION MODAL -->
-<div id="interventionModal" data-kpi-modal class="hidden fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm transition-opacity opacity-0 modal-transition p-4 kg-modal kg-modal-intervention" role="dialog" aria-modal="true" aria-labelledby="interventionTitle">
+<div id="interventionModal" data-kpi-modal class="hidden fixed inset-0 z-[80] flex items-center justify-center app-modal-backdrop transition-opacity opacity-0 modal-transition p-4 kg-modal kg-modal-intervention" role="dialog" aria-modal="true" aria-labelledby="interventionTitle">
     <div class="bg-white rounded-3xl p-6 sm:p-8 w-full max-w-md shadow-2xl border border-slate-200 transform scale-95 transition-transform duration-300 kg-modal-panel" id="interventionModalContent">
+        <button type="button" onclick="closeInterventionModal()" aria-label="Close" class="float-right text-slate-400 hover:text-red-500 text-2xl leading-none">×</button>
         <h3 class="text-xl sm:text-2xl font-extrabold text-slate-900 mb-2" id="interventionTitle">Adjust Score</h3>
         <p class="text-xs sm:text-sm text-slate-500 mb-5 sm:mb-6 pb-4 border-b border-slate-100 leading-relaxed font-medium" id="intervDesc">Modify employee KPI record.</p>
         
@@ -319,6 +321,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="/static/js/dialog.js"></script>
 <script src="/static/js/avatar-renderer.js"></script>
 <script src="/static/js/avatar.js"></script>
 <script src="/static/js/superadmin-kpi.js" defer></script>

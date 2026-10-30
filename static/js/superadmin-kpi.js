@@ -754,7 +754,7 @@ const API_BASE = "/api/v1/kpi";
     }
 
     async function deleteFormula(id) {
-        if(!(await window.appConfirm("Permanent deletion cannot be undone.", { title: "Delete KPI record?", confirmText: "Delete" }))) return;
+        if(!(await window.appConfirm("Permanent deletion cannot be undone.", { title: "Delete KPI record?", confirmText: "Delete", destructive: true }))) return;
         try {
             const res = await fetch(`${API_BASE}/formulas/${id}`, { method: "DELETE" });
             // 🛡️ AUTH FIX
@@ -809,6 +809,7 @@ const API_BASE = "/api/v1/kpi";
         modal.classList.remove("opacity-0");
         content.classList.remove("scale-95");
         content.classList.add("scale-100");
+        window.SharedDialog && window.SharedDialog.open(modal, closeFormulasModal);
 
         document.getElementById("fId").value = "";
         document.getElementById("fName").value = "";
@@ -896,6 +897,7 @@ const API_BASE = "/api/v1/kpi";
     }
 
     function closeFormulasModal() {
+        window.SharedDialog && window.SharedDialog.close(document.getElementById("formulasModal"));
         const modal = document.getElementById("formulasModal");
         const content = document.getElementById("formulasModalContent");
         if (!modal || !content) {
@@ -1500,6 +1502,7 @@ const API_BASE = "/api/v1/kpi";
         const content = document.getElementById("interventionModalContent");
 
         modal.classList.remove("hidden");
+        window.SharedDialog && window.SharedDialog.open(modal, closeInterventionModal);
         void modal.offsetWidth;
         modal.classList.remove("opacity-0");
         content.classList.remove("scale-95");
@@ -1522,6 +1525,7 @@ const API_BASE = "/api/v1/kpi";
     }
 
     function closeInterventionModal() {
+        window.SharedDialog && window.SharedDialog.close(document.getElementById("interventionModal"));
         const modal = document.getElementById("interventionModal");
         const content = document.getElementById("interventionModalContent");
         if (!modal || !content) {

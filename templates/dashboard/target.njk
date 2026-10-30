@@ -4,6 +4,7 @@
 {% block title %}Target Management - Enterprise KPI Platform{% endblock %}
 
 {% block content %}
+<link rel="stylesheet" href="/static/css/dialog.css">
 <style>
     @keyframes fadeInUp {
         from { opacity: 0; transform: translateY(10px); }
@@ -99,7 +100,7 @@
 </div>
 
 <!-- CREATE / EDIT TARGET MODAL -->
-<div id="targetModal" class="hidden fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm transition-opacity opacity-0 modal-transition p-4">
+<div id="targetModal" class="hidden fixed inset-0 z-[80] flex items-center justify-center app-modal-backdrop transition-opacity opacity-0 modal-transition p-4">
     <div class="bg-white rounded-3xl p-5 sm:p-8 w-full max-w-2xl shadow-2xl border border-gray-200 transform scale-95 transition-transform duration-300 max-h-[95vh] flex flex-col" id="targetModalContent">
         
         <div class="flex justify-between items-center mb-4 sm:mb-6 pb-4 border-b border-gray-100 shrink-0">
@@ -161,6 +162,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="/static/js/dialog.js"></script>
 <script>
     const API_TARGETS = "/api/v1/targets"; 
     const API_DEPARTMENTS = "/api/v1/departments/?is_active=true";
@@ -300,10 +302,12 @@
         document.getElementById("targetForm").reset();
         const modal = document.getElementById("targetModal");
         modal.classList.remove("hidden");
+        window.SharedDialog && window.SharedDialog.open(modal, closeTargetModal);
         setTimeout(() => modal.classList.remove("opacity-0"), 10);
     }
 
     function closeTargetModal() {
+        window.SharedDialog && window.SharedDialog.close(document.getElementById("targetModal"));
         const modal = document.getElementById("targetModal");
         modal.classList.add("opacity-0");
         setTimeout(() => modal.classList.add("hidden"), 300);
@@ -355,7 +359,7 @@
     }
 
     async function deleteTarget(id) {
-        if (!(await window.appConfirm("This action cannot be undone.", { title: "Delete target?", confirmText: "Delete" }))) return;
+        if (!(await window.appConfirm("This action cannot be undone.", { title: "Delete target?", confirmText: "Delete", destructive: true }))) return;
         
         try {
             const res = await fetch(`${API_TARGETS}/${id}`, { method: "DELETE" });
