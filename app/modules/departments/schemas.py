@@ -1,21 +1,22 @@
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class DepartmentCreate(BaseModel):
     name: str
-    priority: int = Field(default=0, ge=0, le=100)
 
 class DepartmentUpdate(BaseModel):
     name: str | None = None
-    priority: int | None = Field(default=None, ge=0, le=100)
 
 class DepartmentResponse(BaseModel):
     id: UUID
     name: str
     head_id: UUID | None = None
-    priority: int = 0
+    # Live count of current memberships (see repo.member_count_expr).
+    # The departments.priority COLUMN still exists in the DB but is
+    # dormant: it is no longer accepted, ordered by, or returned.
+    member_count: int = 0
     class Config:
         from_attributes = True
 
