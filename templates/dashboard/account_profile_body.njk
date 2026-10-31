@@ -2,6 +2,7 @@
 <link rel="stylesheet" href="/static/css/avatar.css">
 <link rel="stylesheet" href="/static/css/account.css?v=20261019-ui2">
 <link rel="stylesheet" href="/static/css/kp-profile.css?v=20261019-ui3">
+{% if account_profile.is_super_admin %}<link rel="stylesheet" href="/static/css/otp-input.css">{% endif %}
 {% from "components/avatar.njk" import avatar %}
 
 <div class="kp-page acct-page" id="accountProfilePage" data-local-password-enabled="{{ 'true' if account_profile.local_password_enabled else 'false' }}" data-super-admin="{{ 'true' if account_profile.is_super_admin else 'false' }}" data-app-timezone="{{ timezone or 'Asia/Yangon' }}">
@@ -202,6 +203,43 @@
             <ul class="kp-session-list" data-sessions-list hidden></ul>
             <p class="kp-helper acct-helper" data-sessions-empty hidden>No other active sessions.</p>
           </div>
+          {% if account_profile.is_super_admin %}
+          <div class="kp-mfa acct-mfa" id="saMfaCard">
+            <div class="kp-card-heading acct-card-heading">
+              <p class="kp-eyebrow acct-eyebrow">AUTHENTICATOR</p>
+              <h3 class="kp-card-title" id="acct-mfa-title">Authenticator</h3>
+            </div>
+            <p class="kp-helper acct-helper" data-mfa-status role="status">Checking authenticator status…</p>
+            <div data-mfa-start hidden>
+              <p class="kp-helper acct-helper">Add a second step to your Super Admin sign-ins: a 6-digit code from Google Authenticator, asked on every password sign-in.</p>
+              <div class="kp-form-actions acct-form-actions">
+                <button class="kp-button acct-button acct-button--primary" type="button" data-mfa-start-btn>Set up Authenticator</button>
+              </div>
+            </div>
+            <div data-mfa-setup hidden>
+              <p class="kp-helper acct-helper">Scan this QR code with Google Authenticator, or enter the key below manually.</p>
+              <div class="sa-mfa-qr" data-mfa-qr-wrap>
+                <canvas data-mfa-qr aria-label="Authenticator QR code"></canvas>
+                <p class="kp-helper acct-helper" data-mfa-qr-fallback hidden>QR code could not be drawn — enter the key below manually in Authenticator.</p>
+              </div>
+              <div class="sa-mfa-key-row">
+                <code class="sa-mfa-key" data-mfa-key></code>
+                <button class="kp-button acct-button acct-button--secondary" type="button" data-mfa-copy>Copy key</button>
+              </div>
+              <p class="kp-helper acct-helper">Then enter the current 6-digit code from the app:</p>
+              <div class="otp-boxes sa-mfa-otp" data-mfa-otp role="group" aria-label="Authenticator code"></div>
+              <p class="kp-field-error acct-field-error sa-mfa-error" data-mfa-error role="alert" hidden></p>
+              <div class="kp-form-actions acct-form-actions">
+                <button class="kp-button acct-button acct-button--primary" type="button" data-mfa-confirm>Confirm</button>
+                <button class="kp-button acct-button acct-button--secondary" type="button" data-mfa-cancel>Cancel</button>
+              </div>
+            </div>
+            <div data-mfa-enrolled hidden>
+              <p class="kp-helper acct-helper">Authenticator is on for your Super Admin sign-ins. Every password sign-in asks for the current code from your authenticator app.</p>
+              <p class="kp-helper acct-helper">Turning it off needs another Super Admin's confirmation and is handled separately.</p>
+            </div>
+          </div>
+          {% endif %}
         </section>
 
         {% if account_profile.show_connected_accounts %}
@@ -249,3 +287,8 @@
 <script src="/static/js/account-profile.js?v=20261021-profile1" defer></script>
 <script src="/static/js/kp-profile.js?v=20261019-ui2" defer></script>
 <script src="/static/js/account-sessions.js" defer></script>
+{% if account_profile.is_super_admin %}
+<script src="/static/js/otp-input.js" defer></script>
+<script src="/static/vendor/qrcode-generator.js" defer></script>
+<script src="/static/js/sa-mfa-setup.js" defer></script>
+{% endif %}
