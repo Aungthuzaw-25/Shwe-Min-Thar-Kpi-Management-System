@@ -20,21 +20,143 @@
 
         body {
             font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-            background:
-                radial-gradient(900px 620px at 88% -6%, rgba(255, 255, 255, .98), rgba(255, 255, 255, 0) 62%),
-                radial-gradient(1000px 760px at -6% 108%, rgba(183, 208, 229, .3), rgba(183, 208, 229, 0) 62%),
-                linear-gradient(155deg, #e9f1f6 0%, #fafcfd 52%, #eaf2f7 100%);
-            background-attachment: fixed;
+            background: #450a0a;
+            height: 100vh;
+            height: 100dvh;
+            overflow: hidden;
         }
 
-        .bg-kpi-cream { background-color: transparent; }
+        /* One screen, never taller: the animated page fills the viewport
+           and never scrolls. Brand/form columns scroll internally only
+           when the screen is too short for their content. */
+        .la-page {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            height: 100dvh;
+            position: relative;
+            overflow: hidden;
+            background: linear-gradient(135deg, #450a0a 0%, #7f1d1d 55%, #991b1b 100%);
+        }
+        .la-header {
+            position: relative;
+            z-index: 1;
+            flex-shrink: 0;
+            padding: 0.8rem 0 0 1.25rem;
+            display: flex;
+        }
+        .la-logo { display: flex; align-items: center; gap: 0.75rem; }
+        .la-logo-mark {
+            width: 2.75rem;
+            height: 2.75rem;
+            border-radius: 0.75rem;
+            background: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 4px;
+            flex-shrink: 0;
+        }
+        .la-logo-mark img { width: 100%; height: 100%; border-radius: 0.5rem; object-fit: cover; display: block; }
+        .la-logo-name { font-size: 1.35rem; font-weight: 700; letter-spacing: 0.02em; line-height: 1.1; color: #fff; text-shadow: 0 1px 12px rgba(0, 0, 0, 0.45); }
+        .la-logo-tag { font-size: 0.6rem; letter-spacing: 0.22em; text-transform: uppercase; color: #fecaca; }
+
+        /* Page-level waves BEHIND everything (z-index 0, no pointer events). */
+        .la-waves, .la-lum {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            pointer-events: none;
+        }
+        .la-waves .ribbon { animation: laWaveDrift 14s ease-in-out infinite alternate; transform-origin: center; }
+        .la-waves .ribbon.r2 { animation-duration: 18s; animation-delay: -4s; }
+        .la-waves .ribbon.r3 { animation-duration: 11s; animation-delay: -2s; }
+        .la-waves .ribbon.r4 { animation-duration: 22s; animation-delay: -8s; }
+        .la-waves .ribbon.r5 { animation-duration: 9s; animation-delay: -1s; }
+        .la-waves .ribbon.r6 { animation-duration: 26s; animation-delay: -12s; }
+        @keyframes laWaveDrift {
+            from { transform: translate(0, 0) scale(1) rotate(0deg); }
+            to { transform: translate(-4%, 3%) scale(1.12) rotate(-3deg); }
+        }
+        .la-lum .lum { animation: laLumDrift 16s ease-in-out infinite alternate; transform-origin: center; }
+        .la-lum .lum.l2 { animation-duration: 12s; animation-delay: -3s; }
+        .la-lum .lum.l3 { animation-duration: 20s; animation-delay: -6s; }
+        .la-lum .lum.l4 { animation-duration: 14s; animation-delay: -9s; }
+        @keyframes laLumDrift {
+            from { transform: translateX(-2%) translateY(0); }
+            to { transform: translateX(2%) translateY(-2%); }
+        }
+
+        .la-main { display: flex; flex-direction: column; flex: 1; min-height: 0; position: relative; z-index: 1; overflow-y: auto; }
+/* Mobile/tablet: the main column itself scrolls (hero -> form -> features).
+   Children size to content so there is exactly one scroll, not nested ones. */
+.la-main > section, .la-main > .la-form-wrap { flex: none; }
+        /* Hero and features are separate sections so mobile/tablet DOM order
+           is hero -> form -> features; desktop grid puts them back into
+           the left column (see the 1024px rules). */
+        .la-hero {
+            position: relative;
+            color: #fff;
+            background: none;
+            padding: 2rem 1.25rem 0;
+        }
+        .la-features-wrap {
+            position: relative;
+            color: #fff;
+            background: none;
+            padding: 0 1.25rem 2rem;
+        }
+        .la-hero-title {
+            margin: 0;
+            font-weight: 700;
+            line-height: 1.15;
+            letter-spacing: -0.01em;
+            font-size: 2.4rem;
+        }
+        .la-hero-title .line1 { display: block; color: #fff; font-weight: 500; text-shadow: 0 2px 24px rgba(0, 0, 0, 0.35); }
+        .la-hero-title .line2 { display: block; color: #fff; text-shadow: 0 2px 24px rgba(0, 0, 0, 0.35); }
+        .la-hero-sub { margin: 1rem 0 0; font-size: 0.95rem; line-height: 1.6; color: #fee2e2; }
+        .la-features { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; margin-top: 2rem; }
+        .la-feature { text-align: center; }
+        .la-feature-icon {
+            width: 2.75rem;
+            height: 2.75rem;
+            margin: 0 auto 0.5rem;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.12);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .la-feature-icon svg { width: 1.25rem; height: 1.25rem; stroke: #fff; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+        .la-feature h4 { margin: 0 0 0.15rem; font-size: 0.8rem; color: #fff; text-shadow: 0 1px 12px rgba(0, 0, 0, 0.45); }
+        .la-feature p { margin: 0; font-size: 0.7rem; color: #fecaca; line-height: 1.4; text-shadow: 0 1px 10px rgba(0, 0, 0, 0.45); }
+
+        .la-form-wrap {
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            padding: 1.5rem 1rem;
+            position: relative;
+            z-index: 1;
+            overflow-y: visible;
+        }
+        /* Auto margins (not align-items: center): the card stays centered
+           when it fits, but when it is taller than the column it starts
+           at the top and scrolls from the top — centered flex items clip
+           their unreachable top on overflow. */
+        .la-form-wrap .login-card { margin-top: auto; margin-bottom: auto; }
+
         .login-card {
             animation: cardEnter 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
             border: 1px solid #dbe2ea;
-            box-shadow: 0 8px 24px rgba(23, 33, 43, .08);
+            box-shadow: 0 8px 24px rgba(23, 33, 43, 0.08);
         }
         .login-input {
             min-height: 3rem;
+            background: #fff;
             color: var(--kpi-ink);
             transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
         }
@@ -63,25 +185,90 @@
             filter: brightness(1.05);
         }
         .login-submit:disabled { cursor: wait; opacity: 0.75; }
-        .brand-panel { isolation: isolate; }
-        .brand-panel::before,
-        .brand-panel::after {
-            content: "";
-            position: absolute;
-            border-radius: 999px;
-            background: rgba(255, 255, 255, 0.05);
-            pointer-events: none;
-            z-index: -1;
+
+        /* Full-width bottom ticker: transparent, no board, no border. */
+        .la-ticker {
+            position: relative;
+            z-index: 1;
+            flex-shrink: 0;
+            overflow: hidden;
+            padding: 0.6rem 0 1rem;
         }
-        .brand-panel::before { width: 28rem; height: 28rem; right: -12rem; top: -10rem; }
-        .brand-panel::after { width: 20rem; height: 20rem; left: -10rem; bottom: -8rem; }
+        .la-ticker .la-track {
+            display: flex;
+            width: max-content;
+            white-space: nowrap;
+            animation: laTickerScroll 18s linear infinite;
+        }
+        .la-ticker .la-track span {
+            font-family: "Courier New", ui-monospace, monospace;
+            font-size: 1rem;
+            font-weight: 700;
+            letter-spacing: 0.3em;
+            color: #fecaca;
+            text-shadow: 0 0 10px rgba(254, 202, 202, 0.65);
+            padding-right: 1rem;
+        }
+        @keyframes laTickerScroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+
         @keyframes cardEnter {
             from { opacity: 0; transform: translateY(14px) scale(0.98); }
             to { opacity: 1; transform: translateY(0) scale(1); }
         }
         @media (max-width: 640px) {
-            .login-card { border-radius: 1.5rem; padding: 1.5rem; }
             .toast-container { top: 0.75rem; right: 0.75rem; left: 0.75rem; max-width: none; }
+            /* Compact phone banner so more of the form fits first paint. */
+            .la-hero { padding: 1.5rem 1.25rem 0; }
+            .la-features-wrap { padding: 0 1.25rem 1.5rem; }
+            .la-hero-title { font-size: 2rem; }
+            .la-features { margin-top: 1.25rem; }
+            .la-form-wrap { padding: 1rem; }
+            .la-form-wrap .login-card { padding: 1.25rem; }
+        }
+        @media (min-width: 640px) {
+            .la-hero { padding: 2.5rem 2rem 0; }
+            .la-features-wrap { padding: 0 2rem 2rem; }
+            .la-hero-title { font-size: 3.4rem; }
+            .la-features { grid-template-columns: repeat(4, 1fr); }
+            .la-form-wrap { padding: 2rem; }
+        }
+        @media (min-width: 1024px) {
+            /* Desktop: grid puts hero + features back into the left column
+               (hero row 1, features row 2, pinned to the bottom like the
+               old space-between brand panel) and the form spans both rows. */
+            .la-main {
+                display: grid;
+                grid-template-columns: 50% 50%;
+                grid-template-rows: auto 1fr;
+                grid-template-areas: "hero form" "features form";
+                overflow: visible;
+            }
+            .la-hero { grid-area: hero; padding: 3rem 3rem 0; }
+            .la-hero-title { font-size: 4.2rem; }
+            .la-hero-sub { font-size: 1.1rem; }
+            .la-features-wrap { grid-area: features; align-self: end; padding: 0 3rem 3rem; }
+            .la-form-wrap { grid-area: form; padding: 2rem; min-height: 0; overflow-y: auto; }
+        }
+        @media (min-width: 1280px) {
+            .la-hero-title { font-size: 5rem; }
+            .la-hero { padding: 3.5rem 3.5rem 0; }
+            .la-features-wrap { padding: 0 3.5rem 3.5rem; }
+        }
+        /* Short screens: shrink so everything still fits one screen. */
+        @media (min-width: 1024px) and (max-height: 780px) {
+            .la-hero { padding: 1.5rem 2.5rem 0; }
+            .la-features-wrap { padding: 0 2.5rem 1.5rem; }
+            .la-hero-title { font-size: 3rem; }
+            .la-hero-sub { margin-top: 0.5rem; font-size: 1rem; }
+            .la-features { margin-top: 1.25rem; }
+        }
+        @media (max-width: 1023px) and (max-height: 780px) {
+            .la-header { padding-top: 0.5rem; }
+            .la-hero { padding: 1.25rem 1.25rem 0; }
+            .la-features-wrap { padding: 0 1.25rem 1.25rem; }
+            .la-hero-title { font-size: 2rem; }
+            .la-features { margin-top: 1rem; }
+            .la-form-wrap { padding: 1rem; }
         }
         @media (prefers-reduced-motion: reduce) {
             *, *::before, *::after {
@@ -91,7 +278,7 @@
                 transition-duration: 0.01ms !important;
             }
         }
-        
+
         /* Toast Animation CSS */
         @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
         @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
@@ -102,7 +289,7 @@
     <link rel="stylesheet" href="/static/css/otp-input.css">
     <link rel="stylesheet" href="/static/css/dialog.css">
 </head>
-<body class="flex flex-col min-h-screen antialiased bg-kpi-cream m-0 p-0 relative">
+<body class="antialiased m-0 p-0 relative">
     <!-- Global loading overlay: frosted glass + ring (design-system.css .app-loader) -->
     <div class="app-loader app-loader--brand" aria-hidden="true">
         <div class="app-loader__card">
@@ -116,68 +303,168 @@
     <!-- GLOBAL TOAST NOTIFICATIONS CONTAINER -->
     <div id="toastContainer" class="app-toast-container"></div>
 
-    <!-- MAIN CONTENT AREA -->
-    <main class="flex flex-1 w-full min-h-screen">
-        
-        <!-- LEFT PANEL (Branding) -->
-        <div class="brand-panel hidden lg:flex lg:w-1/2 bg-red-800 relative overflow-hidden flex-col justify-between p-8 xl:p-12 text-white bg-gradient-to-br from-red-900 to-red-700">
-            
-            <!-- Logo -->
-            <div class="flex items-center space-x-3 z-10 relative min-w-0">
-                <span class="bg-white rounded-xl p-1 shadow-sm shrink-0"><img src="{{ brand.logo_url or "/static/image/smt-logo.jpg" }}" alt="{{ brand.company_name or "Shwe Min Thar" }} logo" class="w-9 h-9 xl:w-11 xl:h-11 rounded-lg object-cover"></span>
-                <div class="min-w-0">
-                    <h1 class="text-2xl xl:text-3xl font-bold tracking-wide leading-tight line-clamp-2 break-words">{{ brand.company_name or "Shwe Min Thar" }}</h1>
-                    {% if brand.company_tagline %}<p class="text-[10px] xl:text-xs text-red-200 uppercase tracking-widest line-clamp-2 break-words">{{ brand.company_tagline }}</p>{% endif %}
-                </div>
-            </div>
-
-            <!-- Main Welcome Text -->
-            <div class="z-10 relative my-auto">
-                <h2 class="text-4xl xl:text-5xl font-bold leading-tight mb-4">
-                    Welcome Back!<br>
-                    Sign in to your <span class="text-red-300 break-words">{{ brand.company_name or "Shwe Min Thar" }}</span><br>
-                    Dashboard
-                </h2>
-                <p class="text-base xl:text-lg text-red-100 mb-1">Track performance. Measure progress.</p>
-                <p class="text-base xl:text-lg text-red-100">Achieve success.</p>
-            </div>
-
-            <!-- 4 Feature Icons at Bottom -->
-            <div class="grid grid-cols-4 gap-2 xl:gap-4 z-10 relative">
-                <div class="flex flex-col items-center text-center">
-                    <div class="bg-white bg-opacity-10 p-2 xl:p-3 rounded-full mb-2">
-                        <svg class="w-4 h-4 xl:w-5 xl:h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
-                    </div>
-                    <h4 class="font-semibold text-[10px] xl:text-xs mb-1">Track KPIs</h4>
-                    <p class="text-[8px] xl:text-[10px] text-red-200">Monitor metrics in real time</p>
-                </div>
-                <div class="flex flex-col items-center text-center">
-                    <div class="bg-white bg-opacity-10 p-2 xl:p-3 rounded-full mb-2">
-                        <svg class="w-4 h-4 xl:w-5 xl:h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
-                    </div>
-                    <h4 class="font-semibold text-[10px] xl:text-xs mb-1">Visualize Data</h4>
-                    <p class="text-[8px] xl:text-[10px] text-red-200">Insightful charts & graphs</p>
-                </div>
-                <div class="flex flex-col items-center text-center">
-                    <div class="bg-white bg-opacity-10 p-2 xl:p-3 rounded-full mb-2">
-                        <svg class="w-4 h-4 xl:w-5 xl:h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
-                    </div>
-                    <h4 class="font-semibold text-[10px] xl:text-xs mb-1">Generate Reports</h4>
-                    <p class="text-[8px] xl:text-[10px] text-red-200">Export performance reports</p>
-                </div>
-                <div class="flex flex-col items-center text-center">
-                    <div class="bg-white bg-opacity-10 p-2 xl:p-3 rounded-full mb-2">
-                        <svg class="w-4 h-4 xl:w-5 xl:h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
-                    </div>
-                    <h4 class="font-semibold text-[10px] xl:text-xs mb-1">Secure & Reliable</h4>
-                    <p class="text-[8px] xl:text-[10px] text-red-200">Enterprise security</p>
-                </div>
-            </div>
+    <div class="la-page">
+    <header class="la-header">
+        <div class="la-logo">
+            <span class="la-logo-mark"><img src="{{ brand.logo_url or "/static/image/smt-logo.jpg" }}" alt="{{ brand.company_name or "Shwe Min Thar" }} logo"></span>
+            <span>
+                <span class="la-logo-name">{{ brand.company_name or "Shwe Min Thar" }}</span><br>
+                <span class="la-logo-tag">{{ brand.company_tagline or "KPI MANAGEMENT SYSTEM" }}</span>
+            </span>
         </div>
-
-        <!-- RIGHT PANEL (Login Form) -->
-        <div class="w-full lg:w-1/2 flex flex-col items-center justify-center bg-kpi-cream p-4 sm:p-6 lg:p-8">
-            
+    </header>
+    <svg class="la-waves" viewBox="0 0 800 700" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+      <defs>
+        <linearGradient id="gDeep" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#C46F52" stop-opacity=".85"/>
+          <stop offset="1" stop-color="#A2533D" stop-opacity=".15"/>
+        </linearGradient>
+        <linearGradient id="gBright" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#FAE8D6" stop-opacity=".9"/>
+          <stop offset=".5" stop-color="#D98D6F" stop-opacity=".55"/>
+          <stop offset="1" stop-color="#A2533D" stop-opacity=".1"/>
+        </linearGradient>
+        <linearGradient id="gSheen" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#FFF4E6" stop-opacity=".95"/>
+          <stop offset="1" stop-color="#FAE8D6" stop-opacity=".05"/>
+        </linearGradient>
+        <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur stdDeviation="14"/>
+        </filter>
+      </defs>
+      <g class="ribbon r1" opacity=".9">
+        <path fill="url(#gDeep)" filter="url(#soft)"
+          d="M-100,260 C150,80 380,420 620,220 C720,130 820,180 900,120 L900,700 L-100,700 Z">
+          <animate attributeName="d" dur="13s" repeatCount="indefinite"
+            values="M-100,260 C150,80 380,420 620,220 C720,130 820,180 900,120 L900,700 L-100,700 Z;
+                    M-100,300 C120,180 420,320 600,300 C720,290 800,240 900,200 L900,700 L-100,700 Z;
+                    M-100,260 C150,80 380,420 620,220 C720,130 820,180 900,120 L900,700 L-100,700 Z"/>
+        </path>
+      </g>
+      <g class="ribbon r2" opacity=".85">
+        <path fill="url(#gBright)" filter="url(#soft)"
+          d="M-100,420 C180,240 420,560 660,360 C760,280 840,320 900,260 L900,700 L-100,700 Z">
+          <animate attributeName="d" dur="17s" repeatCount="indefinite"
+            values="M-100,420 C180,240 420,560 660,360 C760,280 840,320 900,260 L900,700 L-100,700 Z;
+                    M-100,360 C200,340 400,480 640,440 C740,410 830,380 900,340 L900,700 L-100,700 Z;
+                    M-100,420 C180,240 420,560 660,360 C760,280 840,320 900,260 L900,700 L-100,700 Z"/>
+        </path>
+      </g>
+      <g class="ribbon r3" opacity=".8">
+        <path fill="none" stroke="url(#gSheen)" stroke-width="10" stroke-linecap="round"
+          d="M-100,180 C200,40 420,320 640,140 C740,60 830,90 900,40">
+          <animate attributeName="d" dur="11s" repeatCount="indefinite"
+            values="M-100,180 C200,40 420,320 640,140 C740,60 830,90 900,40;
+                    M-100,230 C180,120 440,240 620,210 C730,180 820,150 900,110;
+                    M-100,180 C200,40 420,320 640,140 C740,60 830,90 900,40"/>
+        </path>
+      </g>
+      <g class="ribbon r4" opacity=".5">
+        <path fill="none" stroke="#FAE8D6" stroke-opacity=".6" stroke-width="3" stroke-linecap="round"
+          d="M-100,520 C200,380 460,620 680,460 C770,390 840,420 900,380">
+          <animate attributeName="d" dur="21s" repeatCount="indefinite"
+            values="M-100,520 C200,380 460,620 680,460 C770,390 840,420 900,380;
+                    M-100,470 C220,460 420,540 660,520 C750,510 830,470 900,440;
+                    M-100,520 C200,380 460,620 680,460 C770,390 840,420 900,380"/>
+        </path>
+      </g>
+      <!-- Extra effect 1: two more ribbons, brighter + deeper, faster + slower -->
+      <g class="ribbon r5" opacity=".95">
+        <path fill="none" stroke="#C46F52" stroke-opacity=".8" stroke-width="22" stroke-linecap="round" filter="url(#soft)"
+          d="M-100,90 C180,220 420,20 640,140 C740,200 830,160 900,100">
+          <animate attributeName="d" dur="9s" repeatCount="indefinite"
+            values="M-100,90 C180,220 420,20 640,140 C740,200 830,160 900,100;
+                    M-100,160 C200,40 400,220 620,80 C730,20 820,60 900,20;
+                    M-100,90 C180,220 420,20 640,140 C740,200 830,160 900,100"/>
+        </path>
+      </g>
+      <g class="ribbon r6" opacity=".7">
+        <path fill="url(#gDeep)" filter="url(#soft)"
+          d="M-100,580 C160,460 420,660 660,540 C760,480 840,520 900,470 L900,700 L-100,700 Z">
+          <animate attributeName="d" dur="26s" repeatCount="indefinite"
+            values="M-100,580 C160,460 420,660 660,540 C760,480 840,520 900,470 L900,700 L-100,700 Z;
+                    M-100,620 C200,560 400,620 640,600 C740,590 830,560 900,540 L900,700 L-100,700 Z;
+                    M-100,580 C160,460 420,660 660,540 C760,480 840,520 900,470 L900,700 L-100,700 Z"/>
+        </path>
+      </g>
+    </svg>
+    <svg class="la-lum" viewBox="0 0 800 700" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+      <g class="lum l1">
+        <path fill="none" stroke="#A2533D" stroke-width="16" stroke-linecap="round" opacity=".35" filter="url(#soft)"
+          d="M-50,220 C150,120 350,320 550,200 C650,140 750,180 850,140">
+          <animate attributeName="d" dur="16s" repeatCount="indefinite"
+            values="M-50,220 C150,120 350,320 550,200 C650,140 750,180 850,140;
+                    M-50,180 C150,220 350,140 550,240 C650,290 750,220 850,200;
+                    M-50,220 C150,120 350,320 550,200 C650,140 750,180 850,140"/>
+        </path>
+        <path fill="none" stroke="#D98D6F" stroke-width="3" stroke-linecap="round" opacity=".95"
+          d="M-50,220 C150,120 350,320 550,200 C650,140 750,180 850,140">
+          <animate attributeName="d" dur="16s" repeatCount="indefinite"
+            values="M-50,220 C150,120 350,320 550,200 C650,140 750,180 850,140;
+                    M-50,180 C150,220 350,140 550,240 C650,290 750,220 850,200;
+                    M-50,220 C150,120 350,320 550,200 C650,140 750,180 850,140"/>
+        </path>
+      </g>
+      <g class="lum l2">
+        <path fill="none" stroke="#C46F52" stroke-width="14" stroke-linecap="round" opacity=".3" filter="url(#soft)"
+          d="M-50,380 C180,280 400,480 600,360 C700,300 780,340 850,300">
+          <animate attributeName="d" dur="12s" repeatCount="indefinite"
+            values="M-50,380 C180,280 400,480 600,360 C700,300 780,340 850,300;
+                    M-50,330 C180,400 400,300 600,420 C700,480 780,400 850,360;
+                    M-50,380 C180,280 400,480 600,360 C700,300 780,340 850,300"/>
+        </path>
+        <path fill="none" stroke="#FAE8D6" stroke-width="2.5" stroke-linecap="round" opacity=".85"
+          d="M-50,380 C180,280 400,480 600,360 C700,300 780,340 850,300">
+          <animate attributeName="d" dur="12s" repeatCount="indefinite"
+            values="M-50,380 C180,280 400,480 600,360 C700,300 780,340 850,300;
+                    M-50,330 C180,400 400,300 600,420 C700,480 780,400 850,360;
+                    M-50,380 C180,280 400,480 600,360 C700,300 780,340 850,300"/>
+        </path>
+      </g>
+      <g class="lum l3">
+        <path fill="none" stroke="#D98D6F" stroke-width="18" stroke-linecap="round" opacity=".3" filter="url(#soft)"
+          d="M-50,520 C200,420 420,620 620,500 C720,440 790,480 850,440">
+          <animate attributeName="d" dur="20s" repeatCount="indefinite"
+            values="M-50,520 C200,420 420,620 620,500 C720,440 790,480 850,440;
+                    M-50,470 C200,540 420,460 620,560 C720,610 790,520 850,500;
+                    M-50,520 C200,420 420,620 620,500 C720,440 790,480 850,440"/>
+        </path>
+        <path fill="none" stroke="#FFF4E6" stroke-width="3" stroke-linecap="round" opacity=".9"
+          d="M-50,520 C200,420 420,620 620,500 C720,440 790,480 850,440">
+          <animate attributeName="d" dur="20s" repeatCount="indefinite"
+            values="M-50,520 C200,420 420,620 620,500 C720,440 790,480 850,440;
+                    M-50,470 C200,540 420,460 620,560 C720,610 790,520 850,500;
+                    M-50,520 C200,420 420,620 620,500 C720,440 790,480 850,440"/>
+        </path>
+      </g>
+      <g class="lum l4">
+        <path fill="none" stroke="#C46F52" stroke-width="10" stroke-linecap="round" opacity=".35" filter="url(#soft)"
+          d="M-50,80 C170,180 380,40 580,120 C680,160 770,110 850,90">
+          <animate attributeName="d" dur="14s" repeatCount="indefinite"
+            values="M-50,80 C170,180 380,40 580,120 C680,160 770,110 850,90;
+                    M-50,130 C170,60 380,170 580,80 C680,40 770,90 850,130;
+                    M-50,80 C170,180 380,40 580,120 C680,160 770,110 850,90"/>
+        </path>
+        <path fill="none" stroke="#D98D6F" stroke-width="2" stroke-linecap="round" opacity=".8"
+          d="M-50,80 C170,180 380,40 580,120 C680,160 770,110 850,90">
+          <animate attributeName="d" dur="14s" repeatCount="indefinite"
+            values="M-50,80 C170,180 380,40 580,120 C680,160 770,110 850,90;
+                    M-50,130 C170,60 380,170 580,80 C680,40 770,90 850,130;
+                    M-50,80 C170,180 380,40 580,120 C680,160 770,110 850,90"/>
+        </path>
+      </g>
+    </svg>
+    <div class="la-main">
+        <section class="la-hero" aria-label="About Shwe Min Thar KPI">
+                <div>
+                    <h1 class="la-hero-title">
+                        <span class="line1">Welcome!</span>
+                        <span class="line2">Sign in to your<br>Dashboard</span>
+                    </h1>
+                    <p class="la-hero-sub">Track performance. Measure progress.<br>Achieve success.</p>
+                </div>
+        </section>
+        <div class="la-form-wrap">
             <!-- Login Card -->
             <div class="login-card bg-white rounded-3xl shadow-xl p-6 sm:p-8 md:p-10 w-full max-w-md border border-gray-100">
                 
@@ -296,18 +583,38 @@
                 {% endif %}
             </div>
         </div>
-    </main>
-
-    <!-- GLOBAL FOOTER -->
-    <footer class="w-full bg-white py-3 border-t border-gray-200 flex items-center justify-center space-x-2 text-xs sm:text-sm text-gray-500 flex-wrap px-4 text-center">
-        <svg class="h-3 w-3 sm:h-4 sm:w-4 text-red-800 hidden sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
-        </svg>
-        <span class="font-medium w-full sm:w-auto">Secure Shwe Min Thar</span>
-        <span class="text-gray-300 hidden sm:inline">|</span>
-        <span class="w-full sm:w-auto">© 2026 KPI System. All rights reserved.</span>
-    </footer>
-
+        <section class="la-features-wrap" aria-label="Features">
+                <div class="la-features">
+                    <div class="la-feature">
+                        <div class="la-feature-icon"><svg viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg></div>
+                        <h4>Track KPIs</h4>
+                        <p>Monitor metrics in real time</p>
+                    </div>
+                    <div class="la-feature">
+                        <div class="la-feature-icon"><svg viewBox="0 0 24 24"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg></div>
+                        <h4>Visualize Data</h4>
+                        <p>Insightful charts &amp; graphs</p>
+                    </div>
+                    <div class="la-feature">
+                        <div class="la-feature-icon"><svg viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg></div>
+                        <h4>Generate Reports</h4>
+                        <p>Export performance reports</p>
+                    </div>
+                    <div class="la-feature">
+                        <div class="la-feature-icon"><svg viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg></div>
+                        <h4>Secure &amp; Reliable</h4>
+                        <p>Enterprise security</p>
+                    </div>
+                </div>
+        </section>
+    </div>
+    <div class="la-ticker" aria-label="Secure Kpi Platform">
+        <div class="la-track">
+            <span>SECURE KPI PLATFORM &#8226; SECURE KPI PLATFORM &#8226; SECURE KPI PLATFORM &#8226; SECURE KPI PLATFORM &#8226; SECURE KPI PLATFORM &#8226; SECURE KPI PLATFORM &#8226; SECURE KPI PLATFORM &#8226; SECURE KPI PLATFORM &#8226; &nbsp;</span>
+            <span aria-hidden="true">SECURE KPI PLATFORM &#8226; SECURE KPI PLATFORM &#8226; SECURE KPI PLATFORM &#8226; SECURE KPI PLATFORM &#8226; SECURE KPI PLATFORM &#8226; SECURE KPI PLATFORM &#8226; SECURE KPI PLATFORM &#8226; SECURE KPI PLATFORM &#8226; &nbsp;</span>
+        </div>
+    </div>
+    </div>
     <!-- FORGOT PASSWORD MODAL -->
     <div id="forgotPasswordModal" class="fixed inset-0 app-modal-backdrop z-50 hidden flex items-center justify-center p-4">
         <div class="bg-white rounded-2xl max-w-md w-full p-6 sm:p-8 relative shadow-2xl">
