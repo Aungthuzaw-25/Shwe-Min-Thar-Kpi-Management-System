@@ -372,10 +372,15 @@ def _resolve_category_directions(categories, stored_categories) -> None:
     - A category whose name matches a stored category keeps the
       stored direction (so re-saving an old formula never silently
       changes its scores).
+    - A stored-name match with NO direction (legacy category, or
+      a stored direction outside HIGHER/LOWER, which counts as
+      absent) stays direction-less: the engine infers at
+      calculation time, so a builder re-save never stamps the
+      displayed inference onto the stored row (strict rule,
+      Zenn 2026-10-31).
     - A genuinely new TARGET category defaults to HIGHER (same
       default as create).
     - New DEDUCTION categories keep no direction (ignored anyway).
-    Stored directions outside HIGHER/LOWER are treated as absent.
     """
     stored_by_name = {
         standardize_key(cat.get("name", "")): cat
@@ -385,11 +390,16 @@ def _resolve_category_directions(categories, stored_categories) -> None:
         if cat.direction is not None:
             continue
         stored = stored_by_name.get(standardize_key(cat.name))
-        stored_direction = (stored or {}).get("direction")
+        if stored is None:
+            # Genuinely new category: same default as create.
+            if cat.evaluation_type == "TARGET":
+                cat.direction = "HIGHER"
+            continue
+        stored_direction = stored.get("direction")
         if stored_direction in ("HIGHER", "LOWER"):
             cat.direction = stored_direction
-        elif cat.evaluation_type == "TARGET":
-            cat.direction = "HIGHER"
+        # Else: stored category without a (valid) direction stays
+        # None — do NOT default it to HIGHER.
 
 
 async def _create_new_formula_version(

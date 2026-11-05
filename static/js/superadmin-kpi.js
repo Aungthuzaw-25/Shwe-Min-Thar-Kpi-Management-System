@@ -1047,7 +1047,10 @@ const API_BASE = "/api/v1/kpi";
             : `<p class="kg-category-hint">Excel ခေါင်းစဉ်နဲ့ အတိအကျ တူရမယ် (အကြီး/အသေး + space ကွာတာ ရတယ်)</p>`;
         // Direction selector: TARGET only (DEDUCTION ignores direction).
         // data-original holds the stored direction, or "" when the
-        // category has none (legacy or brand-new).
+        // category has none (legacy or brand-new). data-loaded marks
+        // categories rendered from a saved formula, so save can tell a
+        // legacy direction-less category (omit) from a brand-new one
+        // (send the displayed direction).
         const storedDirection = catData && (catData.direction === 'HIGHER' || catData.direction === 'LOWER')
             ? catData.direction
             : '';
@@ -1055,7 +1058,7 @@ const API_BASE = "/api/v1/kpi";
         const directionFieldHtml = `
             <div class="kg-direction-field mb-5 sm:mb-7 ${typeVal === 'TARGET' ? '' : 'hidden'}">
                 <label for="cat_direction_${cId}" class="block text-[10px] sm:text-xs font-black text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-widest">Target direction</label>
-                <select id="cat_direction_${cId}" data-original="${storedDirection}" class="cat-direction w-full bg-slate-50 border border-slate-200 p-3 sm:p-4 rounded-xl text-xs sm:text-sm font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none transition-all shadow-inner cursor-pointer appearance-none kg-control">
+                <select id="cat_direction_${cId}" data-original="${storedDirection}" data-loaded="${catData ? '1' : '0'}" class="cat-direction w-full bg-slate-50 border border-slate-200 p-3 sm:p-4 rounded-xl text-xs sm:text-sm font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:outline-none transition-all shadow-inner cursor-pointer appearance-none kg-control">
                     <option value="HIGHER" ${directionVal === 'HIGHER' ? 'selected' : ''}>Higher is better</option>
                     <option value="LOWER" ${directionVal === 'LOWER' ? 'selected' : ''}>Lower is better</option>
                 </select>
@@ -1327,12 +1330,16 @@ const API_BASE = "/api/v1/kpi";
                 const dirSelect = cat.querySelector(".cat-direction");
                 const dirValue = dirSelect ? dirSelect.value : 'HIGHER';
                 const dirOriginal = dirSelect ? (dirSelect.dataset.original || '') : '';
-                // Omit only when a stored direction exists and the user
-                // left it unchanged: the backend restores it by name.
-                // Otherwise send the displayed direction. Omitting an
-                // old legacy category would let the backend default it
-                // to HIGHER on update and flip COUNT-inferred scores.
-                if (!(dirOriginal && dirValue === dirOriginal)) {
+                const dirLoaded = dirSelect ? dirSelect.dataset.loaded === '1' : false;
+                // Send a direction only when it is a real choice: a stored
+                // direction the user changed, or a brand-new category's
+                // displayed direction. Omit when a stored direction is
+                // unchanged (backend restores it by name) and when a
+                // LOADED category never had one: a legacy category stays
+                // direction-less through a re-save and the engine keeps
+                // inferring (paired backend fix keeps None for stored
+                // names without a direction, instead of defaulting HIGHER).
+                if ((dirOriginal && dirValue !== dirOriginal) || (!dirOriginal && !dirLoaded)) {
                     categoryPayload.direction = dirValue;
                 }
             }
