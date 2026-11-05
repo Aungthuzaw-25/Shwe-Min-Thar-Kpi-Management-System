@@ -6,23 +6,11 @@ export function normalizeUserLevel(value) {
 
 import { loadPublicBrand } from "./branding.js";
 
-export async function loadBaseContext(request, backend) {
-  // /auth/me is read fresh on every load: it is the permissions_version
-  // probe. If the version changed, the backend client drops the whole
-  // cached context for this session before the reads below continue, so
-  // accounts/permissions can never come from the old permission set.
-  // Accounts runs in parallel with the probe: its only payload is the
-  // account email, which permission changes never alter — and the probe's
-  // eviction still removes its cached entry, so the next load re-reads
-  // it. (The permission-bearing read, /permissions/me, is the one that
-  // must wait for the probe — see loadPageContext.)
-  const [user, accountData] = await Promise.all([
-    backend.get(request, "/api/v1/auth/me", { fresh: true }),
-    backend.get(request, "/api/v1/auth/me/accounts"),
-  ]);
-  // Company trademark for the layouts (sidebar / mobile header brand).
-  // Never rejects: loadPublicBrand falls back to the built-in defaults.
-  const { brand } = await loadPublicBrand(request, backend);
+// The identity half of a page render, shared by loadBaseContext (account
+// page, unchanged sequence) and loadPageContext (parallel sequence below).
+// user/accountData come from the /auth/me freshness probe + /accounts;
+// brand is passed in so callers choose when it starts.
+function buildBaseContext(user, accountData, brand) {
   const userRole = user.role || null;
   const positionName = user.position_name === "No Position"
     ? null
@@ -54,6 +42,27 @@ export async function loadBaseContext(request, backend) {
   };
 }
 
+export async function loadBaseContext(request, backend) {
+  // /auth/me is read fresh on every load: it is the permissions_version
+  // probe. If the version changed, the backend client drops the whole
+  // cached context for this session before the reads below continue, so
+  // accounts/permissions can never come from the old permission set.
+  // Accounts runs in parallel with the probe: its only payload is the
+  // account email, which permission changes never alter — and the probe's
+  // eviction still removes its cached entry, so the next load re-reads
+  // it. (The permission-bearing read, /permissions/me, is the one that
+  // must wait for the probe — see loadPageContext.)
+  const [user, accountData] = await Promise.all([
+    backend.get(request, "/api/v1/auth/me", { fresh: true }),
+    backend.get(request, "/api/v1/auth/me/accounts"),
+  ]);
+  // Company trademark for the layouts (sidebar / mobile header brand).
+  // Never rejects: loadPublicBrand falls back to the built-in defaults.
+  const { brand } = await loadPublicBrand(request, backend);
+
+  return buildBaseContext(user, accountData, brand);
+}
+
 function buildEmployeeContext(base, permissionsResponse) {
   const permissionMap = permissionsResponse.permissions;
   const displayIdentity = base.context.position_name
@@ -73,12 +82,23 @@ export async function loadEmployeeContext(request, backend, base) {
   return buildEmployeeContext(base, permissionsResponse);
 }
 
-// Load everything a page needs. The permissions call deliberately runs
-// AFTER the base context: loadBaseContext probes /auth/me fresh, and if
-// the permissions_version changed it evicts the cached context first —
-// starting permissions in parallel (the original Batch 2 fan-out) could
-// read the stale entry before the eviction lands. When nothing changed,
-// permissions are a cache hit, so the ordering costs nothing.
+// Load everything a page needs, in two waves instead of three.
+//
+// Wave 1 (all in parallel): the /auth/me freshness probe + /accounts +
+// the public brand. Brand may run beside the probe: it is public and
+// unauthenticated, carries no permission version, and fails open to
+// defaults — and if the probe's eviction drops the brand cache entry
+// mid-flight, the in-flight brand answer still writes back afterwards,
+// so the next load reads the fresh value.
+//
+// Wave 2: /permissions/me, started the moment the probe resolves — NOT
+// after brand. This ordering is the whole freshness guarantee: the
+// probe's eviction has landed by the time permissions starts, so a
+// changed permissions_version can never serve a stale cached
+// permissions entry (the bug the original Batch 2 fan-out had, when
+// permissions ran in parallel with the probe). Starting permissions
+// before the probe resolves is forbidden; skipping the probe on warm
+// loads is forbidden.
 //
 // Admin pages also receive permission_map (U5): their action buttons
 // hide when the viewer's effective permission is denied, instead of
@@ -87,17 +107,35 @@ export async function loadEmployeeContext(request, backend, base) {
 // permissions read itself fails, so a permissions outage never breaks
 // admin page renders — the API still enforces every mutation.
 export async function loadPageContext(request, backend, { employee = false } = {}) {
-  const base = await loadBaseContext(request, backend);
-  if (employee) {
-    const permissionsResponse = await backend.get(request, "/api/v1/permissions/me");
-    return { base, context: buildEmployeeContext(base, permissionsResponse) };
-  }
+  const probePromise = Promise.all([
+    backend.get(request, "/api/v1/auth/me", { fresh: true }),
+    backend.get(request, "/api/v1/auth/me/accounts"),
+  ]);
+  // Started beside the probe, before any await yields: still wave 1.
+  const brandPromise = loadPublicBrand(request, backend);
+  const [user, accountData] = await probePromise;
+
+  // Probe resolved, eviction (if any) landed: permissions may start now.
+  // Awaited immediately (before brand) so a permissions rejection can
+  // never sit unhandled while brand is still in flight.
+  const permissionsPromise = backend.get(request, "/api/v1/permissions/me");
+  let permissionsResponse = null;
   let permissionMap = null;
-  try {
-    const permissionsResponse = await backend.get(request, "/api/v1/permissions/me");
-    permissionMap = permissionsResponse.permissions;
-  } catch {
-    permissionMap = null;
+  if (employee) {
+    permissionsResponse = await permissionsPromise;
+  } else {
+    try {
+      const response = await permissionsPromise;
+      permissionMap = response.permissions;
+    } catch {
+      permissionMap = null;
+    }
+  }
+  const { brand } = await brandPromise;
+  const base = buildBaseContext(user, accountData, brand);
+
+  if (employee) {
+    return { base, context: buildEmployeeContext(base, permissionsResponse) };
   }
   return { base, context: { ...base.context, permission_map: permissionMap } };
 }
