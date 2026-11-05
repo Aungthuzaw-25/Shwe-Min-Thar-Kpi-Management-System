@@ -35,11 +35,39 @@ describe('Formula Builder target direction', () => {
     expect(dirAt).toBeGreaterThan(guardAt);
   });
 
-  it('omits direction only when a stored direction is unchanged', () => {
+  it('omits direction when stored-and-unchanged, or loaded-but-direction-less', () => {
     const saveAt = js.indexOf('async function saveFormula()');
     const block = js.slice(saveAt, js.indexOf('payload.categories.push(categoryPayload)', saveAt));
     expect(block).toContain('dirSelect.dataset.original');
-    expect(block).toContain('dirOriginal && dirValue === dirOriginal');
+    expect(block).toContain('dirSelect.dataset.loaded');
+    // Stored + unchanged -> omit; legacy (loaded, no stored) -> omit.
+    expect(block).toContain("(dirOriginal && dirValue !== dirOriginal) || (!dirOriginal && !dirLoaded)");
+  });
+
+  it('marks loaded categories so save can tell legacy from brand-new', () => {
+    expect(js).toContain("data-loaded=\"${catData ? '1' : '0'}\"");
+  });
+
+  it('save payload decision table (executes the shipped condition)', () => {
+    const saveAt = js.indexOf('async function saveFormula()');
+    const block = js.slice(saveAt, js.indexOf('payload.categories.push(categoryPayload)', saveAt));
+    // Anchor on the if immediately before the assignment: a loose search
+    // from the top of saveFormula would swallow earlier ifs (and a return).
+    const dirAt = block.indexOf('categoryPayload.direction = dirValue');
+    const ifAt = block.lastIndexOf('if (', dirAt);
+    const match = block.slice(ifAt).match(/^if \(([\s\S]*?)\) \{\s*categoryPayload\.direction = dirValue;/);
+    expect(match).not.toBeNull();
+    const sends = new Function('dirOriginal', 'dirValue', 'dirLoaded', `return (${match[1]});`);
+    // Stored direction, unchanged -> omit (backend restores by name).
+    expect(sends('HIGHER', 'HIGHER', true)).toBe(false);
+    // Stored direction, user changed -> send the new value.
+    expect(sends('HIGHER', 'LOWER', true)).toBe(true);
+    // Legacy: loaded, never had a direction -> omit (stays direction-less).
+    expect(sends('', 'LOWER', true)).toBe(false);
+    expect(sends('', 'HIGHER', true)).toBe(false);
+    // Brand-new: no original, not loaded -> send the displayed direction.
+    expect(sends('', 'LOWER', false)).toBe(true);
+    expect(sends('', 'HIGHER', false)).toBe(true);
   });
 
   it('keeps the suggestions feature intact on the same branch', () => {
