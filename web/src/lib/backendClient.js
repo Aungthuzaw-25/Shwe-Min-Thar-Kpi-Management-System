@@ -41,7 +41,13 @@ const CONTEXT_CACHE_MAX_ENTRIES = 500;
 // version (older backend) keep the plain 30-second behaviour.
 const VERSIONED_PATHS = new Set(["/api/v1/auth/me", "/api/v1/permissions/me"]);
 
-function permissionsVersionOf(body) {
+// The brand endpoint is public data (the login page reads it without a
+// session), so its cache entry is shared across sessions: see
+// contextCacheKey below. Exported for the page-context wave, which
+// compares the probe's version against the permissions answer's version.
+const BRAND_PATH = "/api/v1/system/branding/public";
+
+export function permissionsVersionOf(body) {
   if (body && typeof body === "object" && typeof body.permissions_version === "string" && body.permissions_version) {
     return body.permissions_version;
   }
@@ -74,6 +80,12 @@ export function createBackendClient({
   const contextCache = new Map();
 
   function contextCacheKey(request, path) {
+    // The brand endpoint answers public data that never varies by
+    // session, so its entry is keyed without the session hash: one
+    // session's read serves every session for the 30s TTL. Session
+    // evictions match on the session-hash prefix, so they never drop
+    // this entry; the FIFO cap and the TTL still apply to it.
+    if (path === BRAND_PATH) return `public:${path}`;
     const parts = [];
     for (const name of ["cookie", "authorization"]) {
       const value = request.get(name);

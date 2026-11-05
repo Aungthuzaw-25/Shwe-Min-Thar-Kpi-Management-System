@@ -10,20 +10,33 @@
     <meta name="theme-color" content="#3d5a80">
 
 
-    <!-- PERFORMANCE FIX: Pre-compiled Local CSS -->
+    <!-- PERFORMANCE FIX: Pre-compiled Local CSS -->{% if asset_bundles %}
+    {% for href in asset('portal-head') %}
+    <link rel="stylesheet" href="{{ href }}">
+    {% endfor %}
+    {% if dashboard_variant == "executive" or needs_executive_css %}
+    {% for href in asset('executive') %}
+    <link rel="stylesheet" href="{{ href }}">
+    {% endfor %}
+    {% endif %}
+    {% for href in asset('portal-tail') %}
+    <link rel="stylesheet" href="{{ href }}">
+    {% endfor %}{% else %}
     <link rel="stylesheet" href="/static/css/output.css">
     <link rel="stylesheet" href="/static/css/design-system.css?v=20261015-1">
     <link rel="stylesheet" href="/static/css/notifications.css">
     <link rel="stylesheet" href="/static/css/enterprise-ui.css">
     <link rel="stylesheet" href="/static/css/executive-dashboard.css">
     <link rel="stylesheet" href="/static/css/liquid-glass-theme.css?v=20261021-4">
-    <link rel="stylesheet" href="/static/css/role-themes.css">
+    <link rel="stylesheet" href="/static/css/role-themes.css">{% endif %}
     <link rel="stylesheet" href="/static/css/inter-fonts.css">
     <script src="/static/js/api-fetch.js"></script>
     {% if dashboard_variant == "executive" %}
     <script src="/static/vendor/chart.umd.min.js" defer></script>
     {% endif %}
-    <script src="/static/js/csp-event-bridge.js"></script>
+    <!-- csp-event-bridge.js deferred, same reason as layouts/base.njk
+         (perf/lcp Phase 5c); api-fetch.js and csrf.js stay classic. -->
+    <script src="/static/js/csp-event-bridge.js" defer></script>
     <script src="/static/js/csrf.js"></script>
     
     <style>

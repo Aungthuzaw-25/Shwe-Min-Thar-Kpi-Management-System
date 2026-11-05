@@ -59,6 +59,10 @@ qa_l1_cookies.txt
 docker-compose.override.yml
 Microsoft/Windows/PowerShell/ModuleAnalysisCache
 static/css/output.css
+# Phase 5b build artifacts (same treatment as output.css): hashed bundles
+# (two dots in the name) + the asset manifest are rebuilt in Docker.
+static/css/*.*.css
+static/asset-manifest.json
 
 # Local credentials, cloud authentication material, and private keys
 **/.aws/credentials

@@ -51,6 +51,33 @@ def _normalize_role_name(value: str | None) -> str:
     return value.replace("-", " ").replace("_", " ").upper()
 
 
+def _dashboard_cache_key(
+    endpoint: str, user: User, params: dict[str, Any]
+) -> str:
+    """Cache key for a dashboard aggregate: endpoint + viewer + params.
+
+    The user id is always part of the key, so one user's aggregate can
+    never be served to another, even when their scopes look identical.
+    The raw role name is included too, so a role change (which the
+    write-path purge should already have caught) still misses the old
+    entry instead of serving it. Query values render deterministically
+    (datetimes via isoformat, enums via value, UUIDs via str) and
+    parameter names sort, so the same request always maps to one key.
+    """
+    role_name = getattr(getattr(user, "role", None), "name", "") or ""
+    parts = [endpoint, str(user.id), role_name]
+    for name in sorted(params):
+        value = params[name]
+        if value is None:
+            rendered = ""
+        elif isinstance(value, datetime):
+            rendered = value.isoformat()
+        else:
+            rendered = str(getattr(value, "value", value))
+        parts.append(f"{name}={rendered}")
+    return ":".join(parts)
+
+
 def _completion_percentage(completed_tasks: int, total_tasks: int) -> float:
     """Return completed/total; overdue and late are independent diagnostics."""
     if total_tasks <= 0:
@@ -72,7 +99,41 @@ async def fetch_unified_dashboard_summary(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Return one role-scoped aggregation payload for dashboard consumers."""
+    """Return one role-scoped aggregation payload for dashboard consumers.
+
+    Cached 60s per viewer + query (namespace "dashboard", same as the
+    other dashboard summaries). The scope computation runs inside the
+    cached factory, so a cache hit skips it entirely; a write under
+    /api/v1 purges the namespace via DashboardCacheInvalidationMiddleware,
+    and the 60s TTL is the backstop for non-HTTP changes.
+    """
+    return await cached_json(
+        "dashboard",
+        _dashboard_cache_key(
+            "unified-summary",
+            current_user,
+            {
+                "period_type": period_type,
+                "period_start": period_start,
+                "period_end": period_end,
+                "department_id": department_id,
+            },
+        ),
+        60,
+        lambda: _compute_unified_dashboard_summary(
+            db, current_user, period_type, period_start, period_end, department_id
+        ),
+    )
+
+
+async def _compute_unified_dashboard_summary(
+    db: AsyncSession,
+    current_user: User,
+    period_type: PeriodType,
+    period_start: datetime | None,
+    period_end: datetime | None,
+    department_id: UUID | None,
+) -> dict[str, Any]:
     scope_user_ids = await _get_scope_user_ids(db, current_user)
     if scope_user_ids is None:
         scope_user_ids = list(
@@ -271,6 +332,35 @@ async def fetch_executive_overview(
             status_code=422,
             detail="period_start and period_end must be provided together.",
         )
+    # 422 shape checks above stay outside the cache; scope + build run
+    # inside the factory, and build errors propagate uncached.
+    return await cached_json(
+        "dashboard",
+        _dashboard_cache_key(
+            "executive-overview",
+            current_user,
+            {
+                "period_id": period_id,
+                "period_start": period_start,
+                "period_end": period_end,
+                "department_id": department_id,
+            },
+        ),
+        60,
+        lambda: _compute_executive_overview(
+            db, current_user, period_id, period_start, period_end, department_id
+        ),
+    )
+
+
+async def _compute_executive_overview(
+    db: AsyncSession,
+    current_user: User,
+    period_id: UUID | None,
+    period_start: datetime | None,
+    period_end: datetime | None,
+    department_id: UUID | None,
+) -> dict[str, Any]:
     scope_user_ids, department_ids, show_departments = await _get_executive_scope(
         db, current_user
     )
@@ -310,8 +400,33 @@ async def fetch_executive_monthly_averages(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> ExecutiveMonthlyAverageResponse:
-    """Return authorized department choices and monthly KPI averages."""
+    """Return authorized department choices and monthly KPI averages.
+
+    Cached 60s per viewer + query (namespace "dashboard"). The
+    permission gate above stays outside the cache, so gating never
+    depends on cache state; scope + build run inside the factory.
+    """
     enforce_permission(current_user, "kpi.view")
+    return await cached_json(
+        "dashboard",
+        _dashboard_cache_key(
+            "executive-monthly-averages",
+            current_user,
+            {"year": year, "department_id": department_id},
+        ),
+        60,
+        lambda: _compute_executive_monthly_averages(
+            db, current_user, year, department_id
+        ),
+    )
+
+
+async def _compute_executive_monthly_averages(
+    db: AsyncSession,
+    current_user: User,
+    year: int,
+    department_id: UUID | None,
+) -> dict[str, Any]:
     scope_user_ids, department_ids, _ = await _get_executive_scope(db, current_user)
     visible_departments_query = select(Department.id, Department.name).where(
         Department.is_deleted.is_(False)

@@ -1041,6 +1041,31 @@
       }
       if (sequence !== requestSequence) return;
       const selectedPeriod = renderAvailablePeriods(intelligence);
+      // Progressive render (perf/lcp Phase 6): everything derived
+      // from the executive payload renders now, instead of waiting
+      // for the summary. Scorecards render with empty summary data:
+      // their executive cards show real values and the summary slots
+      // show '—', exactly as they do when the summary is unavailable
+      // — the summary resolve below re-renders them with full data,
+      // so the final UI is identical. The monthly trend only needs
+      // the year, so it starts now too.
+      renderScorecards({
+        data: {},
+        notifications: {},
+        activitySummary: {},
+        executiveSummary: intelligence.summary || {},
+        tasks: {},
+        approvals: {},
+        trend: intelligence.trend || {},
+        hasPeriod: Boolean(selectedPeriod)
+      });
+      renderKpiStatusDistribution(
+        intelligence.summary?.status_distribution || []
+      );
+      renderDepartments(intelligence.departments || []);
+      renderExecutiveSignals(intelligence.signals || [], intelligence.attention_areas || []);
+      renderDataQuality(intelligence);
+      void loadMonthlyAverages(Number(filterYear.value));
       const summaryPayload = await summaryPromise;
       if (sequence !== requestSequence) return;
       if (summaryError?.status === 401 || summaryError?.status === 403) {
@@ -1058,15 +1083,8 @@
         trend: intelligence.trend || {},
         hasPeriod: Boolean(selectedPeriod)
       });
-      void loadMonthlyAverages(Number(filterYear.value));
-      renderKpiStatusDistribution(
-        intelligence.summary?.status_distribution || []
-      );
-      renderDepartments(intelligence.departments || []);
-      renderExecutiveSignals(intelligence.signals || [], intelligence.attention_areas || []);
       renderDiagnostics(payload.task_diagnostics || {}, payload.approval_diagnostics || {});
       renderLists(payload, Boolean(summaryPayload));
-      renderDataQuality(intelligence);
       if (summaryPayload) {
         updated.textContent = `Last updated: ${formatTime(new Date().toISOString())}`;
         errorPanel.hidden = true;

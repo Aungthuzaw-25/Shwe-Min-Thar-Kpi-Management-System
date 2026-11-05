@@ -39,6 +39,18 @@ describe("backend client context cache (Batch 2)", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
+  it("shares the public brand answer across sessions", async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ company_name: "Shwe Min Thar" }));
+    const client = createBackendClient({ fetchImpl });
+
+    await client.get(fakeRequest("session=one"), "/api/v1/system/branding/public");
+    await client.get(fakeRequest("session=two"), "/api/v1/system/branding/public");
+
+    // The brand endpoint is public data that never varies by session,
+    // so one session's read serves every session for the 30s TTL.
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
   it("never caches non-context paths or error responses", async () => {
     const fetchImpl = vi.fn(async () => jsonResponse({ items: [] }));
     const client = createBackendClient({ fetchImpl });
@@ -58,8 +70,8 @@ describe("backend client context cache (Batch 2)", () => {
   });
 });
 
-describe("loadPageContext ordering", () => {
-  it("loads permissions after the identity probe so a version change can evict first", async () => {
+describe("loadPageContext parallel wave (Phase 3)", () => {
+  it("starts the probe, accounts, brand and permissions reads in one wave", async () => {
     const started = [];
     const backend = {
       async get(_request, path) {
@@ -82,6 +94,9 @@ describe("loadPageContext ordering", () => {
         if (path === "/api/v1/auth/me/accounts") {
           return { user_email: "qa@example.com" };
         }
+        if (path === "/api/v1/system/branding/public") {
+          return {};
+        }
         if (path === "/api/v1/permissions/me") {
           return { permissions: { "kpi.view": true } };
         }
@@ -91,11 +106,17 @@ describe("loadPageContext ordering", () => {
 
     const { base, context } = await loadPageContext({}, backend, { employee: true });
 
-    // The identity calls run first (loadBaseContext probes /auth/me
-    // fresh); permissions follow, so a changed permissions_version has
-    // already evicted any stale cached permissions entry by then.
-    expect(started[0]).toBe("/api/v1/auth/me");
-    expect(started[started.length - 1]).toBe("/api/v1/permissions/me");
+    // Phase 3 deliberately changed the old ordering (permissions waited
+    // for the probe so its eviction could land first): all four reads
+    // now start together, probe first, and freshness comes from the
+    // version re-check in loadPageContext instead — see the freshness
+    // tests below, which pin that a stale wave value never renders.
+    expect(started).toEqual([
+      "/api/v1/auth/me",
+      "/api/v1/auth/me/accounts",
+      "/api/v1/system/branding/public",
+      "/api/v1/permissions/me",
+    ]);
     expect(base.context.user_role).toBe("Department User");
     expect(context.permission_map).toEqual({ "kpi.view": true });
     expect(context.user_display_identity).toBe("Officer");
@@ -169,11 +190,70 @@ describe("permissions_version companion (freshness)", () => {
     const after = await loadPageContext(request, client, { employee: true });
     expect(after.context.permission_map).toEqual({ "kpi.view": false });
     expect(counts.get("/api/v1/permissions/me")).toBe(2);
-    // The sweep also drops the session's other cached entries: accounts
-    // was read in parallel with the probe on that load, so its re-fetch
-    // lands on the following load.
+    // The probe's sweep also drops the session's other cached entries:
+    // accounts was read in parallel with the probe on that load, so its
+    // re-fetch lands on the following load.
     await loadPageContext(request, client, { employee: true });
     expect(counts.get("/api/v1/auth/me/accounts")).toBe(2);
+  });
+
+  it("never renders a stale permissions value when the version changes mid-wave", async () => {
+    const state = { version: "u1-r1", permissions: { "kpi.view": true } };
+    const { client, counts } = scriptedBackend(state);
+    const request = fakeRequest();
+
+    await loadPageContext(request, client, { employee: true });
+
+    // An admin revokes a permission between loads.
+    state.version = "u2-r1";
+    state.permissions = { "kpi.view": false };
+
+    const after = await loadPageContext(request, client, { employee: true });
+
+    // The wave's permissions read started before the probe resolved, so
+    // it hit the stale pre-eviction cache entry — the version re-check
+    // must have discarded it and re-fetched: the rendered map is the
+    // new set, and the endpoint was fetched a second time for the
+    // refetch, while the rest of the session cache stayed warm.
+    expect(after.context.permission_map).toEqual({ "kpi.view": false });
+    expect(counts.get("/api/v1/permissions/me")).toBe(2);
+    expect(counts.get("/api/v1/auth/me/accounts")).toBe(1);
+  });
+
+  it("fails open for admins and propagates for employees when the version re-check refetch fails", async () => {
+    // Probe answers the new version; the wave's permissions read still
+    // holds the old version, so the re-check refetches — and that
+    // refetch fails. The failure must follow the same rules as a first
+    // read failure: admin pages render with a null map, employee pages
+    // propagate the error.
+    function failingRefetchBackend() {
+      let permissionsCalls = 0;
+      return {
+        async get(_request, path, options = {}) {
+          if (path === "/api/v1/auth/me") {
+            return { ...USER, permissions_version: "u2-r1" };
+          }
+          if (path === "/api/v1/auth/me/accounts") {
+            return { user_email: "qa@example.com" };
+          }
+          if (path === "/api/v1/system/branding/public") {
+            return {};
+          }
+          if (path === "/api/v1/permissions/me") {
+            permissionsCalls += 1;
+            if (options.fresh) throw new Error("permissions down");
+            return { permissions: { "kpi.view": true }, permissions_version: "u1-r1" };
+          }
+          throw new Error(`unexpected path ${path}`);
+        },
+      };
+    }
+
+    const admin = await loadPageContext({}, failingRefetchBackend(), {});
+    expect(admin.context.permission_map).toBeNull();
+
+    await expect(loadPageContext({}, failingRefetchBackend(), { employee: true }))
+      .rejects.toThrow("permissions down");
   });
 
   it("keeps the plain 30s behaviour when answers carry no version", async () => {
