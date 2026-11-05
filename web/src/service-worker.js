@@ -21,7 +21,7 @@
 //   * Bump CACHE_VERSION on any deploy that changes shell assets whose
 //     URL is not already versioned; activate deletes older kpi-* caches.
 
-const CACHE_VERSION = "v1";
+const CACHE_VERSION = "v2";
 const SHELL_CACHE = `kpi-shell-${CACHE_VERSION}`;
 const PAGES_CACHE = `kpi-pages-${CACHE_VERSION}`;
 const DATA_CACHE = `kpi-data-${CACHE_VERSION}`;

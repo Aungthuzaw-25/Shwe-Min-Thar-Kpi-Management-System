@@ -28,6 +28,43 @@ describe("offline routes", () => {
     expect(response.headers["content-type"]).toContain("html");
     expect(response.text).toContain("You are offline");
   });
+
+  it("serves the redesigned offline page with working actions and no external requests", async () => {
+    const response = await request(createApp()).get("/offline");
+    const html = response.text;
+    expect(html).toContain("<h1>You are offline</h1>");
+    expect(html).toContain("Try again");
+    expect(html).toContain('href=""');
+    expect(html).toContain('href="/dashboard"');
+    expect(html).toContain("Go to your dashboard");
+    expect(html).toContain("<svg");
+    expect(html).toContain("#2e4562");
+    // Fully self-contained: no external stylesheet, font, image or script.
+    expect(html).not.toContain("<link");
+    expect(html).not.toContain("fonts.googleapis");
+    expect(html).not.toContain("src=\"http");
+    expect(html).not.toContain("url(http");
+  });
+
+  it("serves the offline page with a CSP nonce on its inline style and script", async () => {
+    // The page is rendered through response.render so the CSP
+    // middleware adds the per-request nonce to the inline <style>
+    // and <script> — sent with response.send() they carry no nonce
+    // and the live CSP blocks them (unstyled page, no auto-retry).
+    // The nonce in the body must match the one in the header.
+    const response = await request(createApp()).get("/offline");
+    const csp = response.headers["content-security-policy"] || "";
+    const nonce = csp.match(/'nonce-([^']+)'/)?.[1];
+    expect(nonce).toBeTruthy();
+    expect(response.text).toContain(`<style nonce="${nonce}">`);
+    expect(response.text).toContain(`<script nonce="${nonce}">`);
+  });
+
+  it("bumps the shell cache version so the redesigned page reaches existing users", () => {
+    // The worker script itself must change bytes, or browsers never
+    // install a new worker and the old precached /offline page stays.
+    expect(workerSource).toContain('const CACHE_VERSION = "v2";');
+  });
 });
 
 describe("service worker safety rules", () => {
@@ -192,7 +229,7 @@ describe("service worker page owner check (behaviour)", () => {
   }
 
   async function seedOfflinePage(caches) {
-    const shell = await caches.open("kpi-shell-v1");
+    const shell = await caches.open("kpi-shell-v2");
     await shell.put("/offline", new Response(OFFLINE_TEXT, { status: 200 }));
   }
 
@@ -227,9 +264,9 @@ describe("service worker page owner check (behaviour)", () => {
     await seedOfflinePage(caches);
     // Page cached for A, but the worker's stored owner is B (state the
     // read path must defend against without relying on purge events).
-    const pages = await caches.open("kpi-pages-v1");
+    const pages = await caches.open("kpi-pages-v2");
     await pages.put(`${ORIGIN}/dashboard`, new Response("PAGE FOR A", { status: 200 }));
-    const meta = await caches.open("kpi-meta-v1");
+    const meta = await caches.open("kpi-meta-v2");
     await meta.put("/dashboard::page-meta", new Response(JSON.stringify({ ts: 1, owner: "hashA" }), { headers: { "content-type": "application/json" } }));
     await meta.put("/__kpi_meta__/owner", new Response("hashB", { headers: { "content-type": "text/plain" } }));
 
@@ -241,9 +278,9 @@ describe("service worker page owner check (behaviour)", () => {
   it("serves the generic offline page when no owner is known", async () => {
     const { listeners, caches, network } = loadWorker();
     await seedOfflinePage(caches);
-    const pages = await caches.open("kpi-pages-v1");
+    const pages = await caches.open("kpi-pages-v2");
     await pages.put(`${ORIGIN}/dashboard`, new Response("PAGE FOR A", { status: 200 }));
-    const meta = await caches.open("kpi-meta-v1");
+    const meta = await caches.open("kpi-meta-v2");
     await meta.put("/dashboard::page-meta", new Response(JSON.stringify({ ts: 1, owner: "hashA" }), { headers: { "content-type": "application/json" } }));
     // No stored owner at all — e.g. the browser reopened before any
     // sign-in check could confirm who is viewing.
@@ -256,7 +293,7 @@ describe("service worker page owner check (behaviour)", () => {
     const { listeners, caches, network } = loadWorker();
     await seedOfflinePage(caches);
     await sendOwner(listeners, "hashA");
-    const pages = await caches.open("kpi-pages-v1");
+    const pages = await caches.open("kpi-pages-v2");
     await pages.put(`${ORIGIN}/dashboard`, new Response("LEGACY PAGE", { status: 200 }));
 
     network.up = false;
