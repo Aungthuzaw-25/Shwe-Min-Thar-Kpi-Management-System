@@ -25,6 +25,23 @@ Rules (never prints a value, only file:line and the variable name):
      and the scan workflow are exempt from this rule only, because
      they list the patterns they search for.
 
+  2b. Owner-approved exemption (rule 2 ONLY): exactly the four
+     file+name combinations in SECRET_EXEMPTIONS below pass.
+     They are QA-local test-pack credentials in usage docs, NOT
+     production secrets; the test-pack login flow needs the
+     documented passwords to match the seeded ones, so rotation
+     was rejected in favour of this exemption (owner decision,
+     Zenn, 2026-10-30). Keyed by file+name, never by line
+     number, so the exemption survives doc edits that move the
+     lines — but it never extends to other names in those files
+     or to the same name in another file. Token-prefix rule 3
+     still applies to these lines (they contain no prefix
+     today; if one ever appeared it would still fail).
+     Removal condition: if any exempted credential ever
+     becomes production, remove its entry here and rotate the
+     value immediately — never extend this list without owner
+     approval.
+
 Usage: python3 scripts/check_no_secrets.py [--root DIR]
 Exit 0 = clean, exit 1 = findings (listed without values).
 """
@@ -95,17 +112,34 @@ URL_PASSWORD_RE = re.compile(r"://[^:/@]+:([^@/]+)@")
 
 TOKEN_PREFIXES = ("ghp_", "github_pat_", "AKIA", "sk-live", "xoxb-")
 
+# Narrow owner-approved exemption for rule 2 ONLY (see docstring
+# rule 2b). Each entry is (tracked file, secret name). These four
+# lines are QA-local test-pack credentials in usage docs — NOT
+# production secrets — and the test-pack login flow needs the
+# documented passwords to match the seeded ones, so rotation was
+# rejected in favour of exemption (owner decision, Zenn,
+# 2026-10-30). File+name keying (not line numbers) keeps the
+# exemption valid when docs move lines, while still failing the
+# same name elsewhere and other names in these files. Never
+# extend without owner approval; removal condition is in the
+# docstring (production use => remove entry + rotate value).
+SECRET_EXEMPTIONS = frozenset(
+    {
+        ("scripts/README-test-pack.md", "TEST_PACK_PASSWORD"),
+        ("scripts/README-test-pack.md", "TEST_SMOKE_SA_PASSWORD"),
+        ("scripts/load_smoke.py", "TEST_SMOKE_SA_PASSWORD"),
+        ("scripts/test_data_pack.py", "TEST_PACK_PASSWORD"),
+    }
+)
+
+
+def is_exempt(rel: str, name: str) -> bool:
+    return (rel, name) in SECRET_EXEMPTIONS
+
 SKIP_EXTENSIONS = {
     ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".woff", ".woff2",
     ".ttf", ".eot", ".pdf", ".zip", ".gz", ".lock", ".min.js", ".map",
 }
-
-# name = value  /  name: value  /  "name": value  (env, YAML, JSON, Python)
-ASSIGN_RE = re.compile(
-    r"(?P<name>[A-Z][A-Z0-9_]*)\s*[:=]\s*"
-    r"(?P<quote>[\"']?)(?P<value>[^\"'\s,}\]]+)"
-)
-
 
 def is_placeholder(value: str) -> bool:
     v = value.strip()
@@ -173,14 +207,34 @@ def main() -> int:
             clean = re.sub(r"\$[A-Za-z_][A-Za-z0-9_]*", "", clean)
             if not in_tests:
                 for name in SECRET_NAMES:
-                    m = re.search(rf"\b{name}\b\s*[:=]\s*[\"']?([^\"'\s,}}\]]+)", clean)
+                    # The optional quote after the name is the JSON
+                    # form: {"JWT_SECRET_KEY": "CHANGE_ME"} — the
+                    # closing quote sits between name and colon.
+                    m = re.search(rf"\b{name}\b[\"']?\s*[:=]\s*[\"']?([^\"'\s,}}\]]+)", clean)
                     if not m:
+                        continue
+                    if is_exempt(rel, name):
                         continue
                     value = m.group(1)
                     if name == "DATABASE_URL":
                         if not database_url_is_safe(value):
                             findings.append(f"{rel}:{lineno}: {name} has a real-looking value")
                     elif not is_placeholder(value):
+                        findings.append(f"{rel}:{lineno}: {name} has a real-looking value")
+                # Generic suffix rule: any unlisted *_PASSWORD or
+                # *_SECRET name (e.g. a new service's FOO_PASSWORD)
+                # is held to the same standard. Listed names are
+                # skipped here to avoid duplicate findings.
+                for m in re.finditer(
+                    r"\b([A-Z][A-Z0-9_]*_(?:PASSWORD|SECRET))\b[\"']?\s*[:=]\s*[\"']?([^\"'\s,}\]]+)",
+                    clean,
+                ):
+                    name, value = m.group(1), m.group(2)
+                    if name in SECRET_NAMES:
+                        continue
+                    if is_exempt(rel, name):
+                        continue
+                    if not is_placeholder(value):
                         findings.append(f"{rel}:{lineno}: {name} has a real-looking value")
             if rel not in (".github/workflows/secret-scan.yml", "scripts/check_no_secrets.py"):
                 for prefix in TOKEN_PREFIXES:

@@ -51,6 +51,7 @@ from app.modules.auth.schemas import (
     MySessionListResponse,
     MySessionRow,
     RefreshTokenRequest,
+    RefreshTokenResponse,
     TokenResponse,
     UnlockRequestCreate,
     UnlockRequestDetailResponse,
@@ -1461,7 +1462,7 @@ async def _load_active_refresh_session(
 
 @router.post(
     '/refresh',
-    response_model=TokenResponse,
+    response_model=RefreshTokenResponse,
     responses=REFRESH_TOKEN_ERROR_RESPONSES,
 )
 @limiter.limit("10/minute")
@@ -1516,6 +1517,20 @@ async def refresh_token(
     response.set_cookie(key=ACCESS_TOKEN_KEY, value=new_access_token, httponly=True, max_age=session_timeout_minutes * 60 if persistent else None, samesite=AUTH_COOKIE_SAMESITE, secure=secure_cookie)
     response.set_cookie(key=REFRESH_TOKEN_KEY, value=new_refresh_token, httponly=True, max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60 if persistent else None, samesite=AUTH_COOKIE_SAMESITE, secure=secure_cookie)
 
+    # Script-theft hardening: a refresh verified from the cookie
+    # returns NO body tokens — the HttpOnly cookies above already
+    # carry the rotated tokens, and a body copy would let a
+    # future XSS read fresh tokens after calling refresh with
+    # the victim's cookies (the csrf cookie is JS-readable by
+    # design, so CSRF alone cannot stop that call). A refresh
+    # verified from a presented body token keeps body tokens:
+    # that caller presented a token explicitly and cannot use
+    # cookies (API tooling). The browser's own refresh caller
+    # (layouts' refreshAccessTokenOnce) only checks response.ok,
+    # never reads body tokens, so it is unaffected.
+    cookie_authenticated = not (payload and payload.refresh_token)
+    if cookie_authenticated:
+        return {'access_token': None, 'refresh_token': None, 'token_type': 'bearer'}
     return {'access_token': new_access_token, 'refresh_token': new_refresh_token, 'token_type': 'bearer'}
 
 def _logout_access_token(request: Request) -> str | None:
