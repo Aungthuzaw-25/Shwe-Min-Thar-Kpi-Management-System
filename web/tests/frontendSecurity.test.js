@@ -44,7 +44,9 @@ describe("focused frontend security fixes", () => {
     class FakeMutationObserver {
       observe() {}
     }
-    const window = { record: value => calls.push(value) };
+    // The bridge allowlists real app handlers only, so the dispatch test
+    // must use a real handler name (saveUser); a synthetic name is refused.
+    const window = { saveUser: value => calls.push(value) };
     runInNewContext(source, {
       document,
       window,
@@ -52,7 +54,7 @@ describe("focused frontend security fixes", () => {
       MutationObserver: FakeMutationObserver,
     });
 
-    const element = { getAttribute: () => "record('csp-ok')" };
+    const element = { getAttribute: () => "saveUser('csp-ok')" };
     const event = {
       target: { closest: () => element },
       preventDefault: vi.fn(),

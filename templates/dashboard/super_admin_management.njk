@@ -180,7 +180,7 @@ async function loadSuperAdmins() {
         }
         tableBody.innerHTML = users.map(renderRow).join('');
     } catch (error) {
-        tableBody.innerHTML = `<tr><td colspan="6" class="px-4 py-10 text-left sm:text-center text-red-600">${error.message} <button type="button" onclick="loadSuperAdmins()" class="ml-3 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50">Retry</button></td></tr>`;
+        tableBody.innerHTML = `<tr><td colspan="6" class="px-4 py-10 text-left sm:text-center text-red-600">${escapeHTML(error.message)} <button type="button" onclick="loadSuperAdmins()" class="ml-3 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50">Retry</button></td></tr>`;
     }
 }
 

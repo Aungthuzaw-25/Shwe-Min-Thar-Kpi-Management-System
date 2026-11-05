@@ -22,6 +22,22 @@ class TokenResponse(BaseModel):
     must_change_password: bool = False
     user: dict | None = None
 
+
+class RefreshTokenResponse(BaseModel):
+    """Refresh response. Cookie-authenticated refresh returns
+    null body tokens: the HttpOnly cookies already carry the
+    rotated tokens, so a body copy would only hand a future
+    XSS a readable token. Bearer/API clients (body token
+    presented) still get body tokens — they cannot use
+    cookies. Same keys either way, so clients never break
+    on a missing field."""
+
+    access_token: str | None = None
+    refresh_token: str | None = None
+    token_type: str = "bearer"
+    must_change_password: bool = False
+    user: dict | None = None
+
 class MySessionRow(BaseModel):
     """One OWN active session for the /me/sessions list.
 
