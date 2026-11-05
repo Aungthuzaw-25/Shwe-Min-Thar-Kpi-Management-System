@@ -24,6 +24,7 @@ counter reads as "changed" (refetch), never as "unchanged".
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from uuid import UUID
 
@@ -70,12 +71,22 @@ async def bump_role_permissions_version(role_id: UUID | str) -> None:
 
 
 async def permissions_version_for(user) -> str:
-    """The ``permissions_version`` string for /auth/me + /permissions/me."""
-    user_version = await _read(_USER_KEY.format(user_id=user.id))
+    """The ``permissions_version`` string for /auth/me + /permissions/me.
+
+    The two counter reads run concurrently (each _read is fail-open,
+    so one side failing cannot fail the other) instead of as two
+    sequential waves — one wave instead of two on every page load.
+    """
+    user_key = _USER_KEY.format(user_id=user.id)
     role_id = getattr(user, "role_id", None) or (
         getattr(getattr(user, "role", None), "id", None)
     )
-    role_version = (
-        await _read(_ROLE_KEY.format(role_id=role_id)) if role_id else 0
-    )
+    if role_id:
+        user_version, role_version = await asyncio.gather(
+            _read(user_key),
+            _read(_ROLE_KEY.format(role_id=role_id)),
+        )
+    else:
+        user_version = await _read(user_key)
+        role_version = 0
     return f"u{user_version}-r{role_version}"

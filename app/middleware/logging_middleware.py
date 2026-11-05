@@ -42,6 +42,10 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         # Security Header: Return Correlation ID to Client
         response.headers["X-Request-ID"] = request_id
         response.headers["X-Process-Time"] = formatted_process_time
+        # Standard Server-Timing for the per-call timings QA/owners
+        # read in DevTools: same total duration, timing only — no
+        # user, token, or other request data in the header.
+        response.headers["Server-Timing"] = f"app;dur={process_time:.2f}"
         
         # Skip static assets from noisy access logs
         if not path.startswith("/static") and not path.startswith("/favicon.ico"):
