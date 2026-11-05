@@ -121,9 +121,12 @@ def test_fastapi_dashboard_templates_render_with_user_context(path, role_name):
     assert 'class="app-shell app-shell--admin' in response.text
     assert "liquid-glass-theme.css?v=20261021-4" in response.text
     assert "kpi-avatar" in response.text
+    # Inter is self-hosted now: the dashboard loads the local stylesheet,
+    # never the Google Fonts Inter link (login-inter-selfhost branch).
+    assert "/static/css/inter-fonts.css" in response.text
     assert (
         "https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
-        in response.text
+        not in response.text
     )
     csp = response.headers["content-security-policy"]
     assert "style-src 'self'" in csp
