@@ -1,13 +1,18 @@
 // Global page loading overlay (see .app-loader in design-system.css).
-// Shows the frosted-glass loader while the page loads, then fades it
-// out. A 6s failsafe guarantees the overlay can never trap the page.
-// window.appLoader.show()/hide() are available for manual control.
+// Shows the loader while the page loads, then fades it out once the
+// first paint has landed (DOMContentLoaded + two animation frames),
+// not on window load — late images and fonts must not hold the page
+// covered. A 6s failsafe guarantees the overlay can never trap the
+// page. window.appLoader.show()/hide() are available for manual
+// control.
 //
-// The same overlay also appears the moment an internal navigation
-// link is clicked, so moving between pages feels continuous. The
-// click is never intercepted — no preventDefault, no artificial
-// delay; the browser navigates exactly as it normally would, and
-// the incoming page's own load handling fades the overlay out.
+// The same overlay also covers an internal navigation link click,
+// so moving between pages feels continuous — but only after a
+// 150ms timer: a navigation that commits faster than that never
+// flashes the overlay at all. The click is never intercepted — no
+// artificial delay to the navigation itself; the browser navigates
+// exactly as it normally would, and the incoming page's own
+// first-paint handling fades the overlay out.
 //
 // Click covers are INSTANT and near-opaque (app-loading-instant):
 // a slow translucent fade-in over the old page felt like briefly
@@ -26,6 +31,11 @@
   var root = document.documentElement;
   var failsafeId = null;
   var clickCover = false;
+  var clickTimerId = null;
+  function clearClickTimer() {
+    if (clickTimerId !== null) clearTimeout(clickTimerId);
+    clickTimerId = null;
+  }
   function armFailsafe() {
     if (failsafeId !== null) clearTimeout(failsafeId);
     failsafeId = setTimeout(hide, 6000);
@@ -45,6 +55,7 @@
     if (!clickCover) return;
     clickCover = false;
     clearFailsafe();
+    clearClickTimer();
     root.classList.remove("app-loading");
     root.classList.remove("app-loading-instant");
   }
@@ -63,10 +74,20 @@
   };
   root.classList.add("app-loading");
   armFailsafe();
-  if (document.readyState === "complete") {
-    hide();
+  // Lift the overlay once the first paint has landed: the second
+  // animation frame runs after the browser has painted the frame
+  // queued by the first, so content is visible underneath. Waiting
+  // for window load instead held the overlay over every late image
+  // and font. If parsing already finished, run the frame chain now.
+  function hideAfterFirstPaint() {
+    requestAnimationFrame(function () {
+      requestAnimationFrame(hide);
+    });
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", hideAfterFirstPaint);
   } else {
-    window.addEventListener("load", hide);
+    hideAfterFirstPaint();
   }
   // A page restored from the back/forward cache keeps its old DOM —
   // never let it come back with the overlay stuck on. A restore is
@@ -80,6 +101,9 @@
       hide();
     }
   });
+  // A navigation that commits before the click timer fires must
+  // never flash the cover in the outgoing document's last moments.
+  window.addEventListener("pagehide", clearClickTimer);
   // Escape hatch for a hung navigation: Escape or a click on the
   // overlay dismisses a click cover. The load-time overlay is
   // never user-dismissable; only a click cover is.
@@ -93,7 +117,14 @@
     });
   }
   document.addEventListener("click", function (event) {
-    if (event.defaultPrevented || event.button !== 0) return;
+    if (event.defaultPrevented) {
+      // This click's navigation was cancelled by another handler:
+      // drop any cover still waiting on its timer instead of
+      // flashing it over a page that is going nowhere.
+      clearClickTimer();
+      return;
+    }
+    if (event.button !== 0) return;
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     var target = event.target;
     var link = target && target.closest ? target.closest("a[href]") : null;
@@ -110,7 +141,14 @@
     if (url.pathname.indexOf("/api/") === 0) return;
     // Same page (only the hash differs): no unload is coming.
     if (url.pathname === window.location.pathname && url.search === window.location.search) return;
-    // Instant cover: no fade-in over the old page.
-    window.appLoader.show(true);
+    // Delayed instant cover: fast navigations commit before the
+    // timer fires and never flash; slower ones still get the
+    // instant, fade-free cover, just 150ms in. Re-arming on each
+    // qualifying click keeps at most one timer pending.
+    clearClickTimer();
+    clickTimerId = setTimeout(function () {
+      clickTimerId = null;
+      window.appLoader.show(true);
+    }, 150);
   });
 })();

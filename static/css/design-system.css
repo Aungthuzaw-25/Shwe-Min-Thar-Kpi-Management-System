@@ -449,9 +449,10 @@ main .rounded-2xl, main .rounded-3xl { border-radius: var(--radius-lg); }
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(248, 251, 252, 0.55);
-  -webkit-backdrop-filter: blur(14px) saturate(1.3);
-  backdrop-filter: blur(14px) saturate(1.3);
+  /* No full-page blur: blurring the whole page every frame is one of
+     the most expensive things a load overlay can do. The higher
+     background opacity keeps the same frosted look without the blur. */
+  background: rgba(248, 251, 252, 0.8);
   opacity: 0;
   visibility: hidden;
   pointer-events: none;

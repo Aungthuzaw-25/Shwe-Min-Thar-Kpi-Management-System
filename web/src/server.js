@@ -2,6 +2,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import express from "express";
 import nunjucks from "nunjucks";
+import { createAssetHelper } from "./lib/assets.js";
 import { createBackendClient } from "./lib/backendClient.js";
 import { isNavigationRequest, sendErrorPage } from "./lib/errorPage.js";
 import { registerFilters } from "./lib/nunjucks_filters.js";
@@ -24,6 +25,12 @@ export function createApp({
   templatesPath = templatesDirectory,
   environment = process.env.ENV || "development",
   s3Endpoint = process.env.S3_ENDPOINT,
+  // Phase 5b asset bundles: default OFF; set ASSET_BUNDLES=true to serve the
+  // hashed bundles built by tools/build_asset_bundles.mjs. The flag-off path
+  // renders the original individual links, byte-identical to before.
+  assetBundles = process.env.ASSET_BUNDLES === "true",
+  assetSpecPath,
+  assetManifestPath,
 } = {}) {
   const app = express();
   app.disable("x-powered-by");
@@ -38,6 +45,12 @@ export function createApp({
     lstripBlocks: false,
   });
   registerFilters(nunjucksEnvironment, nunjucks);
+  const assetHelper = createAssetHelper({
+    specPath: assetSpecPath,
+    manifestPath: assetManifestPath,
+  });
+  nunjucksEnvironment.addGlobal("asset_bundles", assetBundles);
+  nunjucksEnvironment.addGlobal("asset", (name) => assetHelper.asset(name));
 
   app.get("/", (_request, response) => {
     response.redirect(307, "/auth/login");

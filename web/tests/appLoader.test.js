@@ -8,16 +8,33 @@ const loader = read('static/js/app-loader.js');
 const css = read('static/css/design-system.css');
 
 describe('page transition overlay', () => {
-  it('covers instantly on a navigation click, hiding the old page at once', () => {
-    // Regression: the 0.1s-delayed 0.45s fade-in left the old page
-    // visible (blurred) after every click, feeling like going back.
+  it('covers after a 150ms timer on a navigation click, so fast navigations never flash', () => {
+    // Phase 4 changed the old instant cover on purpose: a navigation
+    // that commits within 150ms never shows the overlay at all, and
+    // slower ones still get the instant, fade-free cover — just
+    // 150ms in. A pagehide before the timer fires drops it.
     expect(loader).toContain('window.appLoader.show(true)');
+    expect(loader).toContain('}, 150)');
+    expect(loader).toContain('window.addEventListener("pagehide", clearClickTimer)');
     expect(loader).toContain('app-loading-instant');
     expect(css).toContain('html.app-loading-instant .app-loader');
     const instant = css.split('html.app-loading-instant .app-loader')[1].split('}')[0];
     expect(instant).toContain('transition: none');
     expect(instant).toContain('rgba(248, 251, 252, 0.92)');
     expect(instant).toContain('opacity: 1');
+  });
+
+  it('lifts the load-time overlay at first paint, not on window load, without the page blur', () => {
+    // Phase 4: DOMContentLoaded + two animation frames replaces the
+    // window load wait, so late images and fonts cannot hold the
+    // page covered; the full-page blur is gone, with a higher
+    // background opacity keeping the frosted look.
+    expect(loader).toContain('document.addEventListener("DOMContentLoaded", hideAfterFirstPaint)');
+    expect(loader).toContain('requestAnimationFrame(hide)');
+    expect(loader).not.toContain('window.addEventListener("load", hide)');
+    const base = css.split('.app-loader {')[1].split('}')[0];
+    expect(base).not.toContain('backdrop-filter');
+    expect(base).toContain('rgba(248, 251, 252, 0.8)');
   });
 
   it('keeps the new page fade-out, failsafe, and reduced-motion behavior', () => {

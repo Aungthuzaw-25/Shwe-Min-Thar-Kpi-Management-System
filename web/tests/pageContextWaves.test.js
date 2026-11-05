@@ -1,9 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 
-// Two-wave page context (perf fix on da931ce): wave 1 = probe + accounts
-// + brand in parallel; wave 2 = permissions, started only after the probe
-// resolves. The branding module caches successes for 60s, so every test
-// imports a fresh pageContext module (vi.resetModules) for a cold brand.
+// One-wave page context (Phase 3 subsumes the two-wave fix): probe +
+// accounts + brand + permissions all start together in a single wave.
+// The stale-permissions risk the old ordering guarded against is now
+// covered by the version re-check — a permissions value whose version
+// differs from the probe's is discarded and refetched fresh (pinned
+// in contextCache.test.js). The branding module caches successes for
+// 60s, so every test imports a fresh pageContext module
+// (vi.resetModules) for a cold brand.
 
 const ME = {
   role: 'Super Admin', full_name: 'SA User', user_id: 'u1', kpi_level: null,
@@ -50,8 +54,8 @@ function fakeBackend({ brand = BRAND_RAW, permissions = { 'x.y': true }, permiss
   };
 }
 
-describe('loadPageContext two-wave ordering', () => {
-  it('starts brand beside the probe and permissions only after the probe resolves', async () => {
+describe('loadPageContext one-wave ordering', () => {
+  it('starts probe, accounts, brand and permissions together in one wave', async () => {
     const meGate = deferred();
     const accGate = deferred();
     const started = [];
@@ -69,17 +73,14 @@ describe('loadPageContext two-wave ordering', () => {
     const pending = loadPageContext({}, backend, { employee: true });
     await flush();
     await flush();
-    // Wave 1 all started while the probe is still pending...
+    // One wave: every read has started while the probe is still pending.
     expect(started).toContain('/api/v1/auth/me');
     expect(started).toContain('/api/v1/auth/me/accounts');
     expect(started).toContain('/api/v1/system/branding/public');
-    // ...but the permission-bearing read has NOT started yet.
-    expect(started).not.toContain('/api/v1/permissions/me');
+    expect(started).toContain('/api/v1/permissions/me');
     meGate.resolve(ME);
     accGate.resolve(ACCOUNTS);
     const { base, context } = await pending;
-    expect(started.indexOf('/api/v1/permissions/me'))
-      .toBeGreaterThan(started.indexOf('/api/v1/auth/me'));
     expect(context.permission_map).toEqual({ 'x.y': true });
     expect(context.brand.company_name).toBe('Acme');
     expect(context.user_email).toBe('sa@example.com');

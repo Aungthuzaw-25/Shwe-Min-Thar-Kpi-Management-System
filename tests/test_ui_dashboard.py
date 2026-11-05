@@ -121,9 +121,18 @@ def test_fastapi_dashboard_templates_render_with_user_context(path, role_name):
     assert 'class="app-shell app-shell--admin' in response.text
     assert "liquid-glass-theme.css?v=20261021-4" in response.text
     assert "kpi-avatar" in response.text
+    # perf/lcp Phase 5a: base pages self-host their fonts now — the
+    # Google Fonts Inter link is gone, replaced by the local sheet
+    # plus a preload of the body-text file. (The CSP entries below
+    # stay: login and other pages still use Google Fonts.)
+    assert '<link rel="stylesheet" href="/static/css/fonts.css">' in response.text
+    assert (
+        '<link rel="preload" as="font" type="font/woff2" crossorigin '
+        'href="/static/fonts/inter/inter-latin-400-normal.woff2">' in response.text
+    )
     assert (
         "https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
-        in response.text
+        not in response.text
     )
     csp = response.headers["content-security-policy"]
     assert "style-src 'self'" in csp

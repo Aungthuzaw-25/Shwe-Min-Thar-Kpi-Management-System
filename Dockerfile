@@ -7,13 +7,19 @@ WORKDIR /app
 
 # Copy configuration and style dependency files first
 COPY tailwind.config.js ./
-COPY static/css/input.css ./static/css/
+COPY static/css/ ./static/css/
 COPY templates/ ./templates/
-COPY app/ ./app/ 
+COPY app/ ./app/
+COPY tools/build_asset_bundles.mjs ./tools/
 
-# Install an exact Tailwind CSS version and build the production stylesheet.
-RUN npm install --global --ignore-scripts tailwindcss@3.4.17 && \
-    tailwindcss -i ./static/css/input.css -o ./static/css/output.css --minify
+# Install exact Tailwind + esbuild versions and build the production
+# stylesheet, then the Phase 5b hashed CSS bundles + asset manifest.
+# esbuild's native binary needs libc6-compat on musl (alpine); without it
+# the bundle step fails at runtime even though the install succeeds.
+RUN apk add --no-cache libc6-compat && \
+    npm install --global --ignore-scripts tailwindcss@3.4.17 esbuild@0.28.2 && \
+    tailwindcss -i ./static/css/input.css -o ./static/css/output.css --minify && \
+    node tools/build_asset_bundles.mjs
 
 # ============================================================
 # Stage 2: FastAPI Production Application
@@ -53,8 +59,11 @@ COPY templates/ ./templates/
 COPY alembic.ini ./
 COPY entrypoint.sh ./
 
-# Copy minified production CSS from Stage 1
-COPY --from=tailwind-builder /app/static/css/output.css /code/static/css/output.css
+# Copy minified production CSS + Phase 5b bundles + asset manifest from
+# Stage 1 (the context copy above has no output.css or bundles: both are
+# build artifacts, excluded from the context by .dockerignore).
+COPY --from=tailwind-builder /app/static/css/ /code/static/css/
+COPY --from=tailwind-builder /app/static/asset-manifest.json /code/static/asset-manifest.json
 
 # Setup directory structure, permissions, and make entrypoint executable
 RUN mkdir -p uploads logs static/css && \
