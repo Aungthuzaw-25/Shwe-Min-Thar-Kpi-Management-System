@@ -312,6 +312,18 @@ async def _load_authentication_state(
                 UserPermissionOverride.permission
             ),
             joinedload(User.user_departments),
+            # /auth/me needs these too (position + department names).
+            # Loading them here — instead of /me re-querying the user —
+            # keeps the context to ONE round trip. Position is
+            # many-to-one and department rides the already-joined
+            # user_departments rows, so the joined row count does not
+            # grow; only the row width does. Role permissions stay
+            # joinedloaded: get_permission_map reads them from memory
+            # and must never silently go empty (see /me).
+            joinedload(User.position),
+            joinedload(User.user_departments).joinedload(
+                UserDepartment.department
+            ),
         )
         .where(User.email == email)
     )

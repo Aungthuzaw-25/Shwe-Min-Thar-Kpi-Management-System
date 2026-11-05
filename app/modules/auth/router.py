@@ -299,20 +299,21 @@ def _oauth_browser_binding(request: Request) -> tuple[str, str]:
 
 @router.get('/me')
 async def get_current_user_context(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    stmt = select(User).options(
-        selectinload(User.role),
-        selectinload(User.position),
-        selectinload(User.user_departments).selectinload(UserDepartment.department)
-    ).where(User.id == current_user.id, User.is_deleted.is_(False))
-    
-    result = await db.execute(stmt)
-    user = result.scalars().first()
-    
+    # No re-query: get_current_user already loaded everything this
+    # response needs in ONE round trip (role + role permissions +
+    # overrides + position + departments + department names — see
+    # _load_authentication_state). The old code re-selected the user
+    # here with selectinload, costing a user select plus extra
+    # position/department trips on every page load. current_user is
+    # already validated (not deleted, active, session valid), so the
+    # old re-query's is_deleted filter changes nothing.
+    user = current_user
+
     role_value = user.role.name if user.role else 'User'
     user_level = None
     dept_id = None
     dept_name = 'No Department'
-    
+
     ud = next(
         (
             link for link in (user.user_departments or [])
@@ -332,6 +333,10 @@ async def get_current_user_context(db: AsyncSession = Depends(get_db), current_u
 
     from app.modules.auth import sa_mfa
 
+    # SA flags in one trip (combined query); version reads gathered
+    # inside permissions_version_for. Both keep their old values.
+    mfa_required, sa_warning = await sa_mfa.sa_flags(db, user)
+
     return {
         "user_id": str(user.id),
         "full_name": f"{user.first_name} {user.last_name}".strip(),
@@ -339,8 +344,8 @@ async def get_current_user_context(db: AsyncSession = Depends(get_db), current_u
         # SA MFA flags: setup_required = TOTP not enrolled yet (the
         # web tier redirects an SA to enrollment on this flag);
         # single_sa_warning = only one active SA exists.
-        "mfa_setup_required": await sa_mfa.mfa_setup_required(db, user),
-        "single_sa_warning": await sa_mfa.single_sa_warning(db, user),
+        "mfa_setup_required": mfa_required,
+        "single_sa_warning": sa_warning,
         "permissions": sorted(
             code for code, allowed in get_permission_map(user).items() if allowed
         ),

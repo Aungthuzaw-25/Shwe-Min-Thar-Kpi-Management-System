@@ -233,6 +233,39 @@ async def single_sa_warning(db: AsyncSession, user: User) -> bool:
     return await count_active_super_admins(db) == 1
 
 
+async def sa_flags(db: AsyncSession, user: User) -> tuple[bool, bool]:
+    """(mfa_setup_required, single_sa_warning) in ONE round trip.
+
+    /auth/me used to await mfa_setup_required + single_sa_warning
+    sequentially (two DB trips, two waves). Both answers come from
+    small aggregates, so one SELECT with two scalar subqueries
+    returns both — same values as the two separate functions, which
+    stay untouched for their other callers. Non-SA callers still
+    short-circuit with zero trips.
+    """
+    if not is_super_admin(user):
+        return False, False
+    stmt = select(
+        select(func.count(SATotpSecret.id))
+        .where(
+            SATotpSecret.user_id == user.id,
+            SATotpSecret.is_confirmed == True,  # noqa: E712
+        )
+        .scalar_subquery(),
+        select(func.count(User.id))
+        .select_from(User)
+        .join(Role, User.role_id == Role.id)
+        .where(
+            User.is_deleted == False,  # noqa: E712
+            User.is_active == True,  # noqa: E712
+            Role.name.in_(list(SUPER_ADMIN_ROLE_NAMES)),
+        )
+        .scalar_subquery(),
+    )
+    confirmed_count, sa_count = (await db.execute(stmt)).one()
+    return confirmed_count == 0, sa_count == 1
+
+
 async def other_active_sa_emails(db: AsyncSession, exclude_user_id: UUID) -> list[str]:
     stmt = (
         select(User.email)
