@@ -86,23 +86,8 @@
   border-radius: 16px;
 }
 
-.permissions-page .tab-btn {
-  color: var(--color-text-muted);
-  border-radius: 12px;
-}
-
-.permissions-page .tab-btn:hover {
-  background: rgba(255, 255, 255, .7);
-  color: var(--color-text);
-}
-
-/* Active tab (the script marks it with bg-blue-950 + white text) */
-.permissions-page .tab-btn.bg-blue-950,
-.permissions-page .tab-btn.bg-blue-950:hover {
-  background: #1c2b3a;
-  color: #fff;
-  box-shadow: 0 4px 14px rgba(28, 43, 58, .25);
-}
+/* (Tab buttons removed with the subpages conversion: views are separate
+   URLs now, so no tab-button rules remain.) */
 
 /* ---------- Tab 1: Role matrix ---------- */
 .permissions-page #roleContext {

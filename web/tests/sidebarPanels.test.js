@@ -42,15 +42,15 @@ describe('Sidebar submenu panels', () => {
     expect(panel('dashboard')).toContain('/superadmin/department-kpi');
     expect(panel('users')).toContain('/superadmin/users?view=active');
     expect(panel('users')).toContain('/superadmin/users?view=deleted');
-    expect(panel('departments')).toContain('/superadmin/departments?tab=active');
-    expect(panel('departments')).toContain('/superadmin/departments?tab=deleted');
+    expect(panel('departments')).toContain('/superadmin/departments?view=active');
+    expect(panel('departments')).toContain('/superadmin/departments?view=deleted');
     expect(panel('departments')).toContain('>Trash<');
-    expect(panel('permissions')).toContain('/superadmin/permissions?tab=roles');
-    expect(panel('permissions')).toContain('/superadmin/permissions?tab=users');
-    expect(panel('permissions')).toContain('/superadmin/permissions?tab=audit');
-    expect(panel('kpis')).toContain('/superadmin/kpi?tab=records');
-    expect(panel('kpis')).toContain('/superadmin/kpi?tab=settings');
-    expect(panel('kpis')).toContain('/superadmin/kpi?tab=assignments');
+    expect(panel('permissions')).toContain('/superadmin/permissions?view=roles');
+    expect(panel('permissions')).toContain('/superadmin/permissions?view=users');
+    expect(panel('permissions')).toContain('/superadmin/permissions?view=audit');
+    expect(panel('kpis')).toContain('/superadmin/kpi?view=records');
+    expect(panel('kpis')).toContain('/superadmin/kpi?view=settings');
+    expect(panel('kpis')).toContain('/superadmin/kpi?view=assignments');
     expect(panel('kpi_periods')).toContain('/kpi-periods#evaluationPeriodsPanel');
     expect(panel('kpi_periods')).toContain('/kpi-periods#manualEnginePanel');
     expect(panel('system_settings')).toContain('/system-settings?view=general');
@@ -89,7 +89,7 @@ describe('Sidebar submenu panels', () => {
     expect(js).toContain("aria-expanded");
   });
 
-  it('opens the right tab from ?tab= on each tabbed page (Users uses ?view= subpages)', () => {
+  it('opens the right view from ?view= on each subpage (legacy ?tab= maps, unknown defaults)', () => {
     // Users split into subpages: ?view= is canonical, legacy ?tab= maps,
     // unknown/missing view defaults to Active — never blank.
     expect(users).toContain("params.get('view')");
@@ -98,10 +98,24 @@ describe('Sidebar submenu panels', () => {
     expect(users).toContain("return 'active';");
     expect(users).toContain("function loadCurrentViewUsers()");
     expect(users).toContain("return USER_VIEW === 'deleted' ? loadDeletedUsers() : loadUsers();");
-    expect(departments).toContain("new URLSearchParams(window.location.search).get('tab')");
-    expect(departments).toContain("switchTab('deleted')");
-    expect(permissions).toContain("['roles', 'users', 'audit'].includes(initialTab)");
-    expect(kpis).toContain("const initialPanels = { records: 'records-tab', settings: 'settings-tab', assignments: 'assignments-tab' }");
+    // Departments, Permissions, KPIs follow the same form now.
+    expect(departments).toContain("function resolveDeptView()");
+    expect(departments).toContain("if (view === 'active' || view === 'deleted') return view;");
+    expect(departments).toContain("if (params.get('tab') === 'deleted') return 'deleted';");
+    expect(departments).toContain("return 'active';");
+    expect(departments).toContain("function canonicalizeDeptViewUrl()");
+    expect(departments).toContain("function applyDeptView()");
+    expect(departments).not.toContain('switchTab');
+    expect(permissions).toContain("function resolvePermView()");
+    expect(permissions).toContain("if (view === 'roles' || view === 'users' || view === 'audit') return view;");
+    expect(permissions).toContain("if (tab === 'roles' || tab === 'users' || tab === 'audit') return tab;");
+    expect(permissions).toContain("return 'roles';");
+    expect(permissions).toContain("function applyPermView()");
+    expect(permissions).not.toContain('tab-btn');
+    expect(kpis).toContain("function resolveKpiView()");
+    expect(kpis).toContain("const KPI_DEFAULT_VIEW = 'formulas';");
+    expect(kpis).toContain("function applyKpiView(view)");
+    expect(kpis).not.toContain('switchTab');
     // Settings is split into views, not tabs: the ROUTE resolves ?view=
     // (and legacy ?tab= for all 5 values) server-side; the template
     // renders only that view. The old tab-switching code is gone.
