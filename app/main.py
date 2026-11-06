@@ -429,6 +429,10 @@ class CSRFMiddleware(BaseHTTPMiddleware):
                 # like /login; the peer-approve actions stay protected.
                 "/api/v1/auth/sa-mfa/recover",
                 "/api/v1/auth/sa-mfa/reset-requests",
+                # TOTP break-glass (2026-11-06): same public entry
+                # point shape as recover — a locked-out SA has no
+                # session to CSRF with.
+                "/api/v1/auth/sa-mfa/break-glass",
             }
             if (
                 cookie_authenticated

@@ -250,7 +250,9 @@ class AuthService:
                                 "message": "Invalid authenticator code.",
                             },
                         )
-                    secret = sa_mfa.decrypt_secret(secret_row.secret_encrypted)
+                    secret, key_label = sa_mfa.decrypt_secret_with_key(
+                        secret_row.secret_encrypted
+                    )
                     step = sa_mfa.matching_step(secret, totp_code)
                 except sa_mfa.MFAConfigError:
                     raise HTTPException(
@@ -283,6 +285,11 @@ class AuthService:
                         },
                     )
                 await sa_mfa.clear_totp_attempts(db, user.id)
+                # Key rotation (2026-11-06): a secret that still needed
+                # the previous key moves to the current key now that
+                # its code was fully accepted. The row update rides
+                # along with this login's commit.
+                sa_mfa.reencrypt_if_previous_key(secret_row, secret, key_label)
         await AuthService._mark_expired_password(db, user, now)
         db.add(
             LoginHistory(
