@@ -256,7 +256,7 @@
     }
 
     // Viewer permissions (U5): null map fails open — the API still enforces.
-    const viewerPermissions = {{ permission_map | default(null) | tojson }};
+    const viewerPermissions = {{ permission_map | default(none) | tojson }};
     function canPerm(key) {
         return !viewerPermissions || viewerPermissions[key] !== false;
     }

@@ -290,7 +290,15 @@ async def render_superadmin_users_view(
         context={**build_user_template_context(current_user),
             "user_role": current_user.role.name,
             "user_name": f"{current_user.first_name} {current_user.last_name}",
-            "user_email": current_user.email
+            "user_email": current_user.email,
+            # The template JSON-encodes this map ({{ permission_map |
+            # default(none) | tojson }}). It must be present: the old
+            # `default(null)` was a Nunjucks-only literal, so an
+            # absent map made Jinja2 return Undefined and tojson
+            # raised "Object of type Undefined is not JSON
+            # serializable" (500 on every FastAPI-tier render).
+            # Pure Python over already-loaded collections (0 trips).
+            "permission_map": get_permission_map(current_user),
         }
     )
 
@@ -330,11 +338,17 @@ async def render_departments_view(
         
     return templates.TemplateResponse(
         request=request, 
-        name="dashboard/departments.njk",  
+        name="dashboard/departments.njk",
         context={**build_user_template_context(current_user),
             "user_role": current_user.role.name,
             "user_name": f"{current_user.first_name} {current_user.last_name}",
-            "user_email": current_user.email
+            "user_email": current_user.email,
+            # Required: the template does {{ permission_map |
+            # default(none) | tojson }} — the old `default(null)`
+            # was a Nunjucks-only literal, so an absent map 500s
+            # the FastAPI-tier render.
+            # Pure Python over already-loaded collections (0 trips).
+            "permission_map": get_permission_map(current_user),
         }
     )
 
@@ -353,7 +367,13 @@ async def render_permissions_view(
         context={**build_user_template_context(current_user),
             "user_role": current_user.role.name,
             "user_name": f"{current_user.first_name} {current_user.last_name}",
-            "user_email": current_user.email
+            "user_email": current_user.email,
+            # Required: the template does {{ permission_map |
+            # default(none) | tojson }} — the old `default(null)`
+            # was a Nunjucks-only literal, so an absent map 500s
+            # the FastAPI-tier render.
+            # Pure Python over already-loaded collections (0 trips).
+            "permission_map": get_permission_map(current_user),
         }
     )
 
@@ -485,11 +505,17 @@ async def render_targets_view(
         
     return templates.TemplateResponse(
         request=request, 
-        name="dashboard/target.njk", 
+        name="dashboard/target.njk",
         context={**build_user_template_context(current_user),
             "user_role": current_user.role.name,
             "user_name": f"{current_user.first_name} {current_user.last_name}",
-            "user_email": current_user.email
+            "user_email": current_user.email,
+            # Required: the template does {{ permission_map |
+            # default(none) | tojson }} — the old `default(null)`
+            # was a Nunjucks-only literal, so an absent map 500s
+            # the FastAPI-tier render.
+            # Pure Python over already-loaded collections (0 trips).
+            "permission_map": get_permission_map(current_user),
         }
     )
     
@@ -534,11 +560,17 @@ async def positions_page(
         
     return templates.TemplateResponse(
         request=request, 
-        name="dashboard/positions.njk", 
+        name="dashboard/positions.njk",
         context={**build_user_template_context(current_user),
             "user_role": current_user.role.name,
             "user_name": f"{current_user.first_name} {current_user.last_name}",
-            "user_email": current_user.email
+            "user_email": current_user.email,
+            # Required: the template does {{ permission_map |
+            # default(none) | tojson }} — the old `default(null)`
+            # was a Nunjucks-only literal, so an absent map 500s
+            # the FastAPI-tier render.
+            # Pure Python over already-loaded collections (0 trips).
+            "permission_map": get_permission_map(current_user),
         }
     )
 

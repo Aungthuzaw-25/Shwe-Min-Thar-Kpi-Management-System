@@ -601,7 +601,7 @@
     // Viewer permissions (U5): the web tier passes the effective permission
     // map; a null map (FastAPI-tier render) means "unknown" and every button
     // stays, as today — the API still enforces each action.
-    const viewerPermissions = {{ permission_map | default(null) | tojson }};
+    const viewerPermissions = {{ permission_map | default(none) | tojson }};
     const viewerIsSuperAdmin = {% if user_role == "Super Admin" %}true{% else %}false{% endif %};
     function canPerm(key) {
         return !viewerPermissions || viewerPermissions[key] !== false;
