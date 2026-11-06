@@ -182,7 +182,7 @@
     role: {{ user_role | default("") | tojson }},
     level: {{ user_level | default("") | tojson }},
     department: {{ department_name | default("") | tojson }},
-    permissions: {{ permission_map | default(null) | tojson }}
+    permissions: {{ permission_map | default(none) | tojson }}
   };
 </script>
 <script src="/static/js/executive-dashboard.js" defer></script>

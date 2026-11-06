@@ -186,7 +186,7 @@ const roleSelect = document.getElementById("roleSelect");
 // Viewer identity for U3/U5 gates. A null permission map (FastAPI-tier
 // render) fails open — buttons stay, as today; the API still enforces.
 const viewerIsSuperAdmin = {% if user_role == "Super Admin" %}true{% else %}false{% endif %};
-const viewerPermissions = {{ permission_map | default(null) | tojson }};
+const viewerPermissions = {{ permission_map | default(none) | tojson }};
 function canPerm(key) {
     return !viewerPermissions || viewerPermissions[key] !== false;
 }

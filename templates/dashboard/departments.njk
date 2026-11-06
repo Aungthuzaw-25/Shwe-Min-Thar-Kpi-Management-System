@@ -379,7 +379,7 @@
 
     // Viewer permissions (U5): null map (FastAPI-tier render) fails open —
     // every button stays, as today; the API still enforces each action.
-    const viewerPermissions = {{ permission_map | default(null) | tojson }};
+    const viewerPermissions = {{ permission_map | default(none) | tojson }};
     function canPerm(key) {
         return !viewerPermissions || viewerPermissions[key] !== false;
     }

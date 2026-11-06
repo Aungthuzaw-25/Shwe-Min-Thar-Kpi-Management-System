@@ -14,7 +14,7 @@ const themeCss = read("static/css/liquid-glass-theme.css");
 
 describe("employee dashboard: permission-less cards never render", () => {
   it("dashboard context carries the permission map (null when the page has none)", () => {
-    expect(template).toMatch(/permissions: \{\{ permission_map \| default\(null\) \| tojson \}\}/);
+    expect(template).toMatch(/permissions: \{\{ permission_map \| default\(none\) \| tojson \}\}/);
   });
 
   it("panels that the script gates have stable ids", () => {
