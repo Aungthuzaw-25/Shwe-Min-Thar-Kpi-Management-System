@@ -205,6 +205,10 @@ async def _create_fixture(
             )
         )
         await db.flush()
+    # Dashboard builders now read through parallel sessions on this
+    # engine, which only see committed rows (production GETs never
+    # carry uncommitted writes, so this matches the real path).
+    await db.commit()
     return (
         users,
         department_a,
@@ -736,6 +740,7 @@ async def _test_finalized_period_without_records_is_not_a_fake_zero(db):
     )
     db.add(empty_period)
     await db.flush()
+    await db.commit()
 
     overview = await build_executive_overview(
         db,
@@ -791,6 +796,7 @@ async def _test_super_admin_can_select_locked_period_without_results(db):
     )
     db.add_all([super_admin, locked_period, open_period])
     await db.flush()
+    await db.commit()
 
     app = FastAPI()
     app.include_router(unified_router, prefix="/api/v1/dashboard")
@@ -960,6 +966,7 @@ async def _test_period_options_follow_result_scope(db, level):
         ]
     )
     await db.flush()
+    await db.commit()
 
     if level in {"L0", "L1"}:
         scope_user_ids = [users[0].id, users[1].id]
@@ -1051,6 +1058,7 @@ async def _test_no_period_and_no_previous_period_states(db):
     users, department_a, _, previous_period, current_period, _ = await _create_fixture(db)
     previous_period.is_deleted = True
     await db.flush()
+    await db.commit()
     overview = await build_executive_overview(
         db,
         scope_user_ids=[users[0].id],

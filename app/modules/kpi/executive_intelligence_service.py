@@ -32,6 +32,7 @@ from app.modules.kpi.models import (
     KPIStatus,
     PeriodType,
 )
+from app.modules.kpi.parallel import gather_on_sessions
 from app.modules.kpi.period_ranges import normalize_calendar_range
 from app.modules.users.avatar import avatar_color_index, avatar_initials, avatar_url
 from app.modules.users.models import Position, User
@@ -357,14 +358,6 @@ async def _load_range_summary(
 ) -> ExecutiveSummary:
     records = _ranked_records(period_ids, PeriodType.MONTHLY)
     filters = _record_filters(records, scope_user_ids, department_ids)
-    average, evaluated_count = (
-        await db.execute(
-            select(
-                func.avg(records.c.percentage),
-                func.count(func.distinct(records.c.user_id)),
-            ).where(*filters)
-        )
-    ).one()
     latest_records = (
         select(
             records.c.user_id,
@@ -380,16 +373,34 @@ async def _load_range_summary(
         .where(*filters)
         .subquery()
     )
-    status_rows = (
-        await db.execute(
-            select(
-                latest_records.c.status_bucket,
-                func.count(latest_records.c.user_id).label("count"),
+
+    async def _average(session: AsyncSession):
+        return (
+            await session.execute(
+                select(
+                    func.avg(records.c.percentage),
+                    func.count(func.distinct(records.c.user_id)),
+                ).where(*filters)
             )
-            .where(latest_records.c.latest_rank == 1)
-            .group_by(latest_records.c.status_bucket)
-        )
-    ).all()
+        ).one()
+
+    async def _status_rows(session: AsyncSession):
+        return (
+            await session.execute(
+                select(
+                    latest_records.c.status_bucket,
+                    func.count(latest_records.c.user_id).label("count"),
+                )
+                .where(latest_records.c.latest_rank == 1)
+                .group_by(latest_records.c.status_bucket)
+            )
+        ).all()
+
+    # The two aggregates read the same filters and neither feeds the
+    # other, so they run concurrently; assembly below is unchanged.
+    (average, evaluated_count), status_rows = await gather_on_sessions(
+        db, [_average, _status_rows]
+    )
     status_counts = {
         row.status_bucket: int(row.count or 0) for row in status_rows
     }
@@ -897,20 +908,28 @@ async def _finalized_overview_data(
         active_employee_count=active_count,
         status_distribution=_status_distribution(aggregate, evaluated_count),
     )
-    departments = (
-        await _load_department_metrics(
-            db, selected_period.id, scope_user_ids, department_ids
+    async def _departments(session: AsyncSession):
+        return await _load_department_metrics(
+            session, selected_period.id, scope_user_ids, department_ids
         )
-        if show_departments
-        else []
-    )
-    trend = await _load_trend(
-        db,
-        selected_period,
-        selected_period_type,
-        scope_user_ids,
-        department_ids,
-    )
+
+    async def _trend(session: AsyncSession):
+        return await _load_trend(
+            session,
+            selected_period,
+            selected_period_type,
+            scope_user_ids,
+            department_ids,
+        )
+
+    # Department metrics and trend both read the same period and scope;
+    # neither feeds the other, so they run concurrently.
+    finalized_jobs = [_trend]
+    if show_departments:
+        finalized_jobs.append(_departments)
+    finalized_results = await gather_on_sessions(db, finalized_jobs)
+    trend = finalized_results[0]
+    departments = finalized_results[1] if show_departments else []
     signals, attention = _build_signals(selected_period, summary, trend)
     attention.extend(_department_attention_areas(selected_period, departments))
     return summary, departments, trend, signals, attention
@@ -1132,6 +1151,7 @@ async def _build_date_range_overview(
     show_departments: bool,
     period_start: datetime,
     period_end: datetime,
+    active_count: int,
 ) -> ExecutiveOverview:
     selected_periods = [
         period
@@ -1141,7 +1161,6 @@ async def _build_date_range_overview(
         and PeriodType.MONTHLY in period_types.get(period.id, set())
     ]
     selected_period = selected_periods[0] if selected_periods else None
-    active_count = await _load_active_employee_count(db, scope_user_ids)
     period_options = [
         _period_option(
             period,
@@ -1171,31 +1190,43 @@ async def _build_date_range_overview(
         )
 
     period_ids = [period.id for period in selected_periods]
-    summary = await _load_range_summary(
-        db,
-        period_ids,
-        scope_user_ids,
-        department_ids,
-        active_count,
-    )
-    departments = (
-        await _load_department_metrics(
-            db,
+
+    async def _summary(session: AsyncSession):
+        return await _load_range_summary(
+            session,
+            period_ids,
+            scope_user_ids,
+            department_ids,
+            active_count,
+        )
+
+    async def _departments(session: AsyncSession):
+        return await _load_department_metrics(
+            session,
             period_ids,
             scope_user_ids,
             department_ids,
             PeriodType.MONTHLY,
         )
-        if show_departments
-        else []
-    )
-    trend = await _load_range_trend(
-        db,
-        selected_period,
-        period_ids,
-        scope_user_ids,
-        department_ids,
-    )
+
+    async def _trend(session: AsyncSession):
+        return await _load_range_trend(
+            session,
+            selected_period,
+            period_ids,
+            scope_user_ids,
+            department_ids,
+        )
+
+    # Summary, department metrics and trend all read the same period
+    # list and scope; none feeds another, so they run concurrently.
+    range_jobs = [_summary, _trend]
+    if show_departments:
+        range_jobs.append(_departments)
+    range_results = await gather_on_sessions(db, range_jobs)
+    summary = range_results[0]
+    trend = range_results[1]
+    departments = range_results[2] if show_departments else []
     signals, attention = _build_signals(selected_period, summary, trend)
     return ExecutiveOverview(
         periods=period_options,
@@ -1225,13 +1256,25 @@ async def build_executive_overview(
     period_end: datetime | None = None,
 ) -> ExecutiveOverview:
     periods = await _load_periods(db, scope_user_ids, department_ids)
-    period_types = await _load_period_types(
-        db, periods, scope_user_ids, department_ids
-    )
     selected_period = _selected_executive_period(periods, period_id)
     if period_start is not None or period_end is not None:
         if period_start is None or period_end is None or period_start >= period_end:
             raise ValueError("A valid period_start/period_end range is required.")
+    # Period types need the period list; the active-employee count
+    # needs only the scope. They run concurrently, and the date-range
+    # path reuses the same count instead of querying it again.
+    async def _period_types(session: AsyncSession):
+        return await _load_period_types(
+            session, periods, scope_user_ids, department_ids
+        )
+
+    async def _active_count(session: AsyncSession):
+        return await _load_active_employee_count(session, scope_user_ids)
+
+    period_types, active_count = await gather_on_sessions(
+        db, [_period_types, _active_count]
+    )
+    if period_start is not None or period_end is not None:
         return await _build_date_range_overview(
             db,
             periods=periods,
@@ -1241,8 +1284,8 @@ async def build_executive_overview(
             show_departments=show_departments,
             period_start=period_start,
             period_end=period_end,
+            active_count=active_count,
         )
-    active_count = await _load_active_employee_count(db, scope_user_ids)
     empty_summary = _empty_executive_summary()
     if selected_period is None:
         return _empty_executive_overview(empty_summary)

@@ -31,6 +31,7 @@ from app.modules.kpi.models import (
     KPIRecord,
     PeriodType,
 )
+from app.modules.kpi.parallel import gather_on_sessions
 from app.modules.kpi.period_ranges import normalize_calendar_range
 from app.modules.notifications.models import Notification
 from app.modules.notifications.repo import (
@@ -139,21 +140,23 @@ def _finalized_kpi_records(
     ).subquery()
 
 
-async def _build_kpi_aggregates(
+async def _build_kpi_overall(
     db: AsyncSession,
     user_ids: list[UUID],
-    department_ids: list[UUID] | None,
     period_type: PeriodType,
     period_start: datetime | None,
     period_end: datetime | None,
 ):
+    """Overall KPI averages/counts. Independent of the scope gate, so it
+    runs in the parallel batch; only the department comparisons below
+    need the gate's comparison department list."""
     records = _finalized_kpi_records(period_type, period_start, period_end)
     filters = [
         records.c.user_id.in_(user_ids)
         if user_ids
         else records.c.user_id == UUID(int=0)
     ]
-    overall = (
+    return (
         await db.execute(
             select(
                 func.avg(records.c.weighted_score).label("score"),
@@ -163,6 +166,19 @@ async def _build_kpi_aggregates(
         )
     ).one()
 
+
+async def _build_department_comparisons(
+    db: AsyncSession,
+    user_ids: list[UUID],
+    department_ids: list[UUID] | None,
+    period_type: PeriodType,
+    period_start: datetime | None,
+    period_end: datetime | None,
+) -> list[DepartmentComparison]:
+    """Department comparison rows. Runs after the scope gate because it
+    needs the gate's comparison department list; the query itself is the
+    same statement the old combined helper ran."""
+    records = _finalized_kpi_records(period_type, period_start, period_end)
     comparisons: list[DepartmentComparison] = []
     if department_ids:
         department_statement = (
@@ -213,7 +229,7 @@ async def _build_kpi_aggregates(
                     evaluated_count=int(row.evaluated_count or 0),
                 )
             )
-    return overall, comparisons
+    return comparisons
 
 
 async def _build_kpi_trend(
@@ -312,11 +328,14 @@ async def _build_kpi_status_distribution(
     ]
 
 
-async def _build_activity_data(
+async def _activity_filters(
     db: AsyncSession,
     current_user: User,
     department_user_ids: list[UUID] | None = None,
-) -> tuple[list[dict], ActivitySummary]:
+):
+    """Activity where-clause values. The scope lookup is the only part
+    that needs a query before the three independent activity queries can
+    run; the returned filters are plain values, usable on any session."""
     filters = [ActivityTimeline.is_deleted.is_(False)]
     if department_user_ids is not None:
         filters.append(ActivityTimeline.user_id.in_(department_user_ids))
@@ -324,7 +343,15 @@ async def _build_activity_data(
         actor_ids = await get_activity_scope_user_ids(db, current_user)
         if actor_ids is not None:
             filters.append(ActivityTimeline.user_id.in_(actor_ids))
+    return filters
 
+
+async def _build_activity_data(
+    db: AsyncSession,
+    current_user: User,
+    department_user_ids: list[UUID] | None = None,
+) -> tuple[list[dict], ActivitySummary]:
+    filters = await _activity_filters(db, current_user, department_user_ids)
     recent_statement = (
         select(ActivityTimeline)
         .options(joinedload(ActivityTimeline.user))
@@ -332,25 +359,40 @@ async def _build_activity_data(
         .order_by(ActivityTimeline.created_at.desc())
         .limit(10)
     )
-    activities = (await db.execute(recent_statement)).scalars().all()
-    total = int(
-        (
-            await db.execute(select(func.count(ActivityTimeline.id)).where(*filters))
-        ).scalar_one()
-        or 0
-    )
-    action_rows = (
-        await db.execute(
-            select(
-                ActivityTimeline.action,
-                func.count(ActivityTimeline.id).label("count"),
-            )
-            .where(*filters)
-            .group_by(ActivityTimeline.action)
-            .order_by(func.count(ActivityTimeline.id).desc(), ActivityTimeline.action)
-            .limit(10)
+
+    async def _recent(session: AsyncSession):
+        return (await session.execute(recent_statement)).scalars().all()
+
+    async def _total(session: AsyncSession):
+        return int(
+            (
+                await session.execute(
+                    select(func.count(ActivityTimeline.id)).where(*filters)
+                )
+            ).scalar_one()
+            or 0
         )
-    ).all()
+
+    async def _by_action(session: AsyncSession):
+        return (
+            await session.execute(
+                select(
+                    ActivityTimeline.action,
+                    func.count(ActivityTimeline.id).label("count"),
+                )
+                .where(*filters)
+                .group_by(ActivityTimeline.action)
+                .order_by(
+                    func.count(ActivityTimeline.id).desc(),
+                    ActivityTimeline.action,
+                )
+                .limit(10)
+            )
+        ).all()
+
+    activities, total, action_rows = await gather_on_sessions(
+        db, [_recent, _total, _by_action]
+    )
     return (
         [activity_payload(item, item.user) for item in activities],
         ActivitySummary(
@@ -566,15 +608,109 @@ async def build_dashboard_summary(
     period_start = period_range.start_inclusive
     period_end = period_range.end_exclusive
 
+    # Parallel batch 1: every query that does not depend on another's
+    # result. The scope gate runs here too, but the department
+    # comparisons need its output, so they wait for batch 2. The
+    # activity helper fans out to its own three queries internally.
+    # Everything below assembles the same values in the same order as
+    # the old sequential code; only execution order changed.
+    async def _scope(session: AsyncSession):
+        return await _dashboard_scope(session, current_user, department_ids)
+
+    async def _overall(session: AsyncSession):
+        return await _build_kpi_overall(
+            session, scope_user_ids, period_type, period_start, period_end
+        )
+
+    async def _task_diag(session: AsyncSession):
+        return await _build_task_diagnostics(session, scope_user_ids)
+
+    async def _trend(session: AsyncSession):
+        return await _build_kpi_trend(
+            session, scope_user_ids, period_type, period_start, period_end
+        )
+
+    async def _status_dist(session: AsyncSession):
+        return await _build_kpi_status_distribution(
+            session, scope_user_ids, period_type, period_start, period_end
+        )
+
+    async def _dept_count(session: AsyncSession):
+        return int(
+            (
+                await session.execute(
+                    select(func.count(Department.id)).where(
+                        Department.is_deleted.is_(False)
+                    )
+                )
+            ).scalar_one()
+        )
+
+    async def _activity(session: AsyncSession):
+        return await _build_activity_data(
+            session,
+            current_user,
+            scope_user_ids if department_filtered else None,
+        )
+
+    async def _notif_recent(session: AsyncSession):
+        return await get_notifications_by_user(
+            session, current_user.id, limit=5
+        )
+
+    async def _notif_unread(session: AsyncSession):
+        if department_filtered:
+            notification_filters = [
+                Notification.is_deleted.is_(False),
+                Notification.user_id.in_(scope_user_ids),
+            ]
+            return int(
+                (
+                    await session.execute(
+                        select(func.count(Notification.id)).where(
+                            *notification_filters,
+                            Notification.is_read.is_(False),
+                        )
+                    )
+                ).scalar_one()
+                or 0
+            )
+        return await count_unread_notifications(session, current_user.id)
+
+    batch_jobs = [
+        _scope,
+        _overall,
+        _task_diag,
+        _trend,
+        _status_dist,
+        _activity,
+        _notif_recent,
+        _notif_unread,
+    ]
+    if department_ids is None:
+        batch_jobs.append(_dept_count)
+    batch = await gather_on_sessions(db, batch_jobs)
     (
         role_name,
         level,
         visible_departments,
         comparison_department_ids,
-    ) = await _dashboard_scope(
-        db, current_user, department_ids
+    ) = batch[0]
+    kpi_row = batch[1]
+    task_diagnostics, approval_diagnostics = batch[2]
+    kpi_trend = batch[3]
+    kpi_status_distribution = batch[4]
+    activity, activity_summary = batch[5]
+    notifications = batch[6]
+    unread_count = batch[7]
+    department_count = (
+        batch[8] if department_ids is None else len(visible_departments)
     )
-    kpi_row, comparisons = await _build_kpi_aggregates(
+
+    # Parallel batch 2: department comparisons, the one piece that
+    # genuinely depends on the scope gate's output. The request session
+    # is idle now (batch 1 sessions are closed), so it runs here.
+    comparisons = await _build_department_comparisons(
         db,
         scope_user_ids,
         comparison_department_ids,
@@ -582,27 +718,6 @@ async def build_dashboard_summary(
         period_start,
         period_end,
     )
-    task_diagnostics, approval_diagnostics = await _build_task_diagnostics(
-        db, scope_user_ids
-    )
-    kpi_trend = await _build_kpi_trend(
-        db, scope_user_ids, period_type, period_start, period_end
-    )
-    kpi_status_distribution = await _build_kpi_status_distribution(
-        db, scope_user_ids, period_type, period_start, period_end
-    )
-
-    department_count = len(visible_departments)
-    if department_ids is None:
-        department_count = int(
-            (
-                await db.execute(
-                    select(func.count(Department.id)).where(
-                        Department.is_deleted.is_(False)
-                    )
-                )
-            ).scalar_one()
-        )
     scorecards = DashboardScorecards(
         kpi_score=_metric(kpi_row.score, count=int(kpi_row.count or 0)),
         kpi_percentage=_metric(kpi_row.percentage, count=int(kpi_row.count or 0)),
@@ -613,36 +728,6 @@ async def build_dashboard_summary(
         pending_approvals=approval_diagnostics.total_pending_approval,
     )
 
-    activity, activity_summary = await _build_activity_data(
-        db,
-        current_user,
-        scope_user_ids if department_filtered else None,
-    )
-
-    if department_filtered:
-        notification_filters = [
-            Notification.is_deleted.is_(False),
-            Notification.user_id.in_(scope_user_ids),
-        ]
-        notifications = await get_notifications_by_user(
-            db, current_user.id, limit=5
-        )
-        unread_count = int(
-            (
-                await db.execute(
-                    select(func.count(Notification.id)).where(
-                        *notification_filters,
-                        Notification.is_read.is_(False),
-                    )
-                )
-            ).scalar_one()
-            or 0
-        )
-    else:
-        notifications = await get_notifications_by_user(
-            db, current_user.id, limit=5
-        )
-        unread_count = await count_unread_notifications(db, current_user.id)
     alerts = _dashboard_alerts(
         task_diagnostics, approval_diagnostics, period_type
     )
