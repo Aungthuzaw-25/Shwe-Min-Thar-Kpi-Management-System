@@ -44,20 +44,15 @@ const API_BASE = "/api/v1/kpi";
         loadDepartmentKPIs().then(() => openFormulaFromQuery());
         loadAssignmentOptions();
 
-        const tabActions = [
-            ["btn-formulas-tab", "formulas-tab"],
-            ["btn-records-tab", "records-tab"],
-            ["btn-settings-tab", "settings-tab"],
-            ["btn-assignments-tab", "assignments-tab"]
-        ];
-        tabActions.forEach(([buttonId, panelId]) => {
-            document.getElementById(buttonId)?.addEventListener("click", () => switchTab(panelId));
-        });
-
-        // Sidebar panel deep link: ?tab=records|settings|assignments.
-        const initialTab = new URLSearchParams(window.location.search).get('tab');
-        const initialPanels = { records: 'records-tab', settings: 'settings-tab', assignments: 'assignments-tab' };
-        if (initialPanels[initialTab]) switchTab(initialPanels[initialTab]);
+        // Subpage views, not tabs: one view per URL. Mirrors the Users
+        // subpages pattern: ?view= is canonical, legacy ?tab= maps to
+        // the matching view, unknown/missing view defaults to Formula
+        // Workflow — never blank. Formula Workflow stays the default
+        // because it is this page's landing view (the KPIs parent link
+        // points here); the three sidebar children map to their views.
+        const kpiView = resolveKpiView();
+        canonicalizeKpiViewUrl(kpiView);
+        applyKpiView(kpiView);
         document.getElementById("createFormulaButton")?.addEventListener("click", openFormulasModal);
 
         // Category-name suggestions: rows are built dynamically, so wire
@@ -213,44 +208,79 @@ const API_BASE = "/api/v1/kpi";
         });
     }
 
-    function switchTab(tabId) {
-        const targetTab = document.getElementById(tabId);
-        if (!targetTab) {
-            console.error(`KPI management tab not found: ${tabId}`);
-            return;
-        }
+    // Default view: Formula Workflow (this page's landing view).
+    // A one-line change here flips the default if Core ever decides
+    // the Records view should be the landing instead.
+    const KPI_DEFAULT_VIEW = 'formulas';
+    const KPI_VIEWS = {
+        formulas: { title: 'Formula Workflow', subtitle: 'Formulas and their categories, weights, and deduction rules.', panel: 'formulas-tab' },
+        records: { title: 'Employee KPI Records · Manage', subtitle: 'Current-cycle KPI records, scores, and grades.', panel: 'records-tab' },
+        settings: { title: 'Role Tracking', subtitle: 'KPI generation switches per role level and department.', panel: 'settings-tab' },
+        assignments: { title: 'Assign Tasks', subtitle: 'Assign a task in an employee\'s approved KPI category.', panel: 'assignments-tab' },
+    };
+    function resolveKpiView() {
+        const params = new URLSearchParams(window.location.search);
+        const view = params.get('view');
+        if (view === 'formulas' || view === 'records' || view === 'settings' || view === 'assignments') return view;
+        const tab = params.get('tab');
+        if (tab === 'formulas' || tab === 'records' || tab === 'settings' || tab === 'assignments') return tab;
+        return KPI_DEFAULT_VIEW;
+    }
+    function canonicalizeKpiViewUrl(view) {
+        // Bookmarkable canonical URL. replaceState adds no history entry,
+        // so back/forward between views still works: each view is a real
+        // navigation that re-renders this page for that view. A failure
+        // here must never block the panels, so it is guarded.
+        // Unrelated params are PRESERVED (never rebuilt as a bare URL):
+        // the ?formula=<name> deep link must survive, because
+        // openFormulaFromQuery reads it asynchronously after the
+        // formula list loads — stripping it silently never opens the
+        // editor. Only view is set and legacy tab is dropped.
+        try {
+            const params = new URLSearchParams(window.location.search);
+            if (params.get('view') !== view || params.has('tab')) {
+                params.set('view', view);
+                params.delete('tab');
+                history.replaceState(null, '', '/superadmin/kpi?' + params.toString());
+            }
+        } catch { /* keep the resolved view; the panels still show */ }
+    }
+    function applyKpiView(view) {
+        const meta = KPI_VIEWS[view];
+        const title = document.getElementById('kpiViewTitle');
+        if (title) title.textContent = meta.title;
+        const subtitle = document.getElementById('kpiViewSubtitle');
+        if (subtitle) subtitle.textContent = meta.subtitle;
         // Panels carry BOTH the `hidden` class AND the `hidden` attribute
         // (template markup); toggling only the class left every non-formula
-        // tab invisible forever. Keep both in sync.
+        // panel invisible forever. Keep both in sync.
         document.querySelectorAll('.tab-content').forEach(el => {
             el.classList.add('hidden');
             el.hidden = true;
             el.classList.remove('animate-fade-in-up');
         });
-
-        targetTab.classList.remove('hidden');
-        targetTab.hidden = false;
-        void targetTab.offsetWidth;
-        targetTab.classList.add('animate-fade-in-up');
-
-        const defaultClass = "whitespace-nowrap pb-3 text-xs sm:text-sm font-semibold text-slate-500 hover:text-blue-900 border-b-2 border-transparent transition-all duration-300";
-        const activeClass = "whitespace-nowrap pb-3 text-xs sm:text-sm font-bold text-blue-900 border-b-2 border-blue-700 transition-all duration-300";
-
-        ['formulas', 'records', 'settings', 'assignments'].forEach(tab => {
-            const button = document.getElementById(`btn-${tab}-tab`);
-            if (!button) return;
-            button.className = defaultClass;
-            button.setAttribute("aria-selected", "false");
-        });
-        const activeButton = document.getElementById(`btn-${tabId}`);
-        if (activeButton) {
-            activeButton.className = activeClass;
-            activeButton.setAttribute("aria-selected", "true");
+        const targetPanel = document.getElementById(meta.panel);
+        if (!targetPanel) {
+            console.error(`KPI management panel not found: ${meta.panel}`);
+            return;
         }
-
-        if(tabId === 'records-tab') loadEmployeeRecords();
-        if(tabId === 'settings-tab') loadDepartmentSettings();
-        if(tabId === 'assignments-tab') loadAssignmentOptions();
+        targetPanel.classList.remove('hidden');
+        targetPanel.hidden = false;
+        void targetPanel.offsetWidth;
+        targetPanel.classList.add('animate-fade-in-up');
+        // Sidebar child highlight for the current view (Formula Workflow
+        // has no child row — the KPIs parent stays highlighted by
+        // active_page). The panel itself still opens/closes by its own
+        // mechanism — untouched.
+        document.querySelectorAll('#sidebar-panel-kpis .sidebar-panel__row').forEach((row) => {
+            row.classList.toggle('sidebar-panel__row--active', row.getAttribute('href') === '/superadmin/kpi?view=' + view);
+        });
+        // Per-view loaders only: records and settings load on their view
+        // (as tab clicks used to trigger them). Assignments data already
+        // loads in init, and formulas cards load in init too — the same
+        // loads the tabbed page always ran, into their own panels.
+        if (view === 'records') loadEmployeeRecords();
+        if (view === 'settings') loadDepartmentSettings();
     }
 
     async function loadAssignmentOptions() {
@@ -1716,7 +1746,6 @@ const API_BASE = "/api/v1/kpi";
         showToast,
         submitAssignment,
         submitIntervention,
-        switchTab,
         updateTotalWeightIndicator,
         workflowAction
     });

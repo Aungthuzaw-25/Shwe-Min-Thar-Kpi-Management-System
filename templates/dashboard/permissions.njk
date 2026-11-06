@@ -15,23 +15,13 @@
     </header>
 
     <div class="workspace-table mx-auto max-w-[1400px] p-5 sm:p-8">
-        <!-- ========== TAB NAVIGATION ========== -->
-        <div class="workspace-tabs mb-6" role="tablist" aria-label="Access control sections">
-            <button data-tab="roles" class="tab-btn rounded-xl bg-blue-950 px-5 py-2.5 text-sm font-bold text-white transition-all">
-                <svg class="mr-1.5 inline h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
-                Role Matrix
-            </button>
-            <button data-tab="users" class="tab-btn rounded-xl px-5 py-2.5 text-sm font-bold text-slate-500 hover:bg-slate-100 transition-all">
-                <svg class="mr-1.5 inline h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
-                User Overrides
-            </button>
-            <button data-tab="audit" class="tab-btn rounded-xl px-5 py-2.5 text-sm font-bold text-slate-500 hover:bg-slate-100 transition-all">
-                <svg class="mr-1.5 inline h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                Audit History
-            </button>
+        <!-- ========== VIEW HEADING (subpages, not tabs: one view per URL) ========== -->
+        <div class="mb-6">
+            <h3 id="permViewTitle" class="text-sm font-bold text-blue-950">Role Matrix</h3>
+            <p id="permViewSubtitle" class="text-xs text-slate-500 font-medium mt-1">Role defaults: what each role may do.</p>
         </div>
 
-        <!-- ========== TAB 1: ROLE PERMISSION MATRIX ========== -->
+        <!-- ========== VIEW 1: ROLE PERMISSION MATRIX ========== -->
         <section id="rolesPanel">
             <div class="perm-controls mb-5 grid gap-4 rounded-2xl border border-slate-100 bg-slate-50 p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
                 <label class="flex-1 text-xs font-bold uppercase tracking-wide text-slate-600">Select Role
@@ -74,7 +64,7 @@
             </div>
         </section>
 
-        <!-- ========== TAB 2: USER PERMISSION OVERRIDES ========== -->
+        <!-- ========== VIEW 2: USER PERMISSION OVERRIDES ========== -->
         <section id="usersPanel" class="hidden">
             <div class="perm-controls mb-5 grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
                 <label class="flex-1 text-xs font-bold uppercase tracking-wide text-slate-600">Select User
@@ -125,7 +115,7 @@
             <div id="userMatrix" class="space-y-1"></div>
         </section>
 
-        <!-- ========== TAB 3: AUDIT HISTORY ========== -->
+        <!-- ========== VIEW 3: AUDIT HISTORY ========== -->
         <section id="auditPanel" class="hidden">
             <div class="perm-controls mb-5 flex flex-col gap-3 sm:flex-row sm:items-end">
                 <label class="text-xs font-bold uppercase tracking-wide text-slate-600">Filter by Action
@@ -324,27 +314,69 @@ function showConfirm(title, body) {
 }
 
 // =====================================================================
-// TAB NAVIGATION
+// VIEW NAVIGATION (subpages, not tabs: one view per URL)
+// Mirrors the Users subpages pattern: ?view= is canonical, legacy
+// ?tab= maps to the matching view, unknown/missing view defaults to
+// Roles — never blank. Each view is a real navigation, so only the
+// current view's panel is ever shown. The download-permission section
+// below the panels is a standalone SA-only section, not a view panel,
+// so it stays visible on all views exactly as before.
 // =====================================================================
-document.querySelectorAll(".tab-btn").forEach(btn => btn.onclick = () => {
-    document.querySelectorAll(".tab-btn").forEach(b => b.className = "tab-btn rounded-xl px-5 py-2.5 text-sm font-bold text-slate-500 hover:bg-slate-100 transition-all");
-    btn.className = "tab-btn rounded-xl bg-blue-950 px-5 py-2.5 text-sm font-bold text-white transition-all";
-    document.getElementById("rolesPanel").classList.toggle("hidden", btn.dataset.tab !== "roles");
-    document.getElementById("usersPanel").classList.toggle("hidden", btn.dataset.tab !== "users");
-    document.getElementById("auditPanel").classList.toggle("hidden", btn.dataset.tab !== "audit");
-    if (btn.dataset.tab === "audit") loadAudit(true);
-});
-
-// Sidebar panel deep link: ?tab=roles|users|audit opens that tab on load.
-(function () {
-    const initialTab = new URLSearchParams(window.location.search).get('tab');
-    if (!['roles', 'users', 'audit'].includes(initialTab)) return;
-    const button = document.querySelector(`.tab-btn[data-tab="${initialTab}"]`);
-    if (button) button.click();
-})();
+const PERM_VIEWS = {
+    roles: { title: 'Role Matrix', subtitle: 'Role defaults: what each role may do.', panel: 'rolesPanel' },
+    users: { title: 'User Overrides', subtitle: 'Per-user permission overrides on top of role defaults.', panel: 'usersPanel' },
+    audit: { title: 'Audit History', subtitle: 'Permission changes, newest first.', panel: 'auditPanel' },
+};
+function resolvePermView() {
+    const params = new URLSearchParams(window.location.search);
+    const view = params.get('view');
+    if (view === 'roles' || view === 'users' || view === 'audit') return view;
+    const tab = params.get('tab');
+    if (tab === 'roles' || tab === 'users' || tab === 'audit') return tab;
+    return 'roles';
+}
+const PERM_VIEW = resolvePermView();
+function canonicalizePermViewUrl() {
+    // Bookmarkable canonical URL. replaceState adds no history entry,
+    // so back/forward between views still works: each view is a real
+    // navigation that re-renders this page for that view. A failure
+    // here must never block the panels, so it is guarded.
+    // Unrelated query params are preserved (only view is set and legacy
+    // tab is dropped) — no page on this route uses one today, but a
+    // bare-URL rebuild would silently strip any future deep link, as
+    // it once did for the KPIs ?formula= link.
+    try {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('view') !== PERM_VIEW || params.has('tab')) {
+            params.set('view', PERM_VIEW);
+            params.delete('tab');
+            history.replaceState(null, '', '/superadmin/permissions?' + params.toString());
+        }
+    } catch { /* keep the resolved view; the panels still show */ }
+}
+function applyPermView() {
+    const meta = PERM_VIEWS[PERM_VIEW];
+    const title = document.getElementById('permViewTitle');
+    if (title) title.textContent = meta.title;
+    const subtitle = document.getElementById('permViewSubtitle');
+    if (subtitle) subtitle.textContent = meta.subtitle;
+    for (const key of Object.keys(PERM_VIEWS)) {
+        document.getElementById(PERM_VIEWS[key].panel)?.classList.toggle('hidden', key !== PERM_VIEW);
+    }
+    // Sidebar child highlight for the current view. The panel itself
+    // still opens/closes by its own mechanism — untouched.
+    document.querySelectorAll('#sidebar-panel-permissions .sidebar-panel__row').forEach((row) => {
+        row.classList.toggle('sidebar-panel__row--active', row.getAttribute('href') === '/superadmin/permissions?view=' + PERM_VIEW);
+    });
+    // Audit rows load only on the Audit view, as before (tab click
+    // used to trigger this; the view landing replaces that click).
+    if (PERM_VIEW === 'audit') loadAudit(true);
+}
+applyPermView();
+canonicalizePermViewUrl();
 
 // =====================================================================
-// TAB 1: ROLE PERMISSION MATRIX
+// VIEW 1: ROLE PERMISSION MATRIX
 // =====================================================================
 function renderRoleMatrix(assigned) {
     const checked = new Set(assigned);
@@ -499,7 +531,7 @@ window.addEventListener("beforeunload", (event) => {
 });
 
 // =====================================================================
-// TAB 2: USER PERMISSION OVERRIDES
+// VIEW 2: USER PERMISSION OVERRIDES
 // =====================================================================
 async function loadUserEffective() {
     const uid = userSelect.value;
@@ -752,7 +784,7 @@ document.getElementById("userSearchInput").addEventListener("input", (event) => 
 });
 
 // =====================================================================
-// TAB 3: AUDIT HISTORY
+// VIEW 3: AUDIT HISTORY
 // =====================================================================
 async function loadAudit(reset = false) {
     if (reset) auditOffset = 0;

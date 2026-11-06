@@ -15,7 +15,7 @@
         <h2 class="text-2xl sm:text-3xl font-extrabold text-blue-950 flex items-center tracking-tight">Departments Management</h2>
         <p class="text-slate-500 mt-1 text-xs sm:text-sm">Manage organization departments, heads, and team levels.</p>
     </div>
-    <div class="w-full md:w-auto">
+    <div class="w-full md:w-auto" id="deptAddWrap">
         {% set canCreateDept = permission_map['department.create'] if permission_map is defined and permission_map['department.create'] is defined else true %}
         {% if canCreateDept %}
         <button onclick="openDepartmentModal()" class="w-full md:w-auto bg-blue-950 hover:bg-blue-900 text-white px-5 py-2.5 rounded-xl text-sm font-bold flex justify-center items-center shadow-md transition transform hover:-translate-y-0.5">
@@ -26,22 +26,20 @@
     </div>
 </header>
 
+<!-- VIEW HEADING (subpages, not tabs: one view per URL) -->
+<div class="workspace-toolbar mb-4 !items-center">
+    <div class="w-full sm:w-auto">
+        <h3 id="deptViewTitle" class="whitespace-nowrap pb-2 sm:pb-3 text-sm font-bold text-blue-950">Active Departments</h3>
+        <p id="deptViewSubtitle" class="text-xs text-slate-500 font-medium">Departments with active teams.</p>
+    </div>
+</div>
+
 <!-- MAIN CONTENT CONTAINER -->
 <div class="workspace-page">
     
-    <!-- Controls (Tabs & Search) -->
+    <!-- Controls (Search & Sort) -->
     <!-- 🌟 RESPONSIVE FIX: Tabs and search bar alignment for mobile -->
     <div class="workspace-toolbar mb-4">
-        <!-- Tabs -->
-        <div class="workspace-tabs w-full xl:w-auto">
-            <button id="tabActive" onclick="switchTab('active')" class="whitespace-nowrap px-4 sm:px-5 py-2 bg-white text-blue-950 rounded-lg text-xs sm:text-sm font-bold shadow-sm transition flex-1 xl:flex-none">
-                Active Departments
-            </button>
-            <button id="tabDeleted" onclick="switchTab('deleted')" class="whitespace-nowrap px-4 sm:px-5 py-2 text-slate-500 hover:text-blue-950 rounded-lg text-xs sm:text-sm font-semibold transition flex-1 xl:flex-none">
-                Trash (Deleted)
-            </button>
-        </div>
-
         <!-- Search Bar -->
         <div class="relative w-full xl:w-72">
             <svg class="w-4 h-4 absolute right-3 top-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
@@ -214,7 +212,58 @@
     const API_BASE_URL = "/api/v1/departments";
     const USER_API_URL = "/api/v1/users";
     
-    let currentTab = 'active';
+    // --- View Management (subpages, not tabs: one view per URL) ---
+    // Mirrors the Users subpages pattern: ?view= is canonical, legacy
+    // ?tab= maps to the matching view, unknown/missing view defaults to
+    // Active — never blank. Each view is a real navigation, so one
+    // view's late fetch can never render the other view's list.
+    const DEPT_VIEWS = {
+        active: { title: 'Active Departments', subtitle: 'Departments with active teams.' },
+        deleted: { title: 'Trash (Deleted)', subtitle: 'Deleted departments. Restore them or delete them permanently.' },
+    };
+    function resolveDeptView() {
+        const params = new URLSearchParams(window.location.search);
+        const view = params.get('view');
+        if (view === 'active' || view === 'deleted') return view;
+        if (params.get('tab') === 'deleted') return 'deleted';
+        return 'active';
+    }
+    const deptView = resolveDeptView();
+    function canonicalizeDeptViewUrl() {
+        // Bookmarkable canonical URL. replaceState adds no history entry,
+        // so back/forward between the two views still works: each view is
+        // a real navigation that re-renders this page for that view.
+        // Canonical URL is cosmetic: a failure here must never block the
+        // list load, so it is guarded and the resolved view stands.
+        // Unrelated query params are preserved (only view is set and
+        // legacy tab is dropped) — no page on this route uses one
+        // today, but a bare-URL rebuild would silently strip any
+        // future deep link, as it once did for the KPIs ?formula= link.
+        try {
+            const params = new URLSearchParams(window.location.search);
+            if (params.get('view') !== deptView || params.has('tab')) {
+                params.set('view', deptView);
+                params.delete('tab');
+                history.replaceState(null, '', '/superadmin/departments?' + params.toString());
+            }
+        } catch { /* keep the resolved view; the list still loads */ }
+    }
+    function applyDeptView() {
+        const meta = DEPT_VIEWS[deptView];
+        const title = document.getElementById('deptViewTitle');
+        if (title) title.textContent = meta.title;
+        const subtitle = document.getElementById('deptViewSubtitle');
+        if (subtitle) subtitle.textContent = meta.subtitle;
+        // Sidebar child highlight for the current view. The panel itself
+        // still opens/closes by its own mechanism — untouched.
+        document.querySelectorAll('#sidebar-panel-departments .sidebar-panel__row').forEach((row) => {
+            row.classList.toggle('sidebar-panel__row--active', row.getAttribute('href') === '/superadmin/departments?view=' + deptView);
+        });
+        // Add New Department lives on the Active view only: a new
+        // department is active, never trash. (The button is also
+        // template-gated by department.create.)
+        if (deptView === 'deleted') document.getElementById('deptAddWrap')?.remove();
+    }
     let allFetchedDepartments = []; 
     let currentActiveDeptId = null;
     let departmentAvailableUsers = [];
@@ -285,35 +334,16 @@
         }, 5000);
     }
 
-    // --- Tab Management ---
-    function switchTab(tabName) {
-        currentTab = tabName;
-        const tabActive = document.getElementById("tabActive");
-        const tabDeleted = document.getElementById("tabDeleted");
-
-        const activeStyle = "whitespace-nowrap px-4 sm:px-5 py-2 bg-white text-blue-950 rounded-lg text-xs sm:text-sm font-bold shadow-sm transition flex-1 xl:flex-none";
-        const inactiveStyle = "whitespace-nowrap px-4 sm:px-5 py-2 text-slate-500 hover:text-blue-950 rounded-lg text-xs sm:text-sm font-semibold transition flex-1 xl:flex-none";
-
-        if (tabName === 'active') {
-            tabActive.className = activeStyle;
-            tabDeleted.className = inactiveStyle;
-        } else {
-            tabDeleted.className = activeStyle;
-            tabActive.className = inactiveStyle;
-        }
-        
-        document.getElementById("searchInput").value = ""; 
-        fetchDepartments();
-    }
-
     // Sort order lives on the server: 'member_count_desc' is the server
     // default, so the default view sends no sort param at all; the flipped
-    // view sends sort=member_count_asc. The choice survives tab switches
-    // and search (search filters client-side over the fetched order).
+    // view sends sort=member_count_asc. The choice survives search
+    // (search filters client-side over the fetched order). Views are
+    // separate page loads, so the sort resets to the default on a
+    // view switch — same as on any page reload.
     let departmentSort = 'member_count_desc';
     function buildDepartmentsUrl() {
         const params = new URLSearchParams();
-        if (currentTab !== 'active') params.set('is_active', 'false');
+        if (deptView !== 'active') params.set('is_active', 'false');
         if (departmentSort !== 'member_count_desc') params.set('sort', departmentSort);
         const query = params.toString();
         return query ? `${API_BASE_URL}?${query}` : API_BASE_URL;
@@ -362,7 +392,7 @@
         const filtered = allFetchedDepartments.filter(dept => dept.name.toLowerCase().includes(query));
 
         if (filtered.length === 0) {
-            const emptyMsg = query ? 'No matching departments found.' : (currentTab === 'active' ? 'No active departments found.' : 'Trash is empty.');
+            const emptyMsg = query ? 'No matching departments found.' : (deptView === 'active' ? 'No active departments found.' : 'Trash is empty.');
             tbody.innerHTML = `<tr><td colspan="5" class="p-10 text-center text-slate-400 font-medium">${emptyMsg}</td></tr>`;
             return;
         }
@@ -374,10 +404,10 @@
             const tr = document.createElement("tr");
             tr.className = "hover:bg-blue-50/30 group bg-white transition-colors";
             
-            let nameStyle = currentTab === 'active' ? "text-blue-950" : "text-slate-400 line-through";
+            let nameStyle = deptView === 'active' ? "text-blue-950" : "text-slate-400 line-through";
             let actionButtons = "";
 
-            if (currentTab === 'active') {
+            if (deptView === 'active') {
                 actionButtons = `
                     <div class="flex justify-end gap-1.5 flex-wrap">
                         ${canPerm('department.edit') ? `
@@ -790,13 +820,10 @@
         fetchDepartments();
     });
     document.addEventListener("DOMContentLoaded", () => {
-        // Sidebar panel deep link: ?tab=deleted opens the trash tab.
-        const initialTab = new URLSearchParams(window.location.search).get('tab');
-        if (initialTab === 'deleted') {
-            switchTab('deleted');
-        } else {
-            fetchDepartments();
-        }
+        // Subpage view: resolved once from the URL (?view=, legacy ?tab=).
+        applyDeptView();
+        canonicalizeDeptViewUrl();
+        fetchDepartments();
     });
     document.getElementById("userSelect")?.addEventListener("change", (event) => {
         const user = departmentAvailableUsers.find((item) => String(item.id) === event.target.value);

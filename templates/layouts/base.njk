@@ -134,8 +134,8 @@
             </a>
             <div id="sidebar-panel-departments" class="sidebar-panel" hidden role="menu" aria-label="Departments">
                 <p class="sidebar-panel__title">Departments</p>
-                <a class="sidebar-panel__row" href="/superadmin/departments?tab=active" role="menuitem">Active Departments</a>
-                <a class="sidebar-panel__row" href="/superadmin/departments?tab=deleted" role="menuitem">Trash</a>
+                <a class="sidebar-panel__row" href="/superadmin/departments?view=active" role="menuitem">Active Departments</a>
+                <a class="sidebar-panel__row" href="/superadmin/departments?view=deleted" role="menuitem">Trash</a>
             </div>
             <a href="/superadmin/permissions" data-sidebar-panel="permissions" class="{% if active_page == 'permissions' %}sidebar-item-active{% else %}sidebar-item text-slate-300{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
                 <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a3 3 0 11-6 0 3 3 0 016 0zm3 14H6v-2a6 6 0 0112 0v2zm-3-9h6m-3-3v6"></path></svg> Permissions
@@ -143,9 +143,9 @@
             </a>
             <div id="sidebar-panel-permissions" class="sidebar-panel" hidden role="menu" aria-label="Permissions">
                 <p class="sidebar-panel__title">Permissions</p>
-                <a class="sidebar-panel__row" href="/superadmin/permissions?tab=roles" role="menuitem">Roles</a>
-                <a class="sidebar-panel__row" href="/superadmin/permissions?tab=users" role="menuitem">User Overrides</a>
-                <a class="sidebar-panel__row" href="/superadmin/permissions?tab=audit" role="menuitem">Audit</a>
+                <a class="sidebar-panel__row" href="/superadmin/permissions?view=roles" role="menuitem">Roles</a>
+                <a class="sidebar-panel__row" href="/superadmin/permissions?view=users" role="menuitem">User Overrides</a>
+                <a class="sidebar-panel__row" href="/superadmin/permissions?view=audit" role="menuitem">Audit</a>
             </div>
 
             {% if user_role in ['Super Admin'] %}
@@ -170,9 +170,9 @@
             </a>
             <div id="sidebar-panel-kpis" class="sidebar-panel" hidden role="menu" aria-label="KPIs">
                 <p class="sidebar-panel__title">KPIs</p>
-                <a class="sidebar-panel__row" href="/superadmin/kpi?tab=records" role="menuitem">Employee KPI Records · Manage</a>
-                <a class="sidebar-panel__row" href="/superadmin/kpi?tab=settings" role="menuitem">Role Tracking</a>
-                <a class="sidebar-panel__row" href="/superadmin/kpi?tab=assignments" role="menuitem">Assign Tasks</a>
+                <a class="sidebar-panel__row" href="/superadmin/kpi?view=records" role="menuitem">Employee KPI Records · Manage</a>
+                <a class="sidebar-panel__row" href="/superadmin/kpi?view=settings" role="menuitem">Role Tracking</a>
+                <a class="sidebar-panel__row" href="/superadmin/kpi?view=assignments" role="menuitem">Assign Tasks</a>
             </div>
 
             <!-- KPI Upload -->

@@ -24,10 +24,13 @@ describe('KPI name split (Overview vs Manage)', () => {
     expect(split).not.toContain('>Employee KPI results</h2>');
   });
 
-  it('labels the KPIs records tab and section Manage', () => {
-    expect(kpis).toContain('>Employee KPI Records · Manage</button>');
+  it('labels the KPIs records view and section Manage', () => {
+    // Subpages conversion: the records TAB button is gone — the Manage
+    // label now lives in the records view title (JS view meta) and the
+    // section heading inside the records panel.
+    const js = read('static/js/superadmin-kpi.js');
+    expect(js).toContain("records: { title: 'Employee KPI Records · Manage'");
     expect(kpis).toContain('>Employee KPI Records · Manage (Current Cycle)</h3>');
-    expect(kpis).not.toContain('>Employee Records</button>');
     expect(kpis).not.toContain('>Employee KPI Records (Current Cycle)</h3>');
   });
 
@@ -36,7 +39,7 @@ describe('KPI name split (Overview vs Manage)', () => {
     expect(split).toContain('id="employeeResultsSection"');
     expect(split).toContain('id="employeeResultsHeading"');
     expect(sa).not.toContain('id="employeeResultsSection"');
-    expect(kpis).toContain('id="btn-records-tab"');
     expect(kpis).toContain('id="records-tab"');
+    expect(kpis).toContain('id="kpiViewTitle"');
   });
 });

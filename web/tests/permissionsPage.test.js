@@ -26,8 +26,12 @@ describe("permissions page polish (visual only)", () => {
     // must never rename them. (The user-matrix control changed from a
     // 3-button group to a toggle in the toggle task: the collector now
     // reads row data-pending instead of button classes.)
-    expect(template).toContain('class="tab-btn rounded-xl bg-blue-950 px-5 py-2.5 text-sm font-bold text-white transition-all"');
-    expect(template).toContain('btn.className = "tab-btn rounded-xl bg-blue-950 px-5 py-2.5 text-sm font-bold text-white transition-all"');
+    // Subpages conversion: the tab bar is gone — views are separate
+    // URLs with their own heading + panel visibility, not tab buttons.
+    expect(template).toContain('id="permViewTitle"');
+    expect(template).toContain('id="permViewSubtitle"');
+    expect(template).toContain('function applyPermView()');
+    expect(template).not.toContain('tab-btn');
     expect(template).toContain('row.dataset.pending');
     expect(template).toContain('id="saveRole"');
     expect(template).toContain('id="saveUserOverrides"');
@@ -38,8 +42,8 @@ describe("permissions page polish (visual only)", () => {
     expect(template).not.toContain('id="confirmModal"');
   });
 
-  it("active tab stays ink with white text, including on hover", () => {
-    expect(css).toMatch(/\.permissions-page \.tab-btn\.bg-blue-950,\s*\.permissions-page \.tab-btn\.bg-blue-950:hover \{\s*background: #1c2b3a;\s*color: #fff;/);
+  it("tab-button rules are gone with the subpages conversion (views are URLs, not tabs)", () => {
+    expect(css).not.toContain('.tab-btn');
   });
 
   it("primary actions use the house ink/primary pair", () => {
