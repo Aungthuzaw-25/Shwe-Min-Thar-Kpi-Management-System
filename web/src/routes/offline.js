@@ -8,11 +8,17 @@
 // GET /offline   — the offline fallback page the worker precaches.
 //                  Public on purpose: it is a static notice with no
 //                  data, and the worker must be able to cache it.
+//                  Rendered through response.render (not response.send)
+//                  so the CSP middleware adds the per-request nonce to
+//                  the inline <style> and <script> — sent with .send()
+//                  they carry no nonce and the live CSP blocks them,
+//                  leaving the page unstyled with no auto-retry. The
+//                  template stays fully self-contained (no external
+//                  CSS/fonts/images/requests) and needs no session.
 
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { sendOfflinePage } from "../lib/offlinePage.js";
 
 const sourceDirectory = path.dirname(fileURLToPath(import.meta.url));
 const serviceWorkerPath = path.resolve(sourceDirectory, "../service-worker.js");
@@ -28,6 +34,6 @@ export function registerOfflineRoutes(app) {
   });
 
   app.get("/offline", (_request, response) => {
-    sendOfflinePage(response);
+    response.status(200).render("offline.njk");
   });
 }
