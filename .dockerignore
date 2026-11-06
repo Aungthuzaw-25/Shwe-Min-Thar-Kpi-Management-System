@@ -14,6 +14,8 @@ scripts/
 .tmp_*
 qa_l1_cookies.txt
 static/css/output.css
+static/css/*.*.css
+static/asset-manifest.json
 requirements-dev.txt
 requirements-dev.lock
 pytest.ini

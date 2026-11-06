@@ -1,0 +1,116 @@
+/* Self-hosted fonts (perf/lcp Phase 5a): Inter, Plus Jakarta Sans and
+   Noto Sans Myanmar as woff2, served from /static/fonts/ — no
+   third-party font request on any page that loads this sheet.
+   Only the weights the project actually uses (see below) and only
+   the latin + myanmar subsets: each file below IS its subset
+   (Fontsource 5.3.0 subset builds), so no unicode-range is needed.
+   All faces use font-display: swap: text renders in the fallback
+   stack immediately and swaps when the font arrives.
+   Licences: OFL.txt beside each family's files (SIL Open Font
+   License 1.1, from the Fontsource packages).
+   Weights: Inter 400/500/600/700/800/900 (body 400 + Tailwind
+   medium/semibold/bold/extrabold/black + CSS 600/700/800; no 300
+   anywhere in templates or CSS, so it is not shipped). Plus Jakarta
+   Sans 400/500/600/700/800 (the weights its Google link requested;
+   note: no stylesheet currently references this family, so its
+   files are not fetched at runtime — they are vendored so the
+   family stays available locally). Noto Sans Myanmar 400/600
+   (myanmar subset only: the family is the Myanmar-script fallback
+   in the Inter stacks; its latin glyphs are never needed). */
+
+/* Inter — latin */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url(../fonts/inter/inter-latin-400-normal.woff2) format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 500;
+  src: url(../fonts/inter/inter-latin-500-normal.woff2) format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 600;
+  src: url(../fonts/inter/inter-latin-600-normal.woff2) format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 700;
+  src: url(../fonts/inter/inter-latin-700-normal.woff2) format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 800;
+  src: url(../fonts/inter/inter-latin-800-normal.woff2) format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 900;
+  src: url(../fonts/inter/inter-latin-900-normal.woff2) format('woff2');
+}
+
+/* Plus Jakarta Sans — latin */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url(../fonts/plus-jakarta-sans/plus-jakarta-sans-latin-400-normal.woff2) format('woff2');
+}
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 500;
+  src: url(../fonts/plus-jakarta-sans/plus-jakarta-sans-latin-500-normal.woff2) format('woff2');
+}
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 600;
+  src: url(../fonts/plus-jakarta-sans/plus-jakarta-sans-latin-600-normal.woff2) format('woff2');
+}
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 700;
+  src: url(../fonts/plus-jakarta-sans/plus-jakarta-sans-latin-700-normal.woff2) format('woff2');
+}
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 800;
+  src: url(../fonts/plus-jakarta-sans/plus-jakarta-sans-latin-800-normal.woff2) format('woff2');
+}
+
+/* Noto Sans Myanmar — myanmar */
+@font-face {
+  font-family: 'Noto Sans Myanmar';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url(../fonts/noto-sans-myanmar/noto-sans-myanmar-myanmar-400-normal.woff2) format('woff2');
+}
+@font-face {
+  font-family: 'Noto Sans Myanmar';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 600;
+  src: url(../fonts/noto-sans-myanmar/noto-sans-myanmar-myanmar-600-normal.woff2) format('woff2');
+}

@@ -1,5 +1,10 @@
 {% extends "layouts/base.njk" %}
 {% set active_page = "employee_kpi_results" %}
+{# Phase 5b: this page uses .exec-* classes (kd-page exec-dashboard) but does
+   not set dashboard_variant, so it needs the executive bundle under
+   flag-on. Flag-off rendering is unchanged: the else branch still emits
+   the unconditional executive link, exactly as before. #}
+{% set needs_executive_css = true %}
 
 {% block title %}Employee KPI Results - KPI Platform{% endblock %}
 

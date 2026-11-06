@@ -482,7 +482,17 @@ class CachedStaticFiles(StaticFiles):
     async def get_response(self, path: str, scope):
         response = await super().get_response(path, scope)
         if response.status_code == status.HTTP_200_OK:
-            if path.startswith(("css/", "js/", "vendor/")):
+            # Phase 5b asset bundles: hashed names embed their content hash,
+            # so the file at a hashed URL can never change — cache it
+            # forever. This branch must stay BEFORE the css/js/vendor branch
+            # below (hashed bundle files live in css/). Unhashed files keep
+            # their existing 7d/1h headers, so flag-off rendering is
+            # unaffected. The 12-hex pattern matches exactly what
+            # tools/build_asset_bundles.mjs emits; nothing else in static/
+            # uses that shape (all source CSS names have a single dot).
+            if re.fullmatch(r"css/[^/]+\.[0-9a-f]{12}\.css", path):
+                response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+            elif path.startswith(("css/", "js/", "vendor/")):
                 # Templates bust these URLs with ?v= version parameters (or the
                 # files are rebuilt per deploy), so a long lifetime is safe and
                 # repeat visits stop re-downloading the same bytes.
