@@ -26,6 +26,7 @@ from app.modules.kpi.executive_intelligence_service import (
     list_executive_employee_results,
 )
 from app.modules.kpi.models import KPIRecord, KPIStatus, PeriodType
+from app.modules.kpi.parallel import gather_on_sessions
 from app.modules.kpi.period_ranges import normalize_calendar_range
 from app.modules.notifications.models import Notification
 from app.modules.tasks.models.task import Task, TaskStatus
@@ -134,11 +135,19 @@ async def _compute_unified_dashboard_summary(
     period_end: datetime | None,
     department_id: UUID | None,
 ) -> dict[str, Any]:
+    # Route-level batch: the three scope lookups are independent (each
+    # needs only the caller's id/role, already in memory), so they run
+    # concurrently. The branch conditions are identical to before; only
+    # the task list is built conditionally, then unpacked by key.
     scope_user_ids = await _get_scope_user_ids(db, current_user)
-    if scope_user_ids is None:
-        scope_user_ids = list(
+    role_name = _normalize_role_name(
+        getattr(getattr(current_user, "role", None), "name", None)
+    )
+
+    async def _all_user_ids(session: AsyncSession):
+        return list(
             (
-                await db.execute(
+                await session.execute(
                     select(User.id).where(
                         User.is_deleted.is_(False),
                         User.is_active.is_(True),
@@ -146,32 +155,48 @@ async def _compute_unified_dashboard_summary(
                 )
             ).scalars().all()
         )
-    else:
-        scope_user_ids = list(dict.fromkeys(scope_user_ids))
 
-    membership_department_ids = list(
-        (
-            await db.execute(
-                select(UserDepartment.department_id)
-                .where(
-                    UserDepartment.user_id == current_user.id,
-                    UserDepartment.is_deleted.is_(False),
-                )
-                .order_by(UserDepartment.department_id)
-            )
-        ).scalars().all()
-    )
-    role_name = _normalize_role_name(
-        getattr(getattr(current_user, "role", None), "name", None)
-    )
-    if SUPER_ADMIN_ROLE_MARKER in role_name or role_name == "HR":
-        department_ids = list(
+    async def _membership_department_ids(session: AsyncSession):
+        return list(
             (
-                await db.execute(
+                await session.execute(
+                    select(UserDepartment.department_id)
+                    .where(
+                        UserDepartment.user_id == current_user.id,
+                        UserDepartment.is_deleted.is_(False),
+                    )
+                    .order_by(UserDepartment.department_id)
+                )
+            ).scalars().all()
+        )
+
+    async def _all_department_ids(session: AsyncSession):
+        return list(
+            (
+                await session.execute(
                     select(Department.id).where(Department.is_deleted.is_(False))
                 )
             ).scalars().all()
         )
+
+    keys: list[str] = []
+    jobs = []
+    if scope_user_ids is None:
+        keys.append("users")
+        jobs.append(_all_user_ids)
+    keys.append("membership")
+    jobs.append(_membership_department_ids)
+    if SUPER_ADMIN_ROLE_MARKER in role_name or role_name == "HR":
+        keys.append("departments")
+        jobs.append(_all_department_ids)
+    results = dict(zip(keys, await gather_on_sessions(db, jobs)))
+    if scope_user_ids is None:
+        scope_user_ids = results["users"]
+    else:
+        scope_user_ids = list(dict.fromkeys(scope_user_ids))
+    membership_department_ids = results["membership"]
+    if "departments" in results:
+        department_ids = results["departments"]
     else:
         department_ids = membership_department_ids
 
