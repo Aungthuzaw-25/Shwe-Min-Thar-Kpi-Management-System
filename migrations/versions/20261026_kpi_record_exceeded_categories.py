@@ -1,7 +1,7 @@
 """Store per-category over-achievement flags on KPI records.
 
 Revision ID: 20261026_kpi_record_exceeded_categories
-Revises: 20261025_tasks_outcome_snapshot
+Revises: 20261028_widen_alembic_ver
 """
 
 import sqlalchemy as sa
@@ -9,7 +9,7 @@ from alembic import op
 
 
 revision = "20261026_kpi_record_exceeded_categories"
-down_revision = "20261026_sa_totp_used_steps"
+down_revision = "20261028_widen_alembic_ver"
 branch_labels = None
 depends_on = None
 
