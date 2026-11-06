@@ -272,3 +272,43 @@ describe("Express pages and CSP middleware", () => {
     }
   });
 });
+
+describe("Railway web tier: healthcheck and the pages that 500 on Jinja2", () => {
+  it("answers /health with 200 JSON without touching the API", async () => {
+    const backend = {
+      get: vi.fn(async () => {
+        throw new Error("health must not call the API");
+      }),
+    };
+
+    const response = await request(createApp({ backend })).get("/health");
+
+    expect(response.status).toBe(200);
+    expect(response.headers["content-type"]).toMatch(/^application\/json/);
+    expect(response.body).toEqual({ status: "ok" });
+    expect(backend.get).not.toHaveBeenCalled();
+  });
+
+  // The five pages that 500 on Railway's FastAPI/Jinja2 tier
+  // ({{ permission_map | default(null) | tojson }} — `null` is a
+  // Nunjucks literal, undefined in Jinja2). On the Express tier the
+  // same line is legal Nunjucks and loadPageContext always supplies
+  // permission_map, so each page must render 200 with the viewer's
+  // permissions embedded — this is the proof the Nunjucks path does
+  // not have the `null` bug.
+  it.each([
+    ["/superadmin/users", "dashboard/users.njk"],
+    ["/superadmin/departments", "dashboard/departments.njk"],
+    ["/superadmin/permissions", "dashboard/permissions.njk"],
+    ["/positions", "dashboard/positions.njk"],
+    ["/superadmin/targets", "dashboard/target.njk"],
+  ])("renders %s as Super Admin with permission_map embedded", async (path) => {
+    const response = await request(createApp({ backend: fakeBackend("Super Admin") }))
+      .get(path)
+      .set("Cookie", "access_token=qa-token");
+
+    expect(response.status).toBe(200);
+    expect(response.text).toContain("viewerPermissions");
+    expect(response.text).toContain("tasks.view");
+  });
+});
