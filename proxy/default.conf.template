@@ -1,0 +1,56 @@
+# Performance (Batch 1): compress proxied responses and cache static
+# assets at the edge. This file is included inside nginx's http{} block,
+# so http-level directives belong here, above the server block.
+gzip on;
+gzip_proxied any;
+gzip_comp_level 5;
+gzip_min_length 1024;
+gzip_vary on;
+gzip_types text/css text/javascript application/javascript application/json image/svg+xml;
+
+proxy_cache_path /var/cache/nginx/static levels=1:2 keys_zone=staticcache:16m max_size=256m inactive=24h use_temp_path=off;
+
+server {
+    listen ${PORT};
+    client_max_body_size 100m;
+
+    location ^~ /api/ {
+        proxy_pass http://${API_UPSTREAM};
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location ^~ /static/ {
+        proxy_pass http://${API_UPSTREAM};
+        proxy_cache staticcache;
+        proxy_cache_valid 200 7d;
+        proxy_cache_lock on;
+        add_header X-Static-Cache $upstream_cache_status;
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location = /health {
+        proxy_pass http://${API_UPSTREAM};
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location / {
+        proxy_pass http://${WEB_UPSTREAM};
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}

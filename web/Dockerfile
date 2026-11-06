@@ -28,10 +28,14 @@ COPY static/css/bundles.json ./static/css/bundles.json
 COPY --from=asset-builder /app/static/asset-manifest.json ./static/asset-manifest.json
 
 WORKDIR /app/web
-ENV PORT=3000
+# No ENV PORT here on purpose: Railway injects $PORT at runtime and
+# server.js listens on it (falling back to 3000 only when unset, e.g.
+# a bare `docker run`). Baking PORT=3000 into the image would hide a
+# missing injection and break the healthcheck below if Railway ever
+# assigned a different port.
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD ["node", "-e", "fetch('http://127.0.0.1:3000/auth/login').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+    CMD node -e "fetch('http://127.0.0.1:' + (process.env.PORT || '3000') + '/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
 USER node
 CMD ["node", "src/server.js"]
 USER node

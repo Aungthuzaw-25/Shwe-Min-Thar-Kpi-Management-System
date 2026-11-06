@@ -55,6 +55,15 @@ export function createApp({
   app.get("/", (_request, response) => {
     response.redirect(307, "/auth/login");
   });
+  // Railway healthcheck (and the Docker HEALTHCHECK): a cheap 200 that
+  // proves this process is up, with no API call and no session — the
+  // API has its own /health, and a slow API must never mark this tier
+  // unhealthy. The public entry still routes /health to the API (see
+  // proxy/default.conf); this route answers only direct checks of the
+  // web service itself.
+  app.get("/health", (_request, response) => {
+    response.status(200).type("application/json").json({ status: "ok" });
+  });
   registerOfflineRoutes(app);
   registerAuthRoutes(app);
   registerAccountRoutes(app);
