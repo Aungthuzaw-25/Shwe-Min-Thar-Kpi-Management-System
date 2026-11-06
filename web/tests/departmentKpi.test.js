@@ -8,7 +8,6 @@ const page = read('templates/dashboard/department_kpi.njk');
 const js = read('static/js/department-kpi.js');
 const base = read('templates/layouts/base.njk');
 const routes = read('web/src/routes/dashboard.js');
-const fastapi = read('app/web/dashboard_web.py');
 
 describe('Department KPI page', () => {
   it('renders department + period selectors and the ranked table', () => {
@@ -52,11 +51,11 @@ describe('Department KPI page', () => {
     expect(base).toContain("active_page == 'department_kpi'");
   });
 
-  it('registers the page in both tiers for Super Admin + Admin', () => {
+  // NOTE (2026-11-06): the FastAPI tier used to register this page too
+  // (app/web/dashboard_web.py); Jinja2 page rendering was removed, so
+  // the web tier is the only tier now.
+  it('registers the page in the web tier for Super Admin + Admin', () => {
     expect(routes).toContain('"/superadmin/department-kpi"');
     expect(routes).toContain('dashboard/department_kpi.njk');
-    expect(fastapi).toContain('"/superadmin/department-kpi"');
-    expect(fastapi).toContain('dashboard/department_kpi.njk');
-    expect(fastapi).toContain('render_department_kpi_view');
   });
 });

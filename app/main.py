@@ -28,7 +28,6 @@ from app.database.connection import engine
 from app.middleware.logging_middleware import RequestLoggingMiddleware
 from app.models.system import LogLevel
 from app.modules.activity_router import router as activity_router
-from app.modules.activity_web import router as activity_web_router
 from app.modules.auth.profile_router import account_router
 
 # Backend API Routers (DDD Modules)
@@ -61,9 +60,11 @@ from app.modules.users.position_router import router as position_router
 from app.modules.users.router import router as user_router
 from app.services.system_log_service import record_system_log
 
-# Frontend Web Routers (UI Pages)
-from app.web.auth_web import router as auth_web_router
-from app.web.dashboard_web import router as dashboard_web_router
+# NOTE (2026-11-06): the FastAPI-side page routers (app/web/*,
+# Jinja2 templates) were removed — pages are served only by the
+# Express/Nunjucks web tier through the proxy (local) / proxy service
+# (Railway). The API tier keeps /api/*, /health, /static, / and the
+# auth/session behaviour below.
 
 logger = logging.getLogger("app.main")
 API_V1_PREFIX = "/api/v1"
@@ -534,14 +535,7 @@ app.include_router(whats_new_router, prefix=API_V1_PREFIX, tags=["What's New"])
 app.include_router(retention_router, prefix=API_V1_PREFIX, tags=["Retention"])
 
 # ==============================================================================
-# 💻 7. FRONTEND WEB ROUTERS (Jinja2 UI Pages)
-# ==============================================================================
-app.include_router(auth_web_router, prefix="/auth", tags=["Web Auth"])
-app.include_router(dashboard_web_router, tags=["Web Dashboard UI"])
-app.include_router(activity_web_router, tags=["Web Notifications UI"])
-
-# ==============================================================================
-# 🌐 8. ROOT & HEALTH CHECK ENDPOINTS
+# 🌐 7. ROOT & HEALTH CHECK ENDPOINTS
 # ==============================================================================
 @app.get("/", include_in_schema=False)
 async def root():

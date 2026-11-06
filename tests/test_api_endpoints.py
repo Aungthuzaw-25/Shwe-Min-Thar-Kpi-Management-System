@@ -5,7 +5,6 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-import app.modules.activity_web as activity_web
 import app.modules.auth.router as auth_router
 import app.modules.kpi.dashboard_router as dashboard_router
 import app.modules.notifications.router as notifications_router
@@ -167,34 +166,6 @@ def test_unified_dashboard_route_is_registered():
 
 
 @pytest.mark.asyncio
-async def test_notifications_choose_role_compatible_layout(monkeypatch):
-    request = SimpleNamespace()
-    db = SimpleNamespace()
-    user = SimpleNamespace(
-        id=uuid4(),
-        role=SimpleNamespace(name="Super Admin"),
-        first_name="Super",
-        last_name="Admin",
-        email="admin@example.com",
-    )
-
-    async def fake_context(db_arg, user_arg):
-        return {}
-
-    captured = {}
-
-    class TemplateStub:
-        def TemplateResponse(self, **kwargs):
-            captured.update(kwargs["context"])
-            return kwargs["context"]
-
-    monkeypatch.setattr(activity_web, "get_employee_context", fake_context)
-    monkeypatch.setattr(activity_web, "templates", TemplateStub())
-    result = await activity_web.notifications_page(request, db, user)
-
-    assert result["layout_template"] == "layouts/base.njk"
-    assert result["active_page"] == "notifications"
-
 
 @pytest.mark.asyncio
 async def test_system_logs_page_contract_supports_filters_and_nullable_timestamps(monkeypatch):

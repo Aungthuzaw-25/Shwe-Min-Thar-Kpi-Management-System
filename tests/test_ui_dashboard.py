@@ -1,14 +1,10 @@
 import os
-import re
-from types import SimpleNamespace
-from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
 from playwright.sync_api import sync_playwright
 
 from app.main import app
-from app.web import dashboard_web
 
 BASE_URL = os.getenv("UI_BASE_URL", "http://127.0.0.1:18000")
 SUPERADMIN_EMAIL = os.getenv("UI_TEST_SUPERADMIN_EMAIL", "qa.superadmin@example")
@@ -51,148 +47,6 @@ def login(page, email, password):
     )
 
 
-class _TemplateDBResult:
-    def scalars(self):
-        return self
-
-    def first(self):
-        return None
-
-    def scalar_one_or_none(self):
-        return None
-
-
-class _TemplateDB:
-    async def execute(self, _statement):
-        return _TemplateDBResult()
-
-
-@pytest.mark.parametrize(
-    ("path", "role_name"),
-    [
-        ("/superadmin/dashboard", "Super Admin"),
-        ("/admin/dashboard", "Admin"),
-    ],
-)
-def test_fastapi_dashboard_templates_render_with_user_context(path, role_name):
-    user = SimpleNamespace(
-        id=uuid4(),
-        first_name="Test",
-        last_name="User",
-        email="test.user@example.test",
-        role=SimpleNamespace(name=role_name, permissions=[]),
-        position_id=None,
-        avatar_path=None,
-        avatar_updated_at=None,
-    )
-    app.dependency_overrides[dashboard_web.get_current_user] = lambda: user
-    app.dependency_overrides[dashboard_web.get_db] = _TemplateDB
-
-    try:
-        with TestClient(app) as client:
-            response = client.get(path)
-            liquid_glass = client.get("/static/css/liquid-glass-theme.css?v=20261021-4")
-            kpi_theme = client.get("/static/css/superadmin-kpi-glass.css?v=20261021-2")
-            login_theme = client.get("/static/css/login-form-glass.css?v=20261021-2")
-            login_page = client.get("/auth/login")
-            assert liquid_glass.status_code == 200
-            assert kpi_theme.status_code == 200
-            assert login_theme.status_code == 200
-            assert "--kg-accent:#3D5A80;" in kpi_theme.text
-            assert login_page.status_code == 200
-            assert "login-form-glass.css?v=20261021-2" in login_page.text
-            assert client.get("/static/css/executive-dashboard.css").status_code == 200
-            design_system = client.get("/static/css/design-system.css?v=20261015-1")
-            assert design_system.status_code == 200
-            assert ".app-topbar__identity" in design_system.text
-            assert "text-decoration: none;" in design_system.text
-            assert (
-                client.get(
-                    "/static/js/superadmin-executive-dashboard.js?v=20261015-1"
-                ).status_code
-                == 200
-            )
-    finally:
-        app.dependency_overrides.pop(dashboard_web.get_current_user, None)
-        app.dependency_overrides.pop(dashboard_web.get_db, None)
-
-    assert response.status_code == 200
-    assert "Test User" in response.text
-    assert 'class="app-shell app-shell--admin' in response.text
-    assert "liquid-glass-theme.css?v=20261021-4" in response.text
-    assert "kpi-avatar" in response.text
-    # Inter is self-hosted now: the dashboard loads the local stylesheets,
-    # never the Google Fonts Inter link (login-inter-selfhost branch).
-    assert "/static/css/inter-fonts.css" in response.text
-    # perf/lcp Phase 5a: base pages self-host their fonts now — the
-    # Google Fonts Inter link is gone, replaced by the local sheet
-    # plus a preload of the body-text file. (The CSP entries below
-    # stay: the profile body still uses Google Fonts for Plus Jakarta
-    # Sans + Noto Sans Myanmar.)
-    assert '<link rel="stylesheet" href="/static/css/fonts.css">' in response.text
-    assert (
-        '<link rel="preload" as="font" type="font/woff2" crossorigin '
-        'href="/static/fonts/inter/inter-latin-400-normal.woff2">' in response.text
-    )
-    assert (
-        "https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
-        not in response.text
-    )
-    csp = response.headers["content-security-policy"]
-    assert "style-src 'self'" in csp
-    assert "https://fonts.googleapis.com" in csp
-    assert "font-src 'self' https://fonts.gstatic.com" in csp
-    assert "system-ui" in response.text
-    assert len(response.headers.get_list("content-security-policy")) == 1
-    nonce = re.search(r"script-src 'self' 'nonce-([^']+)'", csp).group(1)
-    inline_scripts = re.findall(
-        r"<script\b(?![^>]*\bsrc=)([^>]*)>", response.text, re.IGNORECASE
-    )
-    inline_styles = re.findall(r"<style\b([^>]*)>", response.text, re.IGNORECASE)
-    assert inline_scripts
-    assert all(f'nonce="{nonce}"' in attributes for attributes in inline_scripts)
-    assert all(f'nonce="{nonce}"' in attributes for attributes in inline_styles)
-    assert not re.search(r"\sstyle\s*=", response.text, re.IGNORECASE)
-    assert not re.search(
-        r"\son(?:click|submit|change|keydown)\s*=",
-        response.text,
-        re.IGNORECASE,
-    )
-
-
-def test_avatar_macro_accepts_missing_user():
-    avatar_macro = dashboard_web.templates.get_template(
-        "components/avatar.njk"
-    ).module.avatar
-
-    rendered = str(avatar_macro(None, 32))
-
-    assert 'aria-label="User"' in rendered
-    assert "kpi-avatar--color-0" in rendered
-
-
-def test_avatar_macro_photo_keeps_color_fallback():
-    # A photo avatar whose image fails must still show its initials on
-    # the per-user colour — not white text on a transparent circle
-    # (which vanished against the white card below the dark banner).
-    avatar_macro = dashboard_web.templates.get_template(
-        "components/avatar.njk"
-    ).module.avatar
-
-    rendered = str(
-        avatar_macro(
-            {
-                "display_name": "Thae Aung",
-                "avatar_url": "/static/image/does-not-exist.jpg",
-                "avatar_color_index": 3,
-                "initials": "TA",
-            },
-            128,
-        )
-    )
-
-    assert "kpi-avatar--photo" in rendered
-    assert "kpi-avatar--color-3" in rendered
 
 
 def test_static_assets_are_cacheable_without_csrf_cookie():

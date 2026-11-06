@@ -362,9 +362,10 @@ def test_bulk_import_admin_cannot_import_admin_role(world):
 def test_i1_dead_role_names_gone():
     import pathlib
     repo = pathlib.Path(__file__).resolve().parents[1]
+    # NOTE (2026-11-06): app/modules/activity_web.py and
+    # app/web/dashboard_web.py are gone — Jinja2 page rendering was
+    # removed; the pages live on the Express web tier now.
     for rel in (
-        "app/modules/activity_web.py",
-        "app/web/dashboard_web.py",
         "web/src/routes/dashboard.js",
         "web/src/routes/activity.js",
     ):
@@ -378,16 +379,6 @@ def test_i1_dead_role_names_gone():
     assert "System Admin" not in role_line
 
 
-def test_i4_change_password_render_requires_auth():
-    import pathlib
-    repo = pathlib.Path(__file__).resolve().parents[1]
-    text = (repo / "app/web/auth_web.py").read_text()
-    assert "change_password_page" in text
-    assert "current_user: User = Depends(get_current_user)" in text
-    # The Express route deliberately stays public: server.test.js pins
-    # it as a public page (OAuth/post-login ?next= handling), and the
-    # form cannot change anything without the authed API POST.
-
 
 def test_i6_report_export_gated():
     import pathlib
@@ -395,5 +386,11 @@ def test_i6_report_export_gated():
     template = (repo / "templates/dashboard/report.njk").read_text()
     assert "report.export" in template
     assert "canExportReport" in template  # JS gate lives in the template
-    web = (repo / "app/web/dashboard_web.py").read_text()
-    assert "dashboard/report.njk" in web and "permission_map" in web
+    # NOTE (2026-11-06): the FastAPI page route that used to render this
+    # template is gone (Jinja2 removal); the Express route registers the
+    # same page, and the web tier's page context still carries the
+    # permission map the gate reads.
+    web = (repo / "web/src/routes/dashboard.js").read_text()
+    assert "/superadmin/reports" in web and "dashboard/report.njk" in web
+    context = (repo / "web/src/lib/pageContext.js").read_text()
+    assert "permission_map" in context
