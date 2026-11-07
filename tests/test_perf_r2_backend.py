@@ -94,16 +94,20 @@ async def test_invalidate_prefix_without_client_is_zero(monkeypatch):
 class _PurgeRecorder:
     def __init__(self):
         self.calls = 0
+        self.paths = []
 
-    async def __call__(self):
+    async def __call__(self, path):
         self.calls += 1
+        self.paths.append(path)
         return 1
 
 
 async def _dispatch(monkeypatch, method, path, status=200):
     recorder = _PurgeRecorder()
+    # The middleware calls the SCOPED purge (2026-11-06, F2), passing
+    # the request path so the purge can pick the affected groups.
     monkeypatch.setattr(
-        cache_module, "invalidate_dashboard_summaries", recorder
+        cache_module, "invalidate_dashboard_for_path", recorder
     )
     middleware = DashboardCacheInvalidationMiddleware(app=None)
     request = SimpleNamespace(
@@ -123,12 +127,14 @@ async def test_middleware_purges_after_successful_task_write(monkeypatch):
     response, recorder = await _dispatch(monkeypatch, "POST", "/api/v1/tasks")
     assert response.status_code == 200
     assert recorder.calls == 1
+    assert recorder.paths == ["/api/v1/tasks"]
 
 
 async def test_middleware_purges_after_user_and_kpi_writes(monkeypatch):
     for path in ("/api/v1/users/", "/api/v1/kpi/calculate", "/api/v1/targets/"):
         _response, recorder = await _dispatch(monkeypatch, "PUT", path)
         assert recorder.calls == 1, path
+        assert recorder.paths == [path], path
 
 
 async def test_middleware_skips_reads_failures_and_auth_paths(monkeypatch):

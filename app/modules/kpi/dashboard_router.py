@@ -105,7 +105,8 @@ async def fetch_unified_dashboard_summary(
     Cached 60s per viewer + query (namespace "dashboard", same as the
     other dashboard summaries). The scope computation runs inside the
     cached factory, so a cache hit skips it entirely; a write under
-    /api/v1 purges the namespace via DashboardCacheInvalidationMiddleware,
+    /api/v1 purges the affected dashboard groups via
+    DashboardCacheInvalidationMiddleware (scoped, 2026-11-06 F2),
     and the 60s TTL is the backstop for non-HTTP changes.
     """
     return await cached_json(
@@ -674,9 +675,79 @@ async def _get_scope_user_ids(
     return [current_user.id]
 
 
-async def _count_tasks(db: AsyncSession, base_filters: list, status_filters: list) -> int:
-    stmt = select(func.count(Task.id)).where(*base_filters, Task.status.in_(status_filters))
-    return (await db.execute(stmt)).scalar() or 0
+_TASK_STATUS_COUNT_LABELS = (
+    "total",
+    "draft",
+    "pending_l1",
+    "pending_l0",
+    "pending_l1_l0",
+    "approved",
+    "rejected",
+    "completed",
+    "pending_all",
+    "overdue",
+    "late",
+)
+
+
+async def _task_status_counts(
+    db: AsyncSession, base_filters: list
+) -> dict[str, int]:
+    """All task status counts in ONE statement (2026-11-06, F1).
+
+    One ``SELECT count(*) FILTER (...)`` per status instead of one
+    query per status (role-scope was 10 queries, process-tracking
+    13 — 3 of them the same number computed 3 times: IN_PROGRESS /
+    SUBMITTED / PENDING_APPROVAL, and ASSIGNED == DRAFT). The
+    duplicates are aliases of one label now. Filter expressions are
+    copied verbatim from the old per-status queries, so the numbers
+    are identical — only the trip count changes. Same pattern as
+    ``_task_diagnostic_statement`` in dashboard_service.py.
+    """
+    now = datetime.now(UTC)
+    stmt = select(
+        func.count(Task.id).label("total"),
+        func.count(Task.id)
+        .filter(Task.status == TaskStatus.DRAFT)
+        .label("draft"),
+        func.count(Task.id)
+        .filter(Task.status == TaskStatus.PENDING_L1)
+        .label("pending_l1"),
+        func.count(Task.id)
+        .filter(Task.status == TaskStatus.PENDING_L0)
+        .label("pending_l0"),
+        func.count(Task.id)
+        .filter(Task.status.in_([TaskStatus.PENDING_L1, TaskStatus.PENDING_L0]))
+        .label("pending_l1_l0"),
+        func.count(Task.id)
+        .filter(Task.status == TaskStatus.APPROVED)
+        .label("approved"),
+        func.count(Task.id)
+        .filter(Task.status == TaskStatus.REJECTED)
+        .label("rejected"),
+        func.count(Task.id)
+        .filter(Task.status == TaskStatus.COMPLETED)
+        .label("completed"),
+        func.count(Task.id)
+        .filter(
+            Task.status.in_(
+                [TaskStatus.DRAFT, TaskStatus.PENDING_L1, TaskStatus.PENDING_L0]
+            )
+        )
+        .label("pending_all"),
+        func.count(Task.id)
+        .filter(
+            Task.due_date.is_not(None),
+            Task.due_date < now,
+            Task.status.not_in(
+                [TaskStatus.COMPLETED, TaskStatus.APPROVED, TaskStatus.REJECTED]
+            ),
+        )
+        .label("overdue"),
+        func.count(Task.id).filter(Task.is_late == True).label("late"),  # noqa: E712
+    ).where(*base_filters)
+    row = (await db.execute(stmt)).one()
+    return {label: int(getattr(row, label) or 0) for label in _TASK_STATUS_COUNT_LABELS}
 
 
 async def _get_dashboard_task_summary(db: AsyncSession, current_user: User) -> dict[str, Any]:
@@ -685,31 +756,18 @@ async def _get_dashboard_task_summary(db: AsyncSession, current_user: User) -> d
     if scope_user_ids is not None:
         base_filters.append(Task.owner_id.in_(scope_user_ids))
 
-    total_stmt = select(func.count(Task.id)).where(*base_filters)
-    total_tasks = (await db.execute(total_stmt)).scalar() or 0
-
-    assigned_tasks = await _count_tasks(db, base_filters, [TaskStatus.DRAFT])
-    in_progress_tasks = await _count_tasks(db, base_filters, [TaskStatus.PENDING_L1, TaskStatus.PENDING_L0])
+    counts = await _task_status_counts(db, base_filters)
+    total_tasks = counts["total"]
+    assigned_tasks = counts["draft"]
+    in_progress_tasks = counts["pending_l1_l0"]
     submitted_tasks = in_progress_tasks
     pending_approval_tasks = in_progress_tasks
-    approved_tasks = (await db.execute(select(func.count(Task.id)).where(*base_filters, Task.status == TaskStatus.APPROVED))).scalar() or 0
-    rejected_tasks = (await db.execute(select(func.count(Task.id)).where(*base_filters, Task.status == TaskStatus.REJECTED))).scalar() or 0
-    completed_tasks = (await db.execute(select(func.count(Task.id)).where(*base_filters, Task.status == TaskStatus.COMPLETED))).scalar() or 0
-    pending_tasks = await _count_tasks(db, base_filters, [TaskStatus.DRAFT, TaskStatus.PENDING_L1, TaskStatus.PENDING_L0])
-
-    overdue_stmt = select(func.count(Task.id)).where(
-        *base_filters,
-        Task.due_date.is_not(None),
-        Task.due_date < datetime.now(UTC),
-        Task.status.not_in([TaskStatus.COMPLETED, TaskStatus.APPROVED, TaskStatus.REJECTED])
-    )
-    overdue_tasks = (await db.execute(overdue_stmt)).scalar() or 0
-
-    late_stmt = select(func.count(Task.id)).where(
-        *base_filters,
-        Task.is_late == True,
-    )
-    late_tasks = (await db.execute(late_stmt)).scalar() or 0
+    approved_tasks = counts["approved"]
+    rejected_tasks = counts["rejected"]
+    completed_tasks = counts["completed"]
+    pending_tasks = counts["pending_all"]
+    overdue_tasks = counts["overdue"]
+    late_tasks = counts["late"]
 
     if scope_user_ids is not None:
         kpi_stmt = select(func.avg(KPIRecord.percentage)).where(KPIRecord.user_id.in_(scope_user_ids))
@@ -769,20 +827,25 @@ async def fetch_process_tracking_summary(
     if scope_user_ids is not None:
         filters.append(Task.owner_id.in_(scope_user_ids))
 
+    # One statement for all 13 counts (2026-11-06, F1). ASSIGNED is
+    # the same number as DRAFT and IN_PROGRESS / SUBMITTED are the
+    # same number as PENDING_APPROVAL — they were 3 duplicate queries
+    # before; now they are aliases of one label each.
+    c = await _task_status_counts(db, filters)
     counts = {
-        "TOTAL_TASKS": (await db.execute(select(func.count(Task.id)).where(*filters))).scalar() or 0,
-        "DRAFT": (await db.execute(select(func.count(Task.id)).where(*filters, Task.status == TaskStatus.DRAFT))).scalar() or 0,
-        "PENDING_L1": (await db.execute(select(func.count(Task.id)).where(*filters, Task.status == TaskStatus.PENDING_L1))).scalar() or 0,
-        "PENDING_L0": (await db.execute(select(func.count(Task.id)).where(*filters, Task.status == TaskStatus.PENDING_L0))).scalar() or 0,
-        "PENDING_APPROVAL": (await db.execute(select(func.count(Task.id)).where(*filters, Task.status.in_([TaskStatus.PENDING_L1, TaskStatus.PENDING_L0])))).scalar() or 0,
-        "APPROVED": (await db.execute(select(func.count(Task.id)).where(*filters, Task.status == TaskStatus.APPROVED))).scalar() or 0,
-        "REJECTED": (await db.execute(select(func.count(Task.id)).where(*filters, Task.status == TaskStatus.REJECTED))).scalar() or 0,
-        "COMPLETED": (await db.execute(select(func.count(Task.id)).where(*filters, Task.status == TaskStatus.COMPLETED))).scalar() or 0,
-        "ASSIGNED": (await db.execute(select(func.count(Task.id)).where(*filters, Task.status == TaskStatus.DRAFT))).scalar() or 0,
-        "IN_PROGRESS": (await db.execute(select(func.count(Task.id)).where(*filters, Task.status.in_([TaskStatus.PENDING_L1, TaskStatus.PENDING_L0])))).scalar() or 0,
-        "SUBMITTED": (await db.execute(select(func.count(Task.id)).where(*filters, Task.status.in_([TaskStatus.PENDING_L1, TaskStatus.PENDING_L0])))).scalar() or 0,
-        "OVERDUE": (await db.execute(select(func.count(Task.id)).where(*filters, Task.due_date.is_not(None),         Task.due_date < datetime.now(UTC), Task.status.not_in([TaskStatus.COMPLETED, TaskStatus.APPROVED, TaskStatus.REJECTED])))).scalar() or 0,
-        "LATE": (await db.execute(select(func.count(Task.id)).where(*filters, Task.is_late == True))).scalar() or 0,
+        "TOTAL_TASKS": c["total"],
+        "DRAFT": c["draft"],
+        "PENDING_L1": c["pending_l1"],
+        "PENDING_L0": c["pending_l0"],
+        "PENDING_APPROVAL": c["pending_l1_l0"],
+        "APPROVED": c["approved"],
+        "REJECTED": c["rejected"],
+        "COMPLETED": c["completed"],
+        "ASSIGNED": c["draft"],
+        "IN_PROGRESS": c["pending_l1_l0"],
+        "SUBMITTED": c["pending_l1_l0"],
+        "OVERDUE": c["overdue"],
+        "LATE": c["late"],
     }
 
     counts.update({
