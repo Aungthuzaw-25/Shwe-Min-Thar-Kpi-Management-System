@@ -272,8 +272,8 @@ const API_BASE = "/api/v1/kpi";
         // has no child row — the KPIs parent stays highlighted by
         // active_page). The panel itself still opens/closes by its own
         // mechanism — untouched.
-        document.querySelectorAll('#sidebar-panel-kpis .sidebar-panel__row').forEach((row) => {
-            row.classList.toggle('sidebar-panel__row--active', row.getAttribute('href') === '/superadmin/kpi?view=' + view);
+        document.querySelectorAll('#sidebar-submenu-kpis .sidebar-submenu__row').forEach((row) => {
+            row.classList.toggle('sidebar-submenu__row--active', row.getAttribute('href') === '/superadmin/kpi?view=' + view);
         });
         // Per-view loaders only: records and settings load on their view
         // (as tab clicks used to trigger them). Assignments data already

@@ -127,7 +127,7 @@ describe('users subpages (Active / Deleted as views, not tabs)', () => {
     expect(users).toContain("USER_VIEW === 'active' ? 'No active users found.' : 'No deleted users in trash.'");
     expect(users).toContain("const isUserDeleted = USER_VIEW === 'deleted';");
     // Sidebar child highlight follows the current view.
-    expect(users).toContain("sidebar-panel__row--active");
+    expect(users).toContain("sidebar-submenu__row--active");
     expect(users).toContain("'/superadmin/users?view=' + USER_VIEW");
   });
 

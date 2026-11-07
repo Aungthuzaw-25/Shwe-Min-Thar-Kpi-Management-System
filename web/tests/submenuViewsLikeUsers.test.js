@@ -90,7 +90,7 @@ describe('submenu views like Users (departments, permissions, KPIs)', () => {
       expect(kpiPage).toContain(`id="${panel}-tab"`);
     }
     expect(kpiJs).toContain("const KPI_DEFAULT_VIEW = 'formulas';");
-    expect(base).toContain('href="/superadmin/kpi" data-sidebar-panel="kpis"');
+    expect(base).toContain('href="/superadmin/kpi" data-sidebar-submenu="kpis"');
     // The three sidebar children are the three non-default views.
     expect(base).toContain('/superadmin/kpi?view=records');
     expect(base).toContain('/superadmin/kpi?view=settings');

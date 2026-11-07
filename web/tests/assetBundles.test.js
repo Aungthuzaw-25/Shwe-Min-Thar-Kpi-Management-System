@@ -21,7 +21,8 @@ const BASE_FLAG_OFF = [
   "/static/css/executive-dashboard.css",
   "/static/css/liquid-glass-theme.css?v=20261021-4",
   "/static/css/role-themes.css",
-  "/static/css/sidebar-panels.css",
+  "/static/css/sidebar-submenus.css",
+  "/static/css/sidebar-collapse.css",
   "/static/css/fonts.css",
   "/static/css/inter-fonts.css",
 ];
@@ -34,6 +35,7 @@ const PORTAL_FLAG_OFF = [
   "/static/css/executive-dashboard.css",
   "/static/css/liquid-glass-theme.css?v=20261021-4",
   "/static/css/role-themes.css",
+  "/static/css/sidebar-collapse.css",
   "/static/css/inter-fonts.css",
 ];
 

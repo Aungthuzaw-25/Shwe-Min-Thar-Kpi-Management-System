@@ -73,7 +73,7 @@ describe('System Settings split views', () => {
   });
 
   it('gives the sidebar exactly the 5 photo-label children, in photo order', () => {
-    const panelStart = base.indexOf('id="sidebar-panel-system_settings"');
+    const panelStart = base.indexOf('id="sidebar-submenu-system_settings"');
     const panel = base.slice(panelStart, base.indexOf('</div>', panelStart));
     const labels = ['General Info', 'Email Configuration', 'Security Policy', 'Maintenance', 'User Settings'];
     let last = -1;

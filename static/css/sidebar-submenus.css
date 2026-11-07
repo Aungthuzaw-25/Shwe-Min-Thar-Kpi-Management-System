@@ -1,0 +1,53 @@
+/* Sidebar submenus, INLINE inside the sidebar (shadcn SidebarMenuSub /
+   Collapsible pattern). Children sit directly below their parent with a
+   left indent rule — no floating panel. Colors are theme-neutral whites
+   on the dark sidebar, so both role palettes keep working. The `hidden`
+   attribute drives open/closed (never overridden here); when the rail is
+   collapsed, the collapse stylesheet hides every nav div, so no inline
+   children can leak into the 72px rail. */
+
+.sidebar-submenu {
+  margin: 2px 0 4px 1.35rem;
+  padding-left: 0.75rem;
+  border-left: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.sidebar-submenu__row {
+  display: block;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.625rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #cbd5e1;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.sidebar-submenu__row:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+}
+
+.sidebar-submenu__row--active {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.sidebar-submenu__chev {
+  transition: transform 0.2s ease;
+}
+
+a[aria-expanded="true"] .sidebar-submenu__chev {
+  transform: rotate(180deg);
+}
+
+@media (min-width: 768px) {
+  html.sidebar-collapsed .app-shell #mainSidebar nav a .sidebar-submenu__chev {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-submenu__chev {
+    transition: none;
+  }
+}

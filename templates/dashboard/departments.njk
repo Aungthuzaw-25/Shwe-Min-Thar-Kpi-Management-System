@@ -256,8 +256,8 @@
         if (subtitle) subtitle.textContent = meta.subtitle;
         // Sidebar child highlight for the current view. The panel itself
         // still opens/closes by its own mechanism — untouched.
-        document.querySelectorAll('#sidebar-panel-departments .sidebar-panel__row').forEach((row) => {
-            row.classList.toggle('sidebar-panel__row--active', row.getAttribute('href') === '/superadmin/departments?view=' + deptView);
+        document.querySelectorAll('#sidebar-submenu-departments .sidebar-submenu__row').forEach((row) => {
+            row.classList.toggle('sidebar-submenu__row--active', row.getAttribute('href') === '/superadmin/departments?view=' + deptView);
         });
         // Add New Department lives on the Active view only: a new
         // department is active, never trash. (The button is also

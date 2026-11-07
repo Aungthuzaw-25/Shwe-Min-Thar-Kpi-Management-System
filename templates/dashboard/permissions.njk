@@ -365,8 +365,8 @@ function applyPermView() {
     }
     // Sidebar child highlight for the current view. The panel itself
     // still opens/closes by its own mechanism — untouched.
-    document.querySelectorAll('#sidebar-panel-permissions .sidebar-panel__row').forEach((row) => {
-        row.classList.toggle('sidebar-panel__row--active', row.getAttribute('href') === '/superadmin/permissions?view=' + PERM_VIEW);
+    document.querySelectorAll('#sidebar-submenu-permissions .sidebar-submenu__row').forEach((row) => {
+        row.classList.toggle('sidebar-submenu__row--active', row.getAttribute('href') === '/superadmin/permissions?view=' + PERM_VIEW);
     });
     // Audit rows load only on the Audit view, as before (tab click
     // used to trigger this; the view landing replaces that click).

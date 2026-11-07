@@ -349,8 +349,8 @@
         if (subtitle) subtitle.textContent = meta.subtitle;
         // Sidebar child highlight for the current view. The panel itself
         // still opens/closes by its own mechanism — untouched.
-        document.querySelectorAll('#sidebar-panel-users .sidebar-panel__row').forEach((row) => {
-            row.classList.toggle('sidebar-panel__row--active', row.getAttribute('href') === '/superadmin/users?view=' + USER_VIEW);
+        document.querySelectorAll('#sidebar-submenu-users .sidebar-submenu__row').forEach((row) => {
+            row.classList.toggle('sidebar-submenu__row--active', row.getAttribute('href') === '/superadmin/users?view=' + USER_VIEW);
         });
         // Add user lives on the Active view only: a new account is active,
         // never trash. (The button is also template-gated by users.create.)
