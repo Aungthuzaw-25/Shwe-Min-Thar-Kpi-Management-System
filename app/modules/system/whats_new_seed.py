@@ -11,8 +11,11 @@ session revoke, System Health graphs, alembic widen fix,
 D3 toggle) — seeding them would advertise unshipped
 features.
 
-Seeding mechanism (NOT migration data): run once per
-environment at deploy — ``python scripts/seed_whats_new.py``.
+Seeding mechanism (NOT migration data): wired into
+``app.database.seed`` — entrypoint.sh Step 3 ("Idempotent
+Initial Data") runs it once per environment at deploy.
+``scripts/seed_whats_new.py`` stays the manual one-off for a
+local/dev run.
 Idempotent by title: a row with the same title is never
 re-inserted, so re-running cannot duplicate rows, and a
 seed an SA deliberately soft-deleted is never resurrected.

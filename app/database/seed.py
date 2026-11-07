@@ -31,6 +31,7 @@ from app.modules.kpi.models import (
     PeriodType,
 )
 from app.modules.kpi.period_ranges import calendar_period_range
+from app.modules.system.whats_new_seed import seed_whats_new
 from app.modules.users.models import Permission, Position, Role, RolePermission, User
 
 SUPER_ADMIN_ROLE = "Super Admin"
@@ -921,6 +922,15 @@ async def _run_seed():
         await _seed_assignment_users(
             db, created_formula_maps, role_dict, finance_dept_id, period, sa_user
         )
+
+        # 6. What's-new launch entries (idempotent by title — a
+        # re-run inserts nothing new and never resurrects an entry
+        # an SA soft-deleted). Wired here so entrypoint.sh Step 3
+        # ("Idempotent Initial Data") runs it once per environment
+        # at deploy; scripts/seed_whats_new.py stays the manual
+        # one-off for a local/dev run.
+        inserted, skipped = await seed_whats_new(db)
+        print(f"What's-new launch entries: {inserted} inserted, {skipped} skipped.")
 
 
 def assert_prod_seed_allowed() -> None:
