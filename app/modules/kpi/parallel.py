@@ -22,7 +22,28 @@ T = TypeVar("T")
 
 # Dashboard-parallel sessions per worker (pool is 10 + overflow 10).
 _MAX_PARALLEL_SESSIONS = 12
-_semaphore = asyncio.Semaphore(_MAX_PARALLEL_SESSIONS)
+
+# One semaphore per event loop, not one module-global. An asyncio
+# Semaphore binds to the first loop that ever WAITS on it (its fast
+# path skips the loop check, so a bind only shows up once 12 permits
+# are held and a job has to wait) — a module-global semaphore then
+# raises "bound to a different event loop" on any second loop in the
+# same process, which is exactly what a test suite with one TestClient
+# per test does. Production runs one loop per worker, so one semaphore
+# per loop behaves identically there; tests get a fresh 12-permit
+# semaphore per loop instead of a timing-dependent RuntimeError.
+_semaphores: dict[asyncio.AbstractEventLoop, asyncio.Semaphore] = {}
+
+
+def _get_semaphore() -> asyncio.Semaphore:
+    loop = asyncio.get_running_loop()
+    semaphore = _semaphores.get(loop)
+    if semaphore is None:
+        for old in [item for item in _semaphores if item.is_closed()]:
+            del _semaphores[old]
+        semaphore = asyncio.Semaphore(_MAX_PARALLEL_SESSIONS)
+        _semaphores[loop] = semaphore
+    return semaphore
 
 
 async def gather_on_sessions(
@@ -48,7 +69,7 @@ async def gather_on_sessions(
     )
 
     async def run(job: Callable[[AsyncSession], Awaitable[T]]) -> T:
-        async with _semaphore:
+        async with _get_semaphore():
             async with factory() as session:
                 return await job(session)
 
