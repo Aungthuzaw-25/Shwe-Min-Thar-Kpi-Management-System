@@ -5,6 +5,7 @@ from uuid import uuid4
 
 import pytest
 from sqlalchemy import DateTime, String, column, select, table
+from starlette.requests import Request
 
 from app.core.timezone import APPLICATION_TIMEZONE
 from app.modules.kpi.dashboard_service import (
@@ -202,7 +203,23 @@ async def test_dashboard_summary_api_forwards_explicit_calendar_boundaries(monke
 
     start = app_time(2026, 6, 1)
     end = app_time(2026, 7, 1)
+    # F9 (2026-11-06): the endpoint is rate-limited, so a direct call
+    # must supply the Request the limiter keys on (HTTP calls get it
+    # from FastAPI). The endpoint body never reads it.
+    request = Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "scheme": "http",
+            "server": ("testserver", 80),
+            "client": ("testclient", 50000),
+            "headers": [],
+            "path": "/api/v1/dashboard/summary",
+            "query_string": b"",
+        }
+    )
     response = await dashboard_router.fetch_unified_dashboard_summary(
+        request,
         period_type=PeriodType.MONTHLY,
         period_start=start,
         period_end=end,

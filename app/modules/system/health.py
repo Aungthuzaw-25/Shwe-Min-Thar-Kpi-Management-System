@@ -270,34 +270,53 @@ async def _check_data_flow(db: AsyncSession, now: datetime) -> dict:
     from app.modules.tasks.models.task import Task
     from app.models.audit_log import AuditLog
 
-    async def _counts(since: datetime) -> dict:
-        result = {}
-        for name, model in (
-            ("kpi_records", KPIRecord),
-            ("tasks", Task),
-            ("submission_batches", SubmissionBatch),
-            ("audit_logs", AuditLog),
-        ):
-            result[name] = (
-                await db.execute(
-                    select(func.count()).select_from(model).where(
-                        model.created_at >= since
-                    )
-                )
-            ).scalar() or 0
-        result["total"] = sum(result.values())
-        return result
+    # F8 (2026-11-06): the nine counts below are independent (four
+    # models x two windows + the login count), so they run
+    # concurrently on separate sessions instead of nine waves. Same
+    # queries, same dicts — only execution order changed.
+    from app.modules.kpi.parallel import gather_on_sessions
 
-    last_1h = await _counts(now - timedelta(hours=1))
-    last_24h = await _counts(now - timedelta(hours=24))
-    successful_logins_24h = (
-        await db.execute(
-            select(func.count()).select_from(LoginHistory).where(
-                LoginHistory.is_success.is_(True),
-                LoginHistory.attempted_at >= now - timedelta(hours=24),
+    async def _count_one(session: AsyncSession, model, since: datetime) -> int:
+        return (
+            await session.execute(
+                select(func.count()).select_from(model).where(
+                    model.created_at >= since
+                )
             )
-        )
-    ).scalar() or 0
+        ).scalar() or 0
+
+    async def _logins_job(session: AsyncSession) -> int:
+        return (
+            await session.execute(
+                select(func.count()).select_from(LoginHistory).where(
+                    LoginHistory.is_success.is_(True),
+                    LoginHistory.attempted_at >= now - timedelta(hours=24),
+                )
+            )
+        ).scalar() or 0
+
+    _models = (
+        ("kpi_records", KPIRecord),
+        ("tasks", Task),
+        ("submission_batches", SubmissionBatch),
+        ("audit_logs", AuditLog),
+    )
+    _jobs = [
+        (lambda s, m=model, t=since: _count_one(s, m, t))
+        for since in (now - timedelta(hours=1), now - timedelta(hours=24))
+        for _, model in _models
+    ]
+    _jobs.append(_logins_job)
+    _counts_result = await gather_on_sessions(db, _jobs)
+    last_1h = {
+        name: _counts_result[i] for i, (name, _) in enumerate(_models)
+    }
+    last_1h["total"] = sum(last_1h.values())
+    last_24h = {
+        name: _counts_result[4 + i] for i, (name, _) in enumerate(_models)
+    }
+    last_24h["total"] = sum(last_24h.values())
+    successful_logins_24h = _counts_result[8]
 
     if last_24h["total"] == 0 and successful_logins_24h > 0:
         return _component(
@@ -641,15 +660,34 @@ async def collect_system_health(db: AsyncSession) -> dict:
         )
     ).scalar() or 0
 
-    components = {
-        "db": await _check_db(db),
-        "data_integrity": await _check_data_integrity(db),
-        "data_flow": await _check_data_flow(db, now),
-        "security": await _check_security(db, now, active_sessions),
-        "user_activity": await _check_user_activity(db, now, active_sessions),
-        "minio": await _check_minio(),
-        "redis": await _check_redis(),
-    }
+    # F8 (2026-11-06): the seven components are independent, so they
+    # run concurrently on separate sessions instead of one wave each.
+    # Same checks, same payload — only execution order changed. The
+    # 10s in-process cache below is untouched.
+    from app.modules.kpi.parallel import gather_on_sessions
+
+    names = [
+        "db",
+        "data_integrity",
+        "data_flow",
+        "security",
+        "user_activity",
+        "minio",
+        "redis",
+    ]
+    results = await gather_on_sessions(
+        db,
+        [
+            lambda s: _check_db(s),
+            lambda s: _check_data_integrity(s),
+            lambda s: _check_data_flow(s, now),
+            lambda s: _check_security(s, now, active_sessions),
+            lambda s: _check_user_activity(s, now, active_sessions),
+            lambda s: _check_minio(),
+            lambda s: _check_redis(),
+        ],
+    )
+    components = dict(zip(names, results))
     live = [c["status"] for c in components.values() if c["status"] != DISABLED]
     payload = {
         "overall": _worst(*live) if live else OK,

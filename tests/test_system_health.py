@@ -79,19 +79,26 @@ def world(tmp_path, monkeypatch):
 
     main_module.app.dependency_overrides[get_db] = override_get_db
     main_module.app.dependency_overrides[get_current_user] = override_user
-    client = TestClient(main_module.app, raise_server_exceptions=False)
-    health_module.reset_health_cache()
-    health_module.reset_health_log_state()
-    yield type("W", (), {
-        "session": session, "factory": factory, "client": client,
-        "actor": actor, "sa": sa, "admin": admin, "emp": emp,
-        "sales": sales, "position": position,
-    })()
-    main_module.app.dependency_overrides.pop(get_db, None)
-    main_module.app.dependency_overrides.pop(get_current_user, None)
-    health_module.reset_health_cache()
-    health_module.reset_health_log_state()
-    session.close()
+    # NOTE: the client MUST be a context manager. Without `with`, starlette
+    # creates a fresh event loop per request; the health endpoint runs its
+    # checks concurrently on pooled aiosqlite connections, whose locks bind
+    # to the first loop and then raise "bound to a different event loop"
+    # on the next request. Production has one loop per worker, so a stable
+    # portal loop is the faithful setup (same pattern as
+    # tests/test_api_perf_shoulds.py).
+    with TestClient(main_module.app, raise_server_exceptions=False) as client:
+        health_module.reset_health_cache()
+        health_module.reset_health_log_state()
+        yield type("W", (), {
+            "session": session, "factory": factory, "client": client,
+            "actor": actor, "sa": sa, "admin": admin, "emp": emp,
+            "sales": sales, "position": position,
+        })()
+        main_module.app.dependency_overrides.pop(get_db, None)
+        main_module.app.dependency_overrides.pop(get_current_user, None)
+        health_module.reset_health_cache()
+        health_module.reset_health_log_state()
+        session.close()
 
 
 def _login(session, user, success=True, when=None):

@@ -2,7 +2,7 @@ import logging
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, func, literal, literal_column, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -140,31 +140,178 @@ def _finalized_kpi_records(
     ).subquery()
 
 
-async def _build_kpi_overall(
+def _finalized_kpi_records_cte(
+    period_type: PeriodType,
+    period_start: datetime | None,
+    period_end: datetime | None,
+):
+    """The same finalized-record set as ``_finalized_kpi_records``, as a CTE.
+
+    The three summary aggregates (overall / trend / status) share this
+    exact base, so one CTE referenced 3x lets the DB scan the dedup
+    window once instead of 3x. A CTE referenced more than once is
+    materialized by default on both PG and SQLite; if a future planner
+    inlines it instead, the results are identical — only the saving
+    vanishes, so the failure mode is safe.
+    """
+    records = _deduplicated_kpi_records()
+    statement = select(records).where(records.c.record_rank == 1)
+    statement = _period_filters(
+        statement,
+        records.c.period_type,
+        records.c.period_start,
+        records.c.period_end,
+        period_type,
+        period_start,
+        period_end,
+    )
+    return statement.cte("finalized_kpi_records")
+
+
+def _kpi_aggregates_statement(
+    user_ids: list[UUID],
+    period_type: PeriodType,
+    period_start: datetime | None,
+    period_end: datetime | None,
+):
+    """Overall + trend + status distribution as ONE UNION ALL statement.
+
+    The three branches share the finalized-records CTE and the same
+    user filter; they differ only in their GROUP BY. ``kind_order``
+    keeps the branches in overall/trend/status order, and the trailing
+    keys restore each branch's old ORDER BY (trend by period_start,
+    status by status_bucket) — the overall branch always yields one
+    row, so its keys never matter.
+    """
+    finalized = _finalized_kpi_records_cte(period_type, period_start, period_end)
+    user_filter = (
+        finalized.c.user_id.in_(user_ids)
+        if user_ids
+        else finalized.c.user_id == UUID(int=0)
+    )
+    # The UNION's result column types come from the FIRST branch, so
+    # its NULLs must carry the real column types — a plain NULL would
+    # leave period_start untyped and SQLite would hand it back as a
+    # string (the trend shaper calls .isoformat() on it).
+    overall = select(
+        literal("overall").label("kind"),
+        literal(0).label("kind_order"),
+        literal(None, KPIRecord.period_start.type).label("period_start"),
+        literal(None, KPIRecord.status_bucket.type).label("status_bucket"),
+        func.avg(finalized.c.weighted_score).label("score"),
+        func.avg(finalized.c.percentage).label("percentage"),
+        func.count(finalized.c.id).label("count"),
+    ).where(user_filter)
+    trend = (
+        select(
+            literal("trend").label("kind"),
+            literal(1).label("kind_order"),
+            finalized.c.period_start.label("period_start"),
+            literal(None).label("status_bucket"),
+            literal(None).label("score"),
+            func.avg(finalized.c.percentage).label("percentage"),
+            func.count(finalized.c.id).label("count"),
+        )
+        .where(user_filter)
+        .group_by(finalized.c.period_start)
+    )
+    status = (
+        select(
+            literal("status").label("kind"),
+            literal(2).label("kind_order"),
+            literal(None).label("period_start"),
+            finalized.c.status_bucket.label("status_bucket"),
+            literal(None).label("score"),
+            literal(None).label("percentage"),
+            func.count(finalized.c.id).label("count"),
+        )
+        .where(user_filter)
+        .group_by(finalized.c.status_bucket)
+    )
+    union = overall.union_all(trend, status)
+    # CompoundSelect has no .c in SQLAlchemy 2.1, so the ORDER BY
+    # names the output columns directly (valid on both PG and SQLite).
+    return union.order_by(
+        literal_column("kind_order"),
+        literal_column("period_start"),
+        literal_column("status_bucket"),
+    )
+
+
+def _trend_from_rows(rows) -> DashboardTrend:
+    """Shape trend rows into DashboardTrend (was _build_kpi_trend's body)."""
+    return DashboardTrend(
+        labels=[row.period_start.isoformat() for row in rows],
+        values=[
+            round(float(row.percentage), 2)
+            if row.percentage is not None
+            else None
+            for row in rows
+        ],
+        count=len(rows),
+        current_value=(
+            round(float(rows[-1].percentage), 2)
+            if rows and rows[-1].percentage is not None
+            else None
+        ),
+        previous_value=(
+            round(float(rows[-2].percentage), 2)
+            if len(rows) > 1 and rows[-2].percentage is not None
+            else None
+        ),
+        delta=(
+            round(float(rows[-1].percentage - rows[-2].percentage), 2)
+            if len(rows) > 1
+            and rows[-1].percentage is not None
+            and rows[-2].percentage is not None
+            else None
+        ),
+        comparison_status=_comparison_status(len(rows)),
+    )
+
+
+def _status_distribution_from_rows(rows) -> list[KPIStatusCount]:
+    """Shape status rows into KPIStatusCount list (was _build_kpi_status_distribution's body)."""
+    return [
+        KPIStatusCount(
+            status=getattr(row.status_bucket, "value", str(row.status_bucket)),
+            count=int(row.count or 0),
+        )
+        for row in rows
+    ]
+
+
+async def _build_kpi_aggregates(
     db: AsyncSession,
     user_ids: list[UUID],
     period_type: PeriodType,
     period_start: datetime | None,
     period_end: datetime | None,
 ):
-    """Overall KPI averages/counts. Independent of the scope gate, so it
-    runs in the parallel batch; only the department comparisons below
-    need the gate's comparison department list."""
-    records = _finalized_kpi_records(period_type, period_start, period_end)
-    filters = [
-        records.c.user_id.in_(user_ids)
-        if user_ids
-        else records.c.user_id == UUID(int=0)
-    ]
-    return (
+    """Overall row + trend + status distribution in ONE statement (F5).
+
+    Returns the same three values the old _build_kpi_overall /
+    _build_kpi_trend / _build_kpi_status_distribution returned, from
+    one UNION ALL over the shared finalized-records CTE — 3 statements
+    become 1 and the dedup window is scanned once instead of 3x.
+    The overall row keeps its .score/.percentage/.count attributes, so
+    callers read it exactly as before.
+    """
+    rows = (
         await db.execute(
-            select(
-                func.avg(records.c.weighted_score).label("score"),
-                func.avg(records.c.percentage).label("percentage"),
-                func.count(records.c.id).label("count"),
-            ).where(*filters)
+            _kpi_aggregates_statement(
+                user_ids, period_type, period_start, period_end
+            )
         )
-    ).one()
+    ).all()
+    overall_row = next(row for row in rows if row.kind == "overall")
+    trend_rows = [row for row in rows if row.kind == "trend"]
+    status_rows = [row for row in rows if row.kind == "status"]
+    return (
+        overall_row,
+        _trend_from_rows(trend_rows),
+        _status_distribution_from_rows(status_rows),
+    )
 
 
 async def _build_department_comparisons(
@@ -232,100 +379,12 @@ async def _build_department_comparisons(
     return comparisons
 
 
-async def _build_kpi_trend(
-    db: AsyncSession,
-    user_ids: list[UUID],
-    period_type: PeriodType,
-    period_start: datetime | None,
-    period_end: datetime | None,
-) -> DashboardTrend:
-    records = _finalized_kpi_records(period_type, period_start, period_end)
-    filters = [
-        records.c.user_id.in_(user_ids)
-        if user_ids
-        else records.c.user_id == UUID(int=0)
-    ]
-    rows = (
-        await db.execute(
-            select(
-                records.c.period_start.label("period_start"),
-                func.avg(records.c.percentage).label("percentage"),
-            )
-            .where(*filters)
-            .group_by(records.c.period_start)
-            .order_by(records.c.period_start)
-        )
-    ).all()
-    return DashboardTrend(
-        labels=[row.period_start.isoformat() for row in rows],
-        values=[
-            round(float(row.percentage), 2)
-            if row.percentage is not None
-            else None
-            for row in rows
-        ],
-        count=len(rows),
-        current_value=(
-            round(float(rows[-1].percentage), 2)
-            if rows and rows[-1].percentage is not None
-            else None
-        ),
-        previous_value=(
-            round(float(rows[-2].percentage), 2)
-            if len(rows) > 1 and rows[-2].percentage is not None
-            else None
-        ),
-        delta=(
-            round(float(rows[-1].percentage - rows[-2].percentage), 2)
-            if len(rows) > 1
-            and rows[-1].percentage is not None
-            and rows[-2].percentage is not None
-            else None
-        ),
-        comparison_status=_comparison_status(len(rows)),
-    )
-
-
 def _comparison_status(row_count: int) -> str:
     if row_count > 1:
         return "available"
     if row_count == 1:
         return "insufficient_data"
     return "unavailable"
-
-
-async def _build_kpi_status_distribution(
-    db: AsyncSession,
-    user_ids: list[UUID],
-    period_type: PeriodType,
-    period_start: datetime | None,
-    period_end: datetime | None,
-) -> list[KPIStatusCount]:
-    """Group finalized KPI records by their persisted status bucket."""
-    records = _finalized_kpi_records(period_type, period_start, period_end)
-    filters = [
-        records.c.user_id.in_(user_ids)
-        if user_ids
-        else records.c.user_id == UUID(int=0)
-    ]
-    rows = (
-        await db.execute(
-            select(
-                records.c.status_bucket.label("status_bucket"),
-                func.count(records.c.id).label("count"),
-            )
-            .where(*filters)
-            .group_by(records.c.status_bucket)
-            .order_by(records.c.status_bucket)
-        )
-    ).all()
-    return [
-        KPIStatusCount(
-            status=getattr(row.status_bucket, "value", str(row.status_bucket)),
-            count=int(row.count or 0),
-        )
-        for row in rows
-    ]
 
 
 async def _activity_filters(
@@ -617,23 +676,15 @@ async def build_dashboard_summary(
     async def _scope(session: AsyncSession):
         return await _dashboard_scope(session, current_user, department_ids)
 
-    async def _overall(session: AsyncSession):
-        return await _build_kpi_overall(
+    async def _kpi_agg(session: AsyncSession):
+        # F5: overall + trend + status distribution in one statement
+        # over the shared finalized-records CTE (was 3 statements).
+        return await _build_kpi_aggregates(
             session, scope_user_ids, period_type, period_start, period_end
         )
 
     async def _task_diag(session: AsyncSession):
         return await _build_task_diagnostics(session, scope_user_ids)
-
-    async def _trend(session: AsyncSession):
-        return await _build_kpi_trend(
-            session, scope_user_ids, period_type, period_start, period_end
-        )
-
-    async def _status_dist(session: AsyncSession):
-        return await _build_kpi_status_distribution(
-            session, scope_user_ids, period_type, period_start, period_end
-        )
 
     async def _dept_count(session: AsyncSession):
         return int(
@@ -679,10 +730,8 @@ async def build_dashboard_summary(
 
     batch_jobs = [
         _scope,
-        _overall,
+        _kpi_agg,
         _task_diag,
-        _trend,
-        _status_dist,
         _activity,
         _notif_recent,
         _notif_unread,
@@ -696,15 +745,13 @@ async def build_dashboard_summary(
         visible_departments,
         comparison_department_ids,
     ) = batch[0]
-    kpi_row = batch[1]
+    kpi_row, kpi_trend, kpi_status_distribution = batch[1]
     task_diagnostics, approval_diagnostics = batch[2]
-    kpi_trend = batch[3]
-    kpi_status_distribution = batch[4]
-    activity, activity_summary = batch[5]
-    notifications = batch[6]
-    unread_count = batch[7]
+    activity, activity_summary = batch[3]
+    notifications = batch[4]
+    unread_count = batch[5]
     department_count = (
-        batch[8] if department_ids is None else len(visible_departments)
+        batch[6] if department_ids is None else len(visible_departments)
     )
 
     # Parallel batch 2: department comparisons, the one piece that
