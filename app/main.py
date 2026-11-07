@@ -477,7 +477,14 @@ app.add_middleware(
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["*"],
+    # Only the headers this app's own clients actually send (2026-11-06
+    # hygiene — was ["*"]): Authorization (Bearer API calls),
+    # Content-Type (JSON bodies), X-CSRF-Token (static/js/csrf.js),
+    # Accept (web/src/lib/backendClient.js), Idempotency-Key
+    # (static/js/submit-key.js — merged into every form submit's
+    # headers, and the backend idempotency guard expects it).
+    # Origins stay the env allowlist and methods stay constrained.
+    allow_headers=["Authorization", "Content-Type", "X-CSRF-Token", "Accept", "Idempotency-Key"],
 )
 
 # ==============================================================================
@@ -563,12 +570,14 @@ async def health_check(request: Request):
         db_status = "unhealthy"
 
     status_code = status.HTTP_200_OK if db_status == "healthy" else status.HTTP_503_SERVICE_UNAVAILABLE
+    # Public and unauthenticated by design (load-balancer / Railway /
+    # Docker healthchecks only need the status code), so the body
+    # carries no version or environment — those are deployment facts
+    # an unauthenticated caller has no need for (2026-11-06 hygiene).
     return JSONResponse(
         status_code=status_code,
         content={
             "status": db_status,
             "project": settings.PROJECT_NAME,
-            "version": settings.VERSION,
-            "environment": getattr(settings, "ENV", "development")
         }
     )

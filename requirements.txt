@@ -13,14 +13,13 @@ passlib[argon2]>=1.7.4
 PyJWT>=2.8.0
 cryptography>=50.0.0
 openpyxl==3.1.2
-asteval==1.0.9
-apscheduler
+apscheduler==3.11.3
 bcrypt==4.0.1
 slowapi>=0.1.9
 boto3>=1.34.0
 python-docx>=1.1.0  # Word (.docx) ဖိုင်များအတွက်
 pandas>=2.1.0   
-python-magic    # CSV နှင့် Data Processing များအတွက်
+python-magic==0.4.27    # CSV နှင့် Data Processing များအတွက်
 redis>=5.0.1
 httpx>=0.27.0
 gunicorn>=21.2.0

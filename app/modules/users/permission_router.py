@@ -434,6 +434,45 @@ async def set_user_override(
     return await get_user_overrides(user_id, db, current_user)
 
 
+@router.delete("/user/{user_id}/all-overrides", status_code=200, responses={403: {"description": "Forbidden"}})
+async def reset_user_overrides(
+    user_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(admin_only),
+):
+    """Remove all overrides for a user (reset to role defaults)."""
+    await _assert_can_manage_target(db, current_user, user_id)
+
+    # Fetch old for audit
+    old_overrides = (await db.execute(
+        select(UserPermissionOverride, Permission)
+        .join(Permission, Permission.id == UserPermissionOverride.permission_id)
+        .where(UserPermissionOverride.user_id == user_id)
+    )).all()
+    old_data = [
+        {"code": p.code, "allowed": o.allowed, "scope": o.scope}
+        for o, p in old_overrides
+    ]
+
+    count = await permission_repo.delete_all_user_overrides(db, user_id)
+
+    if old_data:
+        await log_audit_trail(
+            db, current_user.id, "RESET_USER_PERMISSIONS", "users", str(user_id),
+            {"overrides": old_data}, {"overrides": []},
+        )
+    await bump_user_permissions_version(user_id)
+    return {
+        "deleted": count,
+        "message": (
+            f"{count} user override(s) removed. "
+            "The user now inherits role defaults."
+            if count
+            else "No user overrides were present; role defaults are already active."
+        ),
+    }
+
+
 @router.delete(
     "/user/{user_id}/{permission_code}",
     status_code=204,
@@ -555,45 +594,6 @@ async def bulk_save_user_overrides(
 # =====================================================================
 # 7. 🌟 NEW: Reset user to role defaults
 # =====================================================================
-@router.delete("/user/{user_id}/all-overrides", status_code=200, responses={403: {"description": "Forbidden"}})
-async def reset_user_overrides(
-    user_id: UUID,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(admin_only),
-):
-    """Remove all overrides for a user (reset to role defaults)."""
-    await _assert_can_manage_target(db, current_user, user_id)
-
-    # Fetch old for audit
-    old_overrides = (await db.execute(
-        select(UserPermissionOverride, Permission)
-        .join(Permission, Permission.id == UserPermissionOverride.permission_id)
-        .where(UserPermissionOverride.user_id == user_id)
-    )).all()
-    old_data = [
-        {"code": p.code, "allowed": o.allowed, "scope": o.scope}
-        for o, p in old_overrides
-    ]
-
-    count = await permission_repo.delete_all_user_overrides(db, user_id)
-
-    if old_data:
-        await log_audit_trail(
-            db, current_user.id, "RESET_USER_PERMISSIONS", "users", str(user_id),
-            {"overrides": old_data}, {"overrides": []},
-        )
-    await bump_user_permissions_version(user_id)
-    return {
-        "deleted": count,
-        "message": (
-            f"{count} user override(s) removed. "
-            "The user now inherits role defaults."
-            if count
-            else "No user overrides were present; role defaults are already active."
-        ),
-    }
-
-
 # =====================================================================
 # 8. Enriched audit history
 # =====================================================================
