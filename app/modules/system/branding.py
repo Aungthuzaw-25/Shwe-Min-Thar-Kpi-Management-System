@@ -51,7 +51,7 @@ BRANDING_SETTING_DESCRIPTION = "Company trademark (logo) reference"
 
 DEFAULT_COMPANY_NAME = "Shwe Min Thar"
 DEFAULT_COMPANY_TAGLINE = "Performance Matters"
-DEFAULT_LOGO_URL = "/static/image/smt-logo.jpg"
+DEFAULT_LOGO_URL = "/static/image/smt-logo.webp"
 CUSTOM_LOGO_URL = "/api/v1/system/branding/logo"
 
 LOGO_OBJECT_KEY = "branding/logo.webp"
