@@ -8,7 +8,6 @@ const read = (rel) => readFileSync(path.join(root, rel), 'utf8');
 const template = read('templates/dashboard/system_settings.njk');
 const base = read('templates/layouts/base.njk');
 const routes = read('web/src/routes/dashboard.js');
-const fastapi = read('app/web/dashboard_web.py');
 
 const VIEWS = ['general', 'email', 'security', 'maintenance', 'user-security'];
 
@@ -63,14 +62,14 @@ describe('System Settings split views', () => {
     expect(template).toContain('catch (_) { /* keep the page usable */ }');
   });
 
-  it('resolves ?view= in both route tiers, with legacy ?tab= mapping for all 5 values', () => {
+  // NOTE (2026-11-06): the FastAPI tier used to resolve ?view=/?tab=
+  // too (app/web/dashboard_web.py); Jinja2 page rendering was removed,
+  // so the web tier is the only tier now.
+  it('resolves ?view= in the web tier, with legacy ?tab= mapping for all 5 values', () => {
     const block = routes.slice(routes.indexOf('"/system-settings"'));
     expect(block).toContain('settings_view');
     expect(block).toContain('resolveSettingsView');
     expect(routes).toContain('"general", "email", "security", "maintenance", "user-security"');
-    expect(fastapi).toContain('"settings_view"');
-    expect(fastapi).toContain('query_params.get("view")');
-    expect(fastapi).toContain('query_params.get("tab")');
   });
 
   it('gives the sidebar exactly the 5 photo-label children, in photo order', () => {

@@ -12,7 +12,6 @@ const shared = read('templates/dashboard/executive_dashboard_content.njk');
 const sharedJs = read('static/js/executive-dashboard.js');
 const base = read('templates/layouts/base.njk');
 const routes = read('web/src/routes/dashboard.js');
-const fastapi = read('app/web/dashboard_web.py');
 
 describe('Employee KPI results standalone page', () => {
   it('renders the moved section in full: heading, pagination, table, detail', () => {
@@ -84,17 +83,13 @@ describe('Employee KPI results standalone page', () => {
     expect(overviewAt).toBeLessThan(deptAt);
   });
 
-  it('registers the page in both tiers, Super Admin only', () => {
+  // NOTE (2026-11-06): the FastAPI tier used to register this page too
+  // (app/web/dashboard_web.py, SA-only via [ROLE_SUPER_ADMIN]); Jinja2
+  // page rendering was removed, so the web tier is the only tier now.
+  it('registers the page in the web tier, Super Admin only', () => {
     expect(routes).toContain('"/superadmin/employee-kpi-results"');
     expect(routes).toContain('dashboard/employee_kpi_results.njk');
     const routeAt = routes.indexOf('"/superadmin/employee-kpi-results"');
     expect(routes.slice(routeAt, routeAt + 220)).toContain('roles.superAdmin');
-    expect(fastapi).toContain('"/superadmin/employee-kpi-results"');
-    expect(fastapi).toContain('dashboard/employee_kpi_results.njk');
-    expect(fastapi).toContain('render_employee_kpi_results_view');
-    const viewAt = fastapi.indexOf('render_employee_kpi_results_view');
-    const viewBody = fastapi.slice(viewAt, viewAt + 900);
-    expect(viewBody).toContain('[ROLE_SUPER_ADMIN]');
-    expect(viewBody).not.toContain("'Admin'");
   });
 });

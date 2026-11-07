@@ -10,7 +10,6 @@ const script = fs.readFileSync(path.join(repoRoot, "static/js/system-health.js")
 const css = fs.readFileSync(path.join(repoRoot, "static/css/system-health.css"), "utf8");
 const baseLayout = fs.readFileSync(path.join(repoRoot, "templates/layouts/base.njk"), "utf8");
 const webRoutes = fs.readFileSync(path.join(repoRoot, "web/src/routes/dashboard.js"), "utf8");
-const fastapiRoutes = fs.readFileSync(path.join(repoRoot, "app/web/dashboard_web.py"), "utf8");
 
 describe("System Health page (Super Admin only)", () => {
   it("gates the whole page behind a server-side Super Admin check", () => {
@@ -76,11 +75,12 @@ describe("System Health page (Super Admin only)", () => {
     expect(template).not.toContain("{% block extra_css %}");
   });
 
-  it("registers the page as Super Admin only in both tiers", () => {
+  // NOTE (2026-11-06): the FastAPI tier used to register this page too
+  // (app/web/dashboard_web.py); Jinja2 page rendering was removed, so
+  // the web tier is the only tier now.
+  it("registers the page as Super Admin only in the web tier", () => {
     expect(webRoutes).toContain('"/superadmin/health"');
     expect(webRoutes).toContain('allowedRoles: roles.superAdmin');
-    expect(fastapiRoutes).toContain('@router.get("/superadmin/health"');
-    expect(fastapiRoutes).toContain('name="dashboard/system_health.njk"');
   });
 
   it("keeps the sidebar link inside the Super Admin only block", () => {

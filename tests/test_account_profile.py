@@ -386,12 +386,10 @@ def test_account_api_registers_requested_endpoint_paths():
     assert ("/avatars/{filename}", "GET") in routes
     assert ("/me/password", "POST") in routes
     assert ("/me/reauth", "POST") in routes
-    from app.web.dashboard_web import router as dashboard_router
-
-    assert any(
-        getattr(route, "path", None) == "/account/profile"
-        for route in dashboard_router.routes
-    )
+    # NOTE (2026-11-06): the /account/profile PAGE route used to live on
+    # the FastAPI tier (app/web/dashboard_web.py); Jinja2 page rendering
+    # was removed and the page is served by the Express web tier
+    # (web/src/routes/account.js) — so no page route is asserted here.
 
 
 @pytest.mark.asyncio
