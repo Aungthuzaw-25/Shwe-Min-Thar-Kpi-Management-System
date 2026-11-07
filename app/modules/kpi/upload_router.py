@@ -1,4 +1,5 @@
 import csv
+import hashlib
 import io
 import logging
 import math
@@ -39,16 +40,21 @@ from app.core.dependencies import (
     get_authorized_department_ids,
     get_current_user,
 )
+from app.core.idempotency import idempotency_guard
 from app.core.timezone import as_application_time
 from app.database.connection import get_db
-from app.modules.departments.models import UserDepartment
-from app.modules.kpi.engine import KPICalculationEngine, any_formula_applies_to_period
-from app.modules.kpi.overachievement import flush_pending_notifications
+from app.modules.departments.models import Department, UserDepartment
+from app.modules.kpi.engine import (
+    KPICalculationEngine,
+    any_formula_applies_to_period,
+)
 from app.modules.kpi.models import (
     KPIFormula,
     KPIPeriod,
     KPIPeriodStatus,
     KPIRecord,
+    KpiUploadJob,
+    KpiUploadJobStatus,
     PeriodType,
 )
 from app.modules.kpi.period_ranges import calendar_period_range
@@ -61,6 +67,7 @@ from app.modules.kpi.upload_contract import (
     normalize_header,
 )
 from app.modules.users.models import User
+from app.services.storage_service import storage_service
 
 logger = logging.getLogger(__name__)
 limiter = Limiter(key_func=get_remote_address)
@@ -69,6 +76,10 @@ router = APIRouter(prefix="/kpi-uploads", tags=["KPI Excel Uploads"])
 MAX_FILE_SIZE = 5 * 1024 * 1024
 ALLOWED_EXTENSIONS = {".csv", ".xlsx"}
 EDITABLE_PERIOD_STATUSES = {KPIPeriodStatus.OPEN, KPIPeriodStatus.IN_PROGRESS}
+# MinIO folder for staged uploads (F6). The background worker
+# re-reads the staged file from here; the daily prune sweeps this
+# prefix for orphans.
+STAGING_FOLDER = "kpi-upload-staging"
 
 
 class UploadValidationError(ValueError):
@@ -168,6 +179,31 @@ async def _resolve_user_formula(
         ) from exc
 
 
+async def _parse_upload_contents(contents: bytes, extension: str) -> ParsedWorkbook:
+    """Parse workbook bytes (shared by the request path and the
+    background worker, which re-parses the staged file)."""
+    if extension not in ALLOWED_EXTENSIONS:
+        raise UploadValidationError(
+            "Unsupported file format. Upload a .xlsx or .csv file."
+        )
+    if not contents:
+        raise UploadValidationError("The uploaded workbook is empty.")
+    if len(contents) > MAX_FILE_SIZE:
+        raise UploadValidationError("File exceeds the 5MB upload limit.")
+
+    def parse_file() -> ParsedWorkbook:
+        if extension == ".csv":
+            return _parse_csv(contents)
+        return _parse_xlsx(contents)
+
+    try:
+        return await run_in_threadpool(parse_file)
+    except UploadValidationError:
+        raise
+    except (UnicodeDecodeError, csv.Error) as exc:
+        raise UploadValidationError("The uploaded file is malformed.") from exc
+
+
 async def _read_upload_dataframe(file: UploadFile) -> ParsedWorkbook:
     filename = file.filename or ""
     extension = os.path.splitext(filename)[1].lower()
@@ -181,22 +217,7 @@ async def _read_upload_dataframe(file: UploadFile) -> ParsedWorkbook:
     if file_size > MAX_FILE_SIZE:
         raise UploadValidationError("File exceeds the 5MB upload limit.")
     contents = await file.read()
-    if len(contents) > MAX_FILE_SIZE:
-        raise UploadValidationError("File exceeds the 5MB upload limit.")
-    if not contents:
-        raise UploadValidationError("The uploaded workbook is empty.")
-
-    def parse_file() -> ParsedWorkbook:
-        if extension == ".csv":
-            return _parse_csv(contents)
-        return _parse_xlsx(contents)
-
-    try:
-        return await run_in_threadpool(parse_file)
-    except UploadValidationError:
-        raise
-    except (UnicodeDecodeError, csv.Error) as exc:
-        raise UploadValidationError("The uploaded file is malformed.") from exc
+    return await _parse_upload_contents(contents, extension)
 
 
 def _parse_csv(contents: bytes) -> ParsedWorkbook:
@@ -729,7 +750,49 @@ async def export_kpi_template(
         ) from None
 
 
-@router.post("/monthly-data", status_code=status.HTTP_200_OK)
+async def _department_names_for_formulas(db, department_ids) -> dict:
+    """One SELECT for the distinct departments an upload's formulas
+    target (usually one), so the record snapshots don't re-query
+    the same department name per row (F6 profile win)."""
+    ids = [dept_id for dept_id in department_ids if dept_id is not None]
+    if not ids:
+        return {}
+    rows = (
+        await db.execute(
+            select(Department.id, Department.name).where(Department.id.in_(ids))
+        )
+    ).all()
+    return {row[0]: row[1] for row in rows}
+
+
+def _job_to_response(job: KpiUploadJob) -> dict:
+    """Poll shape for one upload job (status is lowercase on the
+    wire; the DB stores the UPPER value)."""
+    return {
+        "job_id": str(job.id),
+        "status": job.status.lower(),
+        "rows_total": job.rows_total,
+        "rows_processed": job.rows_processed,
+        "period_id": str(job.period_id) if job.period_id else None,
+        "period_label": job.period_label,
+        "error_code": job.error_code,
+        "error_message": job.error_message,
+        "error_detail": job.error_detail,
+        "created_at": job.created_at.isoformat() if job.created_at else None,
+        "started_at": job.started_at.isoformat() if job.started_at else None,
+        "finished_at": job.finished_at.isoformat() if job.finished_at else None,
+    }
+
+
+def _is_super_admin(user: User) -> bool:
+    return bool(user.role and user.role.name == "Super Admin")
+
+
+@router.post(
+    "/monthly-data",
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(idempotency_guard)],
+)
 @limiter.limit("3/minute")
 async def upload_monthly_kpi_data(
     request: Request,
@@ -753,44 +816,47 @@ async def upload_monthly_kpi_data(
         if not valid_rows:
             raise UploadValidationError("The workbook contains no valid employee rows.")
 
-        period_range = _period_month_range(period)
-        pending_notifications: list = []
-        for row in valid_rows:
-            await KPICalculationEngine.execute_kpi_calculation(
-                db=db,
-                user=row.user,
-                period_start=period_range.start_inclusive,
-                period_end=period_range.end_exclusive,
-                period_type=PeriodType.MONTHLY,
-                task_data=row.task_data,
-                commit=False,
-                pending_notifications=pending_notifications,
-            )
-            await db.flush()
-            result = (
-                await db.execute(
-                    select(KPIRecord).where(
-                        KPIRecord.user_id == row.user.id,
-                        KPIRecord.kpi_period_id == period.id,
-                        KPIRecord.period_type == PeriodType.MONTHLY,
-                        KPIRecord.is_deleted.is_(False),
-                    )
-                )
-            ).scalars().first()
-            if result is None or result.formula_id != row.formula.id:
-                raise RuntimeError(
-                    f"KPI calculation did not persist expected context for {row.email}."
-                )
+        # Tx-1 (F6): stage the file to MinIO, insert the QUEUED job,
+        # commit, return 202. The engine runs in the background — the
+        # request never blocks on the import. The worker re-parses
+        # and re-validates the staged file (never trusting these
+        # snapshots for execution).
+        await file.seek(0)
+        file_bytes = await file.read()
+        content_hash = hashlib.sha256(file_bytes).hexdigest()
+        await file.seek(0)
+        content_type = file.content_type or (
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            if (file.filename or "").lower().endswith(".xlsx")
+            else "text/csv"
+        )
+        object_key = await storage_service.upload_file(
+            file, folder=STAGING_FOLDER, content_type=content_type
+        )
+        owner_name = (
+            f"{current_user.first_name} {current_user.last_name}".strip()
+            or current_user.email
+        )
+        job = KpiUploadJob(
+            owner_id=current_user.id,
+            owner_name=owner_name,
+            status=KpiUploadJobStatus.QUEUED.value,
+            source_object_key=object_key,
+            source_filename=file.filename or "upload",
+            file_size_bytes=len(file_bytes),
+            content_hash=content_hash,
+            period_id=period.id,
+            period_label=period.label,
+            rows_total=len(valid_rows),
+        )
+        db.add(job)
         await db.commit()
-        # Notices only after the import transaction committed: a
-        # later-row failure rolls everything back, and no orphan
-        # notice may survive it (dedup would suppress the retry).
-        await flush_pending_notifications(db, pending_notifications)
         return {
-            "message": "KPI data was imported and calculated successfully.",
-            "processed_count": len(valid_rows),
-            "status": "completed",
-            "period_id": str(period.id),
+            "job_id": str(job.id),
+            "status": "queued",
+            "status_url": f"{request.url.path}/jobs/{job.id}",
+            "rows_total": len(valid_rows),
+            "period_label": period.label,
         }
     except UploadValidationError as exc:
         await db.rollback()
@@ -798,9 +864,13 @@ async def upload_monthly_kpi_data(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"code": "validation_error", "errors": exc.errors},
         ) from exc
+    except HTTPException:
+        # Storage 503 (MinIO down) etc.: re-raise as-is, no job row.
+        await db.rollback()
+        raise
     except Exception:
         await db.rollback()
-        logger.exception("KPI workbook import failed unexpectedly.")
+        logger.exception("KPI workbook upload enqueue failed unexpectedly.")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={
@@ -808,3 +878,55 @@ async def upload_monthly_kpi_data(
                 "message": "The server could not process this file. Please try again.",
             },
         ) from None
+
+
+@router.get("/monthly-data/jobs")
+async def list_upload_jobs(
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Own upload jobs, newest first (Super Admin sees all). No
+    rate limit — the Frontend polls the detail endpoint, and the
+    list is the history view."""
+    enforce_permission(current_user, "kpi.create")
+    conditions = [KpiUploadJob.is_deleted.is_(False)]
+    if not _is_super_admin(current_user):
+        conditions.append(KpiUploadJob.owner_id == current_user.id)
+    total = (
+        await db.execute(
+            select(func.count()).select_from(KpiUploadJob).where(*conditions)
+        )
+    ).scalar_one()
+    jobs = (
+        await db.execute(
+            select(KpiUploadJob)
+            .where(*conditions)
+            .order_by(KpiUploadJob.created_at.desc(), KpiUploadJob.id.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+    ).scalars().all()
+    return {"jobs": [_job_to_response(job) for job in jobs], "total": total}
+
+
+@router.get("/monthly-data/jobs/{job_id}")
+async def get_upload_job(
+    job_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """One upload job. Not the owner and not a Super Admin → 404
+    (the job's existence is not leaked). No rate limit — the
+    Frontend polls this every 2s while QUEUED/RUNNING."""
+    enforce_permission(current_user, "kpi.create")
+    job = await db.get(KpiUploadJob, job_id)
+    if job is None or (
+        job.owner_id != current_user.id and not _is_super_admin(current_user)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Upload job not found.",
+        )
+    return _job_to_response(job)

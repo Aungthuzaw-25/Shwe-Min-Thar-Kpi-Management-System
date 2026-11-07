@@ -191,6 +191,60 @@ class StorageService:
             logger.exception("Generate presigned URL failed: %s", e)
             raise HTTPException(status_code=500, detail="Could not generate file access link")
 
+    async def download_file(self, object_name: str) -> bytes:
+        """MinIO/S3 မှ ဖိုင်အကြောင်းအရာကို ပြန်ယူမည် (background worker
+        က staged upload ကို ပြန်ဖတ်ရန်)."""
+        if not settings.USE_S3 or not self.s3_client:
+            raise HTTPException(status_code=503, detail="Storage backend is unavailable. Please try again later.")
+        try:
+            safe_object_name = _validate_storage_key(object_name)
+            response = await run_in_threadpool(
+                self.s3_client.get_object,
+                Bucket=self.bucket_name,
+                Key=safe_object_name,
+            )
+            body = response.get("Body")
+            if body is None:
+                return b""
+            return await run_in_threadpool(body.read)
+        except HTTPException:
+            raise
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code")
+            if error_code in {"NoSuchKey", "404"}:
+                raise HTTPException(status_code=404, detail="Staged file no longer exists.") from e
+            logger.exception("AWS ClientError during download: %s", e)
+            raise HTTPException(status_code=500, detail="Storage service error during download") from e
+        except Exception as e:
+            logger.exception("File download failed: %s", e)
+            raise HTTPException(status_code=500, detail="Could not download file from storage") from e
+
+    def list_object_keys(self, prefix: str) -> list[tuple[str, object]]:
+        """Prefix အောက်က object တွေကို (key, last_modified) အတွဲလိုက်
+        ပြန်ပေးမည် (prune sweeper အတွက် — staging orphan ရှာရန်)."""
+        if not settings.USE_S3 or not self.s3_client:
+            return []
+        try:
+            safe_prefix = _validate_storage_key(prefix)
+            found: list[tuple[str, object]] = []
+            token = None
+            while True:
+                kwargs = {"Bucket": self.bucket_name, "Prefix": safe_prefix}
+                if token:
+                    kwargs["ContinuationToken"] = token
+                response = self.s3_client.list_objects_v2(**kwargs)
+                found.extend(
+                    (obj["Key"], obj.get("LastModified"))
+                    for obj in response.get("Contents", [])
+                )
+                if not response.get("IsTruncated"):
+                    break
+                token = response.get("NextContinuationToken")
+            return found
+        except Exception as e:
+            logger.exception("Failed to list storage objects: %s", e)
+            return []
+
     # 🌟 ADDED: Missing delete_file function required by router.py
     async def delete_file(self, object_name: str):
         """MinIO/S3 မှ ဖိုင်ကို ဖျက်ပစ်မည်"""

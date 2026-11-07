@@ -79,6 +79,42 @@ def _request_hash(request: Request, body: bytes) -> str:
     return digest.hexdigest()
 
 
+async def _canonical_request_hash(request: Request) -> str:
+    """Hash the request's semantic body for idempotency.
+
+    JSON bodies hash as their raw bytes (unchanged). Multipart
+    bodies are canonicalized — field values + file bytes, sorted
+    by field name — because the multipart boundary is random per
+    request: without this, a retry of the same file upload (same
+    key, same file) would hash differently and wrongly 422 as
+    "used with a different body" instead of replaying the stored
+    response. File parts are rewound after hashing so the handler
+    can still read them.
+    """
+    content_type = request.headers.get("content-type", "")
+    if not content_type.startswith("multipart/form-data"):
+        return _request_hash(request, await request.body())
+    form = await request.form()
+    digest = hashlib.sha256()
+    digest.update(request.method.encode())
+    digest.update(b"\n")
+    digest.update(request.url.path.encode())
+    digest.update(b"\n")
+    for key in sorted(form.keys()):
+        value = form[key]
+        digest.update(key.encode())
+        digest.update(b"=")
+        if hasattr(value, "read"):
+            digest.update((value.filename or "").encode())
+            digest.update(b"\n")
+            digest.update(await value.read())
+            await value.seek(0)
+        else:
+            digest.update(str(value).encode())
+        digest.update(b"\n")
+    return digest.hexdigest()
+
+
 def _validate_key(raw: str | None) -> str | None:
     if raw is None:
         return None
@@ -124,8 +160,7 @@ async def idempotency_guard(
     key = _validate_key(request.headers.get(HEADER_NAME))
     if key is None:
         return
-    body = await request.body()
-    request_hash = _request_hash(request, body)
+    request_hash = await _canonical_request_hash(request)
     now = utc_now_naive()
 
     async with AsyncSessionLocal() as db:

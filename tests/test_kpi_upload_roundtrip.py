@@ -28,6 +28,7 @@ from app.modules.kpi.models import (
     KPIPeriodStatus,
     KPIRecord,
     KPIScoringRuleItem,
+    KpiUploadJob,
     PeriodType,
 )
 from app.modules.kpi.period_ranges import calendar_period_range
@@ -35,7 +36,7 @@ from app.modules.kpi.upload_contract import HeaderContractError, build_header_co
 from app.modules.kpi.upload_router import limiter, router
 from app.modules.tasks.models.task import Task
 from app.modules.tasks.models.task_review import TaskReview
-from app.modules.users.models import Position, Role, User
+from app.modules.users.models import Permission, Position, Role, RolePermission, User
 
 TABLES = [
     Department.__table__,
@@ -52,6 +53,12 @@ TABLES = [
     KPIScoringRuleItem.__table__,
     Task.__table__,
     TaskReview.__table__,
+    # F6: the POST inserts a job row on the request session, and the
+    # worker loads the owner's role (whose permissions relationship
+    # is selectin-loaded) — both tables must exist in this world.
+    KpiUploadJob.__table__,
+    Permission.__table__,
+    RolePermission.__table__,
 ]
 
 
@@ -213,9 +220,60 @@ async def _upload(client, content, period_id, filename="KPI_Master_Template.xlsx
     )
 
 
+class _FakeStorage:
+    """In-memory MinIO stand-in (F6): the POST stages the file here
+    and the background worker re-reads it."""
+
+    def __init__(self):
+        self.objects: dict[str, bytes] = {}
+
+    async def upload_file(self, file, folder="evidence", *, content_type=None):
+        await file.seek(0)
+        data = await file.read()
+        extension = (file.filename or "").rsplit(".", 1)[-1].lower() or "bin"
+        key = f"{folder}/{uuid4()}.{extension}"
+        self.objects[key] = data
+        return key
+
+    async def download_file(self, object_name):
+        if object_name not in self.objects:
+            from fastapi import HTTPException
+
+            raise HTTPException(status_code=404, detail="Staged file no longer exists.")
+        return self.objects[object_name]
+
+    async def delete_file(self, object_name):
+        self.objects.pop(object_name, None)
+
+    def list_object_keys(self, prefix):
+        return [
+            (key, datetime.now(UTC))
+            for key in self.objects
+            if key.startswith(prefix)
+        ]
+
+
 def test_official_template_round_trip_calculates_period_records(tmp_path):
     async def scenario():
         engine, factory, admin, employees, period, formula = await _setup(tmp_path)
+        # F6: the upload is async now — the POST stages the file and
+        # returns 202, and the worker (run here directly) does the
+        # import. The fake storage stands in for MinIO, and the
+        # worker's own sessions are pointed at this world's factory.
+        from unittest.mock import patch
+
+        from app.modules.kpi import upload_jobs as upload_jobs_module
+        from app.modules.kpi import upload_router as upload_router_module
+        from app.modules.kpi.upload_jobs import run_kpi_upload_pickup
+
+        storage = _FakeStorage()
+        patches = [
+            patch.object(upload_jobs_module, "AsyncSessionLocal", factory),
+            patch.object(upload_jobs_module, "storage_service", storage),
+            patch.object(upload_router_module, "storage_service", storage),
+        ]
+        for p in patches:
+            p.start()
         try:
             async with await _client(factory, admin) as client:
                 periods = await client.get("/api/v1/kpi-uploads/periods")
@@ -260,13 +318,18 @@ def test_official_template_round_trip_calculates_period_records(tmp_path):
                 response = await _upload(
                     client, round_trip_path.read_bytes(), period.id
                 )
-                assert response.status_code == 200, response.text
-                assert response.json()["processed_count"] == 2
-                assert response.json()["period_id"] == str(period.id)
+                assert response.status_code == 202, response.text
+                assert response.json()["status"] == "queued"
+                assert response.json()["rows_total"] == 2
+                assert response.json()["period_label"] == period.label
+                processed = await run_kpi_upload_pickup()
+                assert str(processed) == response.json()["job_id"]
                 repeated_response = await _upload(
                     client, round_trip_path.read_bytes(), period.id
                 )
-                assert repeated_response.status_code == 200, repeated_response.text
+                assert repeated_response.status_code == 202, repeated_response.text
+                processed = await run_kpi_upload_pickup()
+                assert str(processed) == repeated_response.json()["job_id"]
 
             async with factory() as db:
                 records = (
@@ -279,6 +342,8 @@ def test_official_template_round_trip_calculates_period_records(tmp_path):
                 history = (await db.execute(select(KPIHistory))).scalars().all()
                 assert len(history) == 2
         finally:
+            for p in patches:
+                p.stop()
             limiter.enabled = True
             await engine.dispose()
 
@@ -615,6 +680,10 @@ def test_invalid_workbooks_return_controlled_validation_and_write_nothing(
 
 
 def test_calculation_failure_rolls_back_prior_rows(tmp_path, monkeypatch):
+    """F6: the engine fails mid-file in the WORKER now — the POST
+    still returns 202, and the job reports FAILED with zero records
+    and zero history (the rollback survives as the job status)."""
+
     async def scenario():
         engine, factory, admin, employees, period, _formula = await _setup(tmp_path)
         original = KPICalculationEngine.execute_kpi_calculation
@@ -630,6 +699,20 @@ def test_calculation_failure_rolls_back_prior_rows(tmp_path, monkeypatch):
         monkeypatch.setattr(
             KPICalculationEngine, "execute_kpi_calculation", fail_on_second_row
         )
+        from unittest.mock import patch
+
+        from app.modules.kpi import upload_jobs as upload_jobs_module
+        from app.modules.kpi import upload_router as upload_router_module
+        from app.modules.kpi.upload_jobs import run_kpi_upload_pickup
+
+        storage = _FakeStorage()
+        patches = [
+            patch.object(upload_jobs_module, "AsyncSessionLocal", factory),
+            patch.object(upload_jobs_module, "storage_service", storage),
+            patch.object(upload_router_module, "storage_service", storage),
+        ]
+        for p in patches:
+            p.start()
         try:
             async with await _client(factory, admin) as client:
                 official = await _template(client, period.id)
@@ -641,12 +724,21 @@ def test_calculation_failure_rolls_back_prior_rows(tmp_path, monkeypatch):
                     ),
                 )
                 response = await _upload(client, valid, period.id)
-                assert response.status_code == 500
-                assert response.json()["detail"]["code"] == "processing_error"
+                assert response.status_code == 202, response.text
+                job_id = response.json()["job_id"]
+                processed = await run_kpi_upload_pickup()
+                assert str(processed) == job_id
+                detail = await client.get(
+                    f"/api/v1/kpi-uploads/monthly-data/jobs/{job_id}"
+                )
+                assert detail.json()["status"] == "failed"
+                assert detail.json()["error_code"] == "processing_error"
             async with factory() as db:
                 assert (await db.execute(select(KPIRecord))).scalars().all() == []
                 assert (await db.execute(select(KPIHistory))).scalars().all() == []
         finally:
+            for p in patches:
+                p.stop()
             limiter.enabled = True
             await engine.dispose()
 
