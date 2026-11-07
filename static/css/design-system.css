@@ -386,7 +386,6 @@ main .rounded-2xl, main .rounded-3xl { border-radius: var(--radius-lg); }
 
 @media (max-width: 767px) {
   :root { --topbar-height: 56px; }
-  main > .md\:hidden { display: none; }
   #mainSidebar { width: min(290px, 86vw); }
   .app-topbar { padding: 0 16px; }
   .app-topbar__context { display: none; }
