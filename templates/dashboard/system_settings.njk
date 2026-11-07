@@ -90,7 +90,7 @@
                         <div class="shrink-0">
                             <span class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-2 uppercase tracking-wide">Logo</span>
                             <div class="flex items-center gap-4">
-                                <img id="tm_logo_preview" src="{{ brand.logo_url or '/static/image/smt-logo.jpg' }}" alt="Company logo preview" class="w-20 h-20 rounded-2xl object-cover border border-gray-200 bg-slate-50 shadow-sm">
+                                <img id="tm_logo_preview" src="{{ brand.logo_url or '/static/image/smt-logo.webp' }}" alt="Company logo preview" class="w-20 h-20 rounded-2xl object-cover border border-gray-200 bg-slate-50 shadow-sm">
                                 <div class="space-y-2">
                                     <p id="tm_logo_state" class="text-xs font-semibold text-slate-500">{% if brand.has_custom_logo %}Custom logo{% else %}Default logo{% endif %}</p>
                                     <label for="tm_logo_file" class="du-dropzone" id="tm_logo_dropzone">
@@ -896,7 +896,7 @@
         document.getElementById('tm_company_tagline').value = brand.company_tagline || '';
         document.getElementById('tm_name_count').textContent = (brand.company_name || '').length;
         document.getElementById('tm_tagline_count').textContent = (brand.company_tagline || '').length;
-        document.getElementById('tm_logo_preview').src = brand.logo_url || '/static/image/smt-logo.jpg';
+        document.getElementById('tm_logo_preview').src = brand.logo_url || '/static/image/smt-logo.webp';
         document.getElementById('tm_logo_state').textContent = brand.has_custom_logo ? 'Custom logo' : 'Default logo';
         document.getElementById('tm_logo_delete').classList.toggle('hidden', !brand.has_custom_logo);
     }

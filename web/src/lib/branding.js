@@ -12,7 +12,7 @@
 export const DEFAULT_BRAND = {
   company_name: "Shwe Min Thar",
   company_tagline: "Performance Matters",
-  logo_url: "/static/image/smt-logo.jpg",
+  logo_url: "/static/image/smt-logo.webp",
   has_custom_logo: false,
 };
 

@@ -108,16 +108,18 @@ templates.env.globals.update(
     brand={
         "company_name": "Shwe Min Thar",
         "company_tagline": "Performance Matters",
-        "logo_url": "/static/image/smt-logo.jpg",
+        "logo_url": "/static/image/smt-logo.webp",
         "has_custom_logo": False,
     },
     oauth_providers={"google": False, "microsoft": False},
-    # Phase 5b asset bundles: default OFF; set ASSET_BUNDLES=true to serve
-    # the hashed bundles built by tools/build_asset_bundles.mjs. The flag-off
-    # path renders the original individual links, byte-identical to before.
+    # Phase 5b asset bundles: default ON; set ASSET_BUNDLES=false to serve
+    # the original individual links. The hashed bundles are built by
+    # tools/build_asset_bundles.mjs (both Docker images run it at build
+    # time); if the manifest is missing the helper falls back to the
+    # individual links, so local dev without a build is unaffected.
     # Read from the environment directly (as the scheduler's
     # ENABLE_BATCH_NOTIFICATIONS is) rather than adding a Settings field:
     # the flag is a deployment-time render switch, not app configuration.
     asset=asset_bundle,
-    asset_bundles=os.environ.get("ASSET_BUNDLES", "false").lower() == "true",
+    asset_bundles=os.environ.get("ASSET_BUNDLES", "true").lower() != "false",
 )

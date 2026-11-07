@@ -87,6 +87,13 @@ def test_fastapi_dashboard_templates_render_with_user_context(path, role_name):
     )
     app.dependency_overrides[dashboard_web.get_current_user] = lambda: user
     app.dependency_overrides[dashboard_web.get_db] = _TemplateDB
+    # This test pins the individual-link rendering (which sheets the
+    # dashboard loads), not the bundle flag: force flag-off for the
+    # render so the assertions hold whether or not a built manifest
+    # exists in the checkout. The flag-on rendering is pinned by
+    # tests/test_asset_bundles.py + the live shoot.
+    _flag_on = dashboard_web.templates.env.globals.get("asset_bundles")
+    dashboard_web.templates.env.globals["asset_bundles"] = False
 
     try:
         with TestClient(app) as client:
@@ -115,6 +122,7 @@ def test_fastapi_dashboard_templates_render_with_user_context(path, role_name):
     finally:
         app.dependency_overrides.pop(dashboard_web.get_current_user, None)
         app.dependency_overrides.pop(dashboard_web.get_db, None)
+        dashboard_web.templates.env.globals["asset_bundles"] = _flag_on
 
     assert response.status_code == 200
     assert "Test User" in response.text
@@ -126,13 +134,13 @@ def test_fastapi_dashboard_templates_render_with_user_context(path, role_name):
     assert "/static/css/inter-fonts.css" in response.text
     # perf/lcp Phase 5a: base pages self-host their fonts now — the
     # Google Fonts Inter link is gone, replaced by the local sheet
-    # plus a preload of the body-text file. (The CSP entries below
-    # stay: the profile body still uses Google Fonts for Plus Jakarta
-    # Sans + Noto Sans Myanmar.)
+    # plus a preload of the variable Inter latin file. (The CSP entries
+    # below stay: they are a kept allowance, not a live dependency —
+    # no template links Google Fonts anymore.)
     assert '<link rel="stylesheet" href="/static/css/fonts.css">' in response.text
     assert (
         '<link rel="preload" as="font" type="font/woff2" crossorigin '
-        'href="/static/fonts/inter/inter-latin-400-normal.woff2">' in response.text
+        'href="/static/fonts/inter/inter-latin.woff2">' in response.text
     )
     assert (
         "https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"

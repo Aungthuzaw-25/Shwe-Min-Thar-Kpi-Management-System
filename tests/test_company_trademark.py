@@ -125,7 +125,7 @@ def test_brand_defaults_when_nothing_saved():
     assert brand == {
         "company_name": "Shwe Min Thar",
         "company_tagline": "Performance Matters",
-        "logo_url": "/static/image/smt-logo.jpg",
+        "logo_url": "/static/image/smt-logo.webp",
         "has_custom_logo": False,
         "logo_updated_at": None,
     }
@@ -392,7 +392,7 @@ async def test_reset_logo_returns_to_default(local_logo_dir):
     await system_router.upload_branding_logo(_upload(_image_bytes()), db, user)
     result = await system_router.reset_branding_logo(db, user)
     assert result["has_custom_logo"] is False
-    assert result["logo_url"] == "/static/image/smt-logo.jpg"
+    assert result["logo_url"] == "/static/image/smt-logo.webp"
     assert not (local_logo_dir / "logo.webp").exists()
     with pytest.raises(HTTPException) as exc_info:
         await system_router.read_branding_logo(db)
@@ -491,7 +491,7 @@ async def test_public_brand_survives_broken_settings_store():
 
     result = await system_router.read_public_branding(BrokenDB())
     assert result["company_name"] == "Shwe Min Thar"
-    assert result["logo_url"] == "/static/image/smt-logo.jpg"
+    assert result["logo_url"] == "/static/image/smt-logo.webp"
 
 
 def test_public_brand_endpoints_over_http_without_login(local_logo_dir):
@@ -509,7 +509,7 @@ def test_public_brand_endpoints_over_http_without_login(local_logo_dir):
             body = response.json()
             assert body["company_name"] == "HTTP Co"
             assert body["company_tagline"] == "Performance Matters"
-            assert body["logo_url"] == "/static/image/smt-logo.jpg"
+            assert body["logo_url"] == "/static/image/smt-logo.webp"
             assert set(body["oauth_providers"]) == {"google", "microsoft"}
 
             # No custom logo yet: the logo endpoint itself is a clean 404.

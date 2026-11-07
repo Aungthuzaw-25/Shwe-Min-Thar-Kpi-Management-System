@@ -307,7 +307,7 @@
     <div class="la-page">
     <header class="la-header">
         <div class="la-logo">
-            <span class="la-logo-mark"><img src="{{ brand.logo_url or "/static/image/smt-logo.jpg" }}" alt="{{ brand.company_name or "Shwe Min Thar" }} logo"></span>
+            <span class="la-logo-mark"><img src="{{ brand.logo_url or "/static/image/smt-logo.webp" }}" alt="{{ brand.company_name or "Shwe Min Thar" }} logo"></span>
             <span>
                 <span class="la-logo-name">{{ brand.company_name or "Shwe Min Thar" }}</span><br>
                 <span class="la-logo-tag">{{ brand.company_tagline or "KPI MANAGEMENT SYSTEM" }}</span>
@@ -699,6 +699,7 @@
     <script src="/static/js/otp-input.js"></script>
     <script src="/static/js/dialog.js"></script>
     <script src="/static/js/sa-mfa-recover.js"></script>
+    <script src="/static/js/rum-beacon.js" defer></script>
     <script>
     // Offline: arriving at the login page must leave no previous user's
     // cached pages/data behind (covers logout and session-expiry paths).
