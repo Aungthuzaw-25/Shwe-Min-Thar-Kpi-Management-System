@@ -55,7 +55,7 @@ GENERIC_RECOVERY_FAILURE = "Invalid email or authenticator code."
 GENERIC_REQUEST_RECEIVED = "Request received. Another Super Admin will review it."
 
 
-async def _load_sa_with_role(db: AsyncSession, user_id: UUID) -> User | None:
+async def _load_user_with_role(db: AsyncSession, user_id: UUID) -> User | None:
     result = await db.execute(
         select(User)
         .options(joinedload(User.role))
@@ -64,12 +64,19 @@ async def _load_sa_with_role(db: AsyncSession, user_id: UUID) -> User | None:
     return result.scalars().first()
 
 
-async def _require_sa(db: AsyncSession, user_id: UUID) -> User:
-    user = await _load_sa_with_role(db, user_id)
+async def _require_mfa_target(db: AsyncSession, user_id: UUID) -> User:
+    """Load the target of an SA-approved MFA action (2026-11-06).
+
+    The target may be a Super Admin (peer reset/disable as before)
+    or an enrolled Admin/HR user (optional MFA recovery). The GATE
+    is unchanged — only SAs reach these endpoints — but the target
+    is no longer SA-only.
+    """
+    user = await _load_user_with_role(db, user_id)
     if not user:
-        raise HTTPException(status_code=404, detail="Super Admin not found.")
-    if not sa_mfa.is_super_admin(user):
-        raise HTTPException(status_code=403, detail="Not a Super Admin account.")
+        raise HTTPException(status_code=404, detail="Account not found.")
+    if not sa_mfa.is_mfa_enrollable(user):
+        raise HTTPException(status_code=403, detail="MFA is not available for this account.")
     return user
 
 
@@ -553,7 +560,7 @@ async def list_mfa_requests(
     )
     rows = []
     for req in result.scalars().all():
-        target = await _load_sa_with_role(db, req.user_id)
+        target = await _load_user_with_role(db, req.user_id)
         rows.append(
             {
                 "id": str(req.id),
@@ -580,13 +587,20 @@ async def approve_mfa_request(
         raise HTTPException(
             status_code=403, detail="You cannot confirm your own MFA request. Another Super Admin must confirm it."
         )
-    target = await _require_sa(db, req.user_id)
+    target = await _require_mfa_target(db, req.user_id)
     req.status = "APPROVED"
     req.resolved_at = sa_mfa.utcnow()
     req.resolved_by = current_user.id
-    audit_action = (
-        "SA_MFA_RESET_CONFIRMED" if req.kind == "RESET" else "MFA_DISABLED"
-    )
+    # The RESET action names the SA flow for SA targets (unchanged);
+    # an Admin/HR target gets the neutral name instead.
+    if req.kind == "RESET":
+        audit_action = (
+            "SA_MFA_RESET_CONFIRMED"
+            if sa_mfa.is_super_admin(target)
+            else "MFA_RESET_CONFIRMED"
+        )
+    else:
+        audit_action = "MFA_DISABLED"
     await _clear_mfa_and_notify(
         db,
         target,
@@ -610,7 +624,7 @@ async def reject_mfa_request(
         raise HTTPException(
             status_code=403, detail="You cannot resolve your own MFA request. Another Super Admin must review it."
         )
-    await _require_sa(db, req.user_id)
+    await _require_mfa_target(db, req.user_id)
     req.status = "REJECTED"
     req.resolved_at = sa_mfa.utcnow()
     req.resolved_by = current_user.id
@@ -631,16 +645,17 @@ async def disable_other_sa_mfa(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(super_admin_checker),
 ):
-    """Turn ANOTHER SA's MFA off directly — an audited SA action.
+    """Turn ANOTHER account's MFA off directly — an audited SA action.
 
-    Own MFA can never be disabled this way; use a disable-request
-    (peer confirm) for that.
+    The target may be another SA or an enrolled Admin/HR user
+    (2026-11-06). Own MFA can never be disabled this way; use a
+    disable-request (peer confirm) for that.
     """
     if user_id == current_user.id:
         raise HTTPException(
             status_code=403, detail="Use a disable request for your own MFA — a peer must confirm it."
         )
-    target = await _require_sa(db, user_id)
+    target = await _require_mfa_target(db, user_id)
     if not await sa_mfa.has_confirmed_totp(db, target.id):
         raise HTTPException(status_code=400, detail="MFA is not enrolled for this account.")
     await _clear_mfa_and_notify(

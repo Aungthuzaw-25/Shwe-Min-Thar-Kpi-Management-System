@@ -34,6 +34,7 @@ from app.modules.auth.profile_router import account_router
 from app.modules.auth.profile_router import router as auth_profile_router
 from app.modules.auth.router import router as auth_router
 from app.modules.auth.sa_mfa_router import router as sa_mfa_router
+from app.modules.auth.user_mfa_router import router as user_mfa_router
 from app.modules.departments.router import router as dept_router
 from app.modules.kpi import upload_router
 from app.modules.kpi.action_plan_router import router as action_plan_router
@@ -434,6 +435,9 @@ class CSRFMiddleware(BaseHTTPMiddleware):
                 # point shape as recover — a locked-out SA has no
                 # session to CSRF with.
                 "/api/v1/auth/sa-mfa/break-glass",
+                # Optional Admin/HR MFA reset request (2026-11-06):
+                # same public entry point shape as the SA one.
+                "/api/v1/auth/user-mfa/reset-requests",
             }
             if (
                 cookie_authenticated
@@ -516,6 +520,7 @@ app.mount("/static", CachedStaticFiles(directory="static"), name="static")
 # ==============================================================================
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["Authentication"])
 app.include_router(sa_mfa_router, prefix="/api/v1/auth", tags=["Authentication"])
+app.include_router(user_mfa_router, prefix="/api/v1/auth", tags=["Authentication"])
 app.include_router(auth_profile_router, prefix="/api/v1/auth", tags=["Account Profile"])
 app.include_router(account_router, prefix="/api/v1/account", tags=["Account"])
 app.include_router(dept_router, prefix="/api/v1/departments", tags=["Departments"])

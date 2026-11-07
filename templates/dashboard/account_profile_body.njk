@@ -2,7 +2,7 @@
 <link rel="stylesheet" href="/static/css/avatar.css">
 <link rel="stylesheet" href="/static/css/account.css?v=20261019-ui2">
 <link rel="stylesheet" href="/static/css/kp-profile.css?v=20261019-ui3">
-{% if account_profile.is_super_admin %}<link rel="stylesheet" href="/static/css/otp-input.css">{% endif %}
+{% if account_profile.is_super_admin or user_role in ["Admin", "HR"] %}<link rel="stylesheet" href="/static/css/otp-input.css">{% endif %}
 {% from "components/avatar.njk" import avatar %}
 
 <div class="kp-page acct-page" id="accountProfilePage" data-local-password-enabled="{{ 'true' if account_profile.local_password_enabled else 'false' }}" data-super-admin="{{ 'true' if account_profile.is_super_admin else 'false' }}" data-app-timezone="{{ timezone or 'Asia/Yangon' }}">
@@ -240,6 +240,73 @@
             </div>
           </div>
           {% endif %}
+          {% if user_role in ["Admin", "HR"] %}
+          <div class="kp-mfa acct-mfa" id="userMfaCard">
+            <div class="kp-card-heading acct-card-heading">
+              <p class="kp-eyebrow acct-eyebrow">AUTHENTICATOR</p>
+              <h3 class="kp-card-title" id="acct-user-mfa-title">Authenticator</h3>
+            </div>
+            <p class="kp-helper acct-helper" data-user-mfa-status role="status">Checking authenticator status…</p>
+            <p class="kp-helper acct-helper" data-user-mfa-signin hidden>Authenticator is now off. Your sign-in was ended — <a href="/auth/login">sign in again</a> with your password.</p>
+            <p class="kp-helper acct-helper" data-user-mfa-pending hidden>A reset request is already waiting for a Super Admin's review.</p>
+            <div data-user-mfa-start hidden>
+              <p class="kp-helper acct-helper">Add a second step to your sign-ins: a 6-digit code from Google Authenticator, asked on every password sign-in. Optional — you can turn it off anytime with the current code.</p>
+              <div class="kp-form-actions acct-form-actions">
+                <button class="kp-button acct-button acct-button--primary" type="button" data-user-mfa-start-btn>Set up Authenticator</button>
+              </div>
+            </div>
+            <div data-user-mfa-setup hidden>
+              <p class="kp-helper acct-helper">Scan this QR code with Google Authenticator, or enter the key below manually.</p>
+              <div class="user-mfa-qr" data-user-mfa-qr-wrap>
+                <canvas data-user-mfa-qr aria-label="Authenticator QR code"></canvas>
+                <p class="kp-helper acct-helper" data-user-mfa-qr-fallback hidden>QR code could not be drawn — enter the key below manually in Authenticator.</p>
+              </div>
+              <div class="user-mfa-key-row">
+                <code class="user-mfa-key" data-user-mfa-key></code>
+                <button class="kp-button acct-button acct-button--secondary" type="button" data-user-mfa-copy>Copy key</button>
+              </div>
+              <p class="kp-helper acct-helper">Then enter the current 6-digit code from the app:</p>
+              <div class="otp-boxes user-mfa-otp" data-user-mfa-otp role="group" aria-label="Authenticator code"></div>
+              <p class="kp-field-error acct-field-error user-mfa-error" data-user-mfa-error role="alert" hidden></p>
+              <div class="kp-form-actions acct-form-actions">
+                <button class="kp-button acct-button acct-button--primary" type="button" data-user-mfa-confirm>Confirm</button>
+                <button class="kp-button acct-button acct-button--secondary" type="button" data-user-mfa-cancel>Cancel</button>
+              </div>
+            </div>
+            <div data-user-mfa-enrolled hidden>
+              <p class="kp-helper acct-helper">Authenticator is on for your sign-ins. Every password sign-in asks for the current code from your authenticator app.</p>
+              <div class="kp-form-actions acct-form-actions">
+                <button class="kp-button acct-button acct-button--secondary" type="button" data-user-mfa-disable-btn>Turn off Authenticator</button>
+              </div>
+              <p class="kp-helper acct-helper">Lost your authenticator? Ask a Super Admin to reset it — it is never self-approved.</p>
+              <div class="kp-form-actions acct-form-actions">
+                <button class="kp-button acct-button acct-button--secondary" type="button" data-user-mfa-reset-link>Request a reset</button>
+              </div>
+            </div>
+            <div data-user-mfa-disable hidden>
+              <p class="kp-helper acct-helper">Enter the current 6-digit code from your authenticator app to turn it off. You will be signed out everywhere and sign in with your password.</p>
+              <div class="otp-boxes user-mfa-otp" data-user-mfa-disable-otp role="group" aria-label="Authenticator code"></div>
+              <p class="kp-field-error acct-field-error user-mfa-error" data-user-mfa-disable-error role="alert" hidden></p>
+              <div class="kp-form-actions acct-form-actions">
+                <button class="kp-button acct-button acct-button--danger" type="button" data-user-mfa-disable-confirm>Turn off</button>
+                <button class="kp-button acct-button acct-button--secondary" type="button" data-user-mfa-disable-cancel>Cancel</button>
+              </div>
+            </div>
+            <div data-user-mfa-reset hidden>
+              <p class="kp-helper acct-helper">Enter your email to request a reset. A Super Admin reviews it before anything changes.</p>
+              <div class="kp-field acct-field">
+                <label class="kp-label acct-label" for="user-mfa-reset-email">Email</label>
+                <input class="kp-input acct-input" id="user-mfa-reset-email" data-user-mfa-reset-email type="email" autocomplete="email" value="{{ account_profile.email or '' }}">
+              </div>
+              <p class="kp-field-error acct-field-error user-mfa-error" data-user-mfa-reset-error role="alert" hidden></p>
+              <p class="kp-helper acct-helper" data-user-mfa-reset-msg role="status" hidden></p>
+              <div class="kp-form-actions acct-form-actions">
+                <button class="kp-button acct-button acct-button--primary" type="button" data-user-mfa-reset-btn>Request reset</button>
+                <button class="kp-button acct-button acct-button--secondary" type="button" data-user-mfa-reset-cancel>Cancel</button>
+              </div>
+            </div>
+          </div>
+          {% endif %}
         </section>
 
         {% if account_profile.show_connected_accounts %}
@@ -291,4 +358,9 @@
 <script src="/static/js/otp-input.js" defer></script>
 <script src="/static/vendor/qrcode-generator.js" defer></script>
 <script src="/static/js/sa-mfa-setup.js" defer></script>
+{% endif %}
+{% if user_role in ["Admin", "HR"] %}
+<script src="/static/js/otp-input.js" defer></script>
+<script src="/static/vendor/qrcode-generator.js" defer></script>
+<script src="/static/js/user-mfa-setup.js" defer></script>
 {% endif %}

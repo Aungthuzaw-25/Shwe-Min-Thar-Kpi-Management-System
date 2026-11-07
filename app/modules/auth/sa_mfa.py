@@ -17,6 +17,15 @@ peer must confirm. An SA may also ask a peer to confirm turning
 their own MFA off (DISABLE request), or another SA may turn an
 SA's MFA off directly as an audited action. Printed backup codes
 and email OTP do not exist in this flow — email is notices only.
+
+Optional MFA for Admin/HR (2026-11-06): the SAME machinery (same
+key, same verification, same 5-wrong -> 1-hour freeze, same
+tables) serves Admin and HR users who OPT IN via
+``/api/v1/auth/user-mfa/*``. It is never mandatory and never forced
+at login unless the user enrolled. Their recovery is the same
+peer-SA reset (an SA approves, never self-approved) — the SA-only
+gates stay SA-only: only SAs approve, only SAs list requests, and
+the SA recovery endpoints refuse non-SA callers.
 """
 
 import base64
@@ -297,6 +306,20 @@ async def consume_totp_step(db: AsyncSession, user_id: UUID, step: int) -> bool:
 
 def is_super_admin(user: User) -> bool:
     return getattr(user.role, "name", None) in SUPER_ADMIN_ROLE_NAMES
+
+
+# Roles that may OPT IN to TOTP MFA (2026-11-06). Super Admins are
+# covered by is_super_admin above; Department Users may not enroll.
+OPTIONAL_MFA_ROLE_NAMES = ("Admin", "HR")
+
+
+def is_admin_or_hr(user: User) -> bool:
+    return getattr(user.role, "name", None) in OPTIONAL_MFA_ROLE_NAMES
+
+
+def is_mfa_enrollable(user: User) -> bool:
+    """Any role that may hold a confirmed TOTP enrollment."""
+    return is_super_admin(user) or is_admin_or_hr(user)
 
 
 async def count_active_super_admins(db: AsyncSession, exclude_user_id: UUID | None = None) -> int:
