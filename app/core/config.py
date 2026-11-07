@@ -58,6 +58,23 @@ class Settings(BaseSettings):
     # re-enroll via the peer-reset flow, so back it up with the
     # other production secrets.
     TOTP_ENCRYPTION_KEY: str | None = None
+    # Previous TOTP encryption key — rotation only (2026-11-06).
+    # While rotating to a new TOTP_ENCRYPTION_KEY, set this to the
+    # OLD key: decryption tries the current key, then this one, and
+    # every successful login re-encrypts the secret under the new
+    # key. Unset it once GET /sa-mfa/key-status shows no secret
+    # still needs it. Never auto-generated; never the same value
+    # as the current key (that would be pointless, not harmful).
+    TOTP_ENCRYPTION_KEY_PREVIOUS: str | None = None
+    # Break-glass token for SA Authenticator recovery when the TOTP
+    # key is lost entirely (2026-11-06). A manually set,
+    # high-entropy value — never auto-generated. POST
+    # /sa-mfa/break-glass accepts it (plus the SA's own password)
+    # to turn an SA's MFA off so they can re-enroll; every use is
+    # rate-limited and audited. If unset, break-glass fails closed
+    # (503). Store it sealed with the other production secrets and
+    # rotate it after any use or suspicion of exposure.
+    SA_MFA_BREAK_GLASS_TOKEN: str | None = None
     DATABASE_SSL_REQUIRED: bool = True
     # Per-statement ceiling for asyncpg (seconds). One statement may
     # never run longer than this, so a runaway query cannot hold a
@@ -245,6 +262,16 @@ class Settings(BaseSettings):
                 "TOTP_ENCRYPTION_KEY must be a valid Fernet key in production "
                 "(generate with: python -c \"from cryptography.fernet import "
                 "Fernet; print(Fernet.generate_key().decode())\")."
+            )
+        previous_key = (self.TOTP_ENCRYPTION_KEY_PREVIOUS or "").strip()
+        if previous_key and not _is_valid_fernet_key(previous_key):
+            raise ValueError(
+                "TOTP_ENCRYPTION_KEY_PREVIOUS must be a valid Fernet key in production."
+            )
+        break_glass = (self.SA_MFA_BREAK_GLASS_TOKEN or "").strip()
+        if break_glass and len(break_glass) < 32:
+            raise ValueError(
+                "SA_MFA_BREAK_GLASS_TOKEN must be at least 32 characters in production."
             )
 
     def _validate_qa_database(self) -> None:

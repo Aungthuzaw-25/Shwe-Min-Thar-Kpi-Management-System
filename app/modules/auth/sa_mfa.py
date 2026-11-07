@@ -73,27 +73,138 @@ def utcnow() -> datetime:
 # ---------------------------------------------------------------------------
 
 
-def _fernet() -> Fernet:
-    key = getattr(settings, "TOTP_ENCRYPTION_KEY", None)
-    if not key:
+def _fernet_keys() -> list[tuple[str, Fernet]]:
+    """Configured keys in try order: current, then previous (if set).
+
+    Key rotation (2026-11-06) is a two-env-var transition, no table:
+    while rotating, TOTP_ENCRYPTION_KEY_PREVIOUS holds the old key so
+    secrets encrypted under it still decrypt; new secrets always use
+    the current key, and every successful login re-encrypts a
+    previous-key secret under the current key (see
+    reencrypt_if_previous_key). A configured-but-invalid key fails
+    closed — a typo'd rotation key must never silently disable
+    decryption under that key.
+    """
+    keys: list[tuple[str, Fernet]] = []
+    current = (getattr(settings, "TOTP_ENCRYPTION_KEY", None) or "").strip()
+    if not current:
         raise MFAConfigError(
             "TOTP_ENCRYPTION_KEY is not set — MFA cannot be set up or verified."
         )
     try:
-        return Fernet(key)
+        keys.append(("current", Fernet(current)))
     except Exception as exc:  # malformed key value
         raise MFAConfigError("TOTP_ENCRYPTION_KEY is not a valid Fernet key.") from exc
+    previous = (getattr(settings, "TOTP_ENCRYPTION_KEY_PREVIOUS", None) or "").strip()
+    if previous:
+        try:
+            keys.append(("previous", Fernet(previous)))
+        except Exception as exc:
+            raise MFAConfigError(
+                "TOTP_ENCRYPTION_KEY_PREVIOUS is not a valid Fernet key."
+            ) from exc
+    return keys
+
+
+def _fernet() -> Fernet:
+    return _fernet_keys()[0][1]
 
 
 def encrypt_secret(secret: str) -> str:
+    """Encrypt under the CURRENT key only — never the previous one."""
     return _fernet().encrypt(secret.encode()).decode()
 
 
 def decrypt_secret(secret_encrypted: str) -> str:
-    try:
-        return _fernet().decrypt(secret_encrypted.encode()).decode()
-    except (InvalidToken, ValueError) as exc:
-        raise MFAConfigError("Stored TOTP secret cannot be decrypted.") from exc
+    plaintext, _label = decrypt_secret_with_key(secret_encrypted)
+    return plaintext
+
+
+def decrypt_secret_with_key(secret_encrypted: str) -> tuple[str, str]:
+    """Decrypt with the current key, then the previous one.
+
+    Returns (plaintext, key label "current" | "previous"). Callers
+    use the label for lazy re-encryption after a successful verify
+    and for the rotation status counts.
+    """
+    last_error: Exception | None = None
+    for label, cipher in _fernet_keys():
+        try:
+            return cipher.decrypt(secret_encrypted.encode()).decode(), label
+        except (InvalidToken, ValueError) as exc:
+            last_error = exc
+    raise MFAConfigError("Stored TOTP secret cannot be decrypted.") from last_error
+
+
+def reencrypt_if_previous_key(row: SATotpSecret, secret: str, key_label: str) -> None:
+    """After a successful verify, move a previous-key secret to the
+    current key (lazy rotation migration). Only mutates the row — the
+    caller commits. Called only after the presented code was fully
+    accepted (step consumed), never on a failed or replayed code."""
+    if key_label == "previous":
+        row.secret_encrypted = encrypt_secret(secret)
+
+
+def key_fingerprint(key: str | None) -> str | None:
+    """First 12 hex chars of SHA-256 — identifies a key in the status
+    endpoint without revealing any of it."""
+    if not key:
+        return None
+    return hashlib.sha256(key.strip().encode()).hexdigest()[:12]
+
+
+async def key_rotation_status(db: AsyncSession) -> dict:
+    """Counts of SA TOTP secrets per decryption key (SA-only read).
+
+    Raises MFAConfigError when no usable current key is configured
+    (the endpoint then answers 503, like every MFA endpoint). A
+    secret that decrypts under neither key is "undecryptable" — that
+    is what happens when a key was changed WITHOUT setting the
+    previous key, and those SAs need break-glass to re-enroll.
+    """
+    _fernet_keys()  # fail closed here when the current key is unusable
+    rows = (await db.execute(select(SATotpSecret))).scalars().all()
+    counts = {"total": len(rows), "current": 0, "previous": 0, "undecryptable": 0}
+    for row in rows:
+        try:
+            _, label = decrypt_secret_with_key(row.secret_encrypted)
+            counts[label] += 1
+        except MFAConfigError:
+            counts["undecryptable"] += 1
+    previous_configured = bool(
+        (getattr(settings, "TOTP_ENCRYPTION_KEY_PREVIOUS", None) or "").strip()
+    )
+    return {
+        "current_key_fingerprint": key_fingerprint(
+            getattr(settings, "TOTP_ENCRYPTION_KEY", None)
+        ),
+        "previous_key_configured": previous_configured,
+        "break_glass_configured": bool(
+            (getattr(settings, "SA_MFA_BREAK_GLASS_TOKEN", None) or "").strip()
+        ),
+        "secrets_total": counts["total"],
+        "secrets_on_current_key": counts["current"],
+        "secrets_on_previous_key": counts["previous"],
+        "secrets_undecryptable": counts["undecryptable"],
+        "rotation_complete": (
+            counts["previous"] == 0 and counts["undecryptable"] == 0
+        ),
+    }
+
+
+def break_glass_configured() -> bool:
+    return bool(
+        (getattr(settings, "SA_MFA_BREAK_GLASS_TOKEN", None) or "").strip()
+    )
+
+
+def verify_break_glass_token(provided: str | None) -> bool:
+    """Constant-time check against the server env value. False when
+    unconfigured or when the value does not match — no oracle."""
+    expected = (getattr(settings, "SA_MFA_BREAK_GLASS_TOKEN", None) or "").strip()
+    if not expected or not provided:
+        return False
+    return hmac.compare_digest(expected, provided.strip())
 
 
 def generate_secret() -> str:

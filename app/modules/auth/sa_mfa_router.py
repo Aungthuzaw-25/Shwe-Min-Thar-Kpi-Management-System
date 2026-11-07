@@ -213,6 +213,30 @@ async def totp_status(
     }
 
 
+@router.get("/sa-mfa/key-status")
+async def totp_key_status(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(super_admin_checker),
+):
+    """Key-rotation status (SA-only): which key each SA secret needs.
+
+    Use it to finish a rotation: while TOTP_ENCRYPTION_KEY_PREVIOUS
+    is set, secrets_on_previous_key counts the secrets still on the
+    old key (each SA login moves one to the new key). When it reaches
+    0 and secrets_undecryptable is 0, rotation is complete — unset
+    the previous key and restart. Any undecryptable secret means a
+    key was changed WITHOUT setting the previous key; those SAs need
+    break-glass to re-enroll. Only counts and key fingerprints are
+    returned — never a secret, never a key.
+    """
+    try:
+        return await sa_mfa.key_rotation_status(db)
+    except sa_mfa.MFAConfigError:
+        raise HTTPException(
+            status_code=503, detail="Authenticator verification is not available right now."
+        ) from None
+
+
 # ---------------------------------------------------------------------------
 # Recovery: TOTP re-entry (logged out / password-locked)
 # ---------------------------------------------------------------------------
@@ -259,7 +283,9 @@ async def recover_with_totp(
     try:
         if await sa_mfa.is_totp_frozen(db, user.id) is not None:
             raise failure
-        secret = sa_mfa.decrypt_secret(secret_row.secret_encrypted)
+        secret, key_label = sa_mfa.decrypt_secret_with_key(
+            secret_row.secret_encrypted
+        )
         step = sa_mfa.matching_step(secret, code)
     except sa_mfa.MFAConfigError:
         raise HTTPException(
@@ -276,6 +302,10 @@ async def recover_with_totp(
 
     was_locked = bool(user.is_locked)
     await sa_mfa.clear_totp_attempts(db, user.id)
+    # Key rotation (2026-11-06): same lazy migration as login — a
+    # secret that still needed the previous key moves to the current
+    # key now that its code was fully accepted.
+    sa_mfa.reencrypt_if_previous_key(secret_row, secret, key_label)
     user.failed_login_attempts = 0
     user.is_locked = False
     user.locked_until = None
@@ -313,6 +343,82 @@ async def recover_with_totp(
         "All other sessions were signed out.",
     )
     return auth_result
+
+
+@router.post("/sa-mfa/break-glass")
+@limiter.limit("5/minute")
+async def break_glass_reset(
+    request: Request,
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+):
+    """Owner-controlled MFA reset for the key-lost deadlock (2026-11-06).
+
+    When the TOTP encryption key is lost entirely, every SA secret is
+    undecryptable: login and recover both 503, and peer-SA reset needs
+    an SA session — which needs TOTP. This endpoint breaks that circle
+    without manual SQL: it takes the SA's email + password PLUS the
+    break-glass token (SA_MFA_BREAK_GLASS_TOKEN, a manually set server
+    env value held by the owner). All three must be right; every
+    failure answers with the same generic 401 so nothing about the
+    account leaks, and the endpoint 503s when no token is configured.
+    On success it turns the SA's MFA off, clears any password lockout,
+    revokes all their sessions, audits the reset, and notifies the SA
+    plus the other SAs — the SA then signs in with password only and
+    re-enrolls. It is the owner-controlled equivalent of a peer reset:
+    the token holder is the owner, and the token alone (without the
+    account password) is useless.
+    """
+    if not sa_mfa.break_glass_configured():
+        raise HTTPException(
+            status_code=503, detail="Authenticator break-glass recovery is not available right now."
+        )
+    email = (payload.get("email") or "").strip().lower()
+    password = payload.get("password") or ""
+    token = payload.get("break_glass_token") or ""
+    failure = HTTPException(
+        status_code=401, detail="Invalid email, password, or break-glass token."
+    )
+    user = await AuthService._find_user_for_authentication(db, email)
+    if (
+        not user
+        or not user.is_active
+        or user.is_deleted
+        or not sa_mfa.is_super_admin(user)
+    ):
+        raise failure
+    if not await sa_mfa.has_confirmed_totp(db, user.id):
+        raise failure
+    if not sa_mfa.verify_break_glass_token(token):
+        raise failure
+    password_ok = await run_in_threadpool(
+        security.verify_password, password, user.hashed_password
+    )
+    if not password_ok:
+        raise failure
+    # The SA just proved their password, so a password lockout no
+    # longer serves a purpose either — clear it like recovery does.
+    user.failed_login_attempts = 0
+    user.is_locked = False
+    user.locked_until = None
+    await _clear_mfa_and_notify(
+        db,
+        user,
+        audit_action="SA_MFA_BREAK_GLASS_RESET",
+        via="break-glass",
+        actor=user,
+    )
+    await db.commit()
+    logger.warning("SA MFA break-glass reset used for %s", user.email)
+    for peer_email in await sa_mfa.other_active_sa_emails(db, user.id):
+        await sa_mfa.send_notice_best_effort(
+            peer_email,
+            "Authenticator MFA turned off by break-glass recovery",
+            f"A Super Admin ({user.email}) had authenticator MFA turned off "
+            "through break-glass recovery. If this was not expected, "
+            "change the break-glass token immediately.",
+        )
+    return {"message": "Authenticator MFA turned off. Sign in with your password and set it up again."}
 
 
 @router.post("/sa-mfa/reset-password")
