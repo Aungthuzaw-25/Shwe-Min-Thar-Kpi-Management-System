@@ -5,6 +5,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Shwe Min Thar Dashboard{% endblock %}</title>
+    <script>
+        // Apply the saved sidebar state before first paint (no width flash).
+        try {
+            if (window.localStorage && localStorage.getItem('kpi-sidebar-collapsed') === '1') {
+                document.documentElement.classList.add('sidebar-collapsed');
+            }
+        } catch (e) {}
+    </script>
 
     <!-- PWA Settings -->
     <link rel="manifest" href="/static/manifest.json">
@@ -31,7 +39,8 @@
     <link rel="stylesheet" href="/static/css/executive-dashboard.css{% if dashboard_variant == 'executive' %}?v=20261013-4{% endif %}">
     <link rel="stylesheet" href="/static/css/liquid-glass-theme.css?v=20261021-4">
     <link rel="stylesheet" href="/static/css/role-themes.css">
-    <link rel="stylesheet" href="/static/css/sidebar-panels.css">{% endif %}
+    <link rel="stylesheet" href="/static/css/sidebar-submenus.css">
+    <link rel="stylesheet" href="/static/css/sidebar-collapse.css">{% endif %}
     <link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/inter/inter-latin-400-normal.woff2">
     {% if asset_bundles %}{% for href in asset('fonts') %}
     <link rel="stylesheet" href="{{ href }}">
@@ -53,6 +62,7 @@
          time — both are small IIFEs, so deferring them buys nothing. -->
     <script src="/static/js/csp-event-bridge.js" defer></script>
     <script src="/static/js/csrf.js"></script>
+    <script src="/static/js/sidebar-collapse.js" defer></script>
     
     <style>
         body { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background-color: #f5f7fa; }
@@ -115,6 +125,11 @@
                     {% if brand.company_tagline %}<p class="text-[10px] text-slate-400 uppercase tracking-widest line-clamp-2 break-words">{{ brand.company_tagline }}</p>{% endif %}
                 </div>
             </div>
+            <!-- Collapse toggle (desktop): reachable expanded and collapsed -->
+            <button type="button" id="sidebarCollapseBtn" class="sidebar-collapse-btn hidden md:flex" aria-label="Collapse sidebar" aria-expanded="true">
+                <svg class="sidebar-collapse-btn__icon sidebar-collapse-btn__icon--collapse w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 18l-6-6 6-6"></path></svg>
+                <svg class="sidebar-collapse-btn__icon sidebar-collapse-btn__icon--expand w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 18l6-6-6-6"></path></svg>
+            </button>
             <!-- Mobile Close Button inside Sidebar -->
             <button type="button" class="md:hidden text-slate-400 hover:text-white focus:outline-none" onclick="toggleMobileSidebar()" aria-label="Close navigation menu">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
@@ -124,14 +139,13 @@
         <!-- Navigation Links -->
         <nav class="flex-1 px-4 space-y-1 mt-2 overflow-y-auto custom-scrollbar">
             <!-- Dashboard: Super Admin sees the SA dashboard, Admin sees their own -->
-            <a href="{% if user_role == 'Super Admin' %}/superadmin/dashboard{% else %}/admin/dashboard{% endif %}" class="{% if active_page == 'dashboard' %}sidebar-item-active{% else %}sidebar-item text-slate-300{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors" data-sidebar-panel="dashboard">
+            <a href="{% if user_role == 'Super Admin' %}/superadmin/dashboard{% else %}/admin/dashboard{% endif %}" class="{% if active_page == 'dashboard' or active_page == 'employee_kpi_results' or active_page == 'department_kpi' %}sidebar-item-active{% else %}sidebar-item text-slate-300{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors" data-sidebar-submenu="dashboard" aria-controls="sidebar-submenu-dashboard" aria-expanded="{% if active_page == 'dashboard' or active_page == 'employee_kpi_results' or active_page == 'department_kpi' %}true{% else %}false{% endif %}">
                 <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg> Dashboard
-                <svg class="sidebar-panel__chev ml-auto w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                <svg class="sidebar-submenu__chev ml-auto w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
             </a>
-            <div id="sidebar-panel-dashboard" class="sidebar-panel" hidden role="menu" aria-label="Dashboard">
-                <p class="sidebar-panel__title">Dashboard</p>
-                <a class="sidebar-panel__row{% if active_page == 'dashboard' or active_page == 'employee_kpi_results' %} sidebar-panel__row--active{% endif %}" href="{% if user_role == 'Super Admin' %}/superadmin/employee-kpi-results{% else %}/admin/dashboard#employeeResultsPanel{% endif %}" role="menuitem">Employee KPI Results · Overview</a>
-                <a class="sidebar-panel__row{% if active_page == 'department_kpi' %} sidebar-panel__row--active{% endif %}" href="/superadmin/department-kpi" role="menuitem">Department KPI</a>
+            <div id="sidebar-submenu-dashboard" class="sidebar-submenu"{% if active_page != 'dashboard' and active_page != 'employee_kpi_results' and active_page != 'department_kpi' %} hidden{% endif %}>
+                <a class="sidebar-submenu__row{% if active_page == 'dashboard' or active_page == 'employee_kpi_results' %} sidebar-submenu__row--active{% endif %}" href="{% if user_role == 'Super Admin' %}/superadmin/employee-kpi-results{% else %}/admin/dashboard#employeeResultsPanel{% endif %}" role="menuitem">Employee KPI Results · Overview</a>
+                <a class="sidebar-submenu__row{% if active_page == 'department_kpi' %} sidebar-submenu__row--active{% endif %}" href="/superadmin/department-kpi" role="menuitem">Department KPI</a>
             </div>
             <!-- What's New: single top-level entry, all roles (NOT a submenu child) -->
             <a href="/whats-new" class="{% if active_page == 'whats_new' %}sidebar-item-active{% else %}sidebar-item text-slate-300{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
@@ -140,35 +154,32 @@
             
             <div class="nav-group-label">Organization</div>
             <!-- Users -->
-            <a href="/superadmin/users" data-sidebar-panel="users" class="{% if active_page == 'users' %}sidebar-item-active{% else %}sidebar-item text-slate-300{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
+            <a href="/superadmin/users" data-sidebar-submenu="users" aria-controls="sidebar-submenu-users" aria-expanded="{% if active_page == 'users' %}true{% else %}false{% endif %}" class="{% if active_page == 'users' %}sidebar-item-active{% else %}sidebar-item text-slate-300{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
                 <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg> Users
-                <svg class="sidebar-panel__chev ml-auto w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                <svg class="sidebar-submenu__chev ml-auto w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
             </a>
-            <div id="sidebar-panel-users" class="sidebar-panel" hidden role="menu" aria-label="Users">
-                <p class="sidebar-panel__title">Users</p>
-                <a class="sidebar-panel__row" href="/superadmin/users?view=active" role="menuitem">Active Users</a>
-                <a class="sidebar-panel__row" href="/superadmin/users?view=deleted" role="menuitem">Deleted Users</a>
+            <div id="sidebar-submenu-users" class="sidebar-submenu"{% if active_page != 'users' %} hidden{% endif %}>
+                <a class="sidebar-submenu__row" href="/superadmin/users?view=active" role="menuitem">Active Users</a>
+                <a class="sidebar-submenu__row" href="/superadmin/users?view=deleted" role="menuitem">Deleted Users</a>
             </div>
 
             <!-- Departments -->
-            <a href="/superadmin/departments" data-sidebar-panel="departments" class="{% if active_page == 'departments' %}sidebar-item-active{% else %}sidebar-item text-slate-300{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
+            <a href="/superadmin/departments" data-sidebar-submenu="departments" aria-controls="sidebar-submenu-departments" aria-expanded="{% if active_page == 'departments' %}true{% else %}false{% endif %}" class="{% if active_page == 'departments' %}sidebar-item-active{% else %}sidebar-item text-slate-300{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
                 <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg> Departments
-                <svg class="sidebar-panel__chev ml-auto w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                <svg class="sidebar-submenu__chev ml-auto w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
             </a>
-            <div id="sidebar-panel-departments" class="sidebar-panel" hidden role="menu" aria-label="Departments">
-                <p class="sidebar-panel__title">Departments</p>
-                <a class="sidebar-panel__row" href="/superadmin/departments?view=active" role="menuitem">Active Departments</a>
-                <a class="sidebar-panel__row" href="/superadmin/departments?view=deleted" role="menuitem">Trash</a>
+            <div id="sidebar-submenu-departments" class="sidebar-submenu"{% if active_page != 'departments' %} hidden{% endif %}>
+                <a class="sidebar-submenu__row" href="/superadmin/departments?view=active" role="menuitem">Active Departments</a>
+                <a class="sidebar-submenu__row" href="/superadmin/departments?view=deleted" role="menuitem">Trash</a>
             </div>
-            <a href="/superadmin/permissions" data-sidebar-panel="permissions" class="{% if active_page == 'permissions' %}sidebar-item-active{% else %}sidebar-item text-slate-300{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
+            <a href="/superadmin/permissions" data-sidebar-submenu="permissions" aria-controls="sidebar-submenu-permissions" aria-expanded="{% if active_page == 'permissions' %}true{% else %}false{% endif %}" class="{% if active_page == 'permissions' %}sidebar-item-active{% else %}sidebar-item text-slate-300{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
                 <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a3 3 0 11-6 0 3 3 0 016 0zm3 14H6v-2a6 6 0 0112 0v2zm-3-9h6m-3-3v6"></path></svg> Permissions
-                <svg class="sidebar-panel__chev ml-auto w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                <svg class="sidebar-submenu__chev ml-auto w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
             </a>
-            <div id="sidebar-panel-permissions" class="sidebar-panel" hidden role="menu" aria-label="Permissions">
-                <p class="sidebar-panel__title">Permissions</p>
-                <a class="sidebar-panel__row" href="/superadmin/permissions?view=roles" role="menuitem">Roles</a>
-                <a class="sidebar-panel__row" href="/superadmin/permissions?view=users" role="menuitem">User Overrides</a>
-                <a class="sidebar-panel__row" href="/superadmin/permissions?view=audit" role="menuitem">Audit</a>
+            <div id="sidebar-submenu-permissions" class="sidebar-submenu"{% if active_page != 'permissions' %} hidden{% endif %}>
+                <a class="sidebar-submenu__row" href="/superadmin/permissions?view=roles" role="menuitem">Roles</a>
+                <a class="sidebar-submenu__row" href="/superadmin/permissions?view=users" role="menuitem">User Overrides</a>
+                <a class="sidebar-submenu__row" href="/superadmin/permissions?view=audit" role="menuitem">Audit</a>
             </div>
 
             {% if user_role in ['Super Admin'] %}
@@ -187,15 +198,14 @@
 
             <div class="nav-group-label">Performance</div>
             <!-- KPIs -->
-            <a href="/superadmin/kpi" data-sidebar-panel="kpis" class="{% if active_page == 'kpis' %}sidebar-item-active{% else %}sidebar-item text-slate-300{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors"{% if active_page == 'kpis' %} aria-current="page"{% endif %}>
+            <a href="/superadmin/kpi" data-sidebar-submenu="kpis" aria-controls="sidebar-submenu-kpis" aria-expanded="{% if active_page == 'kpis' %}true{% else %}false{% endif %}" class="{% if active_page == 'kpis' %}sidebar-item-active{% else %}sidebar-item text-slate-300{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors"{% if active_page == 'kpis' %} aria-current="page"{% endif %}>
                 <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg> KPIs
-                <svg class="sidebar-panel__chev ml-auto w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                <svg class="sidebar-submenu__chev ml-auto w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
             </a>
-            <div id="sidebar-panel-kpis" class="sidebar-panel" hidden role="menu" aria-label="KPIs">
-                <p class="sidebar-panel__title">KPIs</p>
-                <a class="sidebar-panel__row" href="/superadmin/kpi?view=records" role="menuitem">Employee KPI Records · Manage</a>
-                <a class="sidebar-panel__row" href="/superadmin/kpi?view=settings" role="menuitem">Role Tracking</a>
-                <a class="sidebar-panel__row" href="/superadmin/kpi?view=assignments" role="menuitem">Assign Tasks</a>
+            <div id="sidebar-submenu-kpis" class="sidebar-submenu"{% if active_page != 'kpis' %} hidden{% endif %}>
+                <a class="sidebar-submenu__row" href="/superadmin/kpi?view=records" role="menuitem">Employee KPI Records · Manage</a>
+                <a class="sidebar-submenu__row" href="/superadmin/kpi?view=settings" role="menuitem">Role Tracking</a>
+                <a class="sidebar-submenu__row" href="/superadmin/kpi?view=assignments" role="menuitem">Assign Tasks</a>
             </div>
 
             <!-- KPI Upload -->
@@ -204,14 +214,13 @@
             </a>
 
             <!-- KPI Periods -->
-            <a href="/kpi-periods" data-sidebar-panel="kpi_periods" class="{% if active_page == 'kpi_periods' %}sidebar-item-active{% else %}sidebar-item text-slate-300{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
+            <a href="/kpi-periods" data-sidebar-submenu="kpi_periods" aria-controls="sidebar-submenu-kpi_periods" aria-expanded="{% if active_page == 'kpi_periods' %}true{% else %}false{% endif %}" class="{% if active_page == 'kpi_periods' %}sidebar-item-active{% else %}sidebar-item text-slate-300{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
                 <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg> KPI Periods
-                <svg class="sidebar-panel__chev ml-auto w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                <svg class="sidebar-submenu__chev ml-auto w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
             </a>
-            <div id="sidebar-panel-kpi_periods" class="sidebar-panel" hidden role="menu" aria-label="KPI Periods">
-                <p class="sidebar-panel__title">KPI Periods</p>
-                <a class="sidebar-panel__row" href="/kpi-periods#evaluationPeriodsPanel" role="menuitem">Evaluation Periods</a>
-                <a class="sidebar-panel__row" href="/kpi-periods#manualEnginePanel" role="menuitem">Manual Engine</a>
+            <div id="sidebar-submenu-kpi_periods" class="sidebar-submenu"{% if active_page != 'kpi_periods' %} hidden{% endif %}>
+                <a class="sidebar-submenu__row" href="/kpi-periods#evaluationPeriodsPanel" role="menuitem">Evaluation Periods</a>
+                <a class="sidebar-submenu__row" href="/kpi-periods#manualEnginePanel" role="menuitem">Manual Engine</a>
             </div>
 
             <!-- Targets -->
@@ -241,17 +250,16 @@
 
             <!-- System Settings (SA only) -->
             {% if user_role == 'Super Admin' %}
-            <a href="/system-settings" data-sidebar-panel="system_settings" class="{% if active_page == 'system_settings' %}sidebar-item-active{% else %}sidebar-item text-slate-300{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
+            <a href="/system-settings" data-sidebar-submenu="system_settings" aria-controls="sidebar-submenu-system_settings" aria-expanded="{% if active_page == 'system_settings' %}true{% else %}false{% endif %}" class="{% if active_page == 'system_settings' %}sidebar-item-active{% else %}sidebar-item text-slate-300{% endif %} flex items-center px-4 py-3 rounded-xl transition-colors">
                 <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg> System Settings
-                <svg class="sidebar-panel__chev ml-auto w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                <svg class="sidebar-submenu__chev ml-auto w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
             </a>
-            <div id="sidebar-panel-system_settings" class="sidebar-panel" hidden role="menu" aria-label="System Settings">
-                <p class="sidebar-panel__title">System Settings</p>
-                <a class="sidebar-panel__row" href="/system-settings?view=general" role="menuitem">General Info</a>
-                <a class="sidebar-panel__row" href="/system-settings?view=email" role="menuitem">Email Configuration</a>
-                <a class="sidebar-panel__row" href="/system-settings?view=security" role="menuitem">Security Policy</a>
-                <a class="sidebar-panel__row" href="/system-settings?view=maintenance" role="menuitem">Maintenance</a>
-                <a class="sidebar-panel__row" href="/system-settings?view=user-security" role="menuitem">User Settings</a>
+            <div id="sidebar-submenu-system_settings" class="sidebar-submenu"{% if active_page != 'system_settings' %} hidden{% endif %}>
+                <a class="sidebar-submenu__row" href="/system-settings?view=general" role="menuitem">General Info</a>
+                <a class="sidebar-submenu__row" href="/system-settings?view=email" role="menuitem">Email Configuration</a>
+                <a class="sidebar-submenu__row" href="/system-settings?view=security" role="menuitem">Security Policy</a>
+                <a class="sidebar-submenu__row" href="/system-settings?view=maintenance" role="menuitem">Maintenance</a>
+                <a class="sidebar-submenu__row" href="/system-settings?view=user-security" role="menuitem">User Settings</a>
             </div>
             {% endif %}
 
@@ -718,7 +726,7 @@
     <!-- SPECIFIC PAGE SCRIPTS INJECTION -->
     {% block scripts %}{% endblock %}
     <script src="/static/js/notifications.js"></script>
-    <script src="/static/js/sidebar-panels.js" defer></script>
+    <script src="/static/js/sidebar-submenus.js" defer></script>
     <script src="/static/js/submit-key.js"></script>
     <script src="/static/js/form-draft.js"></script>
     <script src="/static/js/sw-register.js"></script>

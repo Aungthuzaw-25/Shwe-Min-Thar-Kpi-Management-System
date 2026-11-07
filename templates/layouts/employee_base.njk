@@ -4,6 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Enterprise Portal{% endblock %}</title>
+    <script>
+        // Apply the saved sidebar state before first paint (no width flash).
+        try {
+            if (window.localStorage && localStorage.getItem('kpi-sidebar-collapsed') === '1') {
+                document.documentElement.classList.add('sidebar-collapsed');
+            }
+        } catch (e) {}
+    </script>
 
     <!-- PWA Settings -->
     <link rel="manifest" href="/static/manifest.json">
@@ -28,7 +36,8 @@
     <link rel="stylesheet" href="/static/css/enterprise-ui.css">
     <link rel="stylesheet" href="/static/css/executive-dashboard.css">
     <link rel="stylesheet" href="/static/css/liquid-glass-theme.css?v=20261021-4">
-    <link rel="stylesheet" href="/static/css/role-themes.css">{% endif %}
+    <link rel="stylesheet" href="/static/css/role-themes.css">
+    <link rel="stylesheet" href="/static/css/sidebar-collapse.css">{% endif %}
     <link rel="stylesheet" href="/static/css/inter-fonts.css">
     <script src="/static/js/api-fetch.js"></script>
     {% if dashboard_variant == "executive" %}
@@ -38,6 +47,7 @@
          (perf/lcp Phase 5c); api-fetch.js and csrf.js stay classic. -->
     <script src="/static/js/csp-event-bridge.js" defer></script>
     <script src="/static/js/csrf.js"></script>
+    <script src="/static/js/sidebar-collapse.js" defer></script>
     
     <style>
         body { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background-color: #f5f7fa; }
@@ -80,6 +90,9 @@
 
 
     <!-- SIDEBAR NAVIGATION -->
+    <!-- Mobile sidebar backdrop: tap to close the offcanvas sidebar -->
+    <button id="sidebarBackdrop" class="fixed inset-0 bg-slate-900/50 z-20 hidden md:hidden transition-opacity" type="button" onclick="toggleMobileSidebar()" aria-label="Close mobile sidebar"></button>
+
     <aside id="mainSidebar" class="w-[260px] bg-slate-900 text-white flex-col shrink-0 transition-transform duration-300 absolute md:relative inset-y-0 left-0 z-30 shadow-2xl transform -translate-x-full md:translate-x-0 flex">
         <!-- Logo -->
         <div class="h-24 flex items-center justify-between px-6 sm:px-8 border-b border-slate-800 bg-slate-900/90 backdrop-blur-md shrink-0">
@@ -90,6 +103,11 @@
                     {% if brand.company_tagline %}<p class="text-[10px] text-slate-400 uppercase tracking-widest line-clamp-2 break-words">{{ brand.company_tagline }}</p>{% endif %}
                 </div>
             </div>
+            <!-- Collapse toggle (desktop): reachable expanded and collapsed -->
+            <button type="button" id="sidebarCollapseBtn" class="sidebar-collapse-btn hidden md:flex" aria-label="Collapse sidebar" aria-expanded="true">
+                <svg class="sidebar-collapse-btn__icon sidebar-collapse-btn__icon--collapse w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 18l-6-6 6-6"></path></svg>
+                <svg class="sidebar-collapse-btn__icon sidebar-collapse-btn__icon--expand w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 18l6-6-6-6"></path></svg>
+            </button>
             <button type="button" class="md:hidden text-slate-400 hover:text-white focus:outline-none" onclick="toggleMobileSidebar()" aria-label="Close navigation menu">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
             </button>
@@ -387,8 +405,13 @@
         // Mobile Sidebar Toggle Logic
         function toggleMobileSidebar() {
             const sidebar = document.getElementById("mainSidebar");
+            const backdrop = document.getElementById("sidebarBackdrop");
             if (sidebar) {
                 const isOpen = sidebar.classList.toggle("-translate-x-full") === false;
+                if (backdrop) backdrop.classList.toggle("hidden", !isOpen);
+                document.querySelectorAll('[aria-controls="mainSidebar"]').forEach(button => {
+                    button.setAttribute("aria-expanded", String(isOpen));
+                });
                 document.body.classList.toggle("overflow-hidden");
             }
         }

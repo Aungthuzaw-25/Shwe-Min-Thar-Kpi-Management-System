@@ -1,0 +1,137 @@
+/* Collapsible sidebar (shadcn-like behavior, project stack).
+   Collapse applies on desktop only (min-width 768px): on mobile the
+   sidebar stays a full-width offcanvas overlay. Role colors, menu
+   items, gating and the inline submenu sections are untouched. */
+
+#mainSidebar {
+    transition: width 0.25s ease, transform 0.3s ease;
+}
+
+.sidebar-collapse-btn {
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 0.625rem;
+    color: var(--color-text-muted);
+    flex-shrink: 0;
+}
+
+.sidebar-collapse-btn:hover {
+    background: rgba(255, 255, 255, 0.55);
+    color: var(--color-text);
+}
+
+.sidebar-tooltip {
+    position: fixed;
+    z-index: 100;
+    background: #1c2b3a;
+    color: #ffffff;
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 0.375rem 0.625rem;
+    border-radius: 0.5rem;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+    pointer-events: none;
+    white-space: nowrap;
+}
+
+@media (min-width: 768px) {
+    html.sidebar-collapsed .app-shell #mainSidebar {
+        width: 4.5rem;
+    }
+
+    /* Icon rail: labels hidden, icons centered. */
+    html.sidebar-collapsed .app-shell #mainSidebar nav {
+        padding-left: 0.5rem;
+        padding-right: 0.5rem;
+    }
+
+    html.sidebar-collapsed .app-shell #mainSidebar nav a {
+        font-size: 0;
+        justify-content: center;
+        padding-left: 0;
+        padding-right: 0;
+    }
+
+    html.sidebar-collapsed .app-shell #mainSidebar nav a svg {
+        margin-left: 0;
+        margin-right: 0;
+    }
+
+    html.sidebar-collapsed .app-shell #mainSidebar nav a .sidebar-submenu__chev {
+        display: none;
+    }
+
+    /* Group labels hidden; inline submenu sections are nav divs too, so
+       they stay hidden in the rail until a parent click re-expands it. */
+    html.sidebar-collapsed .app-shell #mainSidebar nav > div {
+        display: none;
+    }
+
+    /* Logo header: logo mark + toggle stacked, name hidden (the logo
+       wrapper itself stays visible — only its name block hides). */
+    html.sidebar-collapsed .app-shell #mainSidebar > div:first-child {
+        flex-direction: column;
+        justify-content: center;
+        padding: 1rem 0.5rem;
+        gap: 0.75rem;
+        /* Override the fixed topbar height (design-system/portal-shell)
+           or the stacked logo + toggle would overflow and clip. */
+        height: auto;
+    }
+
+    html.sidebar-collapsed .app-shell #mainSidebar > div:first-child > :not([hidden]) ~ :not([hidden]) {
+        margin-left: 0;
+    }
+
+    html.sidebar-collapsed .app-shell #mainSidebar > div:first-child > div > div.min-w-0 {
+        display: none;
+    }
+
+    html.sidebar-collapsed .app-shell #mainSidebar > div:first-child img {
+        margin-right: 0;
+    }
+
+    /* Footer: avatar only, icon-only logout (name/email lines hide).
+       Footer/card padding shrink so the 40px avatar fits the 72px rail. */
+    html.sidebar-collapsed .app-shell #mainSidebar > div:last-child {
+        padding: 0.75rem 0.5rem;
+    }
+
+    html.sidebar-collapsed .app-shell #mainSidebar > div:last-child > div {
+        padding: 0.5rem;
+    }
+
+    html.sidebar-collapsed .app-shell #mainSidebar > div:last-child > div:first-child {
+        justify-content: center;
+    }
+
+    html.sidebar-collapsed .app-shell #mainSidebar > div:last-child p {
+        display: none;
+    }
+
+    html.sidebar-collapsed .app-shell #mainSidebar > div:last-child button {
+        font-size: 0;
+        justify-content: center;
+    }
+
+    html.sidebar-collapsed .app-shell #mainSidebar > div:last-child button svg {
+        margin: 0;
+    }
+
+    /* Toggle icon swap. */
+    html.sidebar-collapsed .sidebar-collapse-btn__icon--collapse {
+        display: none;
+    }
+
+    html:not(.sidebar-collapsed) .sidebar-collapse-btn__icon--expand {
+        display: none;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #mainSidebar {
+        transition: none;
+    }
+}
