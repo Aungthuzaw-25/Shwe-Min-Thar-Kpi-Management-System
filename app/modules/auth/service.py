@@ -224,12 +224,17 @@ class AuthService:
         user.failed_login_attempts = 0
         user.is_locked = False
         user.locked_until = None
-        # SA second factor: a confirmed TOTP enrollment makes the
-        # rotating code mandatory on every password login. Wrong
-        # codes never touch the password lockout counter — they use
-        # their own 5-wrong -> 1-hour freeze (sa_mfa). MFA config
-        # problems fail CLOSED (503), never skip the second factor.
-        if sa_mfa.is_super_admin(user):
+        # Second factor: a confirmed TOTP enrollment makes the
+        # rotating code mandatory on every password login — Super
+        # Admins (always) and Admin/HR users who opted in
+        # (2026-11-06). Unenrolled users log in exactly as before:
+        # no code, no prompt. Wrong codes never touch the password
+        # lockout counter — they use their own 5-wrong -> 1-hour
+        # freeze (sa_mfa), which blocks only TOTP entry: the password
+        # stays valid and the account is never password-locked by a
+        # TOTP freeze. MFA config problems fail CLOSED (503), never
+        # skip the second factor.
+        if sa_mfa.is_mfa_enrollable(user):
             secret_row = await sa_mfa.confirmed_secret(db, user.id)
             if secret_row is not None:
                 if not sa_mfa.normalize_code(totp_code):

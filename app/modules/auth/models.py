@@ -128,16 +128,18 @@ class UnlockRequest(BaseModel):
     )
 
 class SATotpSecret(BaseModel):
-    """One TOTP (Google Authenticator) enrollment per Super Admin.
+    """One TOTP (Google Authenticator) enrollment per account.
 
-    The secret is stored ENCRYPTED (Fernet, server key from
-    ``TOTP_ENCRYPTION_KEY``) — never plaintext, never hashed (the
-    server must compute expected codes to verify). ``is_confirmed``
-    is False from setup until the SA proves the first code, so an
-    abandoned setup never counts as MFA. Clearing the row
-    (peer-confirmed reset/disable) removes MFA. Codes are valid
-    for their 30-second window (±1 step for clock drift), and a
-    password login consumes its step (strict no-reuse — see
+    Originally Super Admin only; since 2026-11-06 Admin and HR users
+    may also opt in (same table, same key — the "SA" in the name is
+    historical). The secret is stored ENCRYPTED (Fernet, server key
+    from ``TOTP_ENCRYPTION_KEY``) — never plaintext, never hashed
+    (the server must compute expected codes to verify).
+    ``is_confirmed`` is False from setup until the user proves the
+    first code, so an abandoned setup never counts as MFA. Clearing
+    the row (peer-confirmed reset/disable) removes MFA. Codes are
+    valid for their 30-second window (±1 step for clock drift), and
+    a password login consumes its step (strict no-reuse — see
     sa_totp_used_steps; setup confirm never consumes). The
     5-wrong -> 1-hour freeze is the brute-force brake.
     """
