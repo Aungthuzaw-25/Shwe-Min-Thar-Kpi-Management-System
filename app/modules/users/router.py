@@ -16,7 +16,7 @@ from fastapi import (  # 🌟 PERFORMANCE FIX: Added Query
     Query,
     UploadFile,
 )
-from sqlalchemy import func, or_, text, update
+from sqlalchemy import func, or_, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -134,21 +134,25 @@ async def _detach_department_head(db: AsyncSession, user_id: UUID) -> None:
 
 
 async def revoke_user_authentication(db: AsyncSession, user_id: UUID) -> None:
-    """Disable every authentication path without deleting business history."""
+    """Disable every authentication path without deleting business history.
+
+    ORM updates (2026-11-06 hygiene — was raw text() with str(uuid)
+    params, which silently match zero rows on some databases; see
+    _detach_department_head for the same lesson).
+    """
+    from app.modules.auth.models import AuthSession
+    from app.modules.users.models import OAuthAccount
+
     now = datetime.now(UTC).replace(tzinfo=None)
     await db.execute(
-        text(
-            "UPDATE auth_sessions SET revoked_at = :now "
-            "WHERE user_id = :uid AND revoked_at IS NULL"
-        ),
-        {"now": now, "uid": str(user_id)},
+        update(AuthSession)
+        .where(AuthSession.user_id == user_id, AuthSession.revoked_at.is_(None))
+        .values(revoked_at=now)
     )
     await db.execute(
-        text(
-            "UPDATE oauth_accounts SET revoked_at = :now "
-            "WHERE user_id = :uid AND revoked_at IS NULL"
-        ),
-        {"now": now, "uid": str(user_id)},
+        update(OAuthAccount)
+        .where(OAuthAccount.user_id == user_id, OAuthAccount.revoked_at.is_(None))
+        .values(revoked_at=now)
     )
 
 

@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import logging
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
@@ -65,6 +66,8 @@ from app.modules.notifications.models import Notification
 from app.modules.users.models import Role
 
 limiter = Limiter(key_func=get_remote_address)
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 INVALID_OAUTH_STATE_MESSAGE = "Invalid OAuth state."
@@ -1460,6 +1463,44 @@ async def _load_active_refresh_session(
     return auth_session
 
 
+async def _revoke_session_on_refresh_reuse(
+    db: AsyncSession, request: Request, token: str
+) -> None:
+    """Revoke the whole session behind a replayed refresh token.
+
+    A blacklisted token presented again means the token was stolen
+    or replayed. The stored refresh-token hash has already rotated
+    to the new token, so the session is loaded by (id, user) WITHOUT
+    the hash match; a revoked session's access token then 401s at
+    once via the session check in get_current_user, and the rotated
+    refresh token fails too — the session is fully dead. Writes one
+    SESSION_REVOKED audit row (reason "refresh_token_reuse"). Never
+    raises: this runs on the way to a 401, and a failure here must
+    not turn that into a 500 or a successful refresh.
+    """
+    try:
+        email, session_id, token_user_id = _decode_refresh_token(token)
+        user = await _load_refresh_user(db, email, token_user_id)
+        auth_session = (await db.execute(select(AuthSession).where(
+            AuthSession.id == session_id,
+            AuthSession.user_id == user.id,
+            AuthSession.revoked_at.is_(None),
+        ).with_for_update())).scalars().first()
+        if auth_session is None:
+            return
+        AuthService._audit_session_revocation(
+            db,
+            user,
+            auth_session,
+            "refresh_token_reuse",
+            request.client.host if request.client else None,
+            datetime.now(UTC).replace(tzinfo=None),
+        )
+        await db.commit()
+    except Exception as exc:  # noqa: BLE001 - best-effort revoke on the way to a 401
+        logger.warning("Refresh-reuse session revoke failed: %s", exc)
+
+
 @router.post(
     '/refresh',
     response_model=RefreshTokenResponse,
@@ -1480,6 +1521,14 @@ async def refresh_token(
     token_hash = security.token_digest(token_to_verify)
     is_blacklisted = await db.execute(select(TokenBlacklist).where(TokenBlacklist.token_hash == token_hash))
     if is_blacklisted.scalars().first():
+        # Rotation makes a refresh token single-use, so a blacklisted
+        # token presented again is a REUSE — the token was stolen or
+        # the client replayed it. Revoke the whole session (not just
+        # the one token) and audit it, then 401 as before (2026-11-06
+        # hygiene). Best-effort: a malformed token cannot be decoded
+        # and an already-revoked session needs no second audit — the
+        # 401 below still goes out either way.
+        await _revoke_session_on_refresh_reuse(db, request, token_to_verify)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Refresh token has been revoked. Please log in again.')
 
     email, session_id, token_user_id = _decode_refresh_token(token_to_verify)
