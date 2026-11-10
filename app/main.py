@@ -458,6 +458,10 @@ class CSRFMiddleware(BaseHTTPMiddleware):
                 # is meaningless for an endpoint anyone may POST to
                 # directly, so exempting it weakens nothing.
                 "/api/v1/system/rum",
+                # OAuth MFA challenge completion (2026-11-07): same
+                # public entry point shape — no session exists yet
+                # to CSRF with; the challenge token is the auth.
+                "/api/v1/auth/oauth/mfa-verify",
             }
             if (
                 cookie_authenticated

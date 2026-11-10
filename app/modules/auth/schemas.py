@@ -15,6 +15,19 @@ class LoginRequest(BaseModel):
     totp_code: str | None = None
 
 
+class OAuthMfaVerifyRequest(BaseModel):
+    """Complete an OAuth login interrupted by the MFA challenge.
+
+    ``challenge`` is the opaque token from the login-page URL
+    (``?oauth_mfa_challenge=...``); ``totp_code`` is the current
+    6-digit authenticator code. Both are required — a challenge
+    token alone never issues a session.
+    """
+
+    challenge: str
+    totp_code: str
+
+
 class TokenResponse(BaseModel):
     access_token: str
     refresh_token: str
