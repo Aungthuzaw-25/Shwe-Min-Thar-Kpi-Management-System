@@ -39,8 +39,13 @@ class FakeRedis:
     async def get(self, key):
         return self.store.get(key)
 
-    async def set(self, key, value, ex=None):
+    async def set(self, key, value, ex=None, nx=False):
+        # SET NX (2026-11-06, F2 stampede lock): set only if absent,
+        # returning True on set and None when the key already exists.
+        if nx and key in self.store:
+            return None
         self.store[key] = value
+        return True
 
 
 class BrokenRedis:
