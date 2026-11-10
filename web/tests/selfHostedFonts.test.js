@@ -18,16 +18,18 @@ describe("self-hosted fonts (perf/lcp Phase 5a + 5c)", () => {
   it("declares every shipped face with font-display: swap and a real woff2 file", () => {
     const css = read("static/css/fonts.css");
     const faces = [...css.matchAll(/font-family: '([^']+)';[\s\S]*?font-weight: (\d+);[\s\S]*?src: url\(([^)]+)\)/g)];
-    // Inter 400/500/600/700/800/900, Plus Jakarta Sans 400-800,
-    // Noto Sans Myanmar 400/600 — the weights the project uses.
-    expect(faces).toHaveLength(13);
+    // Plus Jakarta Sans 400-800, Noto Sans Myanmar 400/600 — the
+    // weights the project uses. Inter is NOT declared here anymore:
+    // it lives in static/css/inter-fonts.css as one variable file per
+    // unicode subset (see loginInterSelfhost.test.js for its pins).
+    expect(faces).toHaveLength(7);
     for (const [, family, weight, src] of faces) {
       expect(css).toContain("font-display: swap");
       const file = path.join(root, "static/css", src);
       expect(existsSync(file), `${family} ${weight} -> ${src}`).toBe(true);
       expect(src.endsWith(".woff2")).toBe(true);
     }
-    expect(faces.filter(([, family]) => family === "Inter")).toHaveLength(6);
+    expect(faces.filter(([, family]) => family === "Inter")).toHaveLength(0);
     expect(faces.filter(([, family]) => family === "Plus Jakarta Sans")).toHaveLength(5);
     expect(faces.filter(([, family]) => family === "Noto Sans Myanmar")).toHaveLength(2);
   });
@@ -44,7 +46,7 @@ describe("self-hosted fonts (perf/lcp Phase 5a + 5c)", () => {
     const base = read("templates/layouts/base.njk");
     const preloads = [...base.matchAll(/rel="preload" as="font"[^>]*href="([^"]+)"/g)]
       .map((match) => match[1]);
-    expect(preloads).toEqual(["/static/fonts/inter/inter-latin-400-normal.woff2"]);
+    expect(preloads).toEqual(["/static/fonts/inter/inter-latin.woff2"]);
     expect(base).toContain('<link rel="stylesheet" href="/static/css/fonts.css">');
   });
 
@@ -61,13 +63,13 @@ describe("self-hosted fonts (perf/lcp Phase 5a + 5c)", () => {
     }
   });
 
-  it("keeps the Google Fonts CSP entries while other pages still use them", () => {
-    // The profile body still loads Google Fonts (Plus Jakarta Sans +
-    // Noto Sans Myanmar), so the CSP entries must stay until it moves
-    // too. Login, change-password and both layouts have moved to
-    // self-hosted Inter (login-inter-selfhost, merged).
+  it("keeps the Google Fonts CSP entries as an allowance now that no page uses them", () => {
+    // The profile body was the last Google Fonts user (Plus Jakarta Sans +
+    // Noto Sans Myanmar); it moved to the local faces in fonts.css, so no
+    // template links Google Fonts anymore. The CSP entries stay as a kept
+    // allowance — removing them is a separate Security decision.
     expect(read("web/src/middleware/csp.js")).toContain("https://fonts.googleapis.com");
     expect(read("web/src/middleware/csp.js")).toContain("https://fonts.gstatic.com");
-    expect(read("templates/dashboard/account_profile_body.njk")).toContain("fonts.googleapis.com");
+    expect(read("templates/dashboard/account_profile_body.njk")).not.toContain("fonts.googleapis.com");
   });
 });
