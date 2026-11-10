@@ -25,10 +25,12 @@ export function createApp({
   templatesPath = templatesDirectory,
   environment = process.env.ENV || "development",
   s3Endpoint = process.env.S3_ENDPOINT,
-  // Phase 5b asset bundles: default OFF; set ASSET_BUNDLES=true to serve the
-  // hashed bundles built by tools/build_asset_bundles.mjs. The flag-off path
-  // renders the original individual links, byte-identical to before.
-  assetBundles = process.env.ASSET_BUNDLES === "true",
+  // Phase 5b asset bundles: default ON; set ASSET_BUNDLES=false to serve
+  // the original individual links. The hashed bundles are built by
+  // tools/build_asset_bundles.mjs (both Docker images run it at build
+  // time); if the manifest is missing the helper falls back to the
+  // individual links, so local dev without a build is unaffected.
+  assetBundles = process.env.ASSET_BUNDLES !== "false",
   assetSpecPath,
   assetManifestPath,
 } = {}) {

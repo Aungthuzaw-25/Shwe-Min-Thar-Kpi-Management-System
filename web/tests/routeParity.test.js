@@ -65,11 +65,17 @@ const pageRoleCases = pages.flatMap(([path, allowedRoles]) => (
 
 describe("page route parity", () => {
   it("scopes the liquid-glass stylesheet to authenticated layouts", async () => {
-    const adminResponse = await request(createApp({ backend: backendFor("Super Admin") }))
+    // Explicitly flag-off: this test pins the template scoping (which
+    // layouts include the theme), not the bundle flag. With the flag on,
+    // the same theme arrives inside the base-tail bundle instead of as
+    // an individual link (pinned by assetBundles.test.js + the live
+    // shoot); the flag state must not change what this test asserts,
+    // so it is set here rather than read from the environment.
+    const adminResponse = await request(createApp({ backend: backendFor("Super Admin"), assetBundles: false }))
       .get("/superadmin/dashboard")
       .set("Cookie", "access_token=qa-token");
     const employeeResponse = await request(createApp({
-      backend: backendFor("Department User", "L2"),
+      backend: backendFor("Department User", "L2"), assetBundles: false,
     }))
       .get("/dashboard")
       .set("Cookie", "access_token=qa-token");

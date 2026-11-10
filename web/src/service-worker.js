@@ -38,9 +38,8 @@ const OFFLINE_URL = "/offline";
 const SHELL_URLS = [
   OFFLINE_URL,
   "/static/manifest.json",
-  "/static/image/smt-logo.jpg",
+  "/static/image/smt-logo.webp",
   "/static/css/output.css",
-  "/static/css/design-system.css",
   "/static/css/design-system.css?v=20261015-1",
   "/static/css/enterprise-ui.css",
   "/static/css/executive-dashboard.css",

@@ -16,7 +16,7 @@ const ME = {
 };
 const ACCOUNTS = { user_email: 'sa@example.com' };
 const BRAND_RAW = {
-  company_name: 'Acme', company_tagline: 'Tag', logo_url: '/static/image/smt-logo.jpg',
+  company_name: 'Acme', company_tagline: 'Tag', logo_url: '/static/image/smt-logo.webp',
   has_custom_logo: false, oauth_providers: {},
 };
 
