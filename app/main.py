@@ -53,6 +53,7 @@ from app.modules.kpi.router import router as kpi_router
 from app.modules.notifications.router import router as notifications_router
 from app.modules.system.retention_router import router as retention_router
 from app.modules.system.router import router as system_router
+from app.modules.system.rum import router as rum_router
 from app.modules.system.whats_new_router import router as whats_new_router
 from app.modules.targets.router import router as targets_router
 from app.modules.tasks.router import router as tasks_router
@@ -66,6 +67,15 @@ from app.services.system_log_service import record_system_log
 # Express/Nunjucks web tier through the proxy (local) / proxy service
 # (Railway). The API tier keeps /api/*, /health, /static, / and the
 # auth/session behaviour below.
+
+# The API server runs under uvicorn/gunicorn, which configure only their
+# own loggers — the root logger has no handler, so every app INFO line was
+# silently lost (including the RUM beacon line, which IS that endpoint's
+# whole purpose: log-only telemetry). Same one-line pattern as the
+# scheduler runner (app/background_jobs/runner.py). basicConfig is a
+# no-op when the root logger already has handlers (e.g. pytest's logging
+# plugin), so test runs are unaffected.
+logging.basicConfig(level=logging.INFO)
 
 logger = logging.getLogger("app.main")
 API_V1_PREFIX = "/api/v1"
@@ -355,7 +365,11 @@ class DashboardCacheInvalidationMiddleware(BaseHTTPMiddleware):
     """
 
     _MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
-    _EXCLUDED_PREFIXES = ("/api/v1/auth/", "/api/v1/account/")
+    # RUM beacon (2026-11-06): a successful POST here must NOT purge
+    # the dashboard cache — one beacon fires per page load, so without
+    # this exclusion every page load would bust every user's cached
+    # dashboard summary.
+    _EXCLUDED_PREFIXES = ("/api/v1/auth/", "/api/v1/account/", "/api/v1/system/rum")
 
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
@@ -438,6 +452,12 @@ class CSRFMiddleware(BaseHTTPMiddleware):
                 # Optional Admin/HR MFA reset request (2026-11-06):
                 # same public entry point shape as the SA one.
                 "/api/v1/auth/user-mfa/reset-requests",
+                # RUM beacon (2026-11-06): log-only telemetry, no auth,
+                # no state change. sendBeacon cannot send the CSRF
+                # header, and the endpoint needs none — CSRF protection
+                # is meaningless for an endpoint anyone may POST to
+                # directly, so exempting it weakens nothing.
+                "/api/v1/system/rum",
             }
             if (
                 cookie_authenticated
@@ -547,6 +567,7 @@ app.include_router(unified_dashboard_api_router, prefix="/api/v1/dashboard", tag
 app.include_router(notifications_router, prefix="/api/v1/notifications", tags=["Notifications"])
 app.include_router(activity_router, prefix=API_V1_PREFIX)
 app.include_router(system_router, prefix=API_V1_PREFIX, tags=["System Settings"])
+app.include_router(rum_router, prefix=API_V1_PREFIX, tags=["System Settings"])
 app.include_router(whats_new_router, prefix=API_V1_PREFIX, tags=["What's New"])
 app.include_router(retention_router, prefix=API_V1_PREFIX, tags=["Retention"])
 
