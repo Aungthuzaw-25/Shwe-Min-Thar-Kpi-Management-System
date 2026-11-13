@@ -161,12 +161,15 @@ def test_beacon_does_not_purge_dashboard_cache(monkeypatch):
     )
     calls = []
 
-    async def _fake_purge():
-        calls.append(1)
+    async def _fake_purge(path):
+        calls.append(path)
         return 1
 
+    # F2 (2026-11-06): the middleware now calls the scoped
+    # invalidate_dashboard_for_path(path) — the old whole-namespace
+    # invalidate_dashboard_summaries no longer exists as a call target.
     monkeypatch.setattr(
-        "app.core.cache.invalidate_dashboard_summaries", _fake_purge
+        "app.core.cache.invalidate_dashboard_for_path", _fake_purge
     )
     with TestClient(scratch, raise_server_exceptions=False) as scratch_client:
         assert scratch_client.post("/api/v1/system/rum").status_code == 200
@@ -174,7 +177,7 @@ def test_beacon_does_not_purge_dashboard_cache(monkeypatch):
         assert calls == []
         assert scratch_client.post("/api/v1/tasks/x").status_code == 200
         time.sleep(0.2)
-        assert calls == [1]  # control: the purge fires for other POSTs
+        assert calls == ["/api/v1/tasks/x"]  # control: the purge fires for other POSTs
 
 
 def test_rate_limit_per_ip():

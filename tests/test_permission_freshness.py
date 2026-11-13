@@ -251,7 +251,22 @@ def test_permissions_version_changes_with_each_write_kind(world):
 
 def test_permission_write_purges_dashboard_cache(world):
     world.fake.store["kpi:cache:dashboard:superadmin-summary"] = "{}"
-    world.fake.store["kpi:cache:dashboard:unified:alice"] = "{}"
+    # Real key shape (2026-11-06, F2): unified-summary keys start with
+    # the endpoint name — the old "unified:alice" shape never exists.
+    world.fake.store["kpi:cache:dashboard:unified-summary:alice"] = "{}"
     _set_role_permissions(world, world.ids.staff, [VIEW])
+    # The middleware purge runs as a background task (asyncio.ensure_future),
+    # so asserting immediately races it — under load the assert can run
+    # before the purge lands. Poll the same way the middleware test does.
+    import time
+
+    for _ in range(50):
+        if (
+            "kpi:cache:dashboard:superadmin-summary" not in world.fake.store
+            and "kpi:cache:dashboard:unified-summary:alice"
+            not in world.fake.store
+        ):
+            break
+        time.sleep(0.05)
     assert "kpi:cache:dashboard:superadmin-summary" not in world.fake.store
-    assert "kpi:cache:dashboard:unified:alice" not in world.fake.store
+    assert "kpi:cache:dashboard:unified-summary:alice" not in world.fake.store

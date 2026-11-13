@@ -351,13 +351,18 @@ class DashboardCacheInvalidationMiddleware(BaseHTTPMiddleware):
     The admin/superadmin dashboard summaries are cached for 60s
     (app.core.cache). Before this middleware nothing invalidated them
     on writes, so an approval or KPI edit could look unsaved for up to
-    a minute. The rule is deliberately broad — every successful
-    POST/PUT/PATCH/DELETE under /api/v1 purges the dashboard namespace
-    — so current *and future* write paths are covered. Excluded:
-    /api/v1/auth/* and /api/v1/account/* (login/logout/refresh/OAuth,
-    profile and password changes never change dashboard numbers).
-    Notifications created as a side effect of a covered write are
-    covered too, because the triggering write is what purges.
+    a minute. The purge is SCOPED (2026-11-06, F2) — only the
+    dashboard groups the write can affect (see
+    ``app.core.cache.dashboard_groups_for_path``): a task write
+    purges everything except the monthly averages, a notification
+    write purges only the superadmin-summary group (the only group
+    that reads notifications), and anything unlisted purges every group,
+    so current *and future* write paths stay fresh by default.
+    Excluded: /api/v1/auth/* and /api/v1/account/* (login/logout/
+    refresh/OAuth, profile and password changes never change
+    dashboard numbers). Notifications created as a side effect of a
+    covered write are covered too, because the triggering write is
+    what purges.
 
     The purge is best-effort and fail-open (the cache helper never
     raises), runs as a background task so the write's response is not
@@ -379,9 +384,11 @@ class DashboardCacheInvalidationMiddleware(BaseHTTPMiddleware):
             and request.url.path.startswith("/api/v1/")
             and not request.url.path.startswith(self._EXCLUDED_PREFIXES)
         ):
-            from app.core.cache import invalidate_dashboard_summaries
+            from app.core.cache import invalidate_dashboard_for_path
 
-            task = asyncio.ensure_future(invalidate_dashboard_summaries())
+            task = asyncio.ensure_future(
+                invalidate_dashboard_for_path(request.url.path)
+            )
             task.add_done_callback(self._log_purge_failure)
         return response
 
