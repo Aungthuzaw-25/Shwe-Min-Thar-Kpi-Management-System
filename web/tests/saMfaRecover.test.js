@@ -43,6 +43,7 @@ function fakeElement(tag, doc) {
 }
 
 function makeEnv(fetchImpl, otpImpl) {
+  const timers = [];
   const doc = {
     activeElement: null, readyState: 'complete',
     byId: {}, steps: {},
@@ -52,8 +53,15 @@ function makeEnv(fetchImpl, otpImpl) {
   const ids = ['saRecoverEntryBtn', 'saRecoverCloseXBtn', 'saRecoverEmail',
     'saRecoverOtpBoxes', 'saRecoverError', 'saRecoverSubmitBtn', 'saRecoverCancelBtn',
     'saRecoverNewPassword', 'saRecoverConfirmPassword', 'saRecoverResetError',
-    'saRecoverResetBtn', 'saRecoverResetCancelBtn', 'saRecoverDoneBtn'];
-  for (const id of ids) doc.byId[id] = fakeElement(id.includes('Email') || id.includes('Password') ? 'input' : 'button', doc);
+    'saRecoverResetBtn', 'saRecoverResetCancelBtn', 'saRecoverDoneBtn',
+    'email', 'saRecoverEntry'];
+  for (const id of ids) {
+    const tag = (id === 'email' || id.includes('Email') || id.includes('Password')) ? 'input'
+      : id === 'saRecoverEntry' ? 'p' : 'button';
+    doc.byId[id] = fakeElement(tag, doc);
+  }
+  // The template hides the entry by default; the check shows it.
+  doc.byId.saRecoverEntry.hidden = true;
   const modal = fakeElement('div', doc);
   modal.classList.add('hidden');
   for (const name of ['code', 'reset', 'done']) {
@@ -67,6 +75,8 @@ function makeEnv(fetchImpl, otpImpl) {
       OtpInput: otpImpl,
       SharedDialog: { open() {}, close() {} },
       readServerError: async (response) => `Error: server-${response.status}`,
+      setTimeout(fn) { timers.push(fn); return timers.length; },
+      clearTimeout(id) { if (id) timers[id - 1] = null; },
     },
     document: {
       ...doc,
@@ -79,7 +89,15 @@ function makeEnv(fetchImpl, otpImpl) {
     console,
   };
   vm.runInNewContext(js, sandbox);
-  return { doc, modal, byId: doc.byId, steps: doc.steps };
+  const runTimers = () => {
+    const queued = timers.splice(0);
+    for (const fn of queued) if (fn) fn();
+  };
+  return { doc, modal, byId: doc.byId, steps: doc.steps, runTimers };
+}
+
+function fire(el, type) {
+  (el.listeners[type] || []).forEach((fn) => fn({}));
 }
 
 function fakeOtp() {
@@ -109,6 +127,13 @@ describe('SA recover entry on the login page', () => {
     expect(login).toContain('id="saRecoverModal"');
     expect(login).toContain('Recover with Authenticator');
     expect((login.match(/onclick=/g) || []).length).toBe(4);
+  });
+
+  it('hides the recover entry by default: it only appears for an enrolled SA', () => {
+    expect(login).toContain('id="saRecoverEntry"');
+    expect(login).toMatch(/id="saRecoverEntry"[^>]*hidden/);
+    expect(js).toContain('/api/v1/auth/sa-mfa/recover-available');
+    expect(js).toContain('recover_available');
   });
 
   it('adds no inline handlers and no trust-device option', () => {
@@ -141,11 +166,99 @@ describe('SA recover entry on the login page', () => {
   it('calls exactly the live recovery endpoints and never logs or stores', () => {
     expect(js).toContain('/api/v1/auth/sa-mfa/recover');
     expect(js).toContain('/api/v1/auth/sa-mfa/reset-password');
+    expect(js).toContain('/api/v1/auth/sa-mfa/recover-available');
     expect(js).toContain('Invalid email or authenticator code.');
     expect(js).not.toContain('localStorage');
     expect(js).not.toContain('sessionStorage');
     expect(js).not.toMatch(/console\.log/);
     expect(js).not.toMatch(/setInterval\(/);
+  });
+});
+
+// --- Recover link availability check ----------------------------------------
+describe('Recover link availability check', () => {
+  function checkEnv(available, fail) {
+    const seen = [];
+    const fetchImpl = async (url, options) => {
+      seen.push({ url, body: options ? JSON.parse(options.body) : null });
+      if (fail) throw new Error('network down');
+      return { ok: true, status: 200, json: async () => ({ recover_available: available }) };
+    };
+    const env = makeEnv(fetchImpl, { create: () => fakeOtp() });
+    return { ...env, seen };
+  }
+
+  it('link is hidden by default and no check runs on load with an empty email', async () => {
+    const { byId, seen } = checkEnv(true);
+    await settle();
+    expect(byId.saRecoverEntry.hidden).toBe(true);
+    expect(seen).toEqual([]);
+  });
+
+  it('typing an enrolled email shows the link after the debounce, once', async () => {
+    const { byId, seen, runTimers } = checkEnv(true);
+    byId.email.value = 'enrolled@example.test';
+    fire(byId.email, 'input');
+    expect(seen).toEqual([]);
+    expect(byId.saRecoverEntry.hidden).toBe(true);
+    runTimers();
+    await settle();
+    expect(seen).toEqual([{ url: '/api/v1/auth/sa-mfa/recover-available', body: { email: 'enrolled@example.test' } }]);
+    expect(byId.saRecoverEntry.hidden).toBe(false);
+  });
+
+  it('a False answer keeps the link hidden', async () => {
+    const { byId, seen, runTimers } = checkEnv(false);
+    byId.email.value = 'plain@example.test';
+    fire(byId.email, 'input');
+    runTimers();
+    await settle();
+    expect(seen).toHaveLength(1);
+    expect(byId.saRecoverEntry.hidden).toBe(true);
+  });
+
+  it('the answer is cached per email: retyping it asks nothing', async () => {
+    const { byId, seen, runTimers } = checkEnv(true);
+    byId.email.value = 'enrolled@example.test';
+    fire(byId.email, 'input');
+    runTimers();
+    await settle();
+    expect(seen).toHaveLength(1);
+    expect(byId.saRecoverEntry.hidden).toBe(false);
+    fire(byId.email, 'input');
+    await settle();
+    expect(seen).toHaveLength(1);
+    expect(byId.saRecoverEntry.hidden).toBe(false);
+  });
+
+  it('blur checks immediately without waiting for the debounce', async () => {
+    const { byId, seen } = checkEnv(true);
+    byId.email.value = 'enrolled@example.test';
+    fire(byId.email, 'blur');
+    await settle();
+    expect(seen).toHaveLength(1);
+    expect(byId.saRecoverEntry.hidden).toBe(false);
+  });
+
+  it('a value without @ never calls the endpoint', async () => {
+    const { byId, seen, runTimers } = checkEnv(true);
+    byId.email.value = 'notanemail';
+    fire(byId.email, 'input');
+    runTimers();
+    fire(byId.email, 'blur');
+    await settle();
+    expect(seen).toEqual([]);
+    expect(byId.saRecoverEntry.hidden).toBe(true);
+  });
+
+  it('a failed check keeps the link hidden', async () => {
+    const { byId, seen, runTimers } = checkEnv(true, true);
+    byId.email.value = 'enrolled@example.test';
+    fire(byId.email, 'input');
+    runTimers();
+    await settle();
+    expect(seen).toHaveLength(1);
+    expect(byId.saRecoverEntry.hidden).toBe(true);
   });
 });
 
