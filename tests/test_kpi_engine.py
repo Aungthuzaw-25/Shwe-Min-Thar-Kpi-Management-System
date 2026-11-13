@@ -493,6 +493,7 @@ async def test_execute_kpi_calculation_scores_formula_categories(monkeypatch):
         _period_end,
         total_score,
         percentage,
+        **_kwargs,
     ):
         saved["total_score"] = total_score
         saved["percentage"] = percentage
@@ -532,6 +533,97 @@ async def test_execute_kpi_calculation_scores_formula_categories(monkeypatch):
         "percentage": 50.0,
         "committed": True,
     }
+
+
+@pytest.mark.asyncio
+async def test_execute_kpi_calculation_skips_resolution_when_formula_and_period_given(
+    monkeypatch,
+):
+    # F6 profile win A + D: the upload loop passes the already-validated
+    # formula + period, so the engine must NOT call the per-row
+    # re-resolution — and it returns the saved record so the caller
+    # need not re-SELECT it. Proof: a resolution that would raise is
+    # never reached, and the returned record is the saved one.
+    formula = SimpleNamespace(
+        id="formula-1",
+        department_id="department-1",
+        categories=[{
+            "name": "Late Submission",
+            "weight": 1.0,
+            "max_score": 5.0,
+            "evaluation_type": "DEDUCTION",
+        }],
+        scoring_rules=[
+            SimpleNamespace(
+                category_name="late submission",
+                rule_name="late submission",
+                operator=">=",
+                target_value="5",
+                deduct_score="2.5",
+            )
+        ],
+    )
+    period = SimpleNamespace(id="period-1")
+    user = SimpleNamespace(id="user-1", first_name="Test", last_name="User")
+
+    async def _commit():
+        return None
+
+    async def _rollback():
+        return None
+
+    db = SimpleNamespace(commit=_commit, rollback=_rollback)
+    saved_record = SimpleNamespace(formula_id="formula-1")
+
+    async def resolve_formula(_db, _user, _target_date):
+        raise AssertionError("resolution must be skipped when formula+period are given")
+
+    async def collect_deductions(_db, _user, _formula, _period_start, _period_end):
+        return {}, {"Late Submission": [7]}
+
+    async def save_record(_db, _user, _formula, _period, _period_type,
+                          _period_start, _period_end, total_score, percentage,
+                          **_kwargs):
+        return saved_record
+
+    monkeypatch.setattr(
+        KPICalculationEngine,
+        "get_applicable_formula_and_period",
+        resolve_formula,
+    )
+    monkeypatch.setattr(
+        "app.modules.kpi.engine._collect_deductions",
+        collect_deductions,
+    )
+    monkeypatch.setattr(
+        "app.modules.kpi.engine._save_kpi_record",
+        save_record,
+    )
+
+    result = await KPICalculationEngine.execute_kpi_calculation(
+        db=db,
+        user=user,
+        period_start=datetime(2026, 9, 1),
+        period_end=datetime(2026, 9, 30, 23, 59, 59),
+        period_type=PeriodType.MONTHLY,
+        commit=False,
+        pending_notifications=[],
+        formula=formula,
+        period=period,
+    )
+    assert result is saved_record
+
+    # Without the override the same call reaches resolution (raises).
+    with pytest.raises(AssertionError):
+        await KPICalculationEngine.execute_kpi_calculation(
+            db=db,
+            user=user,
+            period_start=datetime(2026, 9, 1),
+            period_end=datetime(2026, 9, 30, 23, 59, 59),
+            period_type=PeriodType.MONTHLY,
+            commit=False,
+            pending_notifications=[],
+        )
 
 
 @pytest.mark.asyncio

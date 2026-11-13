@@ -427,3 +427,55 @@ class KpiCategory(BaseModel):
     name = Column(String(100), nullable=False, unique=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class KpiUploadJobStatus(str, enum.Enum):
+    """Lifecycle of an async KPI upload (F6). Terminal states are
+    SUCCEEDED / FAILED only; there is no CANCELLED state in v1."""
+
+    QUEUED = "QUEUED"
+    RUNNING = "RUNNING"
+    SUCCEEDED = "SUCCEEDED"
+    FAILED = "FAILED"
+
+
+class KpiUploadJob(BaseModel):
+    """Receipt for one async KPI workbook upload (F6).
+
+    The request stages the file to MinIO, inserts a QUEUED row and
+    returns 202; the scheduler pickup claims it, runs the engine in
+    one transaction, and reports the outcome on a separate session —
+    so an engine rollback never erases the failure report. The row
+    is the receipt only: the KPI records themselves live forever
+    under the retention rules. Finished rows are hard-deleted after
+    30 days by the daily prune; QUEUED rows are never age-pruned.
+    ``period_id`` has NO foreign key on purpose — the job row must
+    not couple to the period lifecycle.
+    """
+
+    __tablename__ = "kpi_upload_jobs"
+
+    __table_args__ = (
+        Index("idx_kpi_upload_jobs_owner_created", "owner_id", "created_at"),
+        Index("idx_kpi_upload_jobs_status_created", "status", "created_at"),
+        Index("idx_kpi_upload_jobs_status_heartbeat", "status", "last_heartbeat_at"),
+    )
+
+    owner_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    owner_name = Column(String(255), nullable=True)
+    status = Column(String(20), nullable=False, default=KpiUploadJobStatus.QUEUED.value)
+    source_object_key = Column(String(500), nullable=False)
+    source_filename = Column(String(255), nullable=False)
+    file_size_bytes = Column(Integer, nullable=True)
+    content_hash = Column(String(64), nullable=True)
+    period_id = Column(UUID(as_uuid=True), nullable=True)
+    period_label = Column(String(100), nullable=True)
+    rows_total = Column(Integer, nullable=False, default=0)
+    rows_processed = Column(Integer, nullable=False, default=0)
+    error_code = Column(String(50), nullable=True)
+    error_message = Column(Text, nullable=True)
+    error_detail = Column(JSON, nullable=True)
+    attempt_count = Column(Integer, nullable=False, default=0)
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    finished_at = Column(DateTime(timezone=True), nullable=True)
+    last_heartbeat_at = Column(DateTime(timezone=True), nullable=True)

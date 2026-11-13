@@ -334,11 +334,11 @@ async def test_scoring_uses_application_local_month_for_utc_calendar_boundary(
     async def collect_deductions(_db, _user, _formula, _start, _end):
         return {}, {}
 
-    async def capture_score(_db, _formula, _department_id, target_month, _data):
+    async def capture_score(_db, _formula, _department_id, target_month, _data, **_kwargs):
         captured["target_month"] = target_month
         return 5.0
 
-    async def skip_persistence(_db, _user, _formula, _period, _period_type, _start, _end, _score, _percentage):
+    async def skip_persistence(_db, _user, _formula, _period, _period_type, _start, _end, _score, _percentage, **_kwargs):
         captured["persisted"] = True
 
     monkeypatch.setattr(

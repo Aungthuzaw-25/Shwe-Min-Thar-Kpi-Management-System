@@ -15,6 +15,10 @@ from app.database.connection import AsyncSessionLocal
 # 🌟 KPI Engine အသစ်ကို Import ပြုလုပ်ခြင်း
 from app.modules.kpi.engine import KPICalculationEngine
 from app.modules.kpi.models import PeriodType
+from app.modules.kpi.upload_jobs import (
+    prune_kpi_upload_jobs,
+    run_kpi_upload_pickup,
+)
 from app.modules.kpi.period_ranges import calendar_period_range
 from app.modules.tasks.scheduler import (
     generate_recurring_tasks,
@@ -346,6 +350,14 @@ async def _locked_formula_lifecycle():
     await _run_with_lock("formula.lifecycle", run_formula_lifecycle_job)
 
 
+async def _locked_kpi_upload_pickup():
+    await _run_with_lock("kpi_upload_job_pickup", run_kpi_upload_pickup)
+
+
+async def _locked_kpi_upload_prune():
+    await _run_with_lock("kpi_upload_job_prune", prune_kpi_upload_jobs)
+
+
 async def _run_sync_notification_job():
     await asyncio.to_thread(process_batch_notifications)
 
@@ -556,6 +568,31 @@ def start_scheduler():
         hour=8,
         minute=30,
         id="formula_lifecycle",
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+    )
+
+    # F6: KPI upload background jobs — the pickup claims and runs ONE
+    # job per tick (serial: two jobs on the same period would collide
+    # on the unique record constraint); a tick that finds the lock
+    # held simply skips. The prune hard-deletes finished jobs older
+    # than 30 days plus their staged objects and staging orphans.
+    scheduler.add_job(
+        _locked_kpi_upload_pickup,
+        "interval",
+        seconds=30,
+        id="kpi_upload_job_pickup",
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+    )
+    scheduler.add_job(
+        _locked_kpi_upload_prune,
+        "cron",
+        hour=3,
+        minute=45,
+        id="kpi_upload_job_prune",
         replace_existing=True,
         coalesce=True,
         max_instances=1,

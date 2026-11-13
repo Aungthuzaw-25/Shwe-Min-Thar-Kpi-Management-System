@@ -14,6 +14,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.timezone import as_application_time
 from app.modules.kpi.engine_helpers import (
+    load_month_targets,
     score_formula_categories,
     standardize_key,
     target_category_exceedances,
@@ -496,24 +497,32 @@ def _validate_formula_effective_month(
         raise ValueError("KPI record formula is not effective for the selected period.")
 
 
-async def _apply_record_snapshots(db, record, user, formula) -> None:
+async def _apply_record_snapshots(
+    db, record, user, formula, department_name: str | None = None
+) -> None:
     """Stamp the identity snapshots at calculation time (retention
     design): the person's name and the department name live ON the
     record, so a past score stays attributable after the account is
-    archived or removed."""
+    archived or removed.
+
+    department_name: pre-loaded name for formula.department_id
+    (the upload loop loads it once per department); when None it
+    is queried here, as before.
+    """
     name = f"{user.first_name or ''} {user.last_name or ''}".strip()
     if name:
         record.employee_name = name
     if formula.department_id is not None:
-        from app.modules.departments.models import Department
+        if department_name is None:
+            from app.modules.departments.models import Department
 
-        dept_name = (
-            await db.execute(
-                select(Department.name).where(Department.id == formula.department_id)
-            )
-        ).scalar_one_or_none()
-        if dept_name:
-            record.department_name = dept_name
+            department_name = (
+                await db.execute(
+                    select(Department.name).where(Department.id == formula.department_id)
+                )
+            ).scalar_one_or_none()
+        if department_name:
+            record.department_name = department_name
     if getattr(user, "resigned_at", None) is not None:
         record.employee_resigned_at = user.resigned_at
 
@@ -529,8 +538,11 @@ async def _save_kpi_record(
     total_score,
     percentage,
     explicit_record_id: UUID | None = None,
+    department_name: str | None = None,
+    period_locked: bool = False,
 ):
-    await _ensure_period_open(db, period)
+    if not period_locked:
+        await _ensure_period_open(db, period)
     statement = _kpi_record_statement(
         user, period_type, period_start, explicit_record_id
     )
@@ -547,7 +559,7 @@ async def _save_kpi_record(
             db, record, formula, period, period_end, total_score, percentage,
             explicit_record_id,
         )
-        await _apply_record_snapshots(db, record, user, formula)
+        await _apply_record_snapshots(db, record, user, formula, department_name)
         return record
     if explicit_record_id is not None:
         raise ValueError(KPI_RECORD_NOT_FOUND)
@@ -564,7 +576,7 @@ async def _save_kpi_record(
         percentage=percentage,
         status_bucket=KPICalculationEngine.get_grade(percentage),
     )
-    await _apply_record_snapshots(db, record, user, formula)
+    await _apply_record_snapshots(db, record, user, formula, department_name)
     db.add(record)
     return record
 
@@ -881,10 +893,33 @@ class KPICalculationEngine:
         context: KPICalculationContext | None = None,
         commit: bool = True,
         pending_notifications: list | None = None,
+        formula: KPIFormula | None = None,
+        period: KPIPeriod | None = None,
+        department_name: str | None = None,
+        period_locked: bool = False,
     ):
         """
-        Core Engine: Aggregates tasks, parses text-based deductions, calculates target completion, 
+        Core Engine: Aggregates tasks, parses text-based deductions, calculates target completion,
         and updates or creates the final KPI Record securely with Transaction rollback protection.
+
+        Returns the saved KPIRecord on the plain path (None when no
+        formula applied or the record is frozen/overridden); the
+        explicit-context path returns the resolved record as before.
+        Callers that ignore the return value are unaffected.
+
+        formula + period: pre-resolved by the caller (the upload
+        loop: validation already proved this formula applies to this
+        user + period). When BOTH are given, the per-row
+        re-resolution (period-by-date, assignment, formula,
+        period links) is skipped. When either is missing, the
+        engine resolves as before.
+        department_name: pre-loaded name for formula.department_id
+        (the upload loop loads it once per department).
+        period_locked: the caller already holds the period row lock
+        for this transaction (the upload loop locks once before the
+        loop), so the per-row _ensure_period_open re-fetch is
+        skipped. The lock is held to commit, so the status cannot
+        change mid-loop.
         """
         user_id = user.id if user is not None else None
         if user_id is None and context is not None:
@@ -902,7 +937,7 @@ class KPICalculationEngine:
                 period_end = resolved.period_end
                 period_type = resolved.record.period_type
                 explicit_record_id = resolved.record.id
-            else:
+            elif formula is None or period is None:
                 formula, period = await _resolve_default_formula_and_period(
                     db, user, period_start, period_end, period_type
                 )
@@ -912,12 +947,24 @@ class KPICalculationEngine:
             counts, values = await _collect_deductions(db, user, formula, period_start, period_end)
             merged_data = _merge_kpi_data(values, counts, task_data or {})
             target_month_str = as_application_time(period_start).strftime("%Y-%m")
+            # One Target load per (department, month) shared by
+            # scoring and exceedance — the two passes used to run
+            # the identical SELECT separately per row.
+            targets = None
+            if any(
+                category.get("evaluation_type") == "TARGET"
+                for category in (formula.categories or [])
+            ):
+                targets = await load_month_targets(
+                    db, formula.department_id, target_month_str
+                )
             total_score = await score_formula_categories(
                 db,
                 formula,
                 formula.department_id,
                 target_month_str,
                 merged_data,
+                targets=targets,
             )
             weighted_max = formula_max_score(formula)
             percentage = 0.0 if weighted_max <= 0 else min(100.0, max(0.0, total_score / weighted_max * 100.0))
@@ -925,6 +972,8 @@ class KPICalculationEngine:
                 saved_record = await _save_kpi_record(
                     db, user, formula, period, period_type, period_start, period_end,
                     total_score, percentage,
+                    department_name=department_name,
+                    period_locked=period_locked,
                 )
             else:
                 saved_record = await _save_kpi_record(
@@ -937,7 +986,8 @@ class KPICalculationEngine:
             exceedances = []
             if saved_record is not None:
                 exceedances = await target_category_exceedances(
-                    db, formula, formula.department_id, target_month_str, merged_data
+                    db, formula, formula.department_id, target_month_str, merged_data,
+                    targets=targets,
                 )
                 saved_record.exceeded_categories = exceedances
             if commit:
@@ -984,7 +1034,7 @@ class KPICalculationEngine:
                         logger.exception(
                             "Over-achievement notice failed for user %s", user.id
                         )
-            return resolved.record if explicit_record_id is not None else None
+            return resolved.record if explicit_record_id is not None else saved_record
         except Exception:
             await db.rollback()
             logger.exception("Critical error calculating KPI for user %s", user_id)

@@ -50,6 +50,22 @@ def _find_assigned_target(targets, std_cat_name: str, dept_id):
     return assigned_target
 
 
+async def load_month_targets(db, dept_id, target_month_str: str):
+    """The one Target load for a (department, month).
+
+    Scoring and exceedance both need the same rows; callers that
+    run both (the engine) load once and pass the list down
+    (``targets=``) instead of issuing the identical SELECT twice
+    per row. ``dept_id`` may be None (company-wide targets only).
+    """
+    stmt_target = select(Target).where(
+        Target.target_month == target_month_str,
+        Target.is_deleted == False,
+        or_(Target.department_id == dept_id, Target.department_id.is_(None)),
+    )
+    return (await db.execute(stmt_target)).scalars().all()
+
+
 async def calculate_target_based_score(
     db: AsyncSession,
     dept_id,
@@ -58,6 +74,7 @@ async def calculate_target_based_score(
     max_score: float,
     final_merged_data: dict[str, float],
     direction: str | None = None,
+    targets=None,
 ) -> float:
     """Return the score for a TARGET-based category.
 
@@ -65,13 +82,12 @@ async def calculate_target_based_score(
     ("HIGHER" = higher actual is better, "LOWER" = lower actual is
     better). When absent (legacy categories), the old inference
     applies: a COUNT metric_type means LOWER, anything else HIGHER.
+
+    targets: pre-loaded rows from load_month_targets (same
+    department + month); when None they are loaded here.
     """
-    stmt_target = select(Target).where(
-        Target.target_month == target_month_str,
-        Target.is_deleted == False,
-        or_(Target.department_id == dept_id, Target.department_id.is_(None)),
-    )
-    targets = (await db.execute(stmt_target)).scalars().all()
+    if targets is None:
+        targets = await load_month_targets(db, dept_id, target_month_str)
 
     assigned_target = _find_assigned_target(targets, std_cat_name, dept_id)
 
@@ -120,6 +136,7 @@ async def target_category_exceedances(
     dept_id,
     target_month_str: str,
     final_merged_data: dict[str, float],
+    targets=None,
 ) -> list[dict]:
     """Per-TARGET-category over-achievement info (score untouched).
 
@@ -130,6 +147,9 @@ async def target_category_exceedances(
     target, target <= 0, no actual) report exceeded=False and
     exceeded_pct=None. LOWER with actual == 0 is flagged separately
     (actual_zero) — a perfect zero, not an ordinary over-run.
+
+    targets: pre-loaded rows from load_month_targets (same
+    department + month); when None they are loaded here.
     """
     # No TARGET categories: never touch the targets table. (Some
     # calculation paths run against subset schemas without it, and
@@ -140,12 +160,8 @@ async def target_category_exceedances(
     ]
     if not target_categories:
         return []
-    stmt_target = select(Target).where(
-        Target.target_month == target_month_str,
-        Target.is_deleted == False,
-        or_(Target.department_id == dept_id, Target.department_id.is_(None)),
-    )
-    targets = (await db.execute(stmt_target)).scalars().all()
+    if targets is None:
+        targets = await load_month_targets(db, dept_id, target_month_str)
 
     entries = []
     for category in target_categories:
@@ -218,8 +234,14 @@ async def score_formula_categories(
     dept_id,
     target_month_str: str,
     final_merged_data: dict[str, float],
+    targets=None,
 ) -> float:
-    """Apply each formula category's scoring strategy and return the weighted total."""
+    """Apply each formula category's scoring strategy and return the weighted total.
+
+    targets: pre-loaded rows from load_month_targets (same
+    department + month); when None each TARGET category loads
+    them itself.
+    """
     total_weighted_score = 0.0
     categories = formula.categories or []
     scoring_rules = list(getattr(formula, "scoring_rules", None) or [])
@@ -244,6 +266,7 @@ async def score_formula_categories(
                 max_score=max_score,
                 final_merged_data=final_merged_data,
                 direction=category.get("direction"),
+                targets=targets,
             )
         else:
             cat_rules = [
