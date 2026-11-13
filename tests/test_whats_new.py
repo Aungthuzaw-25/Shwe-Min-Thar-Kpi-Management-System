@@ -336,6 +336,39 @@ def test_seed_is_idempotent_and_lists_newest_first(tmp_path):
     _run(_case, tmp_path)
 
 
+def test_seed_never_resurrects_soft_deleted_entry(tmp_path):
+    # The docstring promise: an entry an SA deliberately
+    # soft-deleted is never re-inserted by a later seed run
+    # (the title check sees the deleted row and skips it).
+    from app.modules.system.whats_new_seed import seed_whats_new
+
+    async def _case(db):
+        inserted, skipped = await seed_whats_new(db)
+        assert inserted == len(SEED_ENTRIES) == 15
+        victim = SEED_ENTRIES[0]["title"]
+        row = (
+            await db.execute(
+                select(WhatsNewEntry).where(WhatsNewEntry.title == victim)
+            )
+        ).scalars().first()
+        assert row is not None
+        await delete_whats_new_entry(entry_id=row.id, db=db, current_user=SA)
+        inserted2, skipped2 = await seed_whats_new(db)
+        assert inserted2 == 0
+        assert skipped2 == 15
+        rows = (
+            await db.execute(
+                select(WhatsNewEntry).where(WhatsNewEntry.title == victim)
+            )
+        ).scalars().all()
+        assert len(rows) == 1
+        assert rows[0].is_deleted is True
+        visible = await list_whats_new(db=db, current_user=SA, limit=100)
+        assert len(visible) == 14
+
+    _run(_case, tmp_path)
+
+
 def test_deleted_and_draft_never_leak_into_manage_lookups(tmp_path):
     async def _case(db):
         draft = await _seed_draft(db)
