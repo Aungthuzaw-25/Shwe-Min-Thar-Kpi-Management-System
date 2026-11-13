@@ -36,8 +36,11 @@ from app.modules.auth.models import AuthSession, LoginHistory, TokenBlacklist, U
 from app.modules.auth.oauth_state import (
     OAUTH_BINDING_COOKIE_NAME,
     consume_oauth_state,
+    create_oauth_mfa_challenge,
     create_oauth_state,
+    delete_oauth_mfa_challenge,
     get_oauth_redis,
+    read_oauth_mfa_challenge,
 )
 from app.modules.auth.oidc import (
     OIDCIdentity,
@@ -51,6 +54,7 @@ from app.modules.auth.schemas import (
     LoginRequest,
     MySessionListResponse,
     MySessionRow,
+    OAuthMfaVerifyRequest,
     RefreshTokenRequest,
     RefreshTokenResponse,
     TokenResponse,
@@ -973,6 +977,31 @@ async def _complete_oauth_user_login(
         return _oauth_error_redirect(
             "Your account is disabled. Please contact an administrator."
         )
+    # MFA (2026-11-07): an enrolled user must prove the rotating code
+    # before any session is issued — the OAuth path had no TOTP check
+    # at all (password login has had one since SA MFA began).
+    # Unenrolled users complete exactly as before: no code, no prompt.
+    # The challenge is a short-lived, single-use Redis record bound to
+    # this browser (the same binding the OAuth state used); the browser
+    # carries only the opaque token to the login page, which reuses
+    # its OTP step. last_login_at is NOT updated here — the login has
+    # not completed yet; the verify endpoint records it instead.
+    from app.modules.auth import sa_mfa
+
+    if sa_mfa.is_mfa_enrollable(user):
+        secret_row = await sa_mfa.confirmed_secret(db, user.id)
+        if secret_row is not None:
+            challenge = await create_oauth_mfa_challenge(
+                get_oauth_redis(request),
+                user_id=str(user.id),
+                provider=provider_name,
+                remember_me=bool(state_data.get("remember_me")),
+                browser_binding=_read_oauth_browser_binding(request) or "",
+            )
+            return RedirectResponse(
+                url=f"/auth/login?oauth_mfa_challenge={challenge}",
+                status_code=303,
+            )
     identity_row.last_login_at = utc_now_naive()
     auth_result = await AuthService.issue_authenticated_session(
         db,
@@ -1093,6 +1122,159 @@ async def microsoft_callback(request: Request, code: str | None = None, state: s
                              error: str | None = None, iss: str | None = None,
                              db: AsyncSession = Depends(get_db)):
     return await _complete_oauth_login(request, db, "microsoft", code, state, error, iss)
+
+
+@router.post("/oauth/mfa-verify")
+@limiter.limit("5/minute")
+async def verify_oauth_mfa(
+    request: Request,
+    response: Response,
+    payload: OAuthMfaVerifyRequest,
+    redis=Depends(get_oauth_redis),
+    db: AsyncSession = Depends(get_db),
+):
+    """Complete an OAuth login interrupted by the MFA challenge.
+
+    The challenge is read (not consumed) so a mistyped code can be
+    retried without restarting OAuth; it is deleted after the code
+    verifies and BEFORE the session is issued, so one challenge
+    mints at most one session. The code is verified with the SA
+    machinery exactly as on password login (same freeze, same
+    no-reuse, same generic failures, same fail-closed 503). Only
+    then is a session issued. The response carries no body tokens
+    — the OAuth flow is cookie-only, like the callback's redirect;
+    the frontend needs only ``redirect_to``.
+    """
+    from app.modules.auth import sa_mfa
+
+    challenge_data = await read_oauth_mfa_challenge(
+        redis, payload.challenge, _read_oauth_browser_binding(request)
+    )
+    user = (
+        await db.execute(
+            select(User)
+            .options(
+                selectinload(User.role),
+                selectinload(User.position),
+                selectinload(User.user_departments).selectinload(
+                    UserDepartment.department
+                ),
+            )
+            .where(User.id == UUID(challenge_data["user_id"]))
+        )
+    ).scalars().first()
+    # Fail closed on anything unexpected about the challenged user:
+    # a missing/disabled account, a role that can no longer enroll,
+    # or an enrollment cleared since the challenge was created all
+    # end here with the same generic failure as a wrong code. The
+    # user restarts OAuth and logs in cleanly as unenrolled.
+    if (
+        not user
+        or not user.is_active
+        or user.is_deleted
+        or not sa_mfa.is_mfa_enrollable(user)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": "MFA_INVALID",
+                "message": "Invalid authenticator code.",
+            },
+        )
+    secret_row = await sa_mfa.confirmed_secret(db, user.id)
+    if secret_row is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": "MFA_INVALID",
+                "message": "Invalid authenticator code.",
+            },
+        )
+    if not sa_mfa.normalize_code(payload.totp_code):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": "MFA_REQUIRED",
+                "message": "Enter the 6-digit code from your authenticator app.",
+            },
+        )
+    try:
+        frozen_until = await sa_mfa.is_totp_frozen(db, user.id)
+        if frozen_until is not None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={
+                    "code": "MFA_INVALID",
+                    "message": "Invalid authenticator code.",
+                },
+            )
+        secret, key_label = sa_mfa.decrypt_secret_with_key(
+            secret_row.secret_encrypted
+        )
+        step = sa_mfa.matching_step(secret, payload.totp_code)
+    except sa_mfa.MFAConfigError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "MFA_UNAVAILABLE",
+                "message": "Authenticator verification is not available right now.",
+            },
+        )
+    if step is None:
+        await sa_mfa.record_wrong_totp(db, user.id)
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": "MFA_INVALID",
+                "message": "Invalid authenticator code.",
+            },
+        )
+    # Strict no-reuse: a step consumed by an earlier login is
+    # rejected even inside its window. A replay is not a wrong code,
+    # so it does not feed the freeze counter — it simply fails closed.
+    if not await sa_mfa.consume_totp_step(db, user.id, step):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": "MFA_INVALID",
+                "message": "Invalid authenticator code.",
+            },
+        )
+    await sa_mfa.clear_totp_attempts(db, user.id)
+    # Key rotation: a secret that still needed the previous key moves
+    # to the current key now that its code was fully accepted.
+    sa_mfa.reencrypt_if_previous_key(secret_row, secret, key_label)
+    # Single-use: delete the challenge BEFORE issuing the session,
+    # so it can never mint a second one. A Redis failure here fails
+    # the login (503) instead of issuing a session for a challenge
+    # that may still be replayable.
+    await delete_oauth_mfa_challenge(redis, payload.challenge)
+    # The login completes here, so record it on the OAuth account
+    # (the callback skipped last_login_at — the login had not
+    # completed yet when the challenge was created).
+    identity_row = (
+        await db.execute(
+            select(OAuthAccount).where(
+                OAuthAccount.user_id == user.id,
+                OAuthAccount.provider == challenge_data["provider"],
+                OAuthAccount.revoked_at.is_(None),
+            )
+        )
+    ).scalars().first()
+    if identity_row is not None:
+        identity_row.last_login_at = utc_now_naive()
+    remember_me = bool(challenge_data.get("remember_me"))
+    auth_result = await AuthService.issue_authenticated_session(
+        db,
+        user,
+        request.client.host if request.client else UNKNOWN_VALUE,
+        request.headers.get(USER_AGENT_HEADER, UNKNOWN_VALUE),
+        remember_me,
+        audit_action="OAUTH_LOGIN",
+    )
+    _set_auth_cookies(response, request, auth_result, remember_me)
+    return {"redirect_to": _dashboard_path(user)}
 
 
 async def _link_start(request: Request, provider_name: str, user: User, db: AsyncSession, redis):

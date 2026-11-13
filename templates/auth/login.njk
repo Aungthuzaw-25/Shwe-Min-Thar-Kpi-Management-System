@@ -842,6 +842,15 @@
             window.history.replaceState({}, document.title, window.location.pathname);
         }
 
+        // OAuth MFA challenge (2026-11-07): the backend redirects an
+        // enrolled OAuth user here with ?oauth_mfa_challenge=<token>
+        // and NO session. The SAME OTP step below collects the code.
+        // The token lives only in this const (read from the URL) and
+        // the verify body — never logged, never stored. Unlike
+        // oauth_error above, the query string is NOT stripped here: a
+        // mistyped code must be retryable with the same challenge.
+        const oauthChallenge = new URLSearchParams(window.location.search).get('oauth_mfa_challenge');
+
         const loginQuery = new URLSearchParams(window.location.search);
         if (loginQuery.get('session_expired') === 'true') {
             document.getElementById('sessionExpiredNotice').classList.remove('hidden');
@@ -945,6 +954,15 @@
             document.querySelectorAll('[data-login-step="otp"]').forEach((el) => {
                 el.classList.toggle('hidden', !showOtp);
             });
+            // The password fields are hidden on the code step: an
+            // empty required field blocks the submit before the
+            // handler runs ("An invalid form control ... is not
+            // focusable"). In the password flow they are filled by
+            // then; in the OAuth challenge flow they are never
+            // filled, so drop required on the code step and restore
+            // it on the way back.
+            document.getElementById('email').required = !showOtp;
+            document.getElementById('password').required = !showOtp;
             document.getElementById('loginSubmitBtn').innerText = showOtp ? 'Verify code' : 'Sign in';
             if (showOtp && otp) {
                 otp.clear();
@@ -954,6 +972,13 @@
             }
         }
         document.getElementById('otpBackBtn').addEventListener('click', () => setLoginStep(false));
+
+        // OAuth MFA mode: the user arrived from the OAuth callback
+        // with a challenge, not from the password step — show the OTP
+        // step immediately. The password step stays reachable via the
+        // back button (a plain password login then abandons the
+        // challenge, which expires on its own).
+        if (oauthChallenge) setLoginStep(true);
 
         document.getElementById('loginForm').addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -984,6 +1009,70 @@
             submitBtn.disabled = true;
 
             try {
+                // OAuth MFA challenge mode: the OTP step collects the code
+                // for the challenge the OAuth callback created. Same step,
+                // same messages as the password flow below — only the
+                // endpoint and the success redirect differ. The session
+                // arrives as a cookie; the server returns only
+                // redirect_to, no body token, so nothing is stored here.
+                if (oauthChallenge && otpStep) {
+                    submitBtn.innerHTML = `<span class="app-spinner"></span>Verifying...`;
+                    submitBtn.disabled = true;
+
+                    const verifyResponse = await fetch('/api/v1/auth/oauth/mfa-verify', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({ challenge: oauthChallenge, totp_code: totpCode })
+                    });
+
+                    if (verifyResponse.ok) {
+                        const verifyData = await verifyResponse.json();
+                        window.location.href = verifyData.redirect_to || '/dashboard';
+                        return;
+                    }
+
+                    // Text-first read, same as the password flow: a
+                    // non-JSON error body must show its status, not
+                    // masquerade as a network error.
+                    const verifyText = await verifyResponse.text().catch(() => "");
+                    let verifyError = null;
+                    try { verifyError = verifyText ? JSON.parse(verifyText) : {}; } catch (_) { verifyError = null; }
+                    if (verifyError === null) {
+                        window.showToast(`Server error (${verifyResponse.status})`, 'error');
+                    } else if (verifyError.detail?.code === 'MFA_INVALID') {
+                        // Wrong, frozen, or replayed code: plain message,
+                        // boxes cleared for a fresh retry, stay on step.
+                        // The challenge is NOT consumed by a wrong code,
+                        // so the same challenge retries.
+                        window.showToast(verifyError.detail.message || 'Invalid authenticator code.', 'error');
+                        if (otp) {
+                            otp.clear();
+                            otp.focus();
+                        }
+                    } else if (verifyError.detail?.code === 'MFA_UNAVAILABLE') {
+                        // Config problem on the server (fail-closed 503):
+                        // plain message, stay on the step for a retry.
+                        window.showToast(verifyError.detail.message || 'Authenticator verification is not available right now.', 'error');
+                    } else if (verifyError.detail?.code === 'MFA_REQUIRED') {
+                        // The client already guards incomplete codes, so
+                        // this should not arrive; show the backend's
+                        // helper text rather than silently staying put
+                        // (the password flow shows the step instead,
+                        // which is already visible here).
+                        window.showToast(verifyError.detail.message || 'Enter the 6-digit code from your authenticator app.', 'error');
+                    } else {
+                        // Expired/missing challenge (400 "Invalid OAuth
+                        // state.") or anything else: show the server's
+                        // string detail when there is one — a dead
+                        // challenge cannot be retried, the user restarts
+                        // OAuth — else the generic code message.
+                        const verifyDetail = verifyError.detail;
+                        window.showToast(typeof verifyDetail === 'string' ? verifyDetail : 'Invalid authenticator code.', 'error');
+                    }
+                    return;
+                }
+
                 const body = { email, password, remember_me: rememberMe };
                 if (totpCode) body.totp_code = totpCode;
                 const response = await fetch('/api/v1/auth/login', {
