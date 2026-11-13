@@ -179,6 +179,11 @@ async def confirm_totp(
             status_code=400,
             detail="Run setup first." if row is None else "MFA is already enrolled.",
         )
+    # Freeze (same as login): 5 wrong codes freeze TOTP verification
+    # for 1 hour for this account only. A frozen code fails with the
+    # same generic error as a wrong code — the caller learns nothing.
+    if await sa_mfa.is_totp_frozen(db, current_user.id) is not None:
+        raise HTTPException(status_code=400, detail="Invalid authenticator code.")
     try:
         secret = sa_mfa.decrypt_secret(row.secret_encrypted)
         code_ok = sa_mfa.verify_code(secret, payload.get("code"))
@@ -187,7 +192,10 @@ async def confirm_totp(
             status_code=503, detail="Authenticator verification is not available right now."
         ) from None
     if not code_ok:
+        await sa_mfa.record_wrong_totp(db, current_user.id)
+        await db.commit()
         raise HTTPException(status_code=400, detail="Invalid authenticator code.")
+    await sa_mfa.clear_totp_attempts(db, current_user.id)
     row.is_confirmed = True
     row.confirmed_at = sa_mfa.utcnow()
     await sa_mfa.audit_mfa(
