@@ -1,8 +1,11 @@
+import hashlib
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy import false, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -36,6 +39,35 @@ from app.modules.users.models import Position, User
 # (D3 payload question is still pending), so this module keeps its
 # own SA+Admin checker instead of importing it from users.router.
 admin_checker = RoleChecker(["Super Admin", "Admin"])
+
+
+def _dashboard_rate_limit_key(request: Request) -> str:
+    """Rate-limit bucket for the expensive dashboard endpoints (F9).
+
+    Per Bearer token when present, else per client IP. The office
+    shares one external IP, so a pure-IP key would let one stuck
+    client (or retry loop) block the whole office once the bucket
+    fills; a token bucket isolates each signed-in user. The token
+    itself is never stored — only a truncated hash of it, used as
+    the bucket name. Cookie-only callers fall back to the IP.
+    """
+    auth = request.headers.get("authorization", "")
+    if auth.startswith("Bearer "):
+        digest = hashlib.sha256(auth[7:].encode()).hexdigest()[:16]
+        return f"token:{digest}"
+    return get_remote_address(request)
+
+
+# Module-local limiter (same pattern as the auth router): in-memory,
+# per-process, so limits still apply when Redis is down.
+limiter = Limiter(key_func=_dashboard_rate_limit_key)
+
+# A dashboard page load calls two of these (summary + overview); a
+# human loads at most a few pages a minute. 120/minute per token
+# leaves that untouched while a retry loop hammering an uncached
+# aggregate hits the wall. Monthly averages (4 stmts) and the
+# cached legacy summaries are not limited.
+DASHBOARD_READ_LIMIT = "120/minute"
 
 DEPARTMENT_NOT_FOUND_DETAIL = "Department not found."
 
@@ -92,7 +124,9 @@ def _completion_percentage(completed_tasks: int, total_tasks: int) -> float:
     tags=["Unified Dashboard"],
     responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}},
 )
+@limiter.limit(DASHBOARD_READ_LIMIT)
 async def fetch_unified_dashboard_summary(
+    request: Request,
     period_type: PeriodType = Query(PeriodType.MONTHLY),
     period_start: datetime | None = Query(None),
     period_end: datetime | None = Query(None),
@@ -339,7 +373,9 @@ async def _apply_department_filter(
         422: {"description": "Unprocessable Entity"},
     },
 )
+@limiter.limit(DASHBOARD_READ_LIMIT)
 async def fetch_executive_overview(
+    request: Request,
     period_id: UUID | None = Query(None),
     period_start: datetime | None = Query(None),
     period_end: datetime | None = Query(None),
@@ -807,7 +843,9 @@ async def _get_dashboard_task_summary(db: AsyncSession, current_user: User) -> d
 
 
 @superadmin_router.get("/summary/role-scope", tags=["Dashboard"])
+@limiter.limit(DASHBOARD_READ_LIMIT)
 async def fetch_dashboard_role_summary(
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(admin_checker),
 ) -> dict[str, Any]:
@@ -817,7 +855,9 @@ async def fetch_dashboard_role_summary(
 
 
 @superadmin_router.get("/process-tracking", tags=["Dashboard"])
+@limiter.limit(DASHBOARD_READ_LIMIT)
 async def fetch_process_tracking_summary(
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(admin_checker),
 ) -> dict[str, Any]:
@@ -1086,18 +1126,38 @@ async def _compute_admin_dashboard_summary(
         raise HTTPException(status_code=403, detail="Access Denied. You do not have permission to perform this action.")
 
     department_ids = await _get_admin_scope_departments(db, current_user)
-    total_users, active_users = await _admin_user_counts(db, current_user, department_ids)
-    department_count = await _admin_department_count(db, department_ids)
-    task_counts = await _admin_task_counts(db, current_user, department_ids)
+    # F3 (2026-11-06): the seven builders are independent (each needs
+    # only department_ids + the caller, both already in memory), so
+    # they run concurrently on separate sessions instead of one wave
+    # each. Same statements, same values — only execution order
+    # changed. Statement count is unchanged; the wave count drops
+    # from ~8 to ~2.
+    (
+        (total_users, active_users),
+        department_count,
+        task_counts,
+        average_kpi,
+        position_count,
+        users_by_department,
+        kpi_by_department,
+    ) = await gather_on_sessions(
+        db,
+        [
+            lambda s: _admin_user_counts(s, current_user, department_ids),
+            lambda s: _admin_department_count(s, department_ids),
+            lambda s: _admin_task_counts(s, current_user, department_ids),
+            lambda s: _admin_average_kpi(s, current_user, department_ids),
+            lambda s: _admin_position_count(s, department_ids),
+            lambda s: _admin_users_by_department(s, department_ids),
+            lambda s: _admin_kpi_by_department(s, department_ids),
+        ],
+    )
     total_tasks = int(task_counts.total_tasks or 0)
     pending_approvals = int(task_counts.pending_approvals or 0)
     completed_tasks = int(task_counts.completed_tasks or 0)
     rejected_tasks = int(task_counts.rejected_tasks or 0)
     overdue_tasks = int(task_counts.overdue_tasks or 0)
     late_tasks = int(task_counts.late_tasks or 0)
-    average_kpi = await _admin_average_kpi(db, current_user, department_ids)
-    position_count = await _admin_position_count(db, department_ids)
-    users_by_department = await _admin_users_by_department(db, department_ids)
 
     task_summary = {
         "total": total_tasks,
@@ -1110,8 +1170,6 @@ async def _compute_admin_dashboard_summary(
         "late": late_tasks,
         "completion_percentage": _completion_percentage(completed_tasks, total_tasks),
     }
-
-    kpi_by_department = await _admin_kpi_by_department(db, department_ids)
 
     # KPIRecord stores an aggregate score for a formula/period, not a
     # per-category result. Task.category is an operational label and cannot be
@@ -1192,81 +1250,89 @@ async def _compute_superadmin_dashboard_data(
         .scalar_subquery()
         .label("completed_kpis"),
     )
-    metrics = (await db.execute(metrics_stmt)).one()
+    # F3 (2026-11-06): the four statements are independent, so they
+    # run concurrently on separate sessions instead of one wave each.
+    # The statements and the row-shaping below are unchanged; only
+    # execution order changed. Statement count is unchanged; the wave
+    # count drops from 4 to 1.
+    async def _metrics_job(session: AsyncSession):
+        return (await session.execute(metrics_stmt)).one()
+
+    async def _alerts_job(session: AsyncSession):
+        # 🌟 6. Recent Alerts List (BUG & TIMEZONE FIXES)
+        recent_alerts_stmt = (
+            select(Notification, User)
+            .outerjoin(User, Notification.user_id == User.id)
+            .where(Notification.is_read.is_(False), Notification.is_deleted.is_(False))
+            .order_by(Notification.created_at.desc())
+            .limit(6)
+        )
+        recent_alerts_req = await session.execute(recent_alerts_stmt)
+        yangon_tz = APPLICATION_TIMEZONE
+        recent_alerts = []
+        for n, u in recent_alerts_req.all():
+            # 🛡️ Convert Database Naive UTC to Asia/Yangon Local Time
+            local_time = n.created_at.replace(tzinfo=UTC).astimezone(yangon_tz)
+            # 🛡️ Extract actual user name or fallback to System
+            user_name = f"{u.first_name} {u.last_name}" if u else "System Alert"
+            recent_alerts.append({
+                "name": user_name,
+                "title": n.title,
+                "message": n.message, # 🛡️ Ensures detailed context is sent to UI
+                "time": local_time.strftime("%d %b %Y, %I:%M %p")
+            })
+        return recent_alerts
+
+    async def _top_depts_job(session: AsyncSession):
+        # 7. Top Performing Departments
+        top_depts_stmt = (
+            select(
+                Department.name,
+                func.avg(KPIRecord.percentage).label("avg_completion")
+            )
+            .join(KPIRecord, (Department.id == KPIRecord.department_id) & (KPIRecord.is_deleted == False))
+            .where(Department.is_deleted == False)
+            .group_by(Department.name)
+            .order_by(func.avg(KPIRecord.percentage).desc())
+            .limit(5)
+        )
+        top_depts_req = await session.execute(top_depts_stmt)
+        top_departments = []
+        for row in top_depts_req.all():
+            top_departments.append({
+                "name": row[0],
+                "completion": round(row[1] or 0.0, 1),
+                "avg_score": round(row[1] or 0.0, 2),
+                "trend": 0.0
+            })
+        return top_departments
+
+    async def _trend_job(session: AsyncSession):
+        trend_stmt = (
+            select(
+                func.date(KPIRecord.period_start).label("period"),
+                func.avg(KPIRecord.percentage).label("average")
+            )
+            .where(KPIRecord.period_start.is_not(None), KPIRecord.is_deleted == False)
+            .group_by(func.date(KPIRecord.period_start))
+            .order_by(func.date(KPIRecord.period_start).desc())
+            .limit(7)
+        )
+        trend_rows = (await session.execute(trend_stmt)).all()
+        trend_rows.reverse()
+        return {
+            "labels": [row.period.strftime("%d %b") if hasattr(row.period, "strftime") else str(row.period) for row in trend_rows],
+            "data": [round(float(row.average or 0.0), 2) for row in trend_rows],
+        }
+
+    metrics, recent_alerts, top_departments, trend = await gather_on_sessions(
+        db, [_metrics_job, _alerts_job, _top_depts_job, _trend_job]
+    )
     total_users = metrics.total_users or 0
     total_depts = metrics.total_departments or 0
     active_alerts = metrics.active_alerts or 0
     total_kpis = metrics.total_kpis or 0
     completed_kpis = metrics.completed_kpis or 0
-
-    # =========================================================
-    # 🌟 6. Recent Alerts List (BUG & TIMEZONE FIXES)
-    # =========================================================
-    recent_alerts_stmt = (
-        select(Notification, User)
-        .outerjoin(User, Notification.user_id == User.id)
-        .where(Notification.is_read.is_(False), Notification.is_deleted.is_(False))
-        .order_by(Notification.created_at.desc())
-        .limit(6)
-    )
-    recent_alerts_req = await db.execute(recent_alerts_stmt)
-    
-    yangon_tz = APPLICATION_TIMEZONE
-    recent_alerts = []
-    
-    for n, u in recent_alerts_req.all():
-        # 🛡️ Convert Database Naive UTC to Asia/Yangon Local Time
-        local_time = n.created_at.replace(tzinfo=UTC).astimezone(yangon_tz)
-        
-        # 🛡️ Extract actual user name or fallback to System
-        user_name = f"{u.first_name} {u.last_name}" if u else "System Alert"
-        
-        recent_alerts.append({
-            "name": user_name,
-            "title": n.title, 
-            "message": n.message, # 🛡️ Ensures detailed context is sent to UI
-            "time": local_time.strftime("%d %b %Y, %I:%M %p")
-        })
-
-    # 7. Top Performing Departments
-    top_depts_stmt = (
-        select(
-            Department.name,
-            func.avg(KPIRecord.percentage).label("avg_completion")
-        )
-        .join(KPIRecord, (Department.id == KPIRecord.department_id) & (KPIRecord.is_deleted == False))
-        .where(Department.is_deleted == False)
-        .group_by(Department.name)
-        .order_by(func.avg(KPIRecord.percentage).desc())
-        .limit(5)
-    )
-    top_depts_req = await db.execute(top_depts_stmt)
-    
-    top_departments = []
-    for row in top_depts_req.all():
-        top_departments.append({
-            "name": row[0],
-            "completion": round(row[1] or 0.0, 1),
-            "avg_score": round(row[1] or 0.0, 2),
-            "trend": 0.0 
-        })
-
-    trend_stmt = (
-        select(
-            func.date(KPIRecord.period_start).label("period"),
-            func.avg(KPIRecord.percentage).label("average")
-        )
-        .where(KPIRecord.period_start.is_not(None), KPIRecord.is_deleted == False)
-        .group_by(func.date(KPIRecord.period_start))
-        .order_by(func.date(KPIRecord.period_start).desc())
-        .limit(7)
-    )
-    trend_rows = (await db.execute(trend_stmt)).all()
-    trend_rows.reverse()
-    trend = {
-        "labels": [row.period.strftime("%d %b") if hasattr(row.period, "strftime") else str(row.period) for row in trend_rows],
-        "data": [round(float(row.average or 0.0), 2) for row in trend_rows],
-    }
 
     return {
         "metrics": {
