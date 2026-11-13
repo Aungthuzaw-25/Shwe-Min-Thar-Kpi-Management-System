@@ -120,19 +120,29 @@ def _get_code_heads() -> set[str] | None:
     return _CODE_HEADS
 
 
-async def _check_db(db: AsyncSession) -> dict:
-    started = time.monotonic()
-    try:
-        await db.execute(text("SELECT 1"))
-    except Exception:
-        logger.exception("System health: database connection failed.")
-        return _component(
-            FAIL,
-            "The database could not be reached.",
-            {"connection": "failed"},
-            issue=("db_connection", "unreachable", "reachable"),
-        )
-    latency_ms = int((time.monotonic() - started) * 1000)
+async def _check_db(db: AsyncSession, *, latency_ms: int | None = None) -> dict:
+    # When the caller already measured the SELECT 1 latency on the request
+    # session (collect_system_health does this before the fan-out), use it:
+    # a probe timed inside the concurrent gather measures queue wait
+    # behind the other checks, not database latency — under a loaded VM
+    # that wait crossed the 1000ms FAIL line and flipped the whole
+    # payload to FAIL (QA freeze gate, 2026-11-13).
+    if latency_ms is None:
+        started = time.monotonic()
+        try:
+            await db.execute(text("SELECT 1"))
+        except Exception:
+            logger.exception("System health: database connection failed.")
+            return _component(
+                FAIL,
+                "The database could not be reached.",
+                {"connection": "failed"},
+                issue=("db_connection", "unreachable", "reachable"),
+            )
+        latency_ms = int((time.monotonic() - started) * 1000)
+    # When latency_ms was supplied, reachability was already proven by
+    # the caller's probe on the same engine moments earlier — no second
+    # SELECT 1 (the perf golden test pins the health statement count).
 
     db_version = None
     try:
@@ -660,6 +670,18 @@ async def collect_system_health(db: AsyncSession) -> dict:
         )
     ).scalar() or 0
 
+    # Measure DB latency on the request session BEFORE the concurrent
+    # fan-out: inside the gather the seven checks share one connection
+    # (one pool in production), so a probe timed there measures queue
+    # wait, not database latency.
+    try:
+        _started = time.monotonic()
+        await db.execute(text("SELECT 1"))
+        db_latency_ms: int | None = int((time.monotonic() - _started) * 1000)
+    except Exception:
+        # _check_db re-probes on its own session and reports unreachable.
+        db_latency_ms = None
+
     # F8 (2026-11-06): the seven components are independent, so they
     # run concurrently on separate sessions instead of one wave each.
     # Same checks, same payload — only execution order changed. The
@@ -678,7 +700,7 @@ async def collect_system_health(db: AsyncSession) -> dict:
     results = await gather_on_sessions(
         db,
         [
-            lambda s: _check_db(s),
+            lambda s: _check_db(s, latency_ms=db_latency_ms),
             lambda s: _check_data_integrity(s),
             lambda s: _check_data_flow(s, now),
             lambda s: _check_security(s, now, active_sessions),
