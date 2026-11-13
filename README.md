@@ -22,8 +22,9 @@ A highly scalable, secure, and asynchronous Key Performance Indicator (KPI) Mana
 *   **⏳ Professional Loading:** A frosted-glass loading overlay, glass skeleton placeholders while dashboard cards load, and consistent busy states on buttons. Animations are reduced automatically for users who prefer reduced motion.
 *   **🟢 User Presence:** User Management shows each user's online status, last active time, and last offline time, so Admins can see who is around at a glance.
 *   **🔀 Smooth Page Transitions:** Page content fades and rises softly as it opens, the loading overlay appears while moving between internal pages, and the sidebar animates in with a smooth active-item highlight. Animations are reduced automatically for users who prefer reduced motion.
-*   **⚡ Performance Caching:** Gzip and a proxy cache for static files, a Redis-backed cache for dashboard summaries, and a short-lived per-session cache for page context in the web tier, so repeated page loads call the API less and render faster. The session timeout from System Settings is honoured at login and token refresh.
-*   **📥 Data Import Engine:** Background processing for heavy Excel/CSV data imports using Pandas and FastAPI `BackgroundTasks`.
+*   **⚡ Performance Caching:** Gzip and a proxy cache for static files, a Redis-backed cache for dashboard summaries with scoped invalidation per endpoint group, and a short-lived per-session cache for page context in the web tier, so repeated page loads call the API less and render faster. The session timeout from System Settings is honoured at login and token refresh. Real page-load timing is measured with a RUM beacon that posts to a log-only endpoint, so performance is judged on real users, not guesses.
+*   **📥 Data Import Engine:** Monthly Excel/CSV uploads run as scheduler-driven background jobs: the upload returns 202 with a job id, the scheduler picks the job up, runs the import in one transaction, and the UI polls the job status until it succeeds or fails. openpyxl parses the workbook (.xlsx) and Python's `csv` module parses .csv files; FastAPI `BackgroundTasks` is also used for KPI calculation triggers and notification emails.
+*   **🔑 Multi-Factor Authentication:** Super Admins sign in with password + Google Authenticator TOTP on every password login (peer-Super-Admin reset and a break-glass token are the only recovery paths); Admin/HR can opt in to the same Authenticator; OAuth login enforces the TOTP code for enrolled users.
 *   **🔔 Notification System:** Centralized in-app alerts and background email notifications.
 *   **🛡️ Enterprise Security:** XSS Prevention (Global HTML Escaping), SQL Injection protection, Rate Limiting (`slowapi`), JWT Authentication, and Universal Auth Guards.
 
@@ -35,7 +36,7 @@ A highly scalable, secure, and asynchronous Key Performance Indicator (KPI) Mana
 
 - Python 3.11 or newer
 - PostgreSQL, Redis, and an S3-compatible object store (MinIO for local use)
-- Node.js 22+ for the Express/Nunjucks UI and Tailwind CSS
+- Node.js 26.12.1 for the Express/Nunjucks UI and Tailwind CSS (pinned in `web/package.json`, CI, and the Dockerfile)
 - Docker Engine and the Docker Compose v2 plugin for the isolated QA stack
 - `libmagic` for `python-magic` (for example, `libmagic1` on Debian/Ubuntu)
 
@@ -129,6 +130,8 @@ uv pip compile requirements-dev.txt --python-version 3.11 --python-platform x86_
 ```
 
 Review and test lock updates before merging them.
+
+Node tests run with Vitest from the web tier: `cd web && npm test`.
 
 ## GitHub Actions
 
@@ -236,6 +239,10 @@ control. `.env` and other real environment files are Git-ignored;
   For Docker deployments, the existing entrypoint reads Railway's injected
   `PORT`. Verify the deployment health check and logs after redeploy; do not
   paste secret values into source files or build arguments.
+  **Note:** the Railway deployment is currently paused and the Express web
+  tier is not deployed there, so redeploying the API service alone would
+  return 404 for every page (the API no longer serves pages). Do not redeploy
+  on Railway until the web tier exists there.
 - **DigitalOcean App Platform:** Set the same values as encrypted/secret
   application environment variables for the FastAPI component and deploy a
   new release. **Droplets or Docker hosts:** inject them through a protected
@@ -273,11 +280,12 @@ different network exposure.
 
 ## 🛠️ Tech Stack
 
-*   **Backend:** Python 3.11+, FastAPI, Uvicorn
-*   **Database & ORM:** PostgreSQL, SQLAlchemy 2.0 (Async), Alembic
+*   **Backend:** Python 3.11, FastAPI, Gunicorn + Uvicorn, APScheduler (background jobs)
+*   **Database & ORM:** PostgreSQL (Neon in production; advisory locks for the scheduler), SQLAlchemy 2.0 (Async), Alembic
+*   **Cache & Coordination:** Redis (dashboard cache with scoped invalidation, rate limiting, OAuth state)
 *   **Storage:** MinIO (S3 Compatible), Boto3
-*   **Frontend:** Express, Nunjucks templates, Tailwind CSS, Vanilla JS, Chart.js
-*   **Security:** Passlib (Bcrypt), PyJWT, python-magic
+*   **Frontend:** Express, Nunjucks templates, Tailwind CSS, Vanilla JS, Chart.js, Vitest
+*   **Security:** argon2id password hashing via Passlib (bcrypt is legacy-only), PyJWT (HS256), TOTP MFA (standard library + Fernet), python-magic
 *   **Deployment:** Docker and Docker Compose; terminate public HTTPS at a separately configured reverse proxy or load balancer
 
 ---
@@ -305,7 +313,6 @@ kpi-platform/
 │   │   └── users/
 │   ├── services/            # Global services (StorageService, DocumentService, EmailService)
 │   ├── utils/               # Shared utilities (audit, file handling)
-│   ├── web/                 # HTML page routes served by the API app
 │   └── main.py              # FastAPI application entry point
 ├── web/                     # Express/Nunjucks web tier (server, routes, tests)
 ├── migrations/              # Alembic migrations
