@@ -9,6 +9,16 @@ Mounted under ``/api/v1/auth`` as ``/sa-mfa/*``:
 - ``POST /sa-mfa/recover`` (public): TOTP re-entry for a logged-out
   or password-locked SA — one generic failure message for every
   failure, so nothing about the account leaks.
+- ``POST /sa-mfa/recover-available`` (public): does the entered
+  email belong to an enrolled SA, i.e. should the login page even
+  offer "Recover with Authenticator"? True only for an enrolled
+  SA; nonexistent / non-SA / unenrolled all answer False alike.
+- ``POST /sa-mfa/break-glass-reset-password`` (public): owner-token
+  password reset for an UNENROLLED SA who forgot the password —
+  email + break-glass token + new password, no current password,
+  no TOTP. Enrolled SAs are refused (they use recover instead).
+  One generic failure for every bad input, audited, other SAs
+  notified, token rotation reminded after use.
 - ``POST /sa-mfa/reset-password`` (via_recovery session only):
   set a new password once, without the old password.
 - ``POST /sa-mfa/reset-requests`` (public): phone-lost request.
@@ -360,6 +370,44 @@ async def recover_with_totp(
     return auth_result
 
 
+@router.post("/sa-mfa/recover-available")
+@limiter.limit("5/minute")
+async def recover_available(
+    request: Request,
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+):
+    """Should the login page offer "Recover with Authenticator"?
+
+    The link is only meaningful for an account that actually has
+    an Authenticator linked — an unenrolled SA clicking it lands
+    on a dead end. The Frontend asks here (with the email the user
+    typed) and hides the link unless this answers True.
+
+    Oracle trade-off, by design: the answer is True ONLY for an
+    enrolled Super Admin, and False — same shape, no detail — for
+    a nonexistent email, a non-SA, an inactive/deleted account,
+    and an unenrolled SA alike. So a passwordless probe can tell
+    an enrolled SA's email apart from everything else, but it
+    cannot tell a real-but-unenrolled account from a made-up one.
+    The 5/minute rate limit slows enumeration, and the enrolled-SA
+    set is tiny (≥2) and already known to staff. Security weighs
+    this on the gate. The TOTP freeze and the password lockout are
+    deliberately ignored here — both are temporary, and recovery
+    clears the lockout.
+    """
+    email = (payload.get("email") or "").strip().lower()
+    user = await AuthService._find_user_for_authentication(db, email)
+    available = (
+        user is not None
+        and user.is_active
+        and not user.is_deleted
+        and sa_mfa.is_super_admin(user)
+        and await sa_mfa.has_confirmed_totp(db, user.id)
+    )
+    return {"recover_available": available}
+
+
 @router.post("/sa-mfa/break-glass")
 @limiter.limit("5/minute")
 async def break_glass_reset(
@@ -434,6 +482,108 @@ async def break_glass_reset(
             "change the break-glass token immediately.",
         )
     return {"message": "Authenticator MFA turned off. Sign in with your password and set it up again."}
+
+
+@router.post("/sa-mfa/break-glass-reset-password")
+@limiter.limit("5/minute")
+async def break_glass_reset_password(
+    request: Request,
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+):
+    """Owner-token password reset for an UNENROLLED SA (2026-11-13).
+
+    The lockout trap: an SA who never enrolled in Authenticator and
+    forgets the password has no way back — break-glass needs the
+    CURRENT password, recover needs a TOTP code, and peer reset
+    needs another SA to act. This endpoint closes that hole with
+    no peer needed: email + break-glass token + new password, no
+    current password, no TOTP. The token is the owner-held
+    emergency credential; this is exactly what it is for.
+
+    Scope is deliberately narrow: ONLY an SA with NO confirmed
+    TOTP secret is served. An enrolled SA is refused with the same
+    generic 401 — they already have recover (email + code) — so
+    the token can never bypass an enrolled account's TOTP. MFA is
+    not touched here at all, and the existing break-glass MFA
+    reset is unchanged. Strength is checked FIRST (before any
+    account lookup, so its 400 leaks nothing); history is checked
+    after the token verifies, like the peer reset. On success the
+    password lockout is cleared (the SA may be locked from wrong
+    guesses), all sessions are revoked, the reset is audited, the
+    SA and the other SAs are emailed, and the caller is told to
+    rotate the token after use.
+    """
+    if not sa_mfa.break_glass_configured():
+        raise HTTPException(
+            status_code=503, detail="Authenticator break-glass recovery is not available right now."
+        )
+    new_password = payload.get("new_password") or ""
+    if payload.get("confirm_new_password") is not None and payload["confirm_new_password"] != new_password:
+        raise HTTPException(status_code=400, detail="New password confirmation does not match.")
+    validate_password_strength(new_password, **(await get_password_policy(db)))
+    email = (payload.get("email") or "").strip().lower()
+    token = payload.get("break_glass_token") or ""
+    failure = HTTPException(
+        status_code=401, detail="Invalid email, break-glass token, or account state."
+    )
+    user = await AuthService._find_user_for_authentication(db, email)
+    if (
+        not user
+        or not user.is_active
+        or user.is_deleted
+        or not sa_mfa.is_super_admin(user)
+    ):
+        raise failure
+    # Enrolled SAs recover with their code, never with the token.
+    if await sa_mfa.has_confirmed_totp(db, user.id):
+        raise failure
+    if not sa_mfa.verify_break_glass_token(token):
+        raise failure
+    if not await password_repo.check_password_history(db, user.id, new_password):
+        raise HTTPException(
+            status_code=400, detail="You cannot reuse any of your last 5 passwords. Please choose a new password."
+        )
+    hashed = await run_in_threadpool(security.get_password_hash, new_password)
+    user.hashed_password = hashed
+    user.local_password_enabled = True
+    user.must_change_password = False
+    user.password_changed_at = datetime.now(UTC).replace(tzinfo=None)
+    # The SA may be password-locked from wrong guesses — the reset
+    # proves ownership via the owner token, so the lockout goes.
+    user.failed_login_attempts = 0
+    user.is_locked = False
+    user.locked_until = None
+    await password_repo.add_password_history(db, user.id, hashed, commit=False)
+    revoked = await sa_mfa.revoke_all_sessions(db, user.id)
+    await sa_mfa.audit_mfa(
+        db,
+        actor_id=user.id,
+        action="SA_BREAK_GLASS_PASSWORD_RESET",
+        target_user_id=user.id,
+        details={"via": "break-glass-password-reset", "sessions_revoked": revoked},
+    )
+    await db.commit()
+    logger.warning("SA password break-glass reset used for %s", user.email)
+    await sa_mfa.send_notice_best_effort(
+        user.email,
+        "Super Admin password reset by break-glass recovery",
+        "Your Super Admin password was reset through break-glass "
+        "recovery. All sessions were signed out. If this was not "
+        "expected, change the break-glass token immediately.",
+    )
+    for peer_email in await sa_mfa.other_active_sa_emails(db, user.id):
+        await sa_mfa.send_notice_best_effort(
+            peer_email,
+            "Super Admin password reset by break-glass recovery",
+            f"A Super Admin ({user.email}) had their password reset "
+            "through break-glass recovery. If this was not expected, "
+            "change the break-glass token immediately.",
+        )
+    return {
+        "message": "Password reset. Sign in with your new password. "
+        "Rotate the break-glass token after use."
+    }
 
 
 @router.post("/sa-mfa/reset-password")
