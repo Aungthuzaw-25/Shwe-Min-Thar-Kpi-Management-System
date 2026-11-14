@@ -4,6 +4,14 @@
 {% block title %}System Event Logs - KPI Platform{% endblock %}
 
 {% block content %}
+<style>
+    /* Page-scoped: fixed layout so the colgroup widths below are honoured.
+       (0,2,1) beats the shared `.workspace-table table` min-width 680px
+       (0,1,1) in design-system.css — shared CSS untouched, no other
+       page affected. min-width 900 (not 920) so the table never
+       overflows the 912px content area at 1280. */
+    .workspace-table table.syslog-table { table-layout: fixed; min-width: 900px; }
+</style>
 <div class="workspace-page">
     <header class="workspace-header">
         <div>
@@ -13,7 +21,7 @@
         <button type="button" onclick="loadSystemLogs()" class="bg-white border border-gray-200 text-slate-600 hover:text-blue-800 px-4 py-2.5 rounded-xl text-sm font-bold shadow-sm">Refresh</button>
     </header>
 
-    <div class="workspace-table w-full max-w-6xl overflow-hidden flex-1">
+    <div class="workspace-table w-full overflow-hidden flex-1">
         <div class="overflow-auto custom-scrollbar max-h-[75vh]">
             <div class="p-4 border-b border-gray-100 flex flex-wrap gap-2">
                 <label for="logSearch" class="sr-only">Search system logs</label>
@@ -25,14 +33,21 @@
                 </select>
                 <button type="button" onclick="loadSystemLogs(1)" class="bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-bold">Filter</button>
             </div>
-            <table class="w-full min-w-[760px] text-left text-xs sm:text-sm">
+            <table class="syslog-table w-full text-left text-xs sm:text-sm">
+                <colgroup>
+                    <col style="width: 170px">
+                    <col style="width: 130px">
+                    <col style="width: 100px">
+                    <col>
+                    <col style="width: 300px">
+                </colgroup>
                 <thead class="bg-slate-50 border-b border-gray-200 text-[10px] sm:text-xs uppercase text-slate-500 font-bold sticky top-0">
                     <tr>
-                        <th class="p-4">Timestamp</th>
-                        <th class="p-4">Event Type</th>
-                        <th class="p-4">Level</th>
-                        <th class="p-4">Message</th>
-                        <th class="p-4">Details</th>
+                        <th class="px-4 py-3">Timestamp</th>
+                        <th class="px-4 py-3">Event Type</th>
+                        <th class="px-4 py-3">Level</th>
+                        <th class="px-4 py-3">Message</th>
+                        <th class="px-4 py-3">Details</th>
                     </tr>
                 </thead>
                 <tbody id="systemLogsBody">
@@ -79,6 +94,10 @@
         }).format(date);
     }
 
+    // Structured list, not a raw text dump: each details entry is one
+    // label + value row (label left, value right-aligned). Same data,
+    // same order, same escaping — `null` stays the literal "null",
+    // objects stay JSON. No entry is dropped, shortened, or renamed.
     function formatDetails(details) {
         if (!details || typeof details !== 'object' || Array.isArray(details)) {
             return '—';
@@ -86,7 +105,7 @@
         const entries = Object.entries(details);
         if (!entries.length) return '—';
         return entries.map(([key, value]) =>
-            `<div><span class="font-semibold text-slate-600">${escapeHTML(key)}:</span> ${escapeHTML(typeof value === 'object' ? JSON.stringify(value) : value)}</div>`
+            `<div class="flex items-baseline justify-between gap-3 leading-snug"><span class="font-semibold text-slate-700 shrink-0">${escapeHTML(key)}</span><span class="text-slate-600 text-right break-words">${escapeHTML(typeof value === 'object' ? JSON.stringify(value) : value)}</span></div>`
         ).join('');
     }
 
@@ -128,11 +147,11 @@
             }
             body.innerHTML = logs.map(log => `
                 <tr class="border-b border-slate-50 hover:bg-slate-50 cursor-pointer" onclick="viewSystemLog('${escapeHTML(log.id)}')">
-                    <td class="p-4 whitespace-nowrap text-slate-500">${escapeHTML(formatTimestamp(log.created_at))}</td>
-                    <td class="p-4 font-bold text-slate-700">${escapeHTML(log.event_type)}</td>
-                    <td class="p-4"><span class="px-2 py-1 rounded-md text-[10px] font-bold ${levelClass(log.level)}">${escapeHTML(log.level)}</span></td>
-                    <td class="p-4 text-slate-700">${escapeHTML(log.message)}</td>
-                    <td class="p-4 text-slate-500 max-w-[320px] break-words">${formatDetails(log.details)}</td>
+                    <td class="py-3 px-4 whitespace-nowrap text-slate-500">${escapeHTML(formatTimestamp(log.created_at))}</td>
+                    <td class="py-3 px-4 font-bold text-slate-700">${escapeHTML(log.event_type)}</td>
+                    <td class="py-3 px-4"><span class="px-2 py-1 rounded-md text-[10px] font-bold ${levelClass(log.level)}">${escapeHTML(log.level)}</span></td>
+                    <td class="py-3 px-4 text-slate-800 break-words">${escapeHTML(log.message)}</td>
+                    <td class="py-3 px-4">${formatDetails(log.details)}</td>
                 </tr>`).join('');
         } catch (error) {
             console.error('System log loading failed:', error);
