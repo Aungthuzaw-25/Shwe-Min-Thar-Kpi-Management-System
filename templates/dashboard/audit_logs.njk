@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="/static/css/avatar.css">
 <script src="/static/js/avatar-renderer.js"></script>
 <script src="/static/js/avatar.js"></script>
+<script src="/static/js/audit-labels.js"></script>
 <style>
     .audit-shell { background: var(--color-bg); }
     .audit-stat {
@@ -44,7 +45,7 @@
 </style>
 
 <main class="audit-shell workspace-page min-h-full overflow-y-auto">
-    <div class="mx-auto max-w-7xl">
+    <div class="mx-auto">
         <header class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
                 <div class="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-red-800">
@@ -174,6 +175,24 @@
             .replaceAll('"', "&quot;").replaceAll("'", "&#039;");
     }
 
+    // Human-readable labels (static/js/audit-labels.js). If that file
+    // ever fails to load, the page falls back to the raw codes rather
+    // than breaking — degraded, still functional.
+    const auditLabels = window.AuditLabels || {
+        actionLabel: (value) => value || "UNKNOWN",
+        tableLabel: (value) => value || "—",
+        reasonLabel: (value) => (value === null || value === undefined || String(value).trim() === "" ? "No reason given" : String(value)),
+        labelValue: (value) => value,
+    };
+
+    // A change value, labelled: the `reason` key's empty state reads
+    // "No reason given"; other values keep formatAuditValue's text,
+    // with snake_case codes turned into plain labels.
+    function formatChangeValue(key, value) {
+        if (String(key || "").toLowerCase() === "reason") return auditLabels.reasonLabel(value);
+        return auditLabels.labelValue(formatAuditValue(value));
+    }
+
     function formatAuditValue(value) {
         if (value === null || value === undefined) return "None";
         if (typeof value === "string") return value.trim() ? value : "(empty)";
@@ -203,8 +222,8 @@
         const oldObject = oldValue && typeof oldValue === "object" && !Array.isArray(oldValue) ? oldValue : {};
         const newObject = newValue && typeof newValue === "object" && !Array.isArray(newValue) ? newValue : {};
         const keys = [...new Set([...Object.keys(oldObject), ...Object.keys(newObject)])];
-        if (!keys.length) return `<span class="text-xs text-slate-500">${escapeHTML(formatAuditValue(newValue || oldValue))}</span>`;
-        return `<details class="audit-detail max-w-sm"><summary class="flex items-center justify-between gap-2 text-xs font-semibold text-slate-600 hover:text-red-800"><span>${keys.length} field${keys.length === 1 ? "" : "s"} changed</span><svg class="audit-chevron h-4 w-4 shrink-0 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m6 9 6 6 6-6"/></svg></summary><div class="mt-3 space-y-2">${keys.map(key => `<div class="rounded-lg bg-slate-50 px-3 py-2"><div class="mb-1 text-[10px] font-extrabold uppercase tracking-wide text-slate-400">${escapeHTML(key)}</div><div class="grid grid-cols-[1fr_auto_1fr] gap-2 text-xs"><span class="break-words text-slate-500">${escapeHTML(formatAuditValue(oldObject[key]))}</span><span class="text-slate-300">→</span><span class="break-words font-semibold text-slate-800">${escapeHTML(formatAuditValue(newObject[key]))}</span></div></div>`).join("")}</div></details>`;
+        if (!keys.length) return `<span class="text-xs text-slate-500">${escapeHTML(auditLabels.labelValue(formatAuditValue(newValue || oldValue)))}</span>`;
+        return `<details class="audit-detail max-w-sm"><summary class="flex items-center justify-between gap-2 text-xs font-semibold text-slate-600 hover:text-red-800"><span>${keys.length} field${keys.length === 1 ? "" : "s"} changed</span><svg class="audit-chevron h-4 w-4 shrink-0 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m6 9 6 6 6-6"/></svg></summary><div class="mt-3 space-y-2">${keys.map(key => `<div class="rounded-lg bg-slate-50 px-3 py-2"><div class="mb-1 text-[10px] font-extrabold uppercase tracking-wide text-slate-400">${escapeHTML(key)}</div><div class="grid grid-cols-[1fr_auto_1fr] gap-2 text-xs"><span class="break-words text-slate-500">${escapeHTML(formatChangeValue(key, oldObject[key]))}</span><span class="text-slate-300">→</span><span class="break-words font-semibold text-slate-800">${escapeHTML(formatChangeValue(key, newObject[key]))}</span></div></div>`).join("")}</div></details>`;
     }
 
     function updateSummary(logs) {
@@ -228,7 +247,7 @@
         }
         tbody.innerHTML = logs.map(log => {
             const time = formatTimestamp(log.timestamp);
-            const action = escapeHTML(log.action || "UNKNOWN");
+            const action = escapeHTML(auditLabels.actionLabel(log.action));
             const actorAvatar = window.kpiAvatarMarkup({
                 user_id: log.actor_id,
                 display_name: log.admin_name || "System Auto",
@@ -236,7 +255,10 @@
                 initials: log.initials,
                 avatar_color_index: log.avatar_color_index
             }, 32);
-            return `<tr class="audit-table-row"><td class="whitespace-nowrap px-6 py-4"><div class="text-sm font-bold text-slate-700">${escapeHTML(time.date)}</div><div class="mt-1 text-xs text-slate-400">${escapeHTML(time.relative)}</div></td><td class="px-6 py-4"><div class="flex items-center gap-2">${actorAvatar}<div><div class="font-semibold text-slate-800">${escapeHTML(log.admin_name || "System Auto")}</div><div class="mt-1 text-xs text-slate-400">Actor</div></div></div></td><td class="px-6 py-4"><span class="inline-flex rounded-full px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wide ring-1 ring-inset ${actionClass(log.action)}">${action}</span></td><td class="px-6 py-4"><div class="font-mono text-xs font-bold text-slate-700">${escapeHTML(log.table_name || "—")}</div><div class="mt-1 text-xs text-slate-400">${log.record_id ? `Record ${escapeHTML(log.record_id)}` : "No record reference"}</div></td><td class="px-6 py-4">${renderChanges(log.old_value, log.new_value)}</td><td class="whitespace-nowrap px-6 py-4 text-right font-mono text-xs text-slate-500">${escapeHTML(log.ip_address || "Unknown")}</td></tr>`;
+            // No role comes with an audit row (the API returns no role
+            // field), so the old "Actor" sub-label under the name — the
+            // column is already Actor — is removed, not replaced.
+            return `<tr class="audit-table-row"><td class="whitespace-nowrap px-6 py-4"><div class="text-sm font-bold text-slate-700">${escapeHTML(time.date)}</div><div class="mt-1 text-xs text-slate-400">${escapeHTML(time.relative)}</div></td><td class="px-6 py-4"><div class="flex items-center gap-2">${actorAvatar}<div><div class="font-semibold text-slate-800">${escapeHTML(log.admin_name || "System Auto")}</div></div></div></td><td class="px-6 py-4"><span class="inline-flex rounded-full px-2.5 py-1 text-[10px] font-extrabold tracking-wide ring-1 ring-inset ${actionClass(log.action)}">${action}</span></td><td class="px-6 py-4"><div class="text-xs font-bold text-slate-700">${escapeHTML(auditLabels.tableLabel(log.table_name))}</div><div class="mt-1 text-xs text-slate-400">${log.record_id ? `Record ${escapeHTML(log.record_id)}` : "No record reference"}</div></td><td class="px-6 py-4">${renderChanges(log.old_value, log.new_value)}</td><td class="whitespace-nowrap px-6 py-4 text-right"><div class="font-mono text-xs text-slate-500">${escapeHTML(log.ip_address || "Unknown")}</div><div class="mt-1 text-xs text-slate-400">IP address</div></td></tr>`;
         }).join("");
     }
 
@@ -244,7 +266,7 @@
         const select = document.getElementById("actionFilter");
         const selected = select.value;
         allLogs.map(log => log.action).filter(Boolean).forEach(action => seenActions.add(action));
-        select.innerHTML = `<option value="">All actions</option>${[...seenActions].sort().map(action => `<option value="${escapeHTML(action)}">${escapeHTML(action)}</option>`).join("")}`;
+        select.innerHTML = `<option value="">All actions</option>${[...seenActions].sort().map(action => `<option value="${escapeHTML(action)}">${escapeHTML(auditLabels.actionLabel(action))}</option>`).join("")}`;
         select.value = selected;
     }
 
