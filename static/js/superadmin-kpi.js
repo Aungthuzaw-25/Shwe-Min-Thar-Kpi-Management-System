@@ -622,6 +622,7 @@ const API_BASE = "/api/v1/kpi";
             const formulas = await formRes.json();
             if (!Array.isArray(formulas)) throw new Error("Formula response must be an array.");
             lastFormulas = formulas;
+            setFormulaCount(formulas.length);
             container.innerHTML = "";
 
             if(formulas.length === 0) {
@@ -1457,6 +1458,23 @@ const API_BASE = "/api/v1/kpi";
     // ==========================================
     // 2. EMPLOYEE RECORDS & INTERVENTIONS
     // ==========================================
+    // Records count in the card header ("All records N", Users format).
+    // Updated from the already-fetched array — no extra request.
+    function setRecordsCount(n) {
+        const el = document.getElementById("recordsCount");
+        if (el) el.textContent = String(n);
+    }
+
+    // Same pattern for the other two list views.
+    function setFormulaCount(n) {
+        const el = document.getElementById("formulaCount");
+        if (el) el.textContent = String(n);
+    }
+    function setDeptCount(n) {
+        const el = document.getElementById("deptCount");
+        if (el) el.textContent = String(n);
+    }
+
     async function loadEmployeeRecords() {
         const tbody = document.getElementById("recordsTableBody");
         if (!tbody) {
@@ -1477,6 +1495,7 @@ const API_BASE = "/api/v1/kpi";
 
             const records = await res.json();
             if (!Array.isArray(records)) throw new Error("KPI records response must be an array.");
+            setRecordsCount(records.length);
 
             tbody.innerHTML = "";
             if(records.length === 0) {
@@ -1644,6 +1663,7 @@ const API_BASE = "/api/v1/kpi";
 
             const depts = await deptRes.json();
             const settings = await setRes.json();
+            setDeptCount(Array.isArray(depts) ? depts.length : 0);
 
             tbody.innerHTML = "";
             if(depts.length === 0) {

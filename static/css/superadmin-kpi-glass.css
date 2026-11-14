@@ -33,12 +33,16 @@ background:transparent
 .kg-page .kg-container{
 display:flex;
 width:100%;
-max-width:1120px;
 min-width:0;
 flex-direction:column;
 gap:20px;
 margin:0 auto
 }
+/* Full-width, like the Users page: the old max-width:1120px capped the
+whole KPI page and centred it, so on a wide screen the Records card
+looked narrow with a big empty area around it. The form cards
+(settings/assignments) keep their own max-w-4xl, so they stay
+readable; only the page container is uncapped. */
 .kg-page .kg-header{
 display:flex;
 align-items:center;
