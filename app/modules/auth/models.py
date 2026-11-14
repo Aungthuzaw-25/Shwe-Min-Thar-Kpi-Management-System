@@ -153,7 +153,8 @@ class SATotpSecret(BaseModel):
 
 
 class SATotpAttempt(BaseModel):
-    """Brute-force brake for TOTP verification (login step + recovery).
+    """Brute-force brake for TOTP verification (login step, recovery,
+    MFA confirm and self-disable).
 
     One row per SA: 5 wrong codes freeze TOTP verification for 1
     hour for that account only — password login is unaffected, and
