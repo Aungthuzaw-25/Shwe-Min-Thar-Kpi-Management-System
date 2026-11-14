@@ -3,7 +3,27 @@
 {% set display_name = avatar_user.display_name|default(avatar_user.full_name|default(avatar_user.name|default('User', true), true), true) %}
 {% set image_url = avatar_user.avatar_url|default(none, true) %}
 {% set color_index = avatar_user.avatar_color_index|default(0, true) %}
-{% set initials = avatar_user.initials|default('?', true) %}
+{# Initials: an explicit field wins. Otherwise derive them from the
+   display name — first letter of the FIRST and LAST words ("Super
+   Admin" → "SA", "Aung Thu Zaw" → "AZ", one word → its first
+   letter). This matches the app's canonical rule
+   (app/modules/users/avatar.py::avatar_initials and the JS
+   avatar-renderer), so the same person shows the same initials in
+   macro-rendered and JS/API-rendered places. "?" only when there is
+   no name at all (the topbar's user object carries a display name
+   but no initials field, so it used to show "?"). A doubled space
+   is harmless: split keeps empty words in the middle, but the first
+   and last words are never empty after trim. #}
+{% set raw_name = avatar_user.display_name|default(avatar_user.full_name|default(avatar_user.name|default('', true), true), true)|trim %}
+{% if avatar_user.initials|default('', true) %}
+{% set initials = avatar_user.initials %}
+{% elif raw_name %}
+{% set name_words = raw_name.split(' ') %}
+{% set initials = name_words[0][0]|upper %}
+{% if name_words|length > 1 and (name_words|last) %}{% set initials = initials + ((name_words|last)[0]|upper) %}{% endif %}
+{% else %}
+{% set initials = '?' %}
+{% endif %}
 <span class="kpi-avatar kpi-avatar--{{ size }} kpi-avatar--color-{{ color_index }}{% if image_url %} kpi-avatar--photo{% endif %}" role="img" aria-label="{{ display_name }}">
   {% if image_url %}
   <img class="kpi-avatar__image" src="{{ image_url }}" alt="{{ display_name }}" loading="lazy" width="{{ size }}" height="{{ size }}" data-kpi-avatar-image>

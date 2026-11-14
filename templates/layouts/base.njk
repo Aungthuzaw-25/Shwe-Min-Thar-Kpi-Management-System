@@ -318,7 +318,7 @@
         
         <!-- 📱 MOBILE RESPONSIVE FIX: Functional Mobile Menu Toggle -->
         {% if user_role in ['Super Admin', 'Admin'] %}
-        <div class="exec-mobile-sidebar-toggle flex items-center justify-between bg-kpi-red text-white p-4 shrink-0 shadow-md z-10">
+        <div class="exec-mobile-sidebar-toggle md:hidden flex items-center justify-between bg-kpi-red text-white p-4 shrink-0 shadow-md z-10">
             <h1 class="text-lg font-bold tracking-wide truncate min-w-0 pr-3">{{ brand.company_name or "Shwe Min Thar" }}</h1>
             <button type="button" class="exec-mobile-sidebar-button text-white hover:text-red-200 focus:outline-none" onclick="toggleMobileSidebar()" aria-label="Open navigation menu" aria-controls="mainSidebar" aria-expanded="false">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
