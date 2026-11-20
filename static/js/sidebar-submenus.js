@@ -93,6 +93,11 @@
       if (row.getAttribute('href') === '/superadmin/users?view=active') matched = row;
     });
   }
+  if (!matched && window.location.pathname === '/kpi-periods' && !window.location.search) {
+    document.querySelectorAll('.sidebar-submenu__row').forEach(function (row) {
+      if (row.getAttribute('href') === '/kpi-periods?view=evaluation') matched = row;
+    });
+  }
   if (matched) {
     matched.classList.add('sidebar-submenu__row--active');
     var submenu = matched.closest('.sidebar-submenu');
