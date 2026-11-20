@@ -283,3 +283,104 @@ def test_health_check_mapper_keeps_plain_message():
     assert "SELECT" not in plain_message_for(
         "HEALTH_CHECK", LogLevel.ERROR, "SELECT 1 failed: connection refused"
     )
+
+
+# ----------------------------------------------------------------------
+# HEALTH_CHECK log rows name the component (Zenn, 2026-10-23 rule)
+# ----------------------------------------------------------------------
+
+def test_health_log_message_names_component_warning():
+    component = {
+        "status": "WARNING",
+        "message": "The cache is responding a little slowly.",
+        "_issue": ("redis_latency_ms", 111, "< 50 ms"),
+    }
+    message = health_module._health_log_message("redis", component)
+    assert message == (
+        "System health: Cache (Redis) is responding a little slowly "
+        "(111 ms, limit 50 ms)."
+    )
+    assert plain_message_for("HEALTH_CHECK", LogLevel.WARNING, message) == message
+
+
+def test_health_log_message_names_component_fail():
+    component = {
+        "status": "FAIL",
+        "message": "File storage could not be reached.",
+        "_issue": ("minio_head", "head_failed", "ok"),
+    }
+    message = health_module._health_log_message("minio", component)
+    assert message == "System health: File storage (MinIO) could not be reached."
+    assert plain_message_for("HEALTH_CHECK", LogLevel.ERROR, message) == message
+
+
+def test_health_log_message_ok_row_unchanged():
+    component = {"status": "OK", "message": "The cache is responding normally."}
+    assert health_module._health_log_message("redis", component) == (
+        "System health: redis is back to normal."
+    )
+
+
+def test_health_log_row_names_component_on_minio_fail(world, monkeypatch):
+    calls = []
+
+    async def fake_log(level, event_type, message, details=None):
+        calls.append((level, event_type, message, details))
+
+    monkeypatch.setattr(health_module, "record_system_log", fake_log)
+    monkeypatch.setattr(settings, "USE_S3", True)
+    monkeypatch.setattr(settings, "S3_ENDPOINT", "http://127.0.0.1:9999")
+    monkeypatch.setattr(settings, "S3_ACCESS_KEY", "test")
+    monkeypatch.setattr(settings, "S3_SECRET_KEY", "test")
+    monkeypatch.setattr(settings, "S3_BUCKET_NAME", "kpi-evidence")
+
+    class _FailingClient:
+        def head_bucket(self, **kwargs):
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr("boto3.client", lambda *a, **k: _FailingClient())
+    _login(world.session, world.emp, success=True)
+    body = _get(world)
+    assert body["components"]["minio"]["status"] == "FAIL"
+    minio_logs = [c for c in calls if c[3]["component"] == "minio"]
+    assert len(minio_logs) == 1
+    assert minio_logs[0][2] == (
+        "System health: File storage (MinIO) could not be reached."
+    )
+    assert minio_logs[0][0] == LogLevel.ERROR
+    assert plain_message_for("HEALTH_CHECK", LogLevel.ERROR, minio_logs[0][2]) == (
+        minio_logs[0][2]
+    )
+
+
+def test_health_log_row_names_component_on_slow_cache(world, monkeypatch):
+    import asyncio
+
+    import redis.asyncio as redis_asyncio
+
+    calls = []
+
+    async def fake_log(level, event_type, message, details=None):
+        calls.append((level, event_type, message, details))
+
+    monkeypatch.setattr(health_module, "record_system_log", fake_log)
+    monkeypatch.setattr(settings, "REDIS_URL", "redis://127.0.0.1:6379/0")
+
+    class _SlowClient:
+        async def ping(self):
+            await asyncio.sleep(0.08)
+            return True
+
+        async def aclose(self):
+            return None
+
+    monkeypatch.setattr(redis_asyncio, "from_url", lambda *a, **k: _SlowClient())
+    _login(world.session, world.emp, success=True)
+    body = _get(world)
+    assert body["components"]["redis"]["status"] == "WARNING"
+    redis_logs = [c for c in calls if c[3]["component"] == "redis"]
+    assert len(redis_logs) == 1
+    message = redis_logs[0][2]
+    assert message.startswith("System health: Cache (Redis) is responding")
+    assert "limit 50 ms)" in message or "limit 200 ms)" in message
+    assert plain_message_for("HEALTH_CHECK", LogLevel.WARNING, message) == message
