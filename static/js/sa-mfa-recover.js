@@ -29,6 +29,7 @@
 
   var API_RECOVER = '/api/v1/auth/sa-mfa/recover';
   var API_RESET = '/api/v1/auth/sa-mfa/reset-password';
+  var API_RECOVER_AVAILABLE = '/api/v1/auth/sa-mfa/recover-available';
   var MSG_GENERIC = 'Invalid email or authenticator code.';
   var MSG_UNAVAILABLE = 'Authenticator verification is not available right now.';
 
@@ -50,6 +51,108 @@
   var doneBtn = document.getElementById('saRecoverDoneBtn');
 
   var otp = null;
+
+  // --- "Recover with Authenticator" link visibility (2026-11-13) -------
+  // The link is only meaningful for an enrolled SA, so it is hidden
+  // by default and shown only when POST /sa-mfa/recover-available
+  // answers True for the email typed on the login form. Only the
+  // bare boolean is ever read from the response — nothing else.
+  // The endpoint is 5/minute, so the check is debounced, cached per
+  // typed email, and never sent for a value that is not an email.
+  var entryWrap = document.getElementById('saRecoverEntry');
+  var loginEmailEl = document.getElementById('email');
+  var recoverCheckCache = {};
+  var recoverCheckPending = null;
+  var recoverCheckTimer = null;
+  var RECOVER_CHECK_DEBOUNCE_MS = 600;
+
+  function setRecoverEntryVisible(visible) {
+    if (entryWrap) entryWrap.hidden = !visible;
+  }
+
+  function normalizeEmail(value) {
+    return (value || '').trim().toLowerCase();
+  }
+
+  function applyRecoverAvailable(email, available) {
+    recoverCheckCache[email] = !!available;
+    // Only the latest typed email counts — an older in-flight answer
+    // must not show the link for a different email.
+    if (normalizeEmail(loginEmailEl && loginEmailEl.value) === email) {
+      setRecoverEntryVisible(!!available);
+    }
+  }
+
+  async function checkRecoverAvailable(email) {
+    if (!email || email.indexOf('@') === -1) return;
+    if (email in recoverCheckCache) {
+      applyRecoverAvailable(email, recoverCheckCache[email]);
+      return;
+    }
+    if (recoverCheckPending === email) return;
+    recoverCheckPending = email;
+    try {
+      var response = await fetch(API_RECOVER_AVAILABLE, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ email: email }),
+      });
+      if (response.ok) {
+        var data = {};
+        try { data = await response.json(); } catch (e) { data = {}; }
+        applyRecoverAvailable(email, data && data.recover_available === true);
+      } else {
+        // Fail closed: the link stays hidden (rate limit, network,
+        // anything else). The cache is NOT filled, so a later retry
+        // can still ask.
+        setRecoverEntryVisible(false);
+      }
+    } catch (e) {
+      setRecoverEntryVisible(false);
+    }
+    if (recoverCheckPending === email) recoverCheckPending = null;
+  }
+
+  function scheduleRecoverCheck() {
+    var email = normalizeEmail(loginEmailEl && loginEmailEl.value);
+    // A new value invalidates the old answer until it is checked.
+    setRecoverEntryVisible(false);
+    if (window.clearTimeout && recoverCheckTimer !== null) window.clearTimeout(recoverCheckTimer);
+    recoverCheckTimer = null;
+    if (!email || email.indexOf('@') === -1) return;
+    if (email in recoverCheckCache) {
+      applyRecoverAvailable(email, recoverCheckCache[email]);
+      return;
+    }
+    recoverCheckTimer = window.setTimeout(function () {
+      recoverCheckTimer = null;
+      checkRecoverAvailable(email);
+    }, RECOVER_CHECK_DEBOUNCE_MS);
+  }
+
+  function checkRecoverNow() {
+    var email = normalizeEmail(loginEmailEl && loginEmailEl.value);
+    if (window.clearTimeout && recoverCheckTimer !== null) window.clearTimeout(recoverCheckTimer);
+    recoverCheckTimer = null;
+    if (!email || email.indexOf('@') === -1) {
+      setRecoverEntryVisible(false);
+      return;
+    }
+    checkRecoverAvailable(email);
+  }
+
+  if (loginEmailEl) {
+    loginEmailEl.addEventListener('input', scheduleRecoverCheck);
+    loginEmailEl.addEventListener('blur', checkRecoverNow);
+  }
+  // The login script prefills the remembered email after this file
+  // loads, so check the prefilled value once the page is parsed.
+  if (typeof document.addEventListener === 'function' && document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', checkRecoverNow);
+  } else {
+    checkRecoverNow();
+  }
 
   function showStep(name) {
     if (stepCode) stepCode.classList.toggle('hidden', name !== 'code');
