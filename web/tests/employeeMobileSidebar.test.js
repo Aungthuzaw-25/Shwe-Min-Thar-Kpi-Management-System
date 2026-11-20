@@ -40,4 +40,17 @@ describe('employee mobile sidebar button', () => {
   it('leaves the SA/Admin layout untouched', () => {
     expect(admin).toContain('exec-mobile-sidebar-button');
   });
+
+  it('hides the SA/Admin mobile toggle bar on desktop with md:hidden too', () => {
+    // Belt-and-braces (2026-11-14): the bar is designed for <768px
+    // only. executive-dashboard.css already hides it on desktop
+    // (display: none, re-enabled in max-width: 767px), but the toggle
+    // div carried no md:hidden, so a lost plain-CSS rule was the only
+    // thing keeping it off desktop. Matching employee_base, the div
+    // now also carries md:hidden — Tailwind hides it at >=768px even
+    // if the plain-CSS cascade is ever beaten. Below 768px md:hidden
+    // does not apply, so the hamburger still opens the sidebar.
+    expect(admin).toContain('class="exec-mobile-sidebar-toggle md:hidden flex items-center justify-between');
+    expect(admin).toContain('aria-label="Open navigation menu"');
+  });
 });

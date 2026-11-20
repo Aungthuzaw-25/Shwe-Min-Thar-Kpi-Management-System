@@ -7,6 +7,7 @@ const read = (rel) => readFileSync(path.join(root, rel), 'utf8');
 const base = read('templates/layouts/base.njk');
 const employee = read('templates/layouts/employee_base.njk');
 const css = read('static/css/sidebar-collapse.css');
+const designSystem = read('static/css/design-system.css');
 const js = read('static/js/sidebar-collapse.js');
 const submenus = read('static/js/sidebar-submenus.js');
 
@@ -109,5 +110,23 @@ describe('collapsible sidebar', () => {
     expect(css).not.toContain('theme-');
     // The only pre-media sidebar rule is the width/transform transition.
     expect(css.split('@media')[0]).not.toContain('4.5rem');
+  });
+});
+
+describe('sidebar brand row (top of "Shwe Min" cut off)', () => {
+  it('lets the brand row grow past the topbar height instead of fixing it', () => {
+    // Before: #mainSidebar > div:first-child had a fixed height of
+    // var(--topbar-height) (56px), but the brand text is 75px tall
+    // when the name wraps to two lines (45px) and the tagline to two
+    // (30px) in the ~108px column. flex items-center centred the
+    // overflow, so the top of "Shwe Min" spilled above the row — white
+    // text on the light body background, looking cut off — and the
+    // tagline's second line straddled the row's bottom border.
+    const rule = designSystem.slice(
+      designSystem.indexOf('#mainSidebar > div:first-child'),
+      designSystem.indexOf('#mainSidebar nav'),
+    );
+    expect(rule).toContain('min-height: var(--topbar-height)');
+    expect(rule).not.toMatch(/^\s*height:/m);
   });
 });
