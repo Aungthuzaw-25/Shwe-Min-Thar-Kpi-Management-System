@@ -105,6 +105,31 @@
     return { date: parseYMD(parts[0]), time: timeMatch ? timeMatch[0].slice(0, 5) : '' };
   }
 
+  // Picker-owned display (Manual Engine datetime fields only): the
+  // visible text is day-first ("28/11/2026 14:30") while the ISO value
+  // ("2026-11-28T14:30") lives in the input's data-iso. Native
+  // datetime-local inputs render from the browser/OS locale and ignore
+  // lang, so the picker — not the browser — owns the display.
+  function formatDisplayFirst(iso) {
+    var split = splitDateTime(iso || '');
+    if (!split.date) return '';
+    return pad(split.date.d) + '/' + pad(split.date.m) + '/' + split.date.y + ' ' + (split.time || '00:00');
+  }
+
+  function inputIsoValue(input, displayFirst) {
+    if (displayFirst) return input.dataset ? (input.dataset.iso || '') : '';
+    return input.value;
+  }
+
+  function setInputIso(input, iso, displayFirst) {
+    if (displayFirst) {
+      if (input.dataset) input.dataset.iso = iso || '';
+      input.value = formatDisplayFirst(iso);
+    } else {
+      input.value = iso || '';
+    }
+  }
+
   function todayTriple() {
     var now = new Date();
     return { y: now.getFullYear(), m: now.getMonth() + 1, d: now.getDate() };
@@ -134,7 +159,7 @@
 
   var popup = null;
   var refs = {};
-  // { anchor, input, isDateTime, triggers, fullscreen, pending }
+  // { anchor, input, isDateTime, displayFirst, triggers, fullscreen, pending }
   // fullscreen: Create fields only. pending: the highlighted-but-unwritten
   // day in fullscreen mode (null until a day is picked, or the field's
   // current value pre-selected on open). Anchored mode never uses pending:
@@ -151,8 +176,8 @@
 
   function readSingle() {
     if (!current || !current.input) return { date: null, time: '' };
-    if (current.isDateTime) return splitDateTime(current.input.value);
-    return { date: parseYMD(current.input.value), time: '' };
+    if (current.isDateTime) return splitDateTime(inputIsoValue(current.input, current.displayFirst));
+    return { date: parseYMD(inputIsoValue(current.input, current.displayFirst)), time: '' };
   }
 
   function refreshRangePreview() {
@@ -259,9 +284,9 @@
       // Fullscreen mode never has a datetime field today, but if one is
       // ever wired fullscreen, its time must not write before Done.
       if (current.fullscreen) return;
-      var parsed = splitDateTime(current.input.value);
+      var parsed = splitDateTime(inputIsoValue(current.input, current.displayFirst));
       if (parsed.date && timeInput.value) {
-        current.input.value = toYMD(parsed.date) + 'T' + timeInput.value;
+        setInputIso(current.input, toYMD(parsed.date) + 'T' + timeInput.value, current.displayFirst);
         dispatchValue(current.input);
       }
     });
@@ -276,7 +301,7 @@
       // even if reached — nothing writes before Done in fullscreen mode.
       if (current.fullscreen) return;
       if (current.input) {
-        current.input.value = '';
+        setInputIso(current.input, '', current.displayFirst);
         dispatchValue(current.input);
       }
       render();
@@ -332,7 +357,7 @@
 
     if (current.isDateTime) {
       refs.timeRow.style.display = '';
-      var parsed = splitDateTime(current.input.value);
+      var parsed = splitDateTime(inputIsoValue(current.input, current.displayFirst));
       refs.timeInput.value = parsed.time || '';
     } else {
       refs.timeRow.style.display = 'none';
@@ -370,9 +395,9 @@
     // not the picker, decides whether the pair is acceptable.
     var time = '';
     if (current.isDateTime) {
-      time = refs.timeInput.value || splitDateTime(current.input.value).time || '00:00';
+      time = refs.timeInput.value || splitDateTime(inputIsoValue(current.input, current.displayFirst)).time || '00:00';
     }
-    current.input.value = current.isDateTime ? toYMD(cell) + 'T' + time : toYMD(cell);
+    setInputIso(current.input, current.isDateTime ? toYMD(cell) + 'T' + time : toYMD(cell), current.displayFirst);
     dispatchValue(current.input);
     // The preview line is this module's own display: refresh it directly
     // instead of relying only on the dispatched events reaching listeners.
@@ -388,11 +413,11 @@
       if (!current.pending) return;
       var time = '';
       if (current.isDateTime) {
-        time = refs.timeInput.value || splitDateTime(current.input.value).time || '00:00';
+        time = refs.timeInput.value || splitDateTime(inputIsoValue(current.input, current.displayFirst)).time || '00:00';
       }
       // Direct string write from the picked triple, ON DONE ONLY — never
       // through Date/toISOString (see the header comment).
-      current.input.value = current.isDateTime ? toYMD(current.pending) + 'T' + time : toYMD(current.pending);
+      setInputIso(current.input, current.isDateTime ? toYMD(current.pending) + 'T' + time : toYMD(current.pending), current.displayFirst);
       dispatchValue(current.input);
       refreshRangePreview();
     }
@@ -554,7 +579,7 @@
     return btn;
   }
 
-  function wireSingle(input, isDateTime, fullscreen) {
+  function wireSingle(input, isDateTime, fullscreen, displayFirst) {
     if (wired[input.id]) return;
     wired[input.id] = true;
     // Read-only via JS only: without JS the native input is untouched, so a
@@ -563,7 +588,7 @@
     input.readOnly = true;
     input.classList.add('cal-enhanced');
     var openIt = function () {
-      open({ mode: 'single', anchor: input, input: input, isDateTime: isDateTime, fullscreen: !!fullscreen, triggers: [trigger] });
+      open({ mode: 'single', anchor: input, input: input, isDateTime: isDateTime, fullscreen: !!fullscreen, displayFirst: !!displayFirst, triggers: [trigger] });
     };
     var trigger = makeTrigger(input, openIt);
     input.addEventListener('click', openIt);
@@ -573,7 +598,7 @@
     config = config || {};
     (config.singles || []).forEach(function (single) {
       var input = document.getElementById(single.id);
-      if (input) wireSingle(input, !!single.isDateTime, !!single.fullscreen);
+      if (input) wireSingle(input, !!single.isDateTime, !!single.fullscreen, !!single.displayFirst);
     });
     // Display-only preview line ("05 Oct 2026 → 20 Oct 2026 (16 days)"):
     // recomputed from both fields whenever either changes. It is not a
@@ -609,6 +634,8 @@
       cmpDay: cmpDay, sameDay: sameDay, addDays: addDays,
       daysFromCivil: daysFromCivil, formatDayFirst: formatDayFirst,
       monthGrid: monthGrid, splitDateTime: splitDateTime, todayTriple: todayTriple,
+      formatDisplayFirst: formatDisplayFirst, inputIsoValue: inputIsoValue,
+      setInputIso: setInputIso,
     },
   };
 })();
