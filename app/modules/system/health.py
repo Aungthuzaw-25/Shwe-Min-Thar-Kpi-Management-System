@@ -605,6 +605,141 @@ def reset_health_log_state() -> None:
     _LAST_HEALTH_LOG.clear()
 
 
+# Plain business names for the seven health components, as the
+# System Health page shows them (MinIO/Redis qualified so a reader
+# knows which service the row is about).
+_HEALTH_PLAIN_NAMES = {
+    "db": "Database",
+    "data_integrity": "Saved records",
+    "data_flow": "Data flow",
+    "security": "Sign-in activity",
+    "user_activity": "User activity",
+    "minio": "File storage (MinIO)",
+    "redis": "Cache (Redis)",
+}
+
+_THRESHOLD_NUMBER_RE = re.compile(r"(\d+)\s*(ms|%)?")
+
+
+def _value_limit_suffix(value, threshold, unit: str) -> str:
+    """' (111 ms, limit 50 ms)' / ' (85%, limit 80%)' — empty when the
+    threshold carries no usable number, or the limit is 0."""
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return ""
+    if not isinstance(threshold, str):
+        return ""
+    match = _THRESHOLD_NUMBER_RE.search(threshold)
+    if not match:
+        return ""
+    limit = int(match.group(1))
+    if limit == 0:
+        return ""
+    suffix_unit = match.group(2) or unit
+    gap = " " if suffix_unit == "ms" else ""
+    return f" ({value}{gap}{suffix_unit}, limit {limit}{gap}{suffix_unit})"
+
+
+def _limit_only_suffix(threshold, unit: str) -> str:
+    """' (limit 10)' — for reasons that already state the value."""
+    if not isinstance(threshold, str):
+        return ""
+    match = _THRESHOLD_NUMBER_RE.search(threshold)
+    if not match:
+        return ""
+    limit = int(match.group(1))
+    if limit == 0:
+        return ""
+    suffix_unit = match.group(2) or unit
+    gap = " " if suffix_unit == "ms" else ""
+    return f" (limit {limit}{gap}{suffix_unit})"
+
+
+def _health_log_message(name: str, component: dict) -> str:
+    """Plain 'System health: ...' message for a HEALTH_CHECK log row.
+
+    WARNING/FAIL rows name the component, the check, and the value vs
+    threshold where they exist, so the System Logs MESSAGE column says
+    what is wrong without opening DETAILS. OK rows keep their existing
+    'back to normal' sentence. The read path (plain_message_for)
+    passes any message starting with 'System health:' through
+    unchanged, so these rows display exactly as written here.
+    """
+    status = component["status"]
+    if status == OK:
+        return f"System health: {name.replace('_', ' ')} is back to normal."
+    plain = _HEALTH_PLAIN_NAMES.get(name, name.replace("_", " "))
+    issue = component.get("_issue")
+    check, value, threshold = issue if issue else ("overall", None, None)
+    if check == "db_connection":
+        reason, suffix = "could not be reached", ""
+    elif check == "db_latency_ms":
+        reason = (
+            "is responding very slowly"
+            if status == FAIL
+            else "is responding slowly"
+        )
+        suffix = _value_limit_suffix(value, threshold, "ms")
+    elif check == "migration_head_match":
+        reason, suffix = "is not on the latest update yet", ""
+    elif check == "pool_checked_out_pct":
+        if isinstance(value, (int, float)) and value >= 100:
+            reason, suffix = "connection pool is full", f" ({value}% in use)"
+        else:
+            reason = "connection pool is almost full"
+            suffix = _value_limit_suffix(value, threshold, "%")
+    elif check == "failed_probes":
+        reason, suffix = "are missing the information they should carry", ""
+    elif check == "flow_24h_total":
+        reason, suffix = (
+            "has no new work saved in the last day even though people signed in",
+            "",
+        )
+    elif check == "failed_logins_1h":
+        reason = f"has {value} failed sign-ins in the last hour"
+        suffix = _limit_only_suffix(threshold, "")
+    elif check == "locked_accounts":
+        reason = f"has {value} locked account{'s' if value != 1 else ''}"
+        suffix = _limit_only_suffix(threshold, "")
+    elif check == "pending_unlocks":
+        reason = f"has {value} unlock request{'s' if value != 1 else ''} waiting"
+        suffix = _limit_only_suffix(threshold, "")
+    elif check == "last_login_at":
+        reason, suffix = "has had no successful sign-in for over a week", ""
+    elif check == "minio_configured":
+        reason, suffix = "is turned on but its connection details are missing", ""
+    elif check == "minio_head":
+        reason, suffix = "could not be reached", ""
+    elif check == "minio_probe":
+        if value == "slow":
+            reason = "is responding slowly or unreliably"
+            latency = component.get("latency_ms")
+            suffix = (
+                f" ({latency} ms, should be under 2000 ms)"
+                if isinstance(latency, int)
+                else ""
+            )
+        else:
+            reason, suffix = "could not be checked reliably", ""
+    elif check == "redis_ping":
+        reason, suffix = "could not be reached", ""
+    elif check == "redis_latency_ms":
+        reason = (
+            "is responding slowly"
+            if threshold == "< 200 ms"
+            else "is responding a little slowly"
+        )
+        suffix = _value_limit_suffix(value, threshold, "ms")
+    else:
+        # Unknown check — fall back to the dashboard message with its
+        # leading article stripped, so the component is still named.
+        reason = (component.get("message") or "needs attention").rstrip(".")
+        if reason.lower().startswith("the "):
+            reason = reason[4:]
+        reason = reason[:1].lower() + reason[1:]
+        suffix = ""
+    return f"System health: {plain} {reason}{suffix}."
+
+
 async def _log_status_changes(payload: dict) -> None:
     now_mono = time.monotonic()
     for name, component in payload["components"].items():
@@ -630,10 +765,7 @@ async def _log_status_changes(payload: dict) -> None:
             else LogLevel.WARNING if status == WARNING
             else LogLevel.INFO
         )
-        if status == OK:
-            message = f"System health: {name.replace('_', ' ')} is back to normal."
-        else:
-            message = component["message"]
+        message = _health_log_message(name, component)
         issue = component.get("_issue")
         details = {
             "component": name,
