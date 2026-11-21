@@ -146,7 +146,15 @@ textarea:focus-visible, [tabindex]:focus-visible {
   box-shadow: none;
 }
 #mainSidebar > div:first-child {
-  height: var(--topbar-height);
+  /* min-height, NOT height: the brand text is 75px tall when the name
+     wraps to two lines ("Shwe Min" / "Thar", 45px) and the tagline to
+     two lines (30px) in the ~108px column. A fixed 56px row centred
+     the 75px block, so ~10px spilled above the row — white text on
+     the light body background, looking like the top of "Shwe Min" was
+     cut off — and the tagline's second line straddled the row's
+     bottom border. min-height keeps the 56px alignment when the
+     content is short and grows when it is not. */
+  min-height: var(--topbar-height);
   padding: 0 20px;
   background: #17212b;
   border-bottom: 1px solid #263544;
