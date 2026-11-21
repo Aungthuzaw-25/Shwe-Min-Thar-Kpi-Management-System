@@ -1,11 +1,54 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import vm from 'node:vm';
 
 const root = path.resolve(import.meta.dirname, '..', '..');
 const read = (rel) => readFileSync(path.join(root, rel), 'utf8');
 const periods = read('templates/dashboard/kpi_periods.njk');
 const upload = read('templates/dashboard/kpi_upload.njk');
+
+function loadPickerHelpers() {
+  const code = read('static/js/period-calendar.js');
+  const sandbox = { window: {}, console };
+  vm.createContext(sandbox);
+  vm.runInContext(code, sandbox);
+  return sandbox.window.PeriodCalendar.helpers;
+}
+
+describe('PeriodCalendar display-first helpers (shipped file, vm harness)', () => {
+  it('formats an ISO datetime as DD/MM/YYYY HH:mm', () => {
+    const h = loadPickerHelpers();
+    expect(h.formatDisplayFirst('2026-11-28T14:30')).toBe('28/11/2026 14:30');
+    expect(h.formatDisplayFirst('2026-11-28T09:05')).toBe('28/11/2026 09:05');
+    expect(h.formatDisplayFirst('2026-11-28')).toBe('28/11/2026 00:00');
+    expect(h.formatDisplayFirst('')).toBe('');
+    expect(h.formatDisplayFirst('garbage')).toBe('');
+    expect(h.formatDisplayFirst('2026-02-30T10:00')).toBe('');
+  });
+
+  it('writes display + ISO together, and reads the ISO back', () => {
+    const h = loadPickerHelpers();
+    const input = { value: '', dataset: {} };
+    h.setInputIso(input, '2026-11-28T14:30', true);
+    expect(input.value).toBe('28/11/2026 14:30');
+    expect(input.dataset.iso).toBe('2026-11-28T14:30');
+    expect(h.inputIsoValue(input, true)).toBe('2026-11-28T14:30');
+    h.setInputIso(input, '', true);
+    expect(input.value).toBe('');
+    expect(input.dataset.iso).toBe('');
+    expect(h.inputIsoValue(input, true)).toBe('');
+  });
+
+  it('leaves non-display fields on the plain value (Create fields untouched)', () => {
+    const h = loadPickerHelpers();
+    const input = { value: '', dataset: {} };
+    h.setInputIso(input, '2026-11-28', false);
+    expect(input.value).toBe('2026-11-28');
+    expect(input.dataset.iso).toBeUndefined();
+    expect(h.inputIsoValue(input, false)).toBe('2026-11-28');
+  });
+});
 
 describe('KPI Periods page polish', () => {
   it('renders one view at a time (server split, no stacked panels)', () => {
@@ -62,21 +105,27 @@ describe('KPI Periods page polish', () => {
     expect(periods).toContain("if (document.getElementById('periodsTableBody')) {");
   });
 
-  it('Manual Engine date inputs: picker button attached, day-first hint + preview', () => {
+  it('Manual Engine date inputs: picker-owned day-first display, ISO kept separately', () => {
     // 2026-11-14 probe (live Chromium 155): lang="en-GB" does NOT change
-    // a datetime-local/date input's display — not on the input, not on
-    // <html>, not even lang="fr". Chrome renders these fields in the
-    // browser/OS locale (mm/dd/yyyy here), so no attribute can make the
-    // display DD/MM/YYYY. The real display fix needs picker work (the
-    // picker owns the field — it is readonly — so the display must come
-    // from the picker, not the browser); that is flagged in the handoff,
-    // not built here. What this task DOES fix: the trigger button sits
-    // inside the input, and the day-first hint + live preview stand.
+    // a datetime-local/date input's display — Chrome renders these fields
+    // in the browser/OS locale (mm/dd/yyyy here). So the picker now owns
+    // the display: a readonly text input showing DD/MM/YYYY HH:mm, with
+    // the ISO value ("2026-11-28T14:30") kept in data-iso for submit.
     expect(periods).not.toContain('lang="en-GB"');
     expect(periods).toContain('id="cycleStartDate"');
     expect(periods).toContain('id="cycleEndDate"');
     expect(periods).toContain('id="startDate"');
     expect(periods).toContain('id="endDate"');
+    // The two Manual fields are text (never datetime-local): no native
+    // US placeholder can appear; the picker writes the display.
+    expect(periods).not.toContain('type="datetime-local"');
+    for (const id of ['cycleStartDate', 'cycleEndDate']) {
+      const input = periods.slice(periods.indexOf(`id="${id}"`) - 220, periods.indexOf(`id="${id}"`));
+      expect(input).toContain('type="text"');
+      expect(input).toContain('readonly');
+      expect(input).toContain('placeholder="DD/MM/YYYY HH:mm"');
+      expect(input).toContain('data-iso=""');
+    }
     // The calendar trigger sits INSIDE the input's right edge: each input
     // lives in its own relative wrapper and leaves room (pr-12) for it.
     expect(periods.split('<div class="relative">').length - 1).toBe(4);
@@ -86,10 +135,18 @@ describe('KPI Periods page polish', () => {
     expect(calendarCss).toContain('right: 6px;');
     expect(calendarCss).toContain('transform: translateY(-50%);');
     expect(calendarCss).not.toContain('margin-left: 8px;');
-    // Picker wiring untouched: same init, same singles, same preview.
+    // Picker wiring: the Manual fields are displayFirst (Create fields
+    // are not — they stay native date inputs with their own pickers).
     expect(periods).toContain("window.PeriodCalendar.init({");
-    expect(periods).toContain("{ id: 'cycleStartDate', isDateTime: true }");
-    expect(periods).toContain("{ id: 'cycleEndDate', isDateTime: true }");
+    expect(periods).toContain("{ id: 'cycleStartDate', isDateTime: true, displayFirst: true }");
+    expect(periods).toContain("{ id: 'cycleEndDate', isDateTime: true, displayFirst: true }");
+    expect(periods).toContain("{ id: 'startDate', isDateTime: false, fullscreen: true }");
+    expect(periods).toContain("{ id: 'endDate', isDateTime: false, fullscreen: true }");
+    // Submit + preview read the ISO, never the display text.
+    expect(periods).toContain('function manualBoundaryIso(input)');
+    expect(periods).toContain('manualBoundaryIso(document.getElementById("cycleStartDate"))');
+    expect(periods).toContain('manualBoundaryIso(document.getElementById("cycleEndDate"))');
+    expect(periods).toContain('formatBoundaryPreview(manualBoundaryIso(input))');
     expect(periods).toContain('formatBoundaryPreview');
     expect(periods).toContain('Day / Month / Year, hour:minute');
   });
