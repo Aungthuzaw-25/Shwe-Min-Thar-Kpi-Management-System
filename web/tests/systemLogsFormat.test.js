@@ -52,7 +52,13 @@ describe('System Logs page format', () => {
   it('leaves search, filter, pagination and the page size alone', () => {
     expect(logs).toContain('id="logSearch"');
     expect(logs).toContain('id="logLevel"');
-    expect(logs).toContain('onclick="loadSystemLogs(1)"');
+    // The Filter button no longer carries an inline onclick: #125
+    // rewired it (the old onclick="loadSystemLogs(1)" was dead through
+    // the CSP bridge — a numeric-literal argument is never invoked),
+    // so the format test pins the live wiring instead.
+    expect(logs).not.toContain('onclick="loadSystemLogs(1)"');
+    expect(logs).toContain('id="filterLogs"');
+    expect(logs).toContain("document.getElementById('filterLogs').addEventListener('click', () => loadSystemLogs(1));");
     expect(logs).toContain('id="prevLogs"');
     expect(logs).toContain('id="nextLogs"');
     expect(logs).toContain('id="logSummary"');
