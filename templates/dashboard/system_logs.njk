@@ -31,7 +31,7 @@
                     <option value="">All levels</option><option>DEBUG</option><option>INFO</option>
                     <option>WARNING</option><option>ERROR</option><option>CRITICAL</option>
                 </select>
-                <button type="button" onclick="loadSystemLogs(1)" class="bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-bold">Filter</button>
+                <button type="button" id="filterLogs" class="bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-bold">Filter</button>
             </div>
             <table class="syslog-table w-full text-left text-xs sm:text-sm">
                 <colgroup>
@@ -57,7 +57,7 @@
         </div>
         <div class="p-4 border-t border-gray-100 flex items-center justify-between text-sm">
             <span id="logSummary" class="text-slate-500"></span>
-            <div class="flex gap-2"><button id="prevLogs" onclick="loadSystemLogs(currentPage - 1)" class="border px-3 py-1 rounded-lg">Previous</button><button id="nextLogs" onclick="loadSystemLogs(currentPage + 1)" class="border px-3 py-1 rounded-lg">Next</button></div>
+            <div class="flex gap-2"><button id="prevLogs" class="border px-3 py-1 rounded-lg">Previous</button><button id="nextLogs" class="border px-3 py-1 rounded-lg">Next</button></div>
         </div>
     </div>
 </div>
@@ -179,6 +179,17 @@
         );
     }
 
-    document.addEventListener('DOMContentLoaded', () => loadSystemLogs(1));
+    document.addEventListener('DOMContentLoaded', () => {
+        loadSystemLogs(1);
+        // The CSP event bridge never invokes an inline handler whose
+        // argument is a numeric literal or an expression, so Filter
+        // (loadSystemLogs(1)) and Previous/Next (currentPage - 1 / + 1)
+        // were dead in production. Bind them directly instead —
+        // addEventListener bypasses the bridge entirely, so the page
+        // number is computed in JS where expressions work.
+        document.getElementById('filterLogs').addEventListener('click', () => loadSystemLogs(1));
+        document.getElementById('prevLogs').addEventListener('click', () => loadSystemLogs(currentPage - 1));
+        document.getElementById('nextLogs').addEventListener('click', () => loadSystemLogs(currentPage + 1));
+    });
 </script>
 {% endblock %}
