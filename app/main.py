@@ -451,11 +451,16 @@ class CSRFMiddleware(BaseHTTPMiddleware):
                 # entry points (no session exists yet to CSRF with),
                 # like /login; the peer-approve actions stay protected.
                 "/api/v1/auth/sa-mfa/recover",
+                "/api/v1/auth/sa-mfa/recover-available",
                 "/api/v1/auth/sa-mfa/reset-requests",
                 # TOTP break-glass (2026-11-06): same public entry
                 # point shape as recover — a locked-out SA has no
                 # session to CSRF with.
                 "/api/v1/auth/sa-mfa/break-glass",
+                # Break-glass password reset (2026-11-13): same
+                # shape — the locked-out SA has no session, and
+                # the owner token is the auth.
+                "/api/v1/auth/sa-mfa/break-glass-reset-password",
                 # Optional Admin/HR MFA reset request (2026-11-06):
                 # same public entry point shape as the SA one.
                 "/api/v1/auth/user-mfa/reset-requests",
