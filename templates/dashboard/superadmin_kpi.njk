@@ -48,6 +48,7 @@
         
         <!-- VIEW 1: FORMULAS -->
         <div id="formulas-tab"  class="tab-content animate-fade-in-up kg-panel">
+            <p class="text-xs text-slate-500 font-medium mb-4">All formulas <span id="formulaCount">0</span></p>
             <div id="formulaCardsContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 kg-formula-grid">
                 <div class="col-span-full py-16 text-center text-slate-500">
                     <svg class="animate-spin h-8 w-8 text-blue-600 mx-auto mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
@@ -60,7 +61,10 @@
         <div id="records-tab"  class="tab-content hidden animate-fade-in-up kg-panel" hidden>
             <div class="bg-white rounded-3xl shadow-sm ring-1 ring-slate-900/5 overflow-hidden kg-card">
                 <div class="p-4 sm:p-6 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white gap-3 sm:gap-0 kg-records-header">
-                    <h3 class="font-extrabold text-slate-900 text-base sm:text-lg">Employee KPI Records · Manage (Current Cycle)</h3>
+                    <div>
+                        <h3 class="font-extrabold text-slate-900 text-base sm:text-lg">Employee KPI Records · Manage (Current Cycle)</h3>
+                        <p class="text-xs text-slate-500 font-medium mt-1">All records <span id="recordsCount">0</span></p>
+                    </div>
                     <button onclick="loadEmployeeRecords()" class="w-full sm:w-auto text-xs text-blue-700 bg-blue-50 border border-blue-200 px-4 py-2 rounded-xl hover:bg-blue-100 font-bold transition shadow-sm flex items-center justify-center kg-button">
                         <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg> 
                         Refresh Data
@@ -96,6 +100,7 @@
                     <div>
                         <h3 class="text-lg sm:text-xl font-extrabold text-slate-900 mb-1">Role Tracking Controls</h3>
                         <p class="text-xs sm:text-sm text-slate-500 font-medium">Enable or disable KPI generation for specific role levels per department.</p>
+                        <p class="text-xs text-slate-500 font-medium mt-1">All departments <span id="deptCount">0</span></p>
                     </div>
                 </div>
                 

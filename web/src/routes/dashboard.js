@@ -52,6 +52,16 @@ function resolveSettingsView(query = {}) {
   return "general";
 }
 
+const PERIODS_VIEWS = ["evaluation", "manual"];
+
+// KPI Periods split: ?view= wins, anything else → evaluation (never
+// blank). The template renders only the chosen view's panel — the
+// other view's markup (and its fetches) is absent, not hidden.
+function resolvePeriodsView(query = {}) {
+  if (PERIODS_VIEWS.includes(query.view)) return query.view;
+  return "evaluation";
+}
+
 export function registerDashboardRoutes(app) {
   registerPage(app, "/superadmin/dashboard", "dashboard/superadmin.njk", {
     allowedRoles: roles.superAdmin,
@@ -140,6 +150,7 @@ export function registerDashboardRoutes(app) {
   });
   registerPage(app, "/kpi-periods", "dashboard/kpi_periods.njk", {
     allowedRoles: roles.adminTools,
+    extras: (base, request) => ({ periods_view: resolvePeriodsView(request.query) }),
   });
   registerPage(app, "/action-plans", "dashboard/action_plans.njk");
   registerPage(app, "/system-settings", "dashboard/system_settings.njk", {

@@ -258,8 +258,8 @@ describe('inline sidebar wiring (template scope)', () => {
     expect(base).toContain('/superadmin/kpi?view=records');
     expect(base).toContain('/superadmin/kpi?view=settings');
     expect(base).toContain('/superadmin/kpi?view=assignments');
-    expect(base).toContain('/kpi-periods#evaluationPeriodsPanel');
-    expect(base).toContain('/kpi-periods#manualEnginePanel');
+    expect(base).toContain('/kpi-periods?view=evaluation');
+    expect(base).toContain('/kpi-periods?view=manual');
     expect(base).toContain('/system-settings?view=general');
     expect(base).toContain('/system-settings?view=email');
     expect(base).toContain('/system-settings?view=security');
