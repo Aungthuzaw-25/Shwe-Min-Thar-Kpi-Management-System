@@ -72,6 +72,31 @@ describe('System Settings split views', () => {
     expect(routes).toContain('"general", "email", "security", "maintenance", "user-security"');
   });
 
+  it('has exactly ONE Company Name field — the Trademark one (no duplicate in Localization)', () => {
+    // Zenn 2026-11-14: two fields edited the same stored value
+    // (general.company_name) with different values — the Localization
+    // field's hardcoded "Enterprise KPI Corp" survived load (the
+    // stored name was missing) and Save All would have overwritten
+    // the live brand with it.
+    const labels = template.match(/>Company Name </g) || [];
+    expect(labels).toHaveLength(1);
+    expect(template).toContain('id="tm_company_name"');
+    expect(template).not.toContain('set_company_name');
+    expect(template).not.toContain('Enterprise KPI Corp');
+    expect(template).toContain('Company name is set in Company Trademark below');
+  });
+
+  it('Save All still preserves the brand name without the removed field', () => {
+    // The backend replaces the whole `general` dict, so the last
+    // loaded brand name is carried forward — otherwise saving
+    // timezone/date format would delete the stored company name and
+    // the brand would fall back to the default.
+    expect(template).toContain('let loadedCompanyName');
+    expect(template).toContain('loadedCompanyName = brand.company_name');
+    expect(template).toContain('company_name: loadedCompanyName,');
+    expect(template).toContain("document.getElementById('set_timezone')");
+  });
+
   it('gives the sidebar exactly the 5 photo-label children, in photo order', () => {
     const panelStart = base.indexOf('id="sidebar-submenu-system_settings"');
     const panel = base.slice(panelStart, base.indexOf('</div>', panelStart));

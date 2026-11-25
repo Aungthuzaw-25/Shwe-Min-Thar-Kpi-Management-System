@@ -56,11 +56,8 @@
                 <!-- 1. GENERAL SETTINGS -->
                 <div id="content-general" class="setting-content space-y-6">
                     <h3 class="text-base sm:text-lg font-extrabold text-blue-950 border-b border-gray-100 pb-3 mb-4 sm:mb-6">Company & Localization</h3>
+                    <p class="text-xs text-slate-500 -mt-2 mb-4 sm:mb-6">Company name is set in Company Trademark below — that is the name shown in the sidebar and on the sign-in page.</p>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
-                        <div>
-                            <label for="set_company_name" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">Company Name <span class="text-red-500">*</span></label>
-                            <input type="text" id="set_company_name" value="Enterprise KPI Corp" required class="w-full bg-slate-50 border border-gray-200 p-3 rounded-xl text-sm font-semibold focus:outline-none focus:bg-white focus:border-blue-900 transition-all shadow-inner">
-                        </div>
                         <div>
                             <label for="set_timezone" class="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 sm:mb-2 uppercase tracking-wide">System Timezone</label>
                             <select id="set_timezone" class="w-full bg-slate-50 border border-gray-200 p-3 rounded-xl text-sm font-semibold focus:outline-none focus:bg-white focus:border-blue-900 transition-all shadow-inner cursor-pointer">
@@ -891,7 +888,17 @@
         status.className = `text-xs font-semibold mt-2 ${isError ? 'text-red-700' : 'text-green-700'}`;
     }
 
+    // The company name is edited ONLY in the Trademark section — but
+    // Save All still writes the whole `general` dict (the backend
+    // replaces it), so the last loaded brand name is carried forward
+    // here. Without it, saving timezone/date format would silently
+    // delete the stored company name and the brand would fall back to
+    // the default. Initialized from the server-rendered Trademark
+    // field (before any user edit) and refreshed by applyTrademark.
+    let loadedCompanyName = (document.getElementById('tm_company_name') || {}).value || '';
+
     function applyTrademark(brand) {
+        loadedCompanyName = brand.company_name || '';
         document.getElementById('tm_company_name').value = brand.company_name || '';
         document.getElementById('tm_company_tagline').value = brand.company_tagline || '';
         document.getElementById('tm_name_count').textContent = (brand.company_name || '').length;
@@ -915,9 +922,6 @@
         try {
             const brand = await brandingRequest('', 'PUT', { company_name: name, company_tagline: tagline });
             applyTrademark(brand);
-            // The General view edits the same company name — keep it in sync.
-            const generalName = document.getElementById('set_company_name');
-            if (generalName) generalName.value = brand.company_name || '';
             trademarkStatus('Saved. The new name and tagline now show across the app.');
             showToast('Company trademark saved.', 'success');
         } catch (error) {
@@ -1015,7 +1019,6 @@
                     const data = setting.value || {};
 
                     if (setting.key === 'general') {
-                        if(data.company_name) setField('set_company_name', data.company_name);
                         if(data.timezone) setField('set_timezone', data.timezone);
                         if(data.date_format) setField('set_date_format', data.date_format);
                     } else if (setting.key === 'security') {
@@ -1097,9 +1100,14 @@
         // Split views: save only the keys whose fields are on this
         // view. On the Email view nothing is saveable here (providers
         // save through their own flows) — say so, never throw.
-        const generalEl = document.getElementById('set_company_name');
+        // The General view's marker is the timezone field (the
+        // Company Name field is gone — the name lives in Trademark
+        // only). company_name is carried from loadedCompanyName: the
+        // backend replaces the whole `general` dict, so omitting it
+        // would delete the stored name.
+        const generalEl = document.getElementById('set_timezone');
         const generalVal = generalEl ? {
-            company_name: generalEl.value,
+            company_name: loadedCompanyName,
             timezone: document.getElementById('set_timezone').value,
             date_format: document.getElementById('set_date_format').value
         } : null;
