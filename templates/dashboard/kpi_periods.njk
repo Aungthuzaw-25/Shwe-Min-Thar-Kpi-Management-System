@@ -56,7 +56,7 @@
                         <div>
                             <label for="cycleStartDate" class="block text-[10px] sm:text-[11px] font-black text-slate-500 mb-2 uppercase tracking-widest">Start Boundary <span class="text-red-500">*</span></label>
                             <div class="relative">
-                                <input type="datetime-local" id="cycleStartDate" class="w-full bg-white border border-slate-300 p-3 sm:p-3.5 pr-12 rounded-xl text-sm font-bold text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all shadow-sm cursor-pointer">
+                                <input type="text" readonly inputmode="none" autocomplete="off" placeholder="DD/MM/YYYY HH:mm" data-iso="" id="cycleStartDate" class="w-full bg-white border border-slate-300 p-3 sm:p-3.5 pr-12 rounded-xl text-sm font-bold text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all shadow-sm cursor-pointer placeholder-slate-400">
                             </div>
                             <p class="text-[11px] sm:text-xs text-slate-500 font-medium mt-2">Day / Month / Year, hour:minute — e.g. 28/10/2026 14:30</p>
                             <p class="text-[11px] sm:text-xs font-bold text-blue-900 mt-1" id="cycleStartPreview"></p>
@@ -64,7 +64,7 @@
                         <div>
                             <label for="cycleEndDate" class="block text-[10px] sm:text-[11px] font-black text-slate-500 mb-2 uppercase tracking-widest">End Boundary <span class="text-red-500">*</span></label>
                             <div class="relative">
-                                <input type="datetime-local" id="cycleEndDate" class="w-full bg-white border border-slate-300 p-3 sm:p-3.5 pr-12 rounded-xl text-sm font-bold text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all shadow-sm cursor-pointer">
+                                <input type="text" readonly inputmode="none" autocomplete="off" placeholder="DD/MM/YYYY HH:mm" data-iso="" id="cycleEndDate" class="w-full bg-white border border-slate-300 p-3 sm:p-3.5 pr-12 rounded-xl text-sm font-bold text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all shadow-sm cursor-pointer placeholder-slate-400">
                             </div>
                             <p class="text-[11px] sm:text-xs text-slate-500 font-medium mt-2">Day / Month / Year, hour:minute — e.g. 31/10/2026 23:59</p>
                             <p class="text-[11px] sm:text-xs font-bold text-blue-900 mt-1" id="cycleEndPreview"></p>
@@ -247,9 +247,36 @@
         setTimeout(() => modal.classList.add('hidden'), 300);
     }
 
+    // Manual Engine boundaries: the picker owns the display (a readonly
+    // text input showing DD/MM/YYYY HH:mm) while the ISO value lives in
+    // data-iso. Read the ISO here — never the display text — so submit
+    // and preview keep the exact values they had with datetime-local.
+    // Fallbacks, in order: the picker-written ISO; a strict day-first
+    // display string (typable only if the picker never initialised);
+    // the raw value (a datetime-local string). Anything else is ''.
+    function manualBoundaryIso(input) {
+        if (!input) return '';
+        if (input.dataset && input.dataset.iso) return input.dataset.iso;
+        const raw = (input.value || '').trim();
+        if (!raw) return '';
+        if (raw.indexOf('T') !== -1) {
+            const parts = raw.split('T');
+            if (/^\d{4}-\d{2}-\d{2}$/.test(parts[0]) && /^\d{2}:\d{2}/.test(parts[1] || '')) return raw;
+            return '';
+        }
+        const match = /^(\d{1,2})\/(\d{1,2})\/(\d{4})[ T](\d{1,2}):(\d{2})$/.exec(raw);
+        if (!match) return '';
+        const day = Number(match[1]), month = Number(match[2]), year = Number(match[3]);
+        const hour = Number(match[4]), minute = Number(match[5]);
+        if (month < 1 || month > 12 || hour > 23 || minute > 59) return '';
+        if (day < 1 || day > new Date(year, month, 0).getDate()) return '';
+        const p = (n) => String(n).padStart(2, '0');
+        return `${year}-${p(month)}-${p(day)}T${p(hour)}:${p(minute)}`;
+    }
+
     async function triggerCustomKpiCalculation() {
-        const startVal = document.getElementById("cycleStartDate").value;
-        const endVal = document.getElementById("cycleEndDate").value;
+        const startVal = manualBoundaryIso(document.getElementById("cycleStartDate"));
+        const endVal = manualBoundaryIso(document.getElementById("cycleEndDate"));
         
         if(!startVal || !endVal) return showToast("Please select both boundaries for the calculation cycle.", "error");
         
@@ -523,11 +550,10 @@
         document.addEventListener("DOMContentLoaded", fetchPeriods);
     }
 
-    // Manual Engine date previews (periods UI polish): datetime-local
-    // inputs render in the browser's locale (US mm/dd/yyyy on Zenn's
-    // machine), so each field shows its chosen value back in the same
-    // Yangon day-first style the table uses ("23 Oct 2026"). Display
-    // only — the submitted values are untouched.
+    // Manual Engine date previews: the picker owns the display
+    // (day-first text, ISO in data-iso), so the preview reads the ISO
+    // via manualBoundaryIso — never the display text. Display only —
+    // the submitted values are untouched.
     function formatBoundaryPreview(value) {
         if (!value) return '';
         const parts = value.split('T');
@@ -549,7 +575,7 @@
             const preview = document.getElementById(previewId);
             if (!input || !preview) return;
             const update = () => {
-                const text = formatBoundaryPreview(input.value);
+                const text = formatBoundaryPreview(manualBoundaryIso(input));
                 preview.textContent = text ? `Selected: ${text}` : '';
             };
             input.addEventListener('input', update);
@@ -580,8 +606,8 @@
         if (!window.PeriodCalendar) return;
         window.PeriodCalendar.init({
             singles: [
-                { id: 'cycleStartDate', isDateTime: true },
-                { id: 'cycleEndDate', isDateTime: true },
+                { id: 'cycleStartDate', isDateTime: true, displayFirst: true },
+                { id: 'cycleEndDate', isDateTime: true, displayFirst: true },
                 { id: 'startDate', isDateTime: false, fullscreen: true },
                 { id: 'endDate', isDateTime: false, fullscreen: true },
             ],
